@@ -34,10 +34,11 @@ export function usePickingQueue() {
       let q = supabase
         .from("orders")
         .select(
-          "id, order_number, customer_name, total, created_at, payment_status, order_status, order_items(*, brands(brand_name, sku, vendor_id, vendors(name)))"
+          "id, order_number, customer_name, customer_email, total, created_at, payment_status, order_status, order_items(id, product_name, brand_name, quantity, unit_price, brands(brand_name, sku, vendor_id, vendors(id, name, phone)))"
         )
         .eq("payment_status", "paid")
-        .order("created_at", { ascending: true });
+        .in("order_status", ["paid", "confirmed", "processing"])
+        .order("created_at", { ascending: false });
 
       if (sessionOrderIds.length > 0) {
         // PostgREST `not.in.(...)` syntax
@@ -155,6 +156,59 @@ export function usePickingSession(orderId: string | null | undefined) {
       supabase.removeChannel(channel);
     };
   }, [sessionId, orderId, qc]);
+
+  return query;
+}
+
+/**
+ * Fetch a picking session directly by its id, with full item join. Used by
+ * the picking detail view when the URL carries `?session=<id>`. Subscribes
+ * to realtime updates on its picking items + session row.
+ */
+export function usePickingSessionById(sessionId: string | null | undefined) {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["picking-session-by-id", sessionId],
+    queryFn: async () => {
+      if (!sessionId) return null;
+      const { data, error } = await supabase
+        .from("order_picking_sessions")
+        .select(
+          "*, orders(order_number, customer_name, total), " +
+          "order_picking_items(*, order_items(product_name, brand_name, quantity, brands(brand_name, sku, vendor_id, vendors(name, phone))))"
+        )
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!sessionId,
+    staleTime: STALE_30,
+  });
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const channel = supabase
+      .channel(`picking-session-by-id-${sessionId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_picking_items", filter: `session_id=eq.${sessionId}` },
+        () => {
+          qc.invalidateQueries({ queryKey: ["picking-session-by-id", sessionId] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_picking_sessions", filter: `id=eq.${sessionId}` },
+        () => {
+          qc.invalidateQueries({ queryKey: ["picking-session-by-id", sessionId] });
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sessionId, qc]);
 
   return query;
 }

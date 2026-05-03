@@ -94,7 +94,7 @@ export default function AdminOrders() {
   const isPaidOnlyRestricted = rpcResult?.paid_only_restricted || false;
 
   const filtered = useMemo(() => {
-    return (orders || []).filter((o: any) => {
+    const rows = (orders || []).filter((o: any) => {
       if (subsOnly && !o.is_subscription_order) return false;
       if (methodFilter !== "all" && o.payment_method !== methodFilter) return false;
       if (o.created_at < dateFrom) return false;
@@ -107,6 +107,14 @@ export default function AdminOrders() {
       }
       return true;
     });
+    // Always show most recent orders first regardless of which tab/filter is
+    // active. Defensive sort — the RPC's ordering is not relied upon.
+    rows.sort((a: any, b: any) => {
+      const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return bd - ad;
+    });
+    return rows;
   }, [orders, methodFilter, dateFrom, courierFilter, subsOnly]);
 
   const stats = useMemo(() => {

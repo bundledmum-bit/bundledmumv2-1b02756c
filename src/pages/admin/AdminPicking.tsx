@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,19 +13,42 @@ const fmtDate = (d: string) =>
 
 export default function AdminPicking() {
   const [params] = useSearchParams();
+  const sessionId = params.get("session");
   const orderId = params.get("order");
-  if (orderId) return <PickingDetailGate orderId={orderId} />;
+  // New canonical entry — load session by id and render detail.
+  if (sessionId) return <PickingDetail sessionId={sessionId} />;
+  // Legacy entry from /admin/orders — auto-create or resume a session for
+  // this order, then redirect to ?session=<id>.
+  if (orderId) return <OrderEntryGate orderId={orderId} />;
   return <PickingQueueView />;
 }
 
-function PickingDetailGate({ orderId }: { orderId: string }) {
-  // If a session already exists for this order, render normal detail.
-  // If not, render with `fresh` to auto-start.
-  const { data: session, isLoading } = usePickingSession(orderId);
-  if (isLoading) {
-    return <div className="text-sm text-muted-foreground p-6">Loading...</div>;
-  }
-  return <PickingDetail orderId={orderId} fresh={!session} />;
+function OrderEntryGate({ orderId }: { orderId: string }) {
+  const navigate = useNavigate();
+  const { data: existing, isLoading } = usePickingSession(orderId);
+  const start = useStartPickingSession();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const existingId = (existing as any)?.id;
+    if (existingId) {
+      navigate(`/admin/picking?session=${existingId}`, { replace: true });
+      return;
+    }
+    if (start.isPending || start.isSuccess) return;
+    start.mutate(
+      { orderId },
+      {
+        onSuccess: (s: any) => {
+          navigate(`/admin/picking?session=${s.id}`, { replace: true });
+        },
+        onError: (e: any) => toast.error(e?.message || "Could not start picking session"),
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, existing, orderId]);
+
+  return <div className="text-sm text-muted-foreground p-6">Loading session…</div>;
 }
 
 function PickingQueueView() {
@@ -65,7 +88,7 @@ function PickingQueueView() {
                 start.mutate(
                   { orderId: o.id },
                   {
-                    onSuccess: () => navigate(`/admin/picking?order=${o.id}`),
+                    onSuccess: (s: any) => navigate(`/admin/picking?session=${s.id}`),
                     onError: (e: any) => toast.error(e?.message || "Could not start session"),
                   },
                 );

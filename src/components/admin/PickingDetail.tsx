@@ -5,26 +5,35 @@ import { CheckCircle2, ArrowLeft, Package } from "lucide-react";
 import { toast } from "sonner";
 import {
   usePickingSession,
+  usePickingSessionById,
   useStartPickingSession,
   useMarkPickingItemPicked,
   useMarkAllItemsPicked,
 } from "@/hooks/useOrderPicking";
 
 interface Props {
-  orderId: string;
+  // New canonical entry: load directly by session id.
+  sessionId?: string;
+  // Legacy entry: load by order id (used when navigating from /admin/orders).
+  orderId?: string;
   fresh?: boolean;
 }
 
-export default function PickingDetail({ orderId, fresh }: Props) {
+export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
   const navigate = useNavigate();
-  const { data: session, isLoading, refetch } = usePickingSession(orderId);
+  const byId = usePickingSessionById(sessionId);
+  const byOrder = usePickingSession(sessionId ? null : orderId);
+  const session = sessionId ? byId.data : byOrder.data;
+  const isLoading = sessionId ? byId.isLoading : byOrder.isLoading;
+  const refetch = sessionId ? byId.refetch : byOrder.refetch;
   const start = useStartPickingSession();
   const mark = useMarkPickingItemPicked();
   const markAll = useMarkAllItemsPicked();
 
-  // If `fresh` mode and there's no session yet, kick one off.
+  // If `fresh` mode and there's no session yet (legacy orderId entry only),
+  // kick one off.
   useEffect(() => {
-    if (!fresh) return;
+    if (!fresh || !orderId) return;
     if (isLoading) return;
     if (session) return;
     start.mutate(
