@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ import {
   useOrdersByVendor,
   type Vendor,
 } from "@/hooks/useVendors";
+import { useVendorMetrics } from "@/hooks/useVendorMetrics";
+import VendorMetricsStrip, { type VendorFilter } from "@/components/admin/vendors/VendorMetricsStrip";
 
 const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
@@ -29,6 +31,41 @@ export default function AdminVendors() {
 
   const { data: vendors = [], isLoading } = useVendors(false);
   const toggleActive = useToggleVendorActive();
+  const { data: metrics, isLoading: metricsLoading, isError: metricsError, error: metricsErr } = useVendorMetrics();
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive" | "no_brands">("all");
+
+  // Surface a single error toast if the metrics fetch fails — placeholder
+  // cards will still render so the page isn't broken.
+  useEffect(() => {
+    if (metricsError) {
+      toast.error("Couldn't load vendor metrics", {
+        description: (metricsErr as any)?.message || "Some counts are unavailable.",
+      });
+    }
+  }, [metricsError, metricsErr]);
+
+  const handleFilterChange = (filter: VendorFilter) => {
+    setActiveFilter(filter);
+    setTab("all");
+  };
+
+  const filteredVendors = useMemo(() => {
+    if (activeFilter === "all") return vendors;
+    if (activeFilter === "active") return vendors.filter(v => v.is_active);
+    if (activeFilter === "inactive") return vendors.filter(v => !v.is_active);
+    if (activeFilter === "no_brands") {
+      const noBrandsSet = new Set(metrics?.vendorsNoBrandsIds || []);
+      return vendors.filter(v => noBrandsSet.has(v.id));
+    }
+    return vendors;
+  }, [vendors, activeFilter, metrics?.vendorsNoBrandsIds]);
+
+  const filterLabel: Record<typeof activeFilter, string> = {
+    all: "All vendors",
+    active: "Active vendors only",
+    inactive: "Inactive vendors only",
+    no_brands: "Vendors with no linked brands",
+  };
 
   function openAdd() {
     setEditing(null);
@@ -55,6 +92,13 @@ export default function AdminVendors() {
         </Button>
       </div>
 
+      <VendorMetricsStrip
+        metrics={metrics}
+        isLoading={metricsLoading}
+        isError={metricsError}
+        onFilterChange={handleFilterChange}
+      />
+
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="all">All Vendors</TabsTrigger>
@@ -63,11 +107,27 @@ export default function AdminVendors() {
         </TabsList>
 
         <TabsContent value="all" className="mt-4">
+          {activeFilter !== "all" && (
+            <div className="flex items-center gap-2 mb-2 text-xs">
+              <span className="text-muted-foreground">Filter:</span>
+              <span className="px-2 py-0.5 rounded bg-forest/10 text-forest font-semibold">
+                {filterLabel[activeFilter]} ({filteredVendors.length})
+              </span>
+              <button
+                onClick={() => setActiveFilter("all")}
+                className="text-muted-foreground hover:text-foreground underline"
+              >
+                Clear
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div>
-          ) : vendors.length === 0 ? (
+          ) : filteredVendors.length === 0 ? (
             <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-              No vendors yet. Click "Add Vendor" to create the first one.
+              {activeFilter === "all"
+                ? `No vendors yet. Click "Add Vendor" to create the first one.`
+                : `No vendors match this filter.`}
             </div>
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
@@ -85,7 +145,7 @@ export default function AdminVendors() {
                   </tr>
                 </thead>
                 <tbody>
-                  {vendors.map(v => (
+                  {filteredVendors.map(v => (
                     <VendorRow
                       key={v.id}
                       vendor={v}
