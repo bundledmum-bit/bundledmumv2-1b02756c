@@ -589,26 +589,60 @@ export default function CheckoutPage() {
       // Use edge function to place order (bypasses RLS SELECT restriction)
       const quizSessionId = localStorage.getItem("bm_quiz_session_id");
 
-      // Build items array and validate before sending
-      const orderItemsPayload = (orderData.items?.length ? orderData.items : cartItems).map(item => ({
-        name: item.name,
-        brandName: item.selectedBrand?.label || "Standard",
-        brandId: item.selectedBrand?.id || null,
-        productId: item.id || null,
-        qty: item.qty,
-        price: item.price,
-        size: item.selectedSize || null,
-        color: item.selectedColor || null,
-        bundleName: item.bundleName || null,
-      }));
+      // Build items array and validate before sending. Source priority:
+      //   1. cartItems snapshot passed in by placeOrder (already from
+      //      localStorage via getLiveCart at button-click time)
+      //   2. orderData.items if it carried more rows (defensive)
+      //   3. localStorage 'bm-cart' as a final source-of-truth fallback
+      let sourceItems: typeof cartItems =
+        cartItems && cartItems.length ? cartItems : (orderData.items as typeof cartItems) || [];
+      if (!sourceItems.length) {
+        try {
+          const raw = localStorage.getItem("bm-cart");
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (Array.isArray(parsed) && parsed.length) sourceItems = parsed;
+        } catch {
+          // ignore
+        }
+      }
+
+      const orderItemsPayload = sourceItems
+        .filter((item: any) => {
+          const productId = item?.id;
+          const brandId = item?.selectedBrand?.id;
+          if (!productId || !brandId) {
+            console.warn("[checkout] item missing productId/brandId, skipping:", item);
+            return false;
+          }
+          return true;
+        })
+        .map((item: any) => ({
+          name: item.name,
+          brandName: item.selectedBrand?.label || "Standard",
+          brandId: item.selectedBrand?.id,
+          productId: item.id,
+          qty: Number(item.qty) || 1,
+          price: Number(item.price) || 0,
+          size: item.selectedSize || null,
+          color: item.selectedColor || null,
+          bundleName: item.bundleName || null,
+        }));
 
       if (!orderItemsPayload.length) {
-        console.error("[checkout] items array is empty — cart:", cartItems);
-        toast.error("Your cart appears to be empty. Please add items before checking out.");
+        console.error(
+          "[checkout] items array is empty after filter — cart snapshot:",
+          cartItems,
+          "orderData.items:",
+          orderData.items,
+        );
+        toast.error("Could not process cart items. Please refresh and try again.");
         return null;
       }
 
-      console.log(`[checkout] sending ${orderItemsPayload.length} items to place-order`);
+      console.log(
+        `[checkout] sending ${orderItemsPayload.length} items to place-order`,
+        orderItemsPayload,
+      );
 
       const { data: result, error: fnError } = await supabase.functions.invoke("place-order", {
         body: {
@@ -770,8 +804,29 @@ export default function CheckoutPage() {
     }
   };
 
+  // Source-of-truth cart read at call time — defends against React state
+  // batching / async timing where `cart` may not yet reflect the most
+  // recent add. localStorage is written eagerly in CartProvider's effect,
+  // so it's always at least as fresh as React state. We prefer whichever
+  // has more items.
+  const getLiveCart = (): typeof cart => {
+    let lsItems: typeof cart = [];
+    try {
+      const raw = localStorage.getItem("bm-cart");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) lsItems = parsed;
+      }
+    } catch {
+      // ignore parse errors; fall back to React state
+    }
+    if (lsItems.length >= cart.length && lsItems.length > 0) return lsItems;
+    return [...cart];
+  };
+
   const placeOrder = async () => {
-    if (!cart.length) {
+    const cartSnapshot = getLiveCart();
+    if (!cartSnapshot.length) {
       toast.error("Your cart is empty. Please add items before checking out.");
       navigate("/cart");
       return;
@@ -781,8 +836,6 @@ export default function CheckoutPage() {
       toast.error(`Sorry, we don't currently deliver to ${form.city || "this area"}. Please contact us on WhatsApp.`);
       return;
     }
-
-    const cartSnapshot = [...cart];
     setStockIssues([]);
     setProcessing(true);
 
