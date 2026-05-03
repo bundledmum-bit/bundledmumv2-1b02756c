@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import logoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
@@ -13,12 +13,27 @@ import iconCoral from "@/assets/logos/BM-ICON-CORAL.svg";
  */
 export default function ResetPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [checking, setChecking] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Detect which Supabase email flow brought the user here. App.tsx's
+  // listener forwards a ?flow= query param when it can read the hash;
+  // fall back to the live hash in case the listener didn't fire (e.g.
+  // direct landing while Supabase is still parsing the fragment).
+  const flow = useMemo<"invite" | "recovery">(() => {
+    const fromQuery = searchParams.get("flow");
+    if (fromQuery === "invite") return "invite";
+    if (fromQuery === "recovery") return "recovery";
+    const hash = typeof window !== "undefined" ? window.location.hash || "" : "";
+    if (hash.includes("type=invite")) return "invite";
+    return "recovery";
+  }, [searchParams]);
+  const isInvite = flow === "invite";
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +64,10 @@ export default function ResetPassword() {
       return;
     }
     toast.success("Password updated successfully.");
-    setTimeout(() => navigate("/admin"), 2000);
+    // Invitees already have a valid session and should land in the admin
+    // dashboard; recovery users get sent back to /admin/login to sign in
+    // fresh with the new password.
+    setTimeout(() => navigate(isInvite ? "/admin" : "/admin/login"), 2000);
   };
 
   if (checking) return null;
@@ -63,14 +81,18 @@ export default function ResetPassword() {
         <div className="text-center mb-8">
           <img src={iconCoral} alt="BundledMum" className="w-14 h-14 mx-auto mb-4" />
           <img src={logoGreen} alt="BundledMum" className="h-8 mx-auto mb-3" />
-          <h1 className="pf text-xl font-bold text-foreground mb-2">Reset your password</h1>
+          <h1 className="pf text-xl font-bold text-foreground mb-2">
+            {isInvite ? "Welcome to BundledMum" : "Reset Your Password"}
+          </h1>
           {hasSession ? (
             <p className="text-text-med text-sm font-body">
-              Choose a new password — minimum 8 characters.
+              {isInvite
+                ? "Create a password to access your admin account."
+                : "Enter your new password below."}
             </p>
           ) : (
             <p className="text-text-med text-sm font-body">
-              This link has expired. Please request a new password reset.
+              This link has expired. Please request a new {isInvite ? "invite" : "password reset"}.
             </p>
           )}
         </div>

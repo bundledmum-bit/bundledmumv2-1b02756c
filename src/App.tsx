@@ -158,9 +158,20 @@ function PageTracker({ children }: { children: React.ReactNode }) {
 function PasswordRecoveryListener() {
   const navigate = useNavigate();
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        navigate("/reset-password");
+        navigate("/reset-password?flow=recovery");
+        return;
+      }
+      // Admin invite links land with `type=invite` in the URL fragment and
+      // emit INITIAL_SESSION on first load (no separate event). Capture the
+      // hash here — Supabase strips it shortly after — and pass the flow as
+      // a query param so the page can render the right copy + redirect.
+      if (event === "INITIAL_SESSION" && session?.user) {
+        const hash = typeof window !== "undefined" ? window.location.hash || "" : "";
+        if (hash.includes("type=invite")) {
+          navigate("/reset-password?flow=invite");
+        }
       }
     });
     return () => subscription.unsubscribe();
