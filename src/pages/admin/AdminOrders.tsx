@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -414,6 +414,11 @@ export default function AdminOrders() {
                   <td className="p-2 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span></td>
                   <td className="p-2 text-center">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-semibold capitalize ${STATUS_COLORS[o.order_status] || ""}`}>{o.order_status}</span>
+                    {o.order_status === "picked" && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold text-white" style={{ background: "#F4845F" }}>
+                        PICKED
+                      </span>
+                    )}
                     {o.is_subscription_order && (
                       <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-teal-100 text-teal-700">Subscription</span>
                     )}
@@ -438,7 +443,18 @@ export default function AdminOrders() {
                   <td className="p-2 text-center capitalize text-muted-foreground">{o.payment_method}</td>
                   <td className="p-2 text-muted-foreground">{new Date(o.created_at).toLocaleDateString("en-NG", { month: "short", day: "numeric" })}</td>
                   <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setDetailOrder(o.id)} className="text-xs text-forest font-semibold hover:underline">View</button>
+                    <div className="flex items-center justify-center gap-2">
+                      <button onClick={() => setDetailOrder(o.id)} className="text-xs text-forest font-semibold hover:underline">View</button>
+                      {o.payment_status === "paid" && (o.order_status === "paid" || o.order_status === "processing") && (
+                        <RouterLink
+                          to={`/admin/picking?order=${o.id}`}
+                          onClick={e => e.stopPropagation()}
+                          className="text-xs text-coral font-semibold hover:underline"
+                        >
+                          Start Picking
+                        </RouterLink>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

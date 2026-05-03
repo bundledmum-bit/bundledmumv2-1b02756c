@@ -14,6 +14,7 @@ import {
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, ShieldCheck, RotateCcw, Megaphone, Sparkles } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
 
 // Map icon name strings from DB to lucide components
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -254,38 +255,9 @@ function AdminLayoutInner() {
               <span>View Store</span>
               <span>↗</span>
             </Link>
-            <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 hover:bg-muted rounded-lg transition-colors">
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-white text-[9px] rounded-full flex items-center justify-center font-bold"
-                  style={{ background: "#F4845F" }}>
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </button>
+            <AdminNotificationBell />
           </div>
         </header>
-
-        {showNotifications && (
-          <div className="fixed top-12 right-4 z-50 w-80 bg-card border border-border rounded-xl shadow-lg max-h-96 overflow-y-auto">
-            <div className="flex items-center justify-between p-3 border-b border-border">
-              <span className="text-sm font-semibold">Notifications</span>
-              <button onClick={markAllRead} className="text-xs text-forest font-semibold hover:underline">Mark all read</button>
-            </div>
-            {notifications.length === 0 ? (
-              <div className="p-4 text-center text-xs text-text-light">No notifications</div>
-            ) : (
-              notifications.map(n => (
-                <Link key={n.id} to={n.link || "#"} onClick={() => setShowNotifications(false)}
-                  className={`block p-3 border-b border-border hover:bg-muted/50 transition-colors ${!n.is_read ? "bg-forest/5" : ""}`}>
-                  <div className="text-xs font-semibold">{n.title}</div>
-                  <div className="text-[10px] text-text-light mt-0.5">{n.message}</div>
-                  <div className="text-[9px] text-text-light mt-1">{new Date(n.created_at).toLocaleString()}</div>
-                </Link>
-              ))
-            )}
-          </div>
-        )}
 
         {searchOpen && (
           <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-start justify-center pt-20" onClick={() => setSearchOpen(false)}>
