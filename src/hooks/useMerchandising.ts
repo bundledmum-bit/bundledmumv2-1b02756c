@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase as supabaseTyped } from "@/integrations/supabase/client";
 // The merchandising tables aren't in the generated types yet; cast the
 // client so TS doesn't reject the new table names. Behaviour is unchanged.
@@ -6,6 +7,7 @@ const supabase = supabaseTyped as any;
 import { adaptProducts, type Product } from "@/lib/supabaseAdapters";
 
 const STALE_5MIN = 5 * 60 * 1000;
+const STALE_60SEC = 60 * 1000;
 
 /** Product with overrides surfaced from the merchandising pin row. */
 export type MerchPinnedProduct = Product & {
@@ -533,5 +535,336 @@ export function useUpdateCategoryPageLabel() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["product-categories"] });
     },
+  });
+}
+
+// ----------------------------------------------------------------------------
+// Section Brands — per-(category, product, brand) overrides for the brand
+// swiper rendered on /shop/[category-slug] product sections.
+// ----------------------------------------------------------------------------
+
+export interface SectionBrandOverrideRow {
+  id: string;
+  category_slug: string;
+  product_id: string;
+  brand_id: string;
+  brand_order: number | null;
+  display_label: string | null;
+  is_active: boolean;
+}
+
+const OVERRIDES_KEY = (categorySlug: string) => ["merch_category_section_brands", categorySlug] as const;
+const SECTION_BRANDS_KEY = (categorySlug: string, productId: string) =>
+  ["section_brands", categorySlug, productId] as const;
+
+export type SectionBrandOverrideMap = Map<
+  string,
+  { brand_order: number | null; display_label: string | null; is_active: boolean }
+>;
+
+/** Storefront: all override rows for a category page. Returned as a Map
+ *  keyed by `${product_id}|${brand_id}` so the swiper renderer can do an
+ *  O(1) lookup per brand without iterating the row list. */
+export function useCategorySectionBrandOverrides(categorySlug: string) {
+  return useQuery({
+    queryKey: OVERRIDES_KEY(categorySlug),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("merch_category_section_brands")
+        .select("id, category_slug, product_id, brand_id, brand_order, display_label, is_active")
+        .eq("category_slug", categorySlug);
+      if (error) throw error;
+      const map: SectionBrandOverrideMap = new Map();
+      for (const r of (data || []) as SectionBrandOverrideRow[]) {
+        map.set(`${r.product_id}|${r.brand_id}`, {
+          brand_order: r.brand_order,
+          display_label: r.display_label,
+          is_active: r.is_active,
+        });
+      }
+      return map;
+    },
+    staleTime: STALE_60SEC,
+    enabled: !!categorySlug,
+  });
+}
+
+/** Admin shape: brand row + its override (if any) + computed effective
+ *  fields, sorted using the same rule the storefront applies. */
+export interface SectionBrandRow {
+  brand: {
+    id: string;
+    brand_name: string;
+    image_url: string | null;
+    price: number | null;
+    cost_price: number | null;
+    in_stock: boolean | null;
+    display_order: number | null;
+  };
+  override: SectionBrandOverrideRow | null;
+  effectiveOrder: number | null;
+  effectiveLabel: string;
+  effectiveActive: boolean;
+  isOverridden: boolean;
+}
+
+function compareSectionBrands(a: SectionBrandRow, b: SectionBrandRow) {
+  // brand_order ASC NULLS LAST → price ASC NULLS LAST → display_order ASC NULLS LAST → id ASC
+  const ao = a.override?.brand_order;
+  const bo = b.override?.brand_order;
+  if (ao != null || bo != null) {
+    if (ao == null) return 1;
+    if (bo == null) return -1;
+    if (ao !== bo) return ao - bo;
+  }
+  const ap = a.brand.price;
+  const bp = b.brand.price;
+  if (ap != null || bp != null) {
+    if (ap == null) return 1;
+    if (bp == null) return -1;
+    if (ap !== bp) return ap - bp;
+  }
+  const ad = a.brand.display_order;
+  const bd = b.brand.display_order;
+  if (ad != null || bd != null) {
+    if (ad == null) return 1;
+    if (bd == null) return -1;
+    if (ad !== bd) return ad - bd;
+  }
+  return a.brand.id.localeCompare(b.brand.id);
+}
+
+/** Storefront-aligned sort applied to a list of brands annotated with the
+ *  current override row. Exported so CategoryPage can apply identical
+ *  ordering without re-querying. */
+export function sortBrandsWithOverrides<B extends {
+  id: string; price: number | null; display_order: number | null;
+}>(
+  brands: B[],
+  overrideForBrand: (brandId: string) => { brand_order: number | null } | null,
+): B[] {
+  const wrapped = brands.map(brand => ({
+    brand,
+    override: overrideForBrand(brand.id),
+  }));
+  wrapped.sort((a, b) => {
+    const ao = a.override?.brand_order;
+    const bo = b.override?.brand_order;
+    if (ao != null || bo != null) {
+      if (ao == null) return 1;
+      if (bo == null) return -1;
+      if (ao !== bo) return ao - bo;
+    }
+    const ap = a.brand.price;
+    const bp = b.brand.price;
+    if (ap != null || bp != null) {
+      if (ap == null) return 1;
+      if (bp == null) return -1;
+      if (ap !== bp) return ap - bp;
+    }
+    const ad = a.brand.display_order;
+    const bd = b.brand.display_order;
+    if (ad != null || bd != null) {
+      if (ad == null) return 1;
+      if (bd == null) return -1;
+      if (ad !== bd) return ad - bd;
+    }
+    return a.brand.id.localeCompare(b.brand.id);
+  });
+  return wrapped.map(w => w.brand);
+}
+
+/** Admin: all brands of a product joined with their override row for the
+ *  given category page. Sorted using the storefront rule. */
+export function useSectionBrands(categorySlug: string, productId: string, enabled = true) {
+  return useQuery({
+    queryKey: SECTION_BRANDS_KEY(categorySlug, productId),
+    queryFn: async () => {
+      const { data: brandRows, error: bErr } = await supabase
+        .from("brands")
+        .select("id, product_id, brand_name, image_url, price, cost_price, in_stock, display_order")
+        .eq("product_id", productId);
+      if (bErr) throw bErr;
+
+      const { data: overrideRows, error: oErr } = await supabase
+        .from("merch_category_section_brands")
+        .select("id, category_slug, product_id, brand_id, brand_order, display_label, is_active")
+        .eq("category_slug", categorySlug)
+        .eq("product_id", productId);
+      if (oErr) throw oErr;
+
+      const overrideByBrand = new Map<string, SectionBrandOverrideRow>();
+      for (const o of (overrideRows || []) as SectionBrandOverrideRow[]) {
+        overrideByBrand.set(o.brand_id, o);
+      }
+
+      const out: SectionBrandRow[] = (brandRows || []).map((b: any) => {
+        const override = overrideByBrand.get(b.id) || null;
+        const effectiveLabel = (override?.display_label?.trim() || b.brand_name || "") as string;
+        const effectiveActive = override ? override.is_active : true;
+        return {
+          brand: {
+            id: b.id,
+            brand_name: b.brand_name,
+            image_url: b.image_url ?? null,
+            price: b.price ?? null,
+            cost_price: b.cost_price ?? null,
+            in_stock: b.in_stock ?? null,
+            display_order: b.display_order ?? null,
+          },
+          override,
+          effectiveOrder: override?.brand_order ?? null,
+          effectiveLabel,
+          effectiveActive,
+          isOverridden: !!override,
+        };
+      });
+      out.sort(compareSectionBrands);
+      return out;
+    },
+    staleTime: STALE_60SEC,
+    enabled: enabled && !!categorySlug && !!productId,
+  });
+}
+
+function invalidateSectionBrandQueries(
+  qc: ReturnType<typeof useQueryClient>,
+  categorySlug: string,
+  productId?: string,
+) {
+  qc.invalidateQueries({ queryKey: OVERRIDES_KEY(categorySlug) });
+  if (productId) qc.invalidateQueries({ queryKey: SECTION_BRANDS_KEY(categorySlug, productId) });
+  else qc.invalidateQueries({ queryKey: ["section_brands", categorySlug] });
+}
+
+export function useUpsertSectionBrandOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categorySlug, productId, brandId, fields,
+    }: {
+      categorySlug: string;
+      productId: string;
+      brandId: string;
+      fields: Partial<{ brand_order: number | null; display_label: string | null; is_active: boolean }>;
+    }) => {
+      const payload: any = {
+        category_slug: categorySlug,
+        product_id: productId,
+        brand_id: brandId,
+        ...fields,
+      };
+      const { error } = await supabase
+        .from("merch_category_section_brands")
+        .upsert(payload, { onConflict: "category_slug,product_id,brand_id" });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      toast.success("Saved");
+      invalidateSectionBrandQueries(qc, vars.categorySlug, vars.productId);
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to save"),
+  });
+}
+
+export function useToggleSectionBrandActive() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categorySlug, productId, brandId, nextActive,
+    }: { categorySlug: string; productId: string; brandId: string; nextActive: boolean }) => {
+      const { error } = await supabase
+        .from("merch_category_section_brands")
+        .upsert(
+          {
+            category_slug: categorySlug,
+            product_id: productId,
+            brand_id: brandId,
+            is_active: nextActive,
+          },
+          { onConflict: "category_slug,product_id,brand_id" },
+        );
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      toast.success("Saved");
+      invalidateSectionBrandQueries(qc, vars.categorySlug, vars.productId);
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to save"),
+  });
+}
+
+export function useReorderSectionBrands() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categorySlug, productId, brandIdsInOrder,
+    }: { categorySlug: string; productId: string; brandIdsInOrder: string[] }) => {
+      if (brandIdsInOrder.length === 0) return;
+      const rows = brandIdsInOrder.map((brandId, i) => ({
+        category_slug: categorySlug,
+        product_id: productId,
+        brand_id: brandId,
+        brand_order: i + 1,
+      }));
+      const { error } = await supabase
+        .from("merch_category_section_brands")
+        .upsert(rows, { onConflict: "category_slug,product_id,brand_id" });
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      toast.success("Saved");
+      invalidateSectionBrandQueries(qc, vars.categorySlug, vars.productId);
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to save"),
+  });
+}
+
+export function useResetSectionBrand() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categorySlug, productId, brandId,
+    }: { categorySlug: string; productId: string; brandId: string }) => {
+      const { data, error } = await supabase
+        .from("merch_category_section_brands")
+        .delete()
+        .eq("category_slug", categorySlug)
+        .eq("product_id", productId)
+        .eq("brand_id", brandId)
+        .select("id");
+      if (error) throw error;
+      return (data || []).length as number;
+    },
+    onSuccess: (count, vars) => {
+      if (count === 0) {
+        toast.message("Already at default");
+      } else {
+        toast.success("Reset to default");
+      }
+      invalidateSectionBrandQueries(qc, vars.categorySlug, vars.productId);
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to reset"),
+  });
+}
+
+export function useResetAllSectionBrands() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categorySlug, productId,
+    }: { categorySlug: string; productId: string }) => {
+      const { error } = await supabase
+        .from("merch_category_section_brands")
+        .delete()
+        .eq("category_slug", categorySlug)
+        .eq("product_id", productId);
+      if (error) throw error;
+    },
+    onSuccess: (_d, vars) => {
+      toast.success("All brands reset to default");
+      invalidateSectionBrandQueries(qc, vars.categorySlug, vars.productId);
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to reset"),
   });
 }

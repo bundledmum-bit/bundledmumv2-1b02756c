@@ -31,6 +31,7 @@ import {
 } from "@/hooks/useMerchandising";
 import { useProductCategories, type ProductCategory } from "@/hooks/useProductCategories";
 import { packCountLabel } from "@/lib/diaperBrand";
+import SectionBrandsTab from "@/components/admin/merchandising/SectionBrandsTab";
 
 const BRAND_NONE = "__none__";
 
@@ -136,7 +137,7 @@ function PinOverridesFields({
   );
 }
 
-type TopTab = ShopVariant | "categories";
+type TopTab = ShopVariant | "categories" | "section-brands";
 
 const SHOPS: { key: ShopVariant; label: string }[] = [
   { key: "all", label: "All Shop" },
@@ -162,6 +163,7 @@ export default function AdminMerchandising() {
             <TabsTrigger key={s.key} value={s.key}>{s.label}</TabsTrigger>
           ))}
           <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="section-brands">Section Brands</TabsTrigger>
         </TabsList>
         {SHOPS.map(s => (
           <TabsContent key={s.key} value={s.key} className="mt-4">
@@ -170,6 +172,9 @@ export default function AdminMerchandising() {
         ))}
         <TabsContent value="categories" className="mt-4">
           <CategoriesPanel />
+        </TabsContent>
+        <TabsContent value="section-brands" className="mt-4">
+          <SectionBrandsTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -8,7 +8,12 @@ import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ProductImage from "@/components/ProductImage";
 import { useProductCategories } from "@/hooks/useProductCategories";
-import { useCategoryPagePins, type SectionPinnedProduct } from "@/hooks/useMerchandising";
+import {
+  useCategoryPagePins,
+  useCategorySectionBrandOverrides,
+  type SectionPinnedProduct,
+  type SectionBrandOverrideMap,
+} from "@/hooks/useMerchandising";
 
 // Solid coloured header bars — mirrors CuratedSections so category pages
 // have the same look and feel as shop pages. The body of each section card
@@ -54,6 +59,7 @@ export default function CategoryPage() {
   const { slug = "" } = useParams<{ slug: string }>();
   const { data: allProducts, isLoading: loadingAll } = useCategoryProducts(slug);
   const { data: pinnedProducts, isLoading: loadingPins } = useCategoryPagePins(slug);
+  const { data: brandOverrides } = useCategorySectionBrandOverrides(slug);
   const { data: categories } = useProductCategories();
   const category = (categories || []).find(c => c.slug === slug);
   const [detail, setDetail] = useState<{ product: Product; brandId?: string } | null>(null);
@@ -141,6 +147,7 @@ export default function CategoryPage() {
                 key={pin.product.id}
                 pin={pin}
                 palette={HEADER_PALETTE[idx % HEADER_PALETTE.length]}
+                brandOverrides={brandOverrides}
                 onOpenDetail={(brandId) => setDetail({ product: pin.product, brandId })}
               />
             ))}
@@ -160,31 +167,62 @@ export default function CategoryPage() {
 function ProductSection({
   pin,
   palette,
+  brandOverrides,
   onOpenDetail,
 }: {
   pin: SectionPinnedProduct;
   palette: { bar: string; text: string };
+  brandOverrides?: SectionBrandOverrideMap;
   onOpenDetail: (brandId?: string) => void;
 }) {
   const product = pin.product;
   const sectionHeading = pin.displayLabel?.trim() || product.name;
-  const brandCount = product.brands.length;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
 
-  // Reorder brands for the swiper so the pin's default brand sits at slot 0.
-  // Don't filter — every brand still renders, just in a new order.
+  // Apply category-scoped per-brand overrides (filter inactive, sort by
+  // override.brand_order, then promote the pin's default brand to slot 0).
   const orderedBrands = useMemo(() => {
-    const list = product.brands.slice();
+    const overrideFor = (brandId: string) =>
+      brandOverrides?.get(`${product.id}|${brandId}`) || null;
+
+    // 1. Filter out brands flagged inactive in the override row.
+    const visible = product.brands.filter(b => {
+      const o = overrideFor(b.id);
+      return o ? o.is_active !== false : true;
+    });
+
+    // 2. Sort: override.brand_order ASC NULLS LAST →
+    //         brand.price ASC NULLS LAST →
+    //         brand.tier ASC →
+    //         brand.id ASC.
+    const sorted = visible.slice().sort((a, b) => {
+      const ao = overrideFor(a.id)?.brand_order;
+      const bo = overrideFor(b.id)?.brand_order;
+      if (ao != null || bo != null) {
+        if (ao == null) return 1;
+        if (bo == null) return -1;
+        if (ao !== bo) return ao - bo;
+      }
+      const ap = a.price;
+      const bp = b.price;
+      if (ap != null && bp != null && ap !== bp) return ap - bp;
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      return a.id.localeCompare(b.id);
+    });
+
+    // 3. Pin's defaultBrandId still wins slot 0 (higher-level signal).
     if (pin.defaultBrandId) {
-      const idx = list.findIndex(b => b.id === pin.defaultBrandId);
+      const idx = sorted.findIndex(b => b.id === pin.defaultBrandId);
       if (idx > 0) {
-        const [b] = list.splice(idx, 1);
-        list.unshift(b);
+        const [b] = sorted.splice(idx, 1);
+        sorted.unshift(b);
       }
     }
-    return list;
-  }, [product.brands, pin.defaultBrandId]);
+    return sorted;
+  }, [product.brands, product.id, pin.defaultBrandId, brandOverrides]);
+
+  const brandCount = orderedBrands.length;
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -225,14 +263,19 @@ function ProductSection({
         ref={scrollRef}
         className="flex gap-3 snap-x snap-mandatory overflow-x-auto p-4 md:p-6 scrollbar-hide"
       >
-        {orderedBrands.map(brand => (
-          <BrandCard
-            key={brand.id}
-            product={product}
-            brand={brand}
-            onOpenDetail={() => onOpenDetail(brand.id)}
-          />
-        ))}
+        {orderedBrands.map(brand => {
+          const o = brandOverrides?.get(`${product.id}|${brand.id}`);
+          const labelOverride = o?.display_label?.trim() || null;
+          return (
+            <BrandCard
+              key={brand.id}
+              product={product}
+              brand={brand}
+              labelOverride={labelOverride}
+              onOpenDetail={() => onOpenDetail(brand.id)}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -241,12 +284,15 @@ function ProductSection({
 function BrandCard({
   product,
   brand,
+  labelOverride,
   onOpenDetail,
 }: {
   product: Product;
   brand: Brand;
+  labelOverride?: string | null;
   onOpenDetail: () => void;
 }) {
+  const displayLabel = labelOverride || brand.label;
   const { addToCart } = useCart();
   const image = brand.imageUrl || product.imageUrl || null;
   const showSale = brand.compareAtPrice && brand.compareAtPrice > brand.price;
@@ -270,9 +316,9 @@ function BrandCard({
       ...product,
       selectedBrand: brand,
       price: brand.price,
-      name: `${product.name} (${brand.label})`,
+      name: `${product.name} (${displayLabel})`,
     });
-    toast.success(`✓ ${product.name} (${brand.label}) added`, {
+    toast.success(`✓ ${product.name} (${displayLabel}) added`, {
       action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
     });
   };
@@ -285,7 +331,7 @@ function BrandCard({
         type="button"
         onClick={onOpenDetail}
         className="block w-full text-left"
-        aria-label={`View ${product.name} ${brand.label}`}
+        aria-label={`View ${product.name} ${displayLabel}`}
       >
         <div className="relative aspect-square w-full bg-[#f5f5f5] flex items-center justify-center overflow-hidden">
           {isOutOfStock ? (
@@ -300,7 +346,7 @@ function BrandCard({
           <ProductImage
             imageUrl={image}
             emoji={brand.img || product.baseImg}
-            alt={`${product.name} ${brand.label}`}
+            alt={`${product.name} ${displayLabel}`}
             className="w-full h-full"
             emojiClassName="text-5xl"
           />
@@ -308,7 +354,7 @@ function BrandCard({
       </button>
       <div className="p-3 flex flex-col gap-1 flex-1">
         <div className="text-[14px] font-bold leading-tight line-clamp-2 cursor-pointer" onClick={onOpenDetail}>
-          {brand.label}
+          {displayLabel}
         </div>
         {packLabel && (
           <div className="text-[11px] text-muted-foreground">{packLabel}</div>
