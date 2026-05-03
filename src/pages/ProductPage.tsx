@@ -21,7 +21,7 @@ function useProduct(slug: string) {
     queryFn: async () => {
       let { data, error } = await supabase
         .from("products")
-        .select("*, brands(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -30,7 +30,7 @@ function useProduct(slug: string) {
       if (!data) {
         const res = await supabase
           .from("products")
-          .select("*, brands(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
           .eq("id", slug)
           .eq("is_active", true)
           .is("deleted_at", null)

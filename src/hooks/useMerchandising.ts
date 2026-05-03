@@ -24,10 +24,16 @@ export interface SectionPinnedProduct {
 }
 
 const BRAND_COLS =
-  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, cost_price, weight_range_kg, pack_count, diaper_type, sku";
+  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type";
 
+// Admin variant — includes `cost_price` and `sku` which aren't exposed via
+// the public `brands_public` view. Used only by admin section/category hooks.
+const ADMIN_BRAND_COLS = `${BRAND_COLS}, cost_price, sku`;
+
+// Storefront PRODUCT_COLS: aliased embed (`brands:brands_public(...)`) keeps
+// the JSON key as `brands` so adapters/consumers don't need to change.
 const PRODUCT_COLS =
-  `*, brands(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
+  `*, brands:brands_public(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
 
 export type ShopVariant = "all" | "baby" | "mum";
 
@@ -324,7 +330,7 @@ export function useCategoryPagePinsAdmin(categorySlug: string, enabled = true) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("merch_category_products")
-        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${BRAND_COLS}))`)
+        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${ADMIN_BRAND_COLS}))`)
         .eq("category_slug", categorySlug)
         .order("product_order");
       if (error) throw error;
@@ -431,7 +437,7 @@ export function useAdminSectionProducts(shop: ShopVariant, categorySlug: string,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("merch_section_products")
-        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${BRAND_COLS}))`)
+        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${ADMIN_BRAND_COLS}))`)
         .eq("shop", shop)
         .eq("category_slug", categorySlug)
         .order("product_order");

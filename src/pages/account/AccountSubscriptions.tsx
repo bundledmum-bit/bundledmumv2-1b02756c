@@ -101,7 +101,7 @@ export default function AccountSubscriptions() {
           subscription_items(
             id, quantity, unit_price, frequency, is_active,
             products(name, category),
-            brands(brand_name, image_url, price)
+            brands:brands_public(brand_name, image_url, price)
           )
         `)
         .eq("customer_email", user?.email)
@@ -457,7 +457,7 @@ function ChangeBrandModal({ item, onClose }: { item: SubscriptionItemRow & { pro
       const productId = lookup?.product_id;
       if (!productId) return [];
       const { data, error } = await (supabase as any)
-        .from("brands")
+        .from("brands_public")
         .select("id, brand_name, price, in_stock")
         .eq("product_id", productId)
         .order("display_order", { ascending: true });
@@ -561,7 +561,7 @@ function AddProductsModal({ row, onClose }: { row: SubscriptionRow; onClose: () 
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, name, category, subcategory, brands(id, brand_name, price, in_stock)")
+        .select("id, name, category, subcategory, brands:brands_public(id, brand_name, price, in_stock)")
         .eq("is_subscribable", true)
         .eq("is_active", true)
         .order("category")

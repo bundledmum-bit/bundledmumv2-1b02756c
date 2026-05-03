@@ -67,7 +67,7 @@ export default function SubscriptionPage() {
         .select(`
           id, name, category, subcategory, reorder_days, reorder_label,
           why_included, is_consumable,
-          brands(id, brand_name, price, size_variant, in_stock, image_url, images)
+          brands:brands_public(id, brand_name, price, size_variant, in_stock, image_url, images)
         `)
         .eq("is_subscribable", true)
         .eq("is_active", true)
@@ -75,7 +75,7 @@ export default function SubscriptionPage() {
         .order("subcategory", { ascending: true })
         .order("name", { ascending: true });
       if (error) throw error;
-      return (data || []) as SubProduct[];
+      return (data || []) as unknown as SubProduct[];
     },
     staleTime: 60_000,
   });
