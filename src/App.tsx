@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient, MutationCache } from "@tanstack/react-query";
 import { toast as sonnerToast } from "sonner";
-import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { useComingSoonFlags } from "@/hooks/useComingSoon";
 import { usePreviewToken } from "@/hooks/usePreviewToken";
 import { useAdmin } from "@/hooks/useAdmin";
@@ -59,6 +60,7 @@ import NotFound from "./pages/NotFound.tsx";
 // Admin
 import AdminLogin from "@/pages/admin/AdminLogin";
 import AdminSetPassword from "@/pages/admin/AdminSetPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import AdminLayout from "@/pages/admin/AdminLayout";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminProducts from "@/pages/admin/AdminProducts";
@@ -148,6 +150,25 @@ function PageTracker({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Listens for Supabase's PASSWORD_RECOVERY event (fires when the user
+ * lands with a recovery token in the URL fragment) and routes them to
+ * the password reset page. Mounted inside <BrowserRouter> so navigate()
+ * is in scope.
+ */
+function PasswordRecoveryListener() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        navigate("/reset-password");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+  return null;
+}
+
+/**
  * Redirects storefront traffic to /coming-soon when both flags are on.
  * Admin sessions (logged-in Supabase users) bypass the redirect so they
  * can still preview the live site. /admin/* routes are excluded by
@@ -232,6 +253,7 @@ function StorefrontShell() {
           <Route path="/blog" element={<BlogPage />} />
           <Route path="/track-order" element={<TrackOrderPage />} />
           <Route path="/account/login" element={<AccountLoginPage />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/account/subscriptions" element={<RequireCustomerAuth><AccountSubscriptions /></RequireCustomerAuth>} />
           <Route path="/account/subscriptions/new" element={<RequireCustomerAuth><NewSubscription /></RequireCustomerAuth>} />
           <Route path="/account" element={<RequireCustomerAuth><AccountPage /></RequireCustomerAuth>} />
@@ -260,6 +282,7 @@ const App = () => (
             <PageTracker>
             <ScrollToTop />
             <PixelRouteListener />
+            <PasswordRecoveryListener />
             <Routes>
               {/* Admin routes */}
               <Route path="/admin/set-password" element={<AdminSetPassword />} />
