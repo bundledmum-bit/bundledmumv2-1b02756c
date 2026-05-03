@@ -58,6 +58,7 @@ import NotFound from "./pages/NotFound.tsx";
 
 // Admin
 import AdminLogin from "@/pages/admin/AdminLogin";
+import AdminSetPassword from "@/pages/admin/AdminSetPassword";
 import AdminLayout from "@/pages/admin/AdminLayout";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminProducts from "@/pages/admin/AdminProducts";
@@ -261,6 +262,7 @@ const App = () => (
             <PixelRouteListener />
             <Routes>
               {/* Admin routes */}
+              <Route path="/admin/set-password" element={<AdminSetPassword />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<PermissionGate module="dashboard" action="view"><AdminDashboard /></PermissionGate>} />

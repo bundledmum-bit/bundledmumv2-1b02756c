@@ -169,18 +169,19 @@ function UserForm({ user, onClose, onSaved }: { user: any; onClose: () => void; 
         if (error) throw error;
         toast.success("User updated");
       } else {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: form.email, password: crypto.randomUUID().slice(0, 16) + "Aa1!",
+        const { data, error } = await supabase.functions.invoke("invite-admin-user", {
+          body: {
+            email: form.email,
+            display_name: form.display_name,
+            role: form.role,
+          },
         });
-        if (authError) throw authError;
-        if (!authData.user) throw new Error("Failed to create auth user");
-
-        const { error } = await supabase.from("admin_users").insert({
-          auth_user_id: authData.user.id, email: form.email, display_name: form.display_name,
-          role: form.role, custom_permissions: form.role === "custom" ? form.custom_permissions : {},
-        });
-        if (error) throw error;
-        toast.success("Admin invited! They'll receive an email to set their password.");
+        if (error || (data as any)?.error) {
+          toast.error((data as any)?.error || error?.message || "Could not send invite");
+          setSaving(false);
+          return;
+        }
+        toast.success(`Invite sent to ${form.email}. They will receive an email to set their password.`);
       }
       onSaved();
     } catch (e: any) { toast.error(e.message); } finally { setSaving(false); }
