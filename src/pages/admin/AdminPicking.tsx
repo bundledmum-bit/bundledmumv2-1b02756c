@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -6,10 +6,18 @@ import { Package, History } from "lucide-react";
 import { toast } from "sonner";
 import { usePickingQueue, useStartPickingSession, usePickingSession } from "@/hooks/useOrderPicking";
 import PickingDetail from "@/components/admin/PickingDetail";
+import { getLagosDateRange } from "@/lib/lagosDateRange";
 
 const fmt = (n: number) => `₦${(n || 0).toLocaleString("en-NG")}`;
 const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
+
+function isPaymentGateError(e: any) {
+  if (!e) return false;
+  const code = e?.code || e?.cause?.code;
+  const msg = (e?.message || "").toLowerCase();
+  return code === "P0001" || msg.includes("payment status");
+}
 
 export default function AdminPicking() {
   const [params] = useSearchParams();
@@ -42,7 +50,13 @@ function OrderEntryGate({ orderId }: { orderId: string }) {
         onSuccess: (s: any) => {
           navigate(`/admin/picking?session=${s.id}`, { replace: true });
         },
-        onError: (e: any) => toast.error(e?.message || "Could not start picking session"),
+        onError: (e: any) => {
+          if (isPaymentGateError(e)) {
+            toast.error("This order cannot be picked until payment is confirmed.");
+          } else {
+            toast.error(e?.message || "Could not start picking session");
+          }
+        },
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,10 +65,36 @@ function OrderEntryGate({ orderId }: { orderId: string }) {
   return <div className="text-sm text-muted-foreground p-6">Loading session…</div>;
 }
 
+type RangeKey = "today" | "week" | "month" | "custom";
+
 function PickingQueueView() {
   const navigate = useNavigate();
-  const { data: orders = [], isLoading } = usePickingQueue();
+  const [rangeKey, setRangeKey] = useState<RangeKey>("today");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
+  const [appliedCustom, setAppliedCustom] = useState<{ from: string; to: string } | null>(null);
+
+  const customError = rangeKey === "custom" && customFrom && customTo && customFrom > customTo
+    ? "From date must be before To date"
+    : null;
+
+  const range = useMemo(() => {
+    if (rangeKey === "custom") {
+      if (!appliedCustom) return null;
+      return getLagosDateRange("custom", appliedCustom.from, appliedCustom.to);
+    }
+    return getLagosDateRange(rangeKey);
+  }, [rangeKey, appliedCustom]);
+
+  const { data: orders = [], isLoading } = usePickingQueue(range || undefined);
   const start = useStartPickingSession();
+
+  const tabs: { key: RangeKey; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "week", label: "This Week" },
+    { key: "month", label: "This Month" },
+    { key: "custom", label: "Custom" },
+  ];
 
   return (
     <div className="space-y-4">
@@ -62,7 +102,7 @@ function PickingQueueView() {
         <div>
           <h1 className="text-2xl font-bold">Order Picking</h1>
           <p className="text-sm text-muted-foreground">
-            {isLoading ? "Loading queue..." : `${orders.length} paid orders waiting to be picked.`}
+            {isLoading ? "Loading queue..." : `Picking Queue (${orders.length} orders)`}
           </p>
         </div>
         <Link to="/admin/picking/history">
@@ -72,11 +112,63 @@ function PickingQueueView() {
         </Link>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setRangeKey(t.key)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+              rangeKey === t.key
+                ? "border-forest bg-forest/10 text-forest"
+                : "border-border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {rangeKey === "custom" && (
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col">
+            <label className="text-[11px] text-muted-foreground font-semibold">From</label>
+            <input
+              type="date"
+              value={customFrom}
+              onChange={e => setCustomFrom(e.target.value)}
+              className="border border-input rounded-lg px-2 py-1.5 text-xs bg-background"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[11px] text-muted-foreground font-semibold">To</label>
+            <input
+              type="date"
+              value={customTo}
+              onChange={e => setCustomTo(e.target.value)}
+              className="border border-input rounded-lg px-2 py-1.5 text-xs bg-background"
+            />
+          </div>
+          <Button
+            size="sm"
+            disabled={!customFrom || !customTo || !!customError}
+            onClick={() => {
+              if (customError) return;
+              setAppliedCustom({ from: customFrom, to: customTo });
+            }}
+          >
+            Apply
+          </Button>
+          {customError && (
+            <span className="text-xs text-red-600 font-semibold">{customError}</span>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}</div>
       ) : orders.length === 0 ? (
         <div className="border border-dashed border-border rounded-lg py-14 text-center text-muted-foreground text-sm">
-          The picking queue is empty.
+          No paid orders in this date range awaiting picking.
         </div>
       ) : (
         <div className="space-y-2">
@@ -89,7 +181,13 @@ function PickingQueueView() {
                   { orderId: o.id },
                   {
                     onSuccess: (s: any) => navigate(`/admin/picking?session=${s.id}`),
-                    onError: (e: any) => toast.error(e?.message || "Could not start session"),
+                    onError: (e: any) => {
+                      if (isPaymentGateError(e)) {
+                        toast.error("This order cannot be picked until payment is confirmed.");
+                      } else {
+                        toast.error(e?.message || "Could not start session");
+                      }
+                    },
                   },
                 );
               }}

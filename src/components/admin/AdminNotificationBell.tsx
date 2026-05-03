@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import {
   useUnreadAdminNotifications,
@@ -27,6 +27,7 @@ export default function AdminNotificationBell() {
   const { data: count = 0 } = useUnreadCount();
   const markOne = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -82,9 +83,7 @@ export default function AdminNotificationBell() {
           ) : (
             <ul className="divide-y divide-border">
               {notifs.map(n => {
-                const orderHref = n.order_id
-                  ? `/admin/orders/${n.order_id}`
-                  : "/admin/orders";
+                const target = n.link || "/admin/orders";
                 return (
                   <li key={n.id} className="p-3 hover:bg-muted/40 transition-colors">
                     <div className="text-xs font-semibold">{n.title || "Notification"}</div>
@@ -102,13 +101,16 @@ export default function AdminNotificationBell() {
                         >
                           Mark as read
                         </button>
-                        <Link
-                          to={orderHref}
-                          onClick={() => { markOne.mutate(n.id); setOpen(false); }}
+                        <button
+                          onClick={() => {
+                            markOne.mutate(n.id);
+                            setOpen(false);
+                            navigate(target);
+                          }}
                           className="text-[10px] text-coral font-semibold hover:underline"
                         >
                           Go to order →
-                        </Link>
+                        </button>
                       </div>
                     </div>
                   </li>

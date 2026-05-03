@@ -21,9 +21,11 @@ async function getCurrentUserId(): Promise<string | null> {
  *     session has been opened, the order is no longer in the queue).
  *  2. Fetch paid orders excluded from that set.
  */
-export function usePickingQueue() {
+export function usePickingQueue(range?: { from?: Date | string; to?: Date | string }) {
+  const fromIso = range?.from ? (typeof range.from === "string" ? range.from : range.from.toISOString()) : null;
+  const toIso = range?.to ? (typeof range.to === "string" ? range.to : range.to.toISOString()) : null;
   return useQuery({
-    queryKey: ["picking-queue"],
+    queryKey: ["picking-queue", fromIso, toIso],
     queryFn: async () => {
       const { data: sessions, error: sErr } = await supabase
         .from("order_picking_sessions")
@@ -38,7 +40,10 @@ export function usePickingQueue() {
         )
         .eq("payment_status", "paid")
         .in("order_status", ["paid", "confirmed", "processing"])
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
+
+      if (fromIso) q = q.gte("created_at", fromIso);
+      if (toIso) q = q.lte("created_at", toIso);
 
       if (sessionOrderIds.length > 0) {
         // PostgREST `not.in.(...)` syntax

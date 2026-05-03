@@ -55,6 +55,33 @@ export default function AdminOrders() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState<string | null>(null);
+  const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
+
+  // Set of order ids with an existing picking session (any status). Used to
+  // hide the "Start Picking" action on the row.
+  const { data: pickedOrderIds = new Set<string>() } = useQuery({
+    queryKey: ["picking-session-order-ids"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("order_picking_sessions")
+        .select("order_id");
+      if (error) throw error;
+      return new Set<string>((data || []).map((r: any) => r.order_id).filter(Boolean));
+    },
+    staleTime: 30 * 1000,
+  });
+
+  // Honour ?order=<uuid> on mount: open detail for that order, and briefly
+  // highlight the matching row if it's in the loaded page.
+  useEffect(() => {
+    const orderParam = urlParams.get("order");
+    if (!orderParam) return;
+    setDetailOrder(orderParam);
+    setHighlightOrderId(orderParam);
+    const t = setTimeout(() => setHighlightOrderId(null), 2000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlParams]);
 
   useEffect(() => {
     const channel = supabase.channel("admin-new-orders")
@@ -412,7 +439,7 @@ export default function AdminOrders() {
             <tbody>
               {filtered.map((o: any) => (
                 <tr key={o.id}
-                  className={`border-b border-border hover:bg-muted/30 cursor-pointer ${selected.has(o.id) ? "bg-emerald-50/60" : ""}`}
+                  className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors duration-1000 ${selected.has(o.id) ? "bg-emerald-50/60" : ""} ${highlightOrderId === o.id ? "bg-yellow-100" : ""}`}
                   onClick={() => setDetailOrder(o.id)}>
                   <td className="p-2" onClick={e => e.stopPropagation()}><Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggleSelect(o.id)} /></td>
                   <td className="p-2 font-semibold">{o.order_number || "—"}</td>
@@ -453,7 +480,9 @@ export default function AdminOrders() {
                   <td className="p-2 text-center" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => setDetailOrder(o.id)} className="text-xs text-forest font-semibold hover:underline">View</button>
-                      {o.payment_status === "paid" && (o.order_status === "paid" || o.order_status === "processing") && (
+                      {o.payment_status === "paid"
+                        && ["paid", "confirmed", "processing"].includes(o.order_status)
+                        && !pickedOrderIds.has(o.id) && (
                         <RouterLink
                           to={`/admin/picking?order=${o.id}`}
                           onClick={e => e.stopPropagation()}
