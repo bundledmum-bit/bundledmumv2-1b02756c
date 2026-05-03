@@ -147,6 +147,9 @@ export type Database = {
           is_read: boolean | null
           link: string | null
           message: string
+          order_id: string | null
+          target_module: string | null
+          target_role: string | null
           title: string
           type: string
         }
@@ -157,6 +160,9 @@ export type Database = {
           is_read?: boolean | null
           link?: string | null
           message: string
+          order_id?: string | null
+          target_module?: string | null
+          target_role?: string | null
           title: string
           type: string
         }
@@ -167,6 +173,9 @@ export type Database = {
           is_read?: boolean | null
           link?: string | null
           message?: string
+          order_id?: string | null
+          target_module?: string | null
+          target_role?: string | null
           title?: string
           type?: string
         }
@@ -177,6 +186,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "admin_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
           },
         ]
       }
@@ -616,6 +646,8 @@ export type Database = {
           stock_quantity: number | null
           thumbnail_url: string | null
           tier: string
+          updated_at: string
+          vendor_id: string | null
           weight_range_kg: string | null
         }
         Insert: {
@@ -642,6 +674,8 @@ export type Database = {
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier: string
+          updated_at?: string
+          vendor_id?: string | null
           weight_range_kg?: string | null
         }
         Update: {
@@ -668,6 +702,8 @@ export type Database = {
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier?: string
+          updated_at?: string
+          vendor_id?: string | null
           weight_range_kg?: string | null
         }
         Relationships: [
@@ -676,6 +712,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brands_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -3380,10 +3423,142 @@ export type Database = {
           },
         ]
       }
+      merch_category_products: {
+        Row: {
+          category_slug: string
+          created_at: string | null
+          default_brand_id: string | null
+          display_label: string | null
+          id: string
+          is_active: boolean
+          product_id: string
+          product_order: number
+          updated_at: string | null
+        }
+        Insert: {
+          category_slug: string
+          created_at?: string | null
+          default_brand_id?: string | null
+          display_label?: string | null
+          id?: string
+          is_active?: boolean
+          product_id: string
+          product_order?: number
+          updated_at?: string | null
+        }
+        Update: {
+          category_slug?: string
+          created_at?: string | null
+          default_brand_id?: string | null
+          display_label?: string | null
+          id?: string
+          is_active?: boolean
+          product_id?: string
+          product_order?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merch_category_products_category_slug_fkey"
+            columns: ["category_slug"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "merch_category_products_default_brand_id_fkey"
+            columns: ["default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_category_products_default_brand_id_fkey"
+            columns: ["default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_category_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      merch_category_section_brands: {
+        Row: {
+          brand_id: string
+          brand_order: number | null
+          category_slug: string
+          created_at: string
+          display_label: string | null
+          id: string
+          is_active: boolean
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          brand_order?: number | null
+          category_slug: string
+          created_at?: string
+          display_label?: string | null
+          id?: string
+          is_active?: boolean
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          brand_order?: number | null
+          category_slug?: string
+          created_at?: string
+          display_label?: string | null
+          id?: string
+          is_active?: boolean
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merch_category_section_brands_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_category_section_brands_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_category_section_brands_category_slug_fkey"
+            columns: ["category_slug"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "merch_category_section_brands_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       merch_section_products: {
         Row: {
           category_slug: string
           created_at: string | null
+          default_brand_id: string | null
+          display_label: string | null
           id: string
           is_active: boolean
           product_id: string
@@ -3394,6 +3569,8 @@ export type Database = {
         Insert: {
           category_slug: string
           created_at?: string | null
+          default_brand_id?: string | null
+          display_label?: string | null
           id?: string
           is_active?: boolean
           product_id: string
@@ -3404,6 +3581,8 @@ export type Database = {
         Update: {
           category_slug?: string
           created_at?: string | null
+          default_brand_id?: string | null
+          display_label?: string | null
           id?: string
           is_active?: boolean
           product_id?: string
@@ -3412,6 +3591,20 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "merch_section_products_default_brand_id_fkey"
+            columns: ["default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_section_products_default_brand_id_fkey"
+            columns: ["default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "merch_section_products_product_id_fkey"
             columns: ["product_id"]
@@ -3682,6 +3875,120 @@ export type Database = {
             foreignKeyName: "order_notes_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+        ]
+      }
+      order_picking_items: {
+        Row: {
+          id: string
+          is_picked: boolean
+          notes: string | null
+          order_item_id: string
+          picked_at: string | null
+          picked_by: string | null
+          session_id: string
+          vendor_id: string | null
+        }
+        Insert: {
+          id?: string
+          is_picked?: boolean
+          notes?: string | null
+          order_item_id: string
+          picked_at?: string | null
+          picked_by?: string | null
+          session_id: string
+          vendor_id?: string | null
+        }
+        Update: {
+          id?: string
+          is_picked?: boolean
+          notes?: string | null
+          order_item_id?: string
+          picked_at?: string | null
+          picked_by?: string | null
+          session_id?: string
+          vendor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_picking_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_picking_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_item_uuid"]
+          },
+          {
+            foreignKeyName: "order_picking_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "order_picking_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_picking_items_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_picking_sessions: {
+        Row: {
+          completed_at: string | null
+          id: string
+          notes: string | null
+          order_id: string
+          started_at: string | null
+          started_by: string | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          id?: string
+          notes?: string | null
+          order_id: string
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          id?: string
+          notes?: string | null
+          order_id?: string
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_picking_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_picking_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_picking_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
             referencedRelation: "orders_report"
             referencedColumns: ["order_uuid"]
           },
@@ -4220,6 +4527,7 @@ export type Database = {
           icon: string | null
           id: string
           is_active: boolean | null
+          merch_page_label: string | null
           name: string
           parent_category: string | null
           slug: string
@@ -4231,6 +4539,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          merch_page_label?: string | null
           name: string
           parent_category?: string | null
           slug: string
@@ -4242,6 +4551,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          merch_page_label?: string | null
           name?: string
           parent_category?: string | null
           slug?: string
@@ -6180,6 +6490,51 @@ export type Database = {
         }
         Relationships: []
       }
+      vendors: {
+        Row: {
+          contact_person: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          is_active: boolean
+          location: string | null
+          name: string
+          notes: string | null
+          payment_terms: string | null
+          phone: string | null
+          updated_at: string | null
+          whatsapp: string | null
+        }
+        Insert: {
+          contact_person?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name: string
+          notes?: string | null
+          payment_terms?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          whatsapp?: string | null
+        }
+        Update: {
+          contact_person?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          location?: string | null
+          name?: string
+          notes?: string | null
+          payment_terms?: string | null
+          phone?: string | null
+          updated_at?: string | null
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       admin_returns_view: {
@@ -6697,6 +7052,10 @@ export type Database = {
         Returns: boolean
       }
       check_stock_availability: { Args: { p_items: Json }; Returns: Json }
+      complete_order_picking: {
+        Args: { p_session_id: string }
+        Returns: undefined
+      }
       count_working_days: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: number
