@@ -51,11 +51,20 @@ function OrderEntryGate({ orderId }: { orderId: string }) {
           navigate(`/admin/picking?session=${s.id}`, { replace: true });
         },
         onError: (e: any) => {
+          if (e?.code === "NO_ORDER_ITEMS") {
+            toast.error("Cannot start picking", {
+              description:
+                "This order has no items. It may have been placed with an empty cart. Contact support to investigate.",
+            });
+            navigate("/admin/picking", { replace: true });
+            return;
+          }
           if (isPaymentGateError(e)) {
             toast.error("This order cannot be picked until payment is confirmed.");
-          } else {
-            toast.error(e?.message || "Could not start picking session");
+            navigate("/admin/picking", { replace: true });
+            return;
           }
+          toast.error(e?.message || "Could not start picking session");
         },
       },
     );
@@ -182,11 +191,18 @@ function PickingQueueView() {
                   {
                     onSuccess: (s: any) => navigate(`/admin/picking?session=${s.id}`),
                     onError: (e: any) => {
+                      if (e?.code === "NO_ORDER_ITEMS") {
+                        toast.error("Cannot start picking", {
+                          description:
+                            "This order has no items. It may have been placed with an empty cart. Contact support to investigate.",
+                        });
+                        return;
+                      }
                       if (isPaymentGateError(e)) {
                         toast.error("This order cannot be picked until payment is confirmed.");
-                      } else {
-                        toast.error(e?.message || "Could not start session");
+                        return;
                       }
+                      toast.error(e?.message || "Could not start session");
                     },
                   },
                 );

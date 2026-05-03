@@ -8,7 +8,7 @@ import {
   usePickingSessionById,
   useStartPickingSession,
   useMarkPickingItemPicked,
-  useMarkAllItemsPicked,
+  useCompletePickingSession,
 } from "@/hooks/useOrderPicking";
 
 interface Props {
@@ -28,7 +28,7 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
   const refetch = sessionId ? byId.refetch : byOrder.refetch;
   const start = useStartPickingSession();
   const mark = useMarkPickingItemPicked();
-  const markAll = useMarkAllItemsPicked();
+  const complete = useCompletePickingSession();
 
   // If `fresh` mode and there's no session yet (legacy orderId entry only),
   // kick one off.
@@ -78,8 +78,39 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
     );
   }
 
+  // Empty-session guard — render a clear message instead of a blank page
+  // when a session somehow exists with zero picking items.
+  if (items.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Button variant="outline" size="sm" onClick={() => navigate("/admin/picking")}>
+          <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to queue
+        </Button>
+        <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
+          This order has no items to pick. Return to the queue.
+        </div>
+      </div>
+    );
+  }
+
   const orderNumber = (session as any).orders?.order_number || "—";
   const customerName = (session as any).orders?.customer_name || "—";
+
+  const finishPicking = () => {
+    complete.mutate(
+      { sessionId: (session as any).id, orderId: (session as any).order_id },
+      {
+        onSuccess: (res) => {
+          const num = res?.orderNumber || orderNumber;
+          toast.success(`Order #${num} marked as picked.`, {
+            description: "Order manager has been notified.",
+          });
+          navigate("/admin/picking");
+        },
+        onError: (e: any) => toast.error(e?.message || "Could not complete picking session"),
+      },
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -94,15 +125,9 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
           </p>
         </div>
         {!allPicked && (
-          <Button
-            onClick={() => markAll.mutate(
-              { sessionId: (session as any).id },
-              { onSuccess: () => toast.success("All items marked picked") },
-            )}
-            disabled={markAll.isPending}
-          >
+          <Button onClick={finishPicking} disabled={complete.isPending}>
             <CheckCircle2 className="w-4 h-4 mr-1.5" />
-            Pick All Items
+            Mark as Complete
           </Button>
         )}
       </div>
@@ -113,7 +138,13 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
             <CheckCircle2 className="w-5 h-5" />
             <span className="font-semibold">Order Fully Picked</span>
           </div>
-          <Button onClick={() => navigate("/admin/picking")} variant="outline">Done</Button>
+          {(session as any).status === "completed" ? (
+            <Button onClick={() => navigate("/admin/picking")} variant="outline">Done</Button>
+          ) : (
+            <Button onClick={finishPicking} disabled={complete.isPending}>
+              Finish & Notify
+            </Button>
+          )}
         </div>
       )}
 

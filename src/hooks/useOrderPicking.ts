@@ -40,7 +40,7 @@ export function usePickingQueue(range?: { from?: Date | string; to?: Date | stri
         )
         .eq("payment_status", "paid")
         .in("order_status", ["paid", "confirmed", "processing"])
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false });
 
       if (fromIso) q = q.gte("created_at", fromIso);
       if (toIso) q = q.lte("created_at", toIso);
@@ -70,6 +70,16 @@ export function useStartPickingSession() {
         .select("id, brand_id, brands(vendor_id)")
         .eq("order_id", orderId);
       if (iErr) throw iErr;
+
+      // Guard: refuse to create a session for an order that has no items.
+      // Surfaced as a friendly toast at the call site; do NOT navigate.
+      if (!items || items.length === 0) {
+        const err = new Error(
+          "This order has no items. It may have been placed with an empty cart. Contact support to investigate.",
+        );
+        (err as any).code = "NO_ORDER_ITEMS";
+        throw err;
+      }
 
       // 2. Insert session row.
       const { data: session, error: sErr } = await supabase
@@ -218,45 +228,10 @@ export function usePickingSessionById(sessionId: string | null | undefined) {
   return query;
 }
 
-async function maybeFireCompletedEmail(sessionId: string) {
-  // Re-read items to determine completion + gather context for the email.
-  try {
-    const { data: session } = await supabase
-      .from("order_picking_sessions")
-      .select(
-        "id, order_id, started_by, order_picking_items(is_picked), orders(order_number, customer_name)"
-      )
-      .eq("id", sessionId)
-      .maybeSingle();
-    if (!session) return;
-    const items = session.order_picking_items || [];
-    const allPicked = items.length > 0 && items.every((i: any) => i.is_picked);
-    if (!allPicked) return;
-    const itemCount = items.length;
-    const order = session.orders || {};
-    await supabase.functions.invoke("send-transactional-email", {
-      body: {
-        slug: "order_picked_internal",
-        to: "hello@bundledmum.com",
-        subject: `Order #${order.order_number} is Ready to Pack`,
-        data: {
-          order_number: order.order_number,
-          customer_name: order.customer_name,
-          item_count: itemCount,
-          picked_by: session.started_by,
-        },
-      },
-    });
-  } catch (err) {
-    // Spec says: don't block on missing template.
-    console.warn("[picking] order_picked_internal email skipped:", err);
-  }
-}
-
 export function useMarkPickingItemPicked() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ itemId, sessionId }: { itemId: string; sessionId: string }) => {
+    mutationFn: async ({ itemId }: { itemId: string; sessionId: string }) => {
       const userId = await getCurrentUserId();
       const { error } = await supabase
         .from("order_picking_items")
@@ -267,11 +242,10 @@ export function useMarkPickingItemPicked() {
         })
         .eq("id", itemId);
       if (error) throw error;
-      // fire-and-forget completion email if this was the last item.
-      maybeFireCompletedEmail(sessionId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["picking-session"] });
+      qc.invalidateQueries({ queryKey: ["picking-session-by-id"] });
       qc.invalidateQueries({ queryKey: ["picking-queue"] });
       qc.invalidateQueries({ queryKey: ["picking-history"] });
     },
@@ -292,12 +266,81 @@ export function useMarkAllItemsPicked() {
         })
         .eq("session_id", sessionId);
       if (error) throw error;
-      maybeFireCompletedEmail(sessionId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["picking-session"] });
+      qc.invalidateQueries({ queryKey: ["picking-session-by-id"] });
       qc.invalidateQueries({ queryKey: ["picking-queue"] });
       qc.invalidateQueries({ queryKey: ["picking-history"] });
+    },
+  });
+}
+
+/**
+ * Finish the picking session: mark any unpicked items as picked, mark
+ * the session completed, and advance the order to 'picked' (only if it's
+ * currently 'processing' — older statuses we leave alone). Returns the
+ * order_number so the caller can toast it. The DB trigger handles the
+ * internal email — the frontend does NOT invoke any edge function.
+ */
+export function useCompletePickingSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ sessionId, orderId }: { sessionId: string; orderId: string }) => {
+      const userId = await getCurrentUserId();
+      const nowIso = new Date().toISOString();
+
+      // 1. Mark every still-unpicked item as picked.
+      {
+        const { error } = await supabase
+          .from("order_picking_items")
+          .update({ is_picked: true, picked_at: nowIso, picked_by: userId })
+          .eq("session_id", sessionId)
+          .eq("is_picked", false);
+        if (error) throw error;
+      }
+
+      // 2. Mark the session as completed.
+      {
+        const { error } = await supabase
+          .from("order_picking_sessions")
+          .update({ status: "completed", completed_at: nowIso })
+          .eq("id", sessionId);
+        if (error) throw error;
+      }
+
+      // 3. Advance the order to 'picked' — only if it's still in
+      // 'processing'. If 0 rows update (already 'shipped'/'delivered'/etc),
+      // log a warning and continue: this is not a fatal error.
+      {
+        const { data, error } = await supabase
+          .from("orders")
+          .update({ order_status: "picked" })
+          .eq("id", orderId)
+          .eq("order_status", "processing")
+          .select("id, order_number");
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          console.warn(
+            `[picking] Order ${orderId} was not in 'processing' status; skipped order_status='picked' update.`,
+          );
+          // Look up order_number anyway so the caller can render a friendly toast.
+          const { data: ord } = await supabase
+            .from("orders")
+            .select("order_number")
+            .eq("id", orderId)
+            .maybeSingle();
+          return { orderNumber: ord?.order_number || null, advanced: false };
+        }
+        return { orderNumber: data[0].order_number || null, advanced: true };
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["picking-session"] });
+      qc.invalidateQueries({ queryKey: ["picking-session-by-id"] });
+      qc.invalidateQueries({ queryKey: ["picking-queue"] });
+      qc.invalidateQueries({ queryKey: ["picking-history"] });
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
     },
   });
 }
