@@ -21,8 +21,8 @@ export interface AdminNotification {
 function useAdminNotificationsRealtime(queryKeys: string[][]) {
   const qc = useQueryClient();
   useEffect(() => {
-    const channel = supabase
-      .channel("admin-notifications-feed")
+    const channel = supabase.channel(`admin-notifications-feed-${Math.random().toString(36).slice(2)}`);
+    channel
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "admin_notifications" },
