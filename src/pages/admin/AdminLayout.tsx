@@ -26,8 +26,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 function getIcon(iconName: string | null): LucideIcon {
-  if (!iconName) return Package;
-  return ICON_MAP[iconName] || Package;
+  if (!iconName) return LayoutDashboard;
+  return ICON_MAP[iconName] || LayoutDashboard;
 }
 
 interface NavItemFromDB {
@@ -68,12 +68,14 @@ function AdminLayoutInner() {
     "/admin/quiz": "/admin/quiz-engine",
   };
 
-  // Build visible nav from DB results — top-level (parent) items only, with
-  // a small allow-list of children that get lifted into the flat sidebar so
-  // they surface alongside their parent group (e.g. Orders → Returns,
-  // Analytics → Marketing). Each lifted child is spliced in directly below
-  // its parent's entry rather than sorting by its raw display_order.
-  const LIFTED_CHILDREN = ["returns", "analytics_marketing"];
+  // Build visible nav from DB results. Render EVERY item the RPC returns:
+  //  1. Top-level items (parent_key is null) sorted by display_order.
+  //  2. Children spliced in directly under their parent, sorted by their
+  //     own display_order.
+  //  3. Orphan children (parent_key set but parent not in the top-level
+  //     set) appended at the end so they're never dropped.
+  // No client-side filtering or allow-lists — get_admin_nav() is the
+  // single source of truth and has already filtered by permission.
   const visibleNav = useMemo(() => {
     if (!dbNavItems) return [];
     const toEntry = (item: NavItemFromDB) => {
@@ -87,25 +89,38 @@ function AdminLayoutInner() {
       };
     };
 
-    const topLevel = [...dbNavItems]
-      .filter(i => !i.parent_key)
-      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
-      .map(toEntry);
+    const sortByOrder = (a: NavItemFromDB, b: NavItemFromDB) =>
+      (a.display_order || 0) - (b.display_order || 0);
 
-    for (const navKey of LIFTED_CHILDREN) {
-      const child = dbNavItems.find(i => i.nav_key === navKey);
-      if (!child || !child.parent_key) continue;
-      const parentIdx = topLevel.findIndex(e => e.navKey === child.parent_key);
-      const insertAt = parentIdx >= 0 ? parentIdx + 1 : topLevel.length;
-      topLevel.splice(insertAt, 0, toEntry(child));
+    const topLevel = dbNavItems.filter(i => !i.parent_key).sort(sortByOrder);
+    const topLevelKeys = new Set(topLevel.map(t => t.nav_key));
+
+    // Group children by parent_key.
+    const childMap: Record<string, NavItemFromDB[]> = {};
+    for (const item of dbNavItems) {
+      if (!item.parent_key) continue;
+      if (!childMap[item.parent_key]) childMap[item.parent_key] = [];
+      childMap[item.parent_key].push(item);
+    }
+    Object.values(childMap).forEach(arr => arr.sort(sortByOrder));
+
+    // Splice each parent followed by its children.
+    const flat: NavItemFromDB[] = [];
+    for (const parent of topLevel) {
+      flat.push(parent);
+      const kids = childMap[parent.nav_key] || [];
+      for (const k of kids) flat.push(k);
     }
 
-    // No client-side fallbacks. get_admin_nav() is the single source of
-    // truth — it already filters per-user via has_admin_permission(), so
-    // adding any role-gated entries here would defeat the permissions
-    // system. If a link doesn't appear, the DB nav row needs to be seeded
-    // (and/or the user needs the matching permission), not patched here.
-    return topLevel;
+    // Orphans — children whose parent isn't in the top-level set. Render
+    // at the end rather than dropping them entirely.
+    const orphans = dbNavItems.filter(
+      i => i.parent_key && !topLevelKeys.has(i.parent_key),
+    );
+    orphans.sort(sortByOrder);
+    for (const o of orphans) flat.push(o);
+
+    return flat.map(toEntry);
   }, [dbNavItems]);
 
   useEffect(() => {

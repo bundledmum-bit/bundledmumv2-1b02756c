@@ -169,8 +169,10 @@ export default function AdminDashboard() {
     return <DashboardSkeleton todayLabel={todayLabel} />;
   }
 
-  // On error: render a sticky banner with everything as "—".
-  const showErrorBanner = isError;
+  // On error: render a sticky banner with everything as "—". Only shows
+  // AFTER a fetch has actually completed with an error — never during the
+  // first in-flight fetch (the isLoading early-return above guards that).
+  const showErrorBanner = !isLoading && isError;
   const b1 = data?.block1;
   const b2 = data?.block2;
   const b3 = data?.block3;
