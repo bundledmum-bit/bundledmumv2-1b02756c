@@ -4,12 +4,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, Search, Trash2, Edit2, X } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+import { useAdminUser } from "@/hooks/useAdminPermissions";
+import { useRequestAdminAction, notifyApproval } from "@/hooks/useApprovals";
+import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 
 const TYPES = ["percentage", "fixed_amount", "free_delivery"] as const;
 
 export default function AdminCoupons() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const { data: adminUser } = useAdminUser();
+  const isSuperAdmin = adminUser?.role === "super_admin";
+  const requestAction = useRequestAdminAction();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<any>(null);
   const [showForm, setShowForm] = useState(false);
@@ -33,10 +39,45 @@ export default function AdminCoupons() {
         usage_limit: parseInt(coupon.usage_limit) || null, usage_limit_per_customer: parseInt(coupon.usage_limit_per_customer) || 1,
         start_date: coupon.start_date || null, end_date: coupon.end_date || null, is_active: coupon.is_active ?? true,
       };
-      if (coupon.id) { const { error } = await supabase.from("coupons").update(payload).eq("id", coupon.id); if (error) throw error; }
-      else { const { error } = await supabase.from("coupons").insert(payload); if (error) throw error; }
+      if (coupon.id) {
+        const { error } = await supabase.from("coupons").update(payload).eq("id", coupon.id);
+        if (error) throw error;
+        return { mode: "update" as const };
+      }
+      // INSERT path: super_admins write directly; everyone else routes
+      // through the admin_approval_requests queue.
+      if (!isSuperAdmin) {
+        const description = `Add coupon: ${payload.code}`;
+        await requestAction.mutateAsync({
+          action: "add",
+          table: "coupons",
+          proposedData: payload,
+          description,
+        });
+        notifyApproval({
+          type: "new_request",
+          description,
+          action: "add",
+          table_name: "coupons",
+          requester_name:
+            adminUser?.display_name || adminUser?.email || "Unknown",
+          super_admin_email: "iceboxx766@gmail.com",
+        });
+        return { mode: "request" as const };
+      }
+      const { error } = await supabase.from("coupons").insert(payload);
+      if (error) throw error;
+      return { mode: "insert" as const };
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }); setEditing(null); setShowForm(false); toast.success("Coupon saved"); },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+      setEditing(null); setShowForm(false);
+      if (res?.mode === "request") {
+        toast.success("Add request submitted. Super admin will review shortly.");
+      } else {
+        toast.success("Coupon saved");
+      }
+    },
     onError: (e: any) => toast.error(e.message),
   });
 
@@ -60,7 +101,7 @@ export default function AdminCoupons() {
         {can("coupons", "create") && (
           <button onClick={() => { setEditing(blankCoupon); setShowForm(true); }}
             className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep">
-            <Plus className="w-4 h-4" /> Create Coupon
+            <Plus className="w-4 h-4" /> {isSuperAdmin ? "Create Coupon" : "Request to add Coupon"}
           </button>
         )}
       </div>
@@ -108,7 +149,17 @@ export default function AdminCoupons() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex gap-1 justify-end">
                       {can("coupons", "edit") && <button onClick={() => { setEditing(c); setShowForm(true); }} className="p-1.5 hover:bg-muted rounded"><Edit2 className="w-3.5 h-3.5" /></button>}
-                      {can("coupons", "delete") && <button onClick={() => { if (confirm("Delete this coupon?")) deleteCoupon.mutate(c.id); }} className="p-1.5 hover:bg-destructive/10 text-destructive rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      {can("coupons", "delete") && (
+                        <RequestDeleteButton
+                          table="coupons"
+                          recordId={c.id}
+                          recordLabel={c.code}
+                          onDeleted={() => { if (confirm("Delete this coupon?")) deleteCoupon.mutate(c.id); }}
+                          className="p-1.5 hover:bg-destructive/10 text-destructive rounded inline-flex items-center cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </RequestDeleteButton>
+                      )}
                     </div>
                   </td>
                 </tr>

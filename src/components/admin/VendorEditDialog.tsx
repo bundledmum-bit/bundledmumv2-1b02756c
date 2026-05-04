@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useUpsertVendor, type Vendor } from "@/hooks/useVendors";
+import { useAdminUser } from "@/hooks/useAdminPermissions";
+import { useRequestAdminAction, notifyApproval } from "@/hooks/useApprovals";
 
 const PAYMENT_TERMS = ["Net 7", "Net 14", "Net 30", "Cash on Delivery"];
 
@@ -16,6 +18,9 @@ interface Props {
 
 export default function VendorEditDialog({ open, onOpenChange, vendor }: Props) {
   const upsert = useUpsertVendor();
+  const { data: adminUser } = useAdminUser();
+  const isSuperAdmin = adminUser?.role === "super_admin";
+  const requestAction = useRequestAdminAction();
   const [form, setForm] = useState({
     name: "",
     contact_person: "",
@@ -63,9 +68,32 @@ export default function VendorEditDialog({ open, onOpenChange, vendor }: Props) 
         location: form.location || null,
         notes: form.notes || null,
       };
-      if (vendor?.id) payload.id = vendor.id;
-      await upsert.mutateAsync(payload);
-      toast.success(vendor?.id ? "Vendor updated" : "Vendor added");
+      if (vendor?.id) {
+        payload.id = vendor.id;
+        await upsert.mutateAsync(payload);
+        toast.success("Vendor updated");
+      } else if (!isSuperAdmin) {
+        const description = `Add vendor: ${form.name}`;
+        await requestAction.mutateAsync({
+          action: "add",
+          table: "vendors",
+          proposedData: payload,
+          description,
+        });
+        notifyApproval({
+          type: "new_request",
+          description,
+          action: "add",
+          table_name: "vendors",
+          requester_name:
+            adminUser?.display_name || adminUser?.email || "Unknown",
+          super_admin_email: "iceboxx766@gmail.com",
+        });
+        toast.success("Add request submitted. Super admin will review shortly.");
+      } else {
+        await upsert.mutateAsync(payload);
+        toast.success("Vendor added");
+      }
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e?.message || "Failed to save vendor");

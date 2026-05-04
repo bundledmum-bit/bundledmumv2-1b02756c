@@ -4,6 +4,7 @@ import { supabase as supabaseTyped } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Plus, Edit2, Trash2, X, Eye, FileText, ArrowUp, ArrowDown } from "lucide-react";
 import { ABOUT_DEFAULTS, type AboutBlocks } from "@/pages/AboutPage";
+import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 
 // Generated supabase types may not yet include `body_blocks` /
 // `last_updated_label`; cast the client like useMerchandising does.
@@ -146,7 +147,15 @@ export default function AdminPages() {
                     <div className="flex gap-1 justify-end">
                       <a href={`/${p.slug}`} target="_blank" rel="noopener" className="p-1.5 hover:bg-muted rounded"><Eye className="w-3.5 h-3.5" /></a>
                       <button onClick={() => setEditing(rowToState(p))} className="p-1.5 hover:bg-muted rounded"><Edit2 className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => { if (confirm("Delete?")) deletePage.mutate(p.id); }} className="p-1.5 hover:bg-destructive/10 text-destructive rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <RequestDeleteButton
+                        table="pages"
+                        recordId={p.id}
+                        recordLabel={p.title || p.slug}
+                        onDeleted={() => { if (confirm("Delete?")) deletePage.mutate(p.id); }}
+                        className="p-1.5 hover:bg-destructive/10 text-destructive rounded inline-flex items-center cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </RequestDeleteButton>
                     </div>
                   </td>
                 </tr>

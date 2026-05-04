@@ -9,6 +9,7 @@ import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import TrashTabs from "@/components/admin/TrashTabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExportButton, ImportButton } from "@/components/admin/ExcelImportExport";
+import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { useProductCategories } from "@/hooks/useProductCategories";
@@ -169,7 +170,7 @@ export default function AdminProducts() {
           {can("products", "create") && (
             <button onClick={() => { setEditingProduct(null); setShowForm(true); }}
               className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep">
-              <Plus className="w-4 h-4" /> Add Product
+              <Plus className="w-4 h-4" /> {adminUser?.role === "super_admin" ? "Add Product" : "Request to add Product"}
             </button>
           )}
         </div>
@@ -343,8 +344,15 @@ export default function AdminProducts() {
                               className="p-1.5 rounded hover:bg-forest/10 text-forest"><RotateCcw className="w-3.5 h-3.5" /></button>
                           )}
                           {can("products", "delete") && (
-                            <button title="Delete Permanently" onClick={() => { if (confirm("Permanently delete?")) bulkMutation.mutate({ ids: [p.id], action: "delete_permanent" }); }}
-                              className="p-1.5 rounded hover:bg-destructive/10 text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <RequestDeleteButton
+                              table="products"
+                              recordId={p.id}
+                              recordLabel={p.name}
+                              onDeleted={() => { if (confirm("Permanently delete?")) bulkMutation.mutate({ ids: [p.id], action: "delete_permanent" }); }}
+                              className="p-1.5 rounded hover:bg-destructive/10 text-destructive inline-flex items-center cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </RequestDeleteButton>
                           )}
                         </>
                       )}

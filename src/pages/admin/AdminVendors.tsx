@@ -19,6 +19,7 @@ import {
 } from "@/hooks/useVendors";
 import { useVendorMetrics } from "@/hooks/useVendorMetrics";
 import VendorMetricsStrip, { type VendorFilter } from "@/components/admin/vendors/VendorMetricsStrip";
+import { useAdminUser } from "@/hooks/useAdminPermissions";
 
 const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
@@ -30,6 +31,8 @@ export default function AdminVendors() {
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
   const { data: vendors = [], isLoading } = useVendors(false);
+  const { data: adminUser } = useAdminUser();
+  const isSuperAdmin = adminUser?.role === "super_admin";
   const toggleActive = useToggleVendorActive();
   const { data: metrics, isLoading: metricsLoading, isError: metricsError, error: metricsErr } = useVendorMetrics();
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive" | "no_brands">("all");
@@ -88,7 +91,7 @@ export default function AdminVendors() {
           <p className="text-sm text-muted-foreground">Suppliers, brand assignments, and orders per vendor.</p>
         </div>
         <Button onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-1.5" /> Add Vendor
+          <Plus className="w-4 h-4 mr-1.5" /> {isSuperAdmin ? "Add Vendor" : "Request to add Vendor"}
         </Button>
       </div>
 

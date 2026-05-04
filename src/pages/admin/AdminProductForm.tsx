@@ -7,6 +7,8 @@ import SEOEditor from "@/components/admin/SEOEditor";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useProductCategories } from "@/hooks/useProductCategories";
+import { useAdminUser } from "@/hooks/useAdminPermissions";
+import { useRequestAdminAction, notifyApproval } from "@/hooks/useApprovals";
 
 interface Props {
   product: any | null;
@@ -29,6 +31,9 @@ const TAG_TYPES = [
 export default function AdminProductForm({ product, onClose, onSaved }: Props) {
   const isEdit = !!product;
   const { data: allCategories = [] } = useProductCategories();
+  const { data: adminUser } = useAdminUser();
+  const isSuperAdmin = adminUser?.role === "super_admin";
+  const requestAction = useRequestAdminAction();
   const [form, setForm] = useState({
     name: product?.name || "", slug: product?.slug || "", emoji: product?.emoji || "",
     description: product?.description || "", category: product?.category || "baby",
@@ -102,6 +107,40 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         if (error) throw error;
         productId = product.id;
       } else {
+        // INSERT path: super_admins write directly. For everyone else,
+        // submit a single approval request capturing the full proposed
+        // product (including brands/sizes/colors/tags) and bail out — the
+        // super_admin will recreate the product manually after approving.
+        if (!isSuperAdmin) {
+          const description = `Add product: ${form.name}`;
+          const proposedData = {
+            product: productData,
+            brands,
+            sizes,
+            colors,
+            tags: selectedTags,
+          };
+          await requestAction.mutateAsync({
+            action: "add",
+            table: "products",
+            proposedData,
+            description,
+          });
+          notifyApproval({
+            type: "new_request",
+            description,
+            action: "add",
+            table_name: "products",
+            requester_name:
+              adminUser?.display_name || adminUser?.email || "Unknown",
+            super_admin_email: "iceboxx766@gmail.com",
+          });
+          toast.success("Add request submitted. Super admin will review shortly.");
+          setSaving(false);
+          onSaved();
+          onClose();
+          return;
+        }
         const { data, error } = await supabase.from("products").insert(productData as any).select("id").single();
         if (error) throw error;
         productId = data.id;

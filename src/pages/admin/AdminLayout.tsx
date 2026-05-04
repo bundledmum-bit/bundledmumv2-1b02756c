@@ -5,6 +5,7 @@ import { useAdmin } from "@/hooks/useAdmin";
 import { AdminPermissionsProvider, usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { useQuery } from "@tanstack/react-query";
+import { usePendingApprovalsCount } from "@/hooks/useApprovals";
 import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
@@ -47,6 +48,8 @@ function AdminLayoutInner() {
   const location = useLocation();
   
   useIdleTimeout();
+  const isSuperAdmin = adminUser?.role === "super_admin";
+  const { data: pendingApprovalsCount } = usePendingApprovalsCount(isSuperAdmin);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -294,7 +297,14 @@ function AdminLayoutInner() {
                     }`}>
                     <item.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
                     {item.label}
-                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />}
+                    {item.navKey === "approvals" && isSuperAdmin && (pendingApprovalsCount ?? 0) > 0 && (
+                      <span className="bg-red-500 text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5 ml-auto">
+                        {pendingApprovalsCount}
+                      </span>
+                    )}
+                    {active && !(item.navKey === "approvals" && isSuperAdmin && (pendingApprovalsCount ?? 0) > 0) && (
+                      <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />
+                    )}
                   </Link>
                 )}
 
