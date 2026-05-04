@@ -112,8 +112,25 @@ function AdminLayoutInner() {
       });
     }
 
+    // Static fallback for the super-admin User Permissions page in case the
+    // DB-driven nav hasn't been seeded with it. The page itself enforces
+    // super_admin access via redirect, but we only render the nav link when
+    // the current admin is super_admin so other roles never see it.
+    if (
+      isSuperAdmin &&
+      !topLevel.some(e => e.to === "/admin/settings/permissions")
+    ) {
+      topLevel.push({
+        to: "/admin/settings/permissions",
+        label: "User Permissions",
+        icon: ShieldCheck,
+        exact: false,
+        navKey: "settings_permissions",
+      });
+    }
+
     return topLevel;
-  }, [dbNavItems]);
+  }, [dbNavItems, isSuperAdmin]);
 
   useEffect(() => {
     if (!adminUser) return;

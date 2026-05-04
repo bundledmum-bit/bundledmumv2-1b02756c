@@ -70,6 +70,7 @@ import AdminDelivery from "@/pages/admin/AdminDelivery";
 import AdminContent from "@/pages/admin/AdminContent";
 import AdminBlog from "@/pages/admin/AdminBlog";
 import AdminSettings from "@/pages/admin/AdminSettings";
+import AdminPermissions from "@/pages/admin/AdminPermissions";
 import AdminReferrals from "@/pages/admin/AdminReferrals";
 import AdminAnalytics from "@/pages/admin/AdminAnalytics";
 import AdminMarketingAnalytics from "@/pages/admin/analytics/AdminMarketingAnalytics";
@@ -308,6 +309,7 @@ const App = () => (
                 <Route path="content" element={<PermissionGate module="content" action="view"><AdminContent /></PermissionGate>} />
                 <Route path="blog" element={<PermissionGate module="content" action="view"><AdminBlog /></PermissionGate>} />
                 <Route path="settings" element={<PermissionGate module="content" action="edit_settings"><AdminSettings /></PermissionGate>} />
+                <Route path="settings/permissions" element={<AdminPermissions />} />
                 <Route path="referrals" element={<PermissionGate module="customers" action="view"><AdminReferrals /></PermissionGate>} />
                 <Route path="analytics" element={<PermissionGate module="analytics" action="view"><AdminAnalytics /></PermissionGate>} />
                 <Route path="analytics/marketing" element={<PermissionGate module="analytics" action="view"><AdminMarketingAnalytics /></PermissionGate>} />

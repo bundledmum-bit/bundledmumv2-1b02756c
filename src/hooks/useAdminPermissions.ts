@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdmin } from "./useAdmin";
 
@@ -79,4 +79,30 @@ export function hasPermission(adminUser: AdminUser | null | undefined, section: 
 
 export function canViewSection(adminUser: AdminUser | null | undefined, section: string): boolean {
   return hasPermission(adminUser, section, "view");
+}
+
+export interface GrantAdminPermissionVars {
+  targetUserId: string;
+  module: string;
+  action: "view" | "manage";
+  granted: boolean;
+}
+
+export function useGrantAdminPermission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ targetUserId, module, action, granted }: GrantAdminPermissionVars) => {
+      const { error } = await (supabase as any).rpc("grant_admin_permission", {
+        p_target_user_id: targetUserId,
+        p_module: module,
+        p_action: action,
+        p_granted: granted,
+      });
+      if (error) throw error;
+      return { targetUserId, module, action, granted };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-permissions-perms", data.targetUserId] });
+    },
+  });
 }
