@@ -37,6 +37,7 @@ interface NavItemFromDB {
   path: string;
   parent_key: string | null;
   display_order: number;
+  is_built: boolean;
 }
 
 function AdminLayoutInner() {
@@ -86,6 +87,10 @@ function AdminLayoutInner() {
 
   const visibleNav = useMemo<NavTreeEntry[]>(() => {
     if (!dbNavItems) return [];
+    // Drop unbuilt items entirely — they should never appear in the
+    // sidebar (no page exists behind them yet). Filter before any
+    // tree-building so unbuilt parents don't orphan their children either.
+    const builtItems = dbNavItems.filter(item => item.is_built === true);
     const toEntry = (item: NavItemFromDB): NavEntry => {
       const resolvedPath = PATH_FIXES[item.path] || item.path;
       return {
@@ -100,12 +105,12 @@ function AdminLayoutInner() {
     const sortByOrder = (a: NavItemFromDB, b: NavItemFromDB) =>
       (a.display_order || 0) - (b.display_order || 0);
 
-    const topLevel = dbNavItems.filter(i => !i.parent_key).sort(sortByOrder);
+    const topLevel = builtItems.filter(i => !i.parent_key).sort(sortByOrder);
     const topLevelKeys = new Set(topLevel.map(t => t.nav_key));
 
     // Group children under their parent.
     const childMap: Record<string, NavItemFromDB[]> = {};
-    for (const item of dbNavItems) {
+    for (const item of builtItems) {
       if (!item.parent_key) continue;
       if (!childMap[item.parent_key]) childMap[item.parent_key] = [];
       childMap[item.parent_key].push(item);
@@ -118,7 +123,7 @@ function AdminLayoutInner() {
     }));
 
     // Orphans — promote to top-level (no children, sorted by display_order).
-    const orphanItems = dbNavItems
+    const orphanItems = builtItems
       .filter(i => i.parent_key && !topLevelKeys.has(i.parent_key))
       .sort(sortByOrder);
     for (const o of orphanItems) {
