@@ -25,7 +25,7 @@ interface AboutCta {
 }
 export interface AboutBlocks {
   hero: AboutHero;
-  paragraphs: string[];
+  narrative: string[];
   values: AboutValue[];
   cta: AboutCta;
 }
@@ -39,7 +39,7 @@ export const ABOUT_DEFAULTS: AboutBlocks = {
     headline: "Our Story",
     subtitle: "BundledMum was born from a very real moment of overwhelm.",
   },
-  paragraphs: [
+  narrative: [
     "When our founder was preparing for her first baby in Lagos, she spent weeks figuring out what to pack. Every list she found was either too generic, too foreign, or too expensive for the Nigerian context.",
     "She wanted a curated, honest, properly Nigerian answer to the question every expectant mum asks: **\"What do I actually need?\"**",
     "So she built it. BundledMum is the resource she wished she had — a quiz that understands your budget and your baby, and recommends exactly what you need. Nothing more, nothing less.",
@@ -75,9 +75,9 @@ function renderParagraph(text: string) {
 function coerceBlocks(raw: any): AboutBlocks {
   if (!raw || typeof raw !== "object") return ABOUT_DEFAULTS;
   const hero = raw.hero && typeof raw.hero === "object" ? raw.hero : ABOUT_DEFAULTS.hero;
-  const paragraphs = Array.isArray(raw.paragraphs) && raw.paragraphs.length > 0
-    ? raw.paragraphs.filter((p: any) => typeof p === "string")
-    : ABOUT_DEFAULTS.paragraphs;
+  const narrative = Array.isArray(raw.narrative) && raw.narrative.length > 0
+    ? raw.narrative.filter((p: any) => typeof p === "string")
+    : ABOUT_DEFAULTS.narrative;
   const values = Array.isArray(raw.values) && raw.values.length > 0
     ? raw.values.slice(0, 3).map((v: any, i: number) => ({
         icon: v?.icon ?? ABOUT_DEFAULTS.values[i]?.icon ?? "",
@@ -88,7 +88,7 @@ function coerceBlocks(raw: any): AboutBlocks {
   const cta = raw.cta && typeof raw.cta === "object" ? { ...ABOUT_DEFAULTS.cta, ...raw.cta } : ABOUT_DEFAULTS.cta;
   return {
     hero: { ...ABOUT_DEFAULTS.hero, ...hero },
-    paragraphs,
+    narrative,
     values: values.length === 3 ? values : ABOUT_DEFAULTS.values,
     cta,
   };
@@ -97,7 +97,7 @@ function coerceBlocks(raw: any): AboutBlocks {
 export default function AboutPage() {
   const { data: dbPage } = usePage("about");
   const blocks = coerceBlocks(dbPage?.body_blocks);
-  const { hero, paragraphs, values, cta } = blocks;
+  const { hero, narrative, values, cta } = blocks;
   const isInternal = cta.button_link.startsWith("/");
 
   return (
@@ -110,10 +110,10 @@ export default function AboutPage() {
         </div>
       </div>
       <div className="max-w-[780px] mx-auto px-5 md:px-10 py-10 md:py-[72px]">
-        {paragraphs.map((p, i) => (
+        {narrative.map((p, i) => (
           <p
             key={i}
-            className={`text-text-med text-[15px] md:text-[17px] leading-[1.9] ${i === paragraphs.length - 1 ? "mb-9" : "mb-5"}`}
+            className={`text-text-med text-[15px] md:text-[17px] leading-[1.9] ${i === narrative.length - 1 ? "mb-9" : "mb-5"}`}
           >
             {renderParagraph(p)}
           </p>

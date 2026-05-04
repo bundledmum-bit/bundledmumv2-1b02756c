@@ -299,18 +299,18 @@ function AboutEditor({
   const blocks = editing.body_blocks ?? ABOUT_DEFAULTS;
   const update = (next: AboutBlocks) => setEditing({ ...editing, body_blocks: next });
 
-  // Paragraph helpers — operate on a flat string[] in body_blocks.paragraphs.
-  const addParagraph = () => update({ ...blocks, paragraphs: [...blocks.paragraphs, ""] });
+  // Paragraph helpers — operate on a flat string[] in body_blocks.narrative.
+  const addParagraph = () => update({ ...blocks, narrative: [...blocks.narrative, ""] });
   const removeParagraph = (idx: number) =>
-    update({ ...blocks, paragraphs: blocks.paragraphs.filter((_, i) => i !== idx) });
+    update({ ...blocks, narrative: blocks.narrative.filter((_, i) => i !== idx) });
   const setParagraph = (idx: number, value: string) =>
-    update({ ...blocks, paragraphs: blocks.paragraphs.map((p, i) => i === idx ? value : p) });
+    update({ ...blocks, narrative: blocks.narrative.map((p, i) => i === idx ? value : p) });
   const moveParagraph = (idx: number, dir: -1 | 1) => {
     const target = idx + dir;
-    if (target < 0 || target >= blocks.paragraphs.length) return;
-    const arr = blocks.paragraphs.slice();
+    if (target < 0 || target >= blocks.narrative.length) return;
+    const arr = blocks.narrative.slice();
     [arr[idx], arr[target]] = [arr[target], arr[idx]];
-    update({ ...blocks, paragraphs: arr });
+    update({ ...blocks, narrative: arr });
   };
 
   // Value helpers — fixed at 3 slots; mutate in place.
@@ -353,7 +353,7 @@ function AboutEditor({
           <p className="text-[10px] text-text-light">Wrap text in <code className="bg-muted px-1 rounded">**bold**</code> for forest-coloured emphasis.</p>
         </div>
         <div className="space-y-2">
-          {blocks.paragraphs.map((p, idx) => (
+          {blocks.narrative.map((p, idx) => (
             <div key={idx} className="border border-border rounded-lg p-2 bg-muted/20">
               <textarea value={p} onChange={e => setParagraph(idx, e.target.value)}
                 rows={3} className="w-full border border-input rounded px-2 py-1.5 text-sm bg-background" />
@@ -362,7 +362,7 @@ function AboutEditor({
                   className="p-1 hover:bg-muted rounded disabled:opacity-30" title="Move up">
                   <ArrowUp className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={() => moveParagraph(idx, 1)} disabled={idx === blocks.paragraphs.length - 1}
+                <button onClick={() => moveParagraph(idx, 1)} disabled={idx === blocks.narrative.length - 1}
                   className="p-1 hover:bg-muted rounded disabled:opacity-30" title="Move down">
                   <ArrowDown className="w-3.5 h-3.5" />
                 </button>
