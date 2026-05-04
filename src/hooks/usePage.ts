@@ -12,6 +12,10 @@ export interface PageRow {
   is_published: boolean;
   created_at: string;
   updated_at: string;
+  // New columns added externally — generated supabase types may be stale, so
+  // these are typed loosely. `body_blocks` powers the structured About page.
+  body_blocks: any | null;
+  last_updated_label: string | null;
 }
 
 /**
