@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
-  Search, X, Menu, ChevronLeft, MessageCircleQuestion, Workflow, Mail, Rocket,
+  Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
@@ -68,17 +68,25 @@ function AdminLayoutInner() {
     "/admin/quiz": "/admin/quiz-engine",
   };
 
-  // Build visible nav from DB results. Render EVERY item the RPC returns:
-  //  1. Top-level items (parent_key is null) sorted by display_order.
-  //  2. Children spliced in directly under their parent, sorted by their
-  //     own display_order.
-  //  3. Orphan children (parent_key set but parent not in the top-level
-  //     set) appended at the end so they're never dropped.
-  // No client-side filtering or allow-lists — get_admin_nav() is the
-  // single source of truth and has already filtered by permission.
-  const visibleNav = useMemo(() => {
+  // Build visible nav as a TREE — top-level entries each carry a `children`
+  // array. Children are NEVER rendered at the top level; they only appear
+  // nested when their parent is expanded. Orphan children (parent_key set
+  // but parent not in the top-level set) get promoted to top-level so
+  // they're never dropped.
+  // get_admin_nav() is the single source of truth for which items the
+  // current user can see — no client-side filtering on top.
+  type NavEntry = {
+    to: string;
+    label: string;
+    icon: LucideIcon;
+    exact: boolean;
+    navKey: string;
+  };
+  type NavTreeEntry = NavEntry & { children: NavEntry[] };
+
+  const visibleNav = useMemo<NavTreeEntry[]>(() => {
     if (!dbNavItems) return [];
-    const toEntry = (item: NavItemFromDB) => {
+    const toEntry = (item: NavItemFromDB): NavEntry => {
       const resolvedPath = PATH_FIXES[item.path] || item.path;
       return {
         to: resolvedPath,
@@ -95,7 +103,7 @@ function AdminLayoutInner() {
     const topLevel = dbNavItems.filter(i => !i.parent_key).sort(sortByOrder);
     const topLevelKeys = new Set(topLevel.map(t => t.nav_key));
 
-    // Group children by parent_key.
+    // Group children under their parent.
     const childMap: Record<string, NavItemFromDB[]> = {};
     for (const item of dbNavItems) {
       if (!item.parent_key) continue;
@@ -104,24 +112,56 @@ function AdminLayoutInner() {
     }
     Object.values(childMap).forEach(arr => arr.sort(sortByOrder));
 
-    // Splice each parent followed by its children.
-    const flat: NavItemFromDB[] = [];
-    for (const parent of topLevel) {
-      flat.push(parent);
-      const kids = childMap[parent.nav_key] || [];
-      for (const k of kids) flat.push(k);
+    const tree: NavTreeEntry[] = topLevel.map(parent => ({
+      ...toEntry(parent),
+      children: (childMap[parent.nav_key] || []).map(toEntry),
+    }));
+
+    // Orphans — promote to top-level (no children, sorted by display_order).
+    const orphanItems = dbNavItems
+      .filter(i => i.parent_key && !topLevelKeys.has(i.parent_key))
+      .sort(sortByOrder);
+    for (const o of orphanItems) {
+      tree.push({ ...toEntry(o), children: [] });
     }
 
-    // Orphans — children whose parent isn't in the top-level set. Render
-    // at the end rather than dropping them entirely.
-    const orphans = dbNavItems.filter(
-      i => i.parent_key && !topLevelKeys.has(i.parent_key),
-    );
-    orphans.sort(sortByOrder);
-    for (const o of orphans) flat.push(o);
-
-    return flat.map(toEntry);
+    return tree;
   }, [dbNavItems]);
+
+  // Flat lookup for the search palette (parents + children).
+  const flatNav = useMemo<NavEntry[]>(() => {
+    const out: NavEntry[] = [];
+    for (const p of visibleNav) {
+      out.push({ to: p.to, label: p.label, icon: p.icon, exact: p.exact, navKey: p.navKey });
+      for (const c of p.children) out.push(c);
+    }
+    return out;
+  }, [visibleNav]);
+
+  // Track which parents are user-expanded. A parent auto-expands when the
+  // current route matches itself or any of its children.
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const autoExpandedKey = useMemo(() => {
+    for (const p of visibleNav) {
+      if (p.children.length === 0) continue;
+      const path = location.pathname;
+      const parentMatch = path === p.to || path.startsWith(p.to + "/");
+      const childMatch = p.children.some(c => path === c.to || path.startsWith(c.to + "/"));
+      if (parentMatch || childMatch) return p.navKey;
+    }
+    return null;
+  }, [visibleNav, location.pathname]);
+
+  const isExpanded = (navKey: string) =>
+    expandedParents.has(navKey) || autoExpandedKey === navKey;
+  const toggleExpanded = (navKey: string) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(navKey)) next.delete(navKey);
+      else next.add(navKey);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!adminUser) return;
@@ -207,22 +247,73 @@ function AdminLayoutInner() {
             <span className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">Menu</span>
           </div>
           {visibleNav.map(item => {
-            const isActive = item.exact
+            const isActiveSelf = item.exact
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to) && item.to !== "/admin";
             const activeExact = item.exact && location.pathname === item.to;
-            const active = item.exact ? activeExact : isActive;
+            const active = item.exact ? activeExact : isActiveSelf;
+            const hasChildren = item.children.length > 0;
+            const expanded = hasChildren && isExpanded(item.navKey);
+
             return (
-              <Link key={item.to} to={item.to}
-                className={`flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
-                  active
-                    ? "bg-white/15 text-white font-semibold shadow-sm"
-                    : "text-white/60 hover:bg-white/8 hover:text-white/90"
-                }`}>
-                <item.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
-                {item.label}
-                {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />}
-              </Link>
+              <div key={item.to}>
+                {hasChildren ? (
+                  <div className="flex items-stretch mx-2 rounded-lg overflow-hidden">
+                    <Link to={item.to}
+                      className={`flex-1 flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all font-body ${
+                        active
+                          ? "bg-white/15 text-white font-semibold shadow-sm"
+                          : "text-white/60 hover:bg-white/8 hover:text-white/90"
+                      }`}>
+                      <item.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
+                      {item.label}
+                    </Link>
+                    <button
+                      type="button"
+                      aria-label={expanded ? "Collapse" : "Expand"}
+                      onClick={() => toggleExpanded(item.navKey)}
+                      className={`px-2 transition-colors ${
+                        active
+                          ? "bg-white/15 text-white"
+                          : "text-white/40 hover:bg-white/8 hover:text-white/90"
+                      }`}>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    </button>
+                  </div>
+                ) : (
+                  <Link to={item.to}
+                    className={`flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
+                      active
+                        ? "bg-white/15 text-white font-semibold shadow-sm"
+                        : "text-white/60 hover:bg-white/8 hover:text-white/90"
+                    }`}>
+                    <item.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
+                    {item.label}
+                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />}
+                  </Link>
+                )}
+
+                {hasChildren && expanded && (
+                  <div className="mx-2 mb-1">
+                    {item.children.map(child => {
+                      const childActive = location.pathname === child.to ||
+                        location.pathname.startsWith(child.to + "/");
+                      return (
+                        <Link key={child.to} to={child.to}
+                          className={`flex items-center gap-2 pl-11 pr-5 py-1.5 text-[12px] transition-all rounded-md font-body ${
+                            childActive
+                              ? "bg-white/10 text-white font-semibold"
+                              : "text-white/50 hover:bg-white/5 hover:text-white/85"
+                          }`}>
+                          <child.icon className={`w-3.5 h-3.5 ${childActive ? "text-coral" : ""}`} />
+                          {child.label}
+                          {childActive && <div className="ml-auto w-1 h-1 rounded-full bg-coral" />}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -280,7 +371,7 @@ function AdminLayoutInner() {
               <div className="p-4 text-xs text-text-light">
                 {searchQuery.length < 2 ? "Type at least 2 characters to search..." : (
                   <div className="space-y-1">
-                    {visibleNav.filter(item =>
+                    {flatNav.filter(item =>
                       item.label.toLowerCase().includes(searchQuery.toLowerCase())
                     ).map(item => (
                       <Link key={item.to} to={item.to} onClick={() => setSearchOpen(false)}
