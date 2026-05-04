@@ -86,6 +86,11 @@ const fmtK = (n?: number | null) => {
   if (v >= 1000) return "₦" + (v / 1000).toFixed(0) + "k";
   return fmt(v);
 };
+// Money formatters that render an em-dash when the value is null/undefined
+// (i.e. data hasn't arrived). A real numeric zero must still render as ₦0
+// so empty-but-loaded states like "no orders today" don't look like errors.
+const fmtOr = (n: number | null | undefined) => (n === null || n === undefined ? "—" : fmt(n));
+const fmtKOr = (n: number | null | undefined) => (n === null || n === undefined ? "—" : fmtK(n));
 function delta(today?: number | null, yesterday?: number | null) {
   if (!yesterday) return null;
   const t = today || 0;
@@ -235,10 +240,10 @@ export default function AdminDashboard() {
             </div>
             <div className="text-sm mt-1 text-white/90">MTD GMV vs target-to-date</div>
             <div className="text-base mt-3 font-semibold">
-              {fmtK(b1?.gmv_mtd)} of {fmtK(b1?.target_by_today)} needed by today
+              {fmtKOr(b1?.gmv_mtd)} of {fmtKOr(b1?.target_by_today)} needed by today
             </div>
             <div className="text-xs mt-1 text-white/80">
-              Monthly target: ₦116,666,666 | Daily run rate: {fmtK(b1?.daily_run_rate)}
+              Monthly target: ₦116,666,666 | Daily run rate: {fmtKOr(b1?.daily_run_rate)}
             </div>
           </div>
 
@@ -249,10 +254,10 @@ export default function AdminDashboard() {
                 <CardTitle className="text-xs font-semibold text-muted-foreground">GMV Today</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="text-2xl font-bold pf">{fmtK(b1?.gmv_today)}</div>
+                <div className="text-2xl font-bold pf">{fmtKOr(b1?.gmv_today)}</div>
                 <DeltaPill d={gmvTodayDelta} />
                 <div className="text-[11px] text-muted-foreground">
-                  Daily run rate needed: {fmtK(b1?.daily_run_rate)}
+                  Daily run rate needed: {fmtKOr(b1?.daily_run_rate)}
                 </div>
               </CardContent>
             </Card>
@@ -262,7 +267,7 @@ export default function AdminDashboard() {
                 <CardTitle className="text-xs font-semibold text-muted-foreground">GMV Month-to-Date</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="text-2xl font-bold pf">{fmtK(b1?.gmv_mtd)}</div>
+                <div className="text-2xl font-bold pf">{fmtKOr(b1?.gmv_mtd)}</div>
                 <div className="text-[11px] text-muted-foreground">of ₦116.7M target</div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                   <div
@@ -288,11 +293,11 @@ export default function AdminDashboard() {
                 <CardTitle className="text-xs font-semibold text-muted-foreground">Average Order Value</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="text-2xl font-bold pf">{fmt(b1?.aov_today)}</div>
+                <div className="text-2xl font-bold pf">{fmtOr(b1?.aov_today)}</div>
                 {b1?.aov_today != null && b1.aov_today > 0 && b1.aov_today < 35000 && (
                   <Flag tone="amber">Below ₦35k threshold</Flag>
                 )}
-                <div className="text-[11px] text-muted-foreground">MTD avg: {fmt(b1?.aov_mtd)}</div>
+                <div className="text-[11px] text-muted-foreground">MTD avg: {fmtOr(b1?.aov_mtd)}</div>
               </CardContent>
             </Card>
           </div>
