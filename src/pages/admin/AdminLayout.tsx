@@ -100,9 +100,15 @@ function AdminLayoutInner() {
       topLevel.splice(insertAt, 0, toEntry(child));
     }
 
-    // Append the Merchandising entry if the DB nav hasn't been seeded
-    // with it yet — keeps the link reachable without a migration.
-    if (!topLevel.some(e => e.to === "/admin/merchandising")) {
+    // Static fallback for Merchandising in case the DB nav row hasn't been
+    // seeded yet. Gated to super_admin so the RPC's permission filtering
+    // (has_admin_permission) remains the single source of truth for every
+    // other role — toggling a user's permissions on /admin/settings/permissions
+    // is now what actually drives whether they see this link.
+    if (
+      isSuperAdmin &&
+      !topLevel.some(e => e.to === "/admin/merchandising")
+    ) {
       topLevel.push({
         to: "/admin/merchandising",
         label: "Merchandising",

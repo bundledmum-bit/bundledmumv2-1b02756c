@@ -92,17 +92,34 @@ export function useGrantAdminPermission() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ targetUserId, module, action, granted }: GrantAdminPermissionVars) => {
-      const { error } = await (supabase as any).rpc("grant_admin_permission", {
+      // Use admin_users.id as p_target_user_id (NOT auth_user_id).
+      console.log("[permissions] granting:", { targetUserId, module, action, granted });
+      const { data, error } = await (supabase as any).rpc("grant_admin_permission", {
         p_target_user_id: targetUserId,
         p_module: module,
         p_action: action,
         p_granted: granted,
       });
-      if (error) throw error;
+      console.log("[permissions] result:", { data, error });
+      if (error) {
+        console.error("[permissions] RPC error:", error);
+        throw new Error(error.message || "Failed to update permission");
+      }
+      // Some functions return { error: '...' } on the data payload itself.
+      if (data && typeof data === "object" && (data as any).error) {
+        const msg = (data as any).error;
+        console.error("[permissions] Function error:", msg);
+        throw new Error(msg);
+      }
       return { targetUserId, module, action, granted };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-permissions-perms", data.targetUserId] });
+      // Invalidate the affected user's sidebar nav so it refetches via
+      // get_admin_nav() and reflects the new permissions immediately on
+      // their next render. (No-op for the granting super_admin since
+      // their nav doesn't change.)
+      queryClient.invalidateQueries({ queryKey: ["admin-nav-items"] });
     },
   });
 }
