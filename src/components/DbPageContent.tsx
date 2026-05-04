@@ -17,9 +17,12 @@ export default function DbPageContent({ page }: { page: PageRow }) {
           )}
         </div>
       </div>
-      <div className="max-w-[780px] mx-auto px-5 md:px-10 py-10 md:py-16 prose prose-sm text-text-med font-body prose-headings:pf prose-headings:text-forest prose-headings:text-xl prose-headings:mb-3 prose-p:mb-4 prose-p:leading-relaxed prose-strong:text-forest prose-a:text-forest prose-a:underline max-w-none">
-        <div dangerouslySetInnerHTML={{ __html: page.content || "" }} />
-        <div className="mt-8 text-center not-prose">
+      <div className="max-w-[780px] mx-auto px-5 md:px-10 py-10 md:py-16 font-body">
+        <div
+          className="prose prose-slate max-w-none prose-h2:text-2xl prose-h2:font-bold prose-h2:mt-8 prose-h2:mb-4 prose-p:text-gray-700 prose-li:text-gray-700 prose-strong:text-gray-900"
+          dangerouslySetInnerHTML={{ __html: page.content || "" }}
+        />
+        <div className="mt-8 text-center">
           <Link to="/" className="text-forest font-semibold underline">← Back to Home</Link>
         </div>
       </div>
