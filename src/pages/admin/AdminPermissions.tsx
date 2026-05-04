@@ -7,6 +7,7 @@ import { Loader2, Check } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { useAdminUser, useGrantAdminPermission } from "@/hooks/useAdminPermissions";
+import { useAdmin } from "@/hooks/useAdmin";
 
 const MODULES: Array<{ key: string; label: string }> = [
   { key: "dashboard",  label: "Dashboard" },
@@ -68,7 +69,12 @@ function permsLatestTimestamp(perms: any): string | null {
 }
 
 export default function AdminPermissions() {
-  const { data: adminUser, isLoading: adminLoading } = useAdminUser();
+  // useAdminUser() is enabled only once useAdmin() resolves the auth user.
+  // We must wait on BOTH the auth lookup and the admin_users row fetch
+  // before deciding whether to redirect — otherwise the role check fires
+  // while the row is still null and a real super_admin gets bounced.
+  const { user: authUser, loading: authLoading } = useAdmin();
+  const { data: adminUser, isLoading: adminLoading, isFetching: adminFetching } = useAdminUser();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [pendingCell, setPendingCell] = useState<string | null>(null);
   const [recentlyOk, setRecentlyOk] = useState<string | null>(null);
@@ -115,12 +121,18 @@ export default function AdminPermissions() {
     return null;
   }, [permsQuery.data, localUpdatedAt]);
 
-  if (adminLoading) {
+  // Order: wait for auth → if no auth user, send to login → wait for the
+  // admin_users row → if not super_admin, send to /admin. Never redirect
+  // before all three are resolved.
+  if (authLoading || (authUser && (adminLoading || adminFetching) && !adminUser)) {
     return (
       <div className="flex items-center justify-center py-20 text-text-med">
         <Loader2 className="w-5 h-5 animate-spin" />
       </div>
     );
+  }
+  if (!authUser) {
+    return <Navigate to="/admin/login" replace />;
   }
   if (!adminUser || adminUser.role !== "super_admin") {
     return <Navigate to="/admin" replace />;
