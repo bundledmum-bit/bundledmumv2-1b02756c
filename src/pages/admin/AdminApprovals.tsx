@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -79,16 +79,7 @@ export default function AdminApprovals() {
   }
 
   if (!currentAdmin || currentAdmin.role !== "super_admin") {
-    return (
-      <div className="max-w-md mx-auto mt-12 text-center space-y-4">
-        <p className="text-sm text-text-med">
-          You don't have permission to view this page.
-        </p>
-        <Button asChild variant="outline">
-          <Link to="/admin">Back to admin</Link>
-        </Button>
-      </div>
-    );
+    return <Navigate to="/admin" replace />;
   }
 
   return (

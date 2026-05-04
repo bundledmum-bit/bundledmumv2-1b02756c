@@ -56,8 +56,10 @@ function AdminLayoutInner() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Fetch nav items exclusively from get_admin_nav RPC
-  const { data: dbNavItems } = useQuery({
+  // Fetch nav items exclusively from get_admin_nav RPC. Refetched on every
+  // route change so a permission grant elsewhere (or a server-side function
+  // update) reflects in the sidebar without a hard refresh.
+  const { data: dbNavItems, refetch: refetchNav } = useQuery({
     queryKey: ["admin-nav-items", adminUser?.id],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_admin_nav");
@@ -66,6 +68,11 @@ function AdminLayoutInner() {
     },
     enabled: !!adminUser,
   });
+
+  useEffect(() => {
+    if (adminUser) refetchNav();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   // Path corrections for DB entries that don't match actual routes
   const PATH_FIXES: Record<string, string> = {

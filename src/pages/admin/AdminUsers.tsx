@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -42,7 +43,7 @@ export default function AdminUsers() {
   });
 
   if (!can("admin", "view_users")) {
-    return <div className="text-center py-20 text-text-med">You don't have permission to access this page.</div>;
+    return <Navigate to="/admin" replace />;
   }
 
   return (
