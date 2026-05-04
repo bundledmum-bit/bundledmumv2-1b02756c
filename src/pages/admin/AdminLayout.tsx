@@ -11,7 +11,7 @@ import {
   Search, X, Menu, ChevronLeft, MessageCircleQuestion, Workflow, Mail, Rocket,
   type LucideIcon,
 } from "lucide-react";
-import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, ShieldCheck, RotateCcw, Megaphone, Sparkles } from "lucide-react";
+import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
@@ -41,7 +41,7 @@ interface NavItemFromDB {
 
 function AdminLayoutInner() {
   const { isAdmin, loading, signOut, user } = useAdmin();
-  const { can, adminUser, isSuperAdmin } = usePermissions();
+  const { can, adminUser } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -100,43 +100,13 @@ function AdminLayoutInner() {
       topLevel.splice(insertAt, 0, toEntry(child));
     }
 
-    // Static fallback for Merchandising in case the DB nav row hasn't been
-    // seeded yet. Gated to super_admin so the RPC's permission filtering
-    // (has_admin_permission) remains the single source of truth for every
-    // other role — toggling a user's permissions on /admin/settings/permissions
-    // is now what actually drives whether they see this link.
-    if (
-      isSuperAdmin &&
-      !topLevel.some(e => e.to === "/admin/merchandising")
-    ) {
-      topLevel.push({
-        to: "/admin/merchandising",
-        label: "Merchandising",
-        icon: Sparkles,
-        exact: false,
-        navKey: "merchandising",
-      });
-    }
-
-    // Static fallback for the super-admin User Permissions page in case the
-    // DB-driven nav hasn't been seeded with it. The page itself enforces
-    // super_admin access via redirect, but we only render the nav link when
-    // the current admin is super_admin so other roles never see it.
-    if (
-      isSuperAdmin &&
-      !topLevel.some(e => e.to === "/admin/settings/permissions")
-    ) {
-      topLevel.push({
-        to: "/admin/settings/permissions",
-        label: "User Permissions",
-        icon: ShieldCheck,
-        exact: false,
-        navKey: "settings_permissions",
-      });
-    }
-
+    // No client-side fallbacks. get_admin_nav() is the single source of
+    // truth — it already filters per-user via has_admin_permission(), so
+    // adding any role-gated entries here would defeat the permissions
+    // system. If a link doesn't appear, the DB nav row needs to be seeded
+    // (and/or the user needs the matching permission), not patched here.
     return topLevel;
-  }, [dbNavItems, isSuperAdmin]);
+  }, [dbNavItems]);
 
   useEffect(() => {
     if (!adminUser) return;
