@@ -1,305 +1,703 @@
-import { useState, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Link } from "react-router-dom";
-import { Package, ClipboardList, TrendingUp, AlertTriangle, Activity, Plus, FileText, Settings, DollarSign, XCircle, RotateCcw, ShieldX, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase as supabaseTyped } from "@/integrations/supabase/client";
+import { RefreshCw, Loader2 } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
-import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
-const DATE_PRESETS = [
-  { label: "Today", getDates: () => { const s = new Date(); s.setHours(0,0,0,0); const e = new Date(s); e.setDate(e.getDate()+1); const ps = new Date(s); ps.setDate(ps.getDate()-1); return { start: s, end: e, prevStart: ps, prevEnd: s }; }},
-  { label: "Yesterday", getDates: () => { const s = new Date(); s.setDate(s.getDate()-1); s.setHours(0,0,0,0); const e = new Date(s); e.setDate(e.getDate()+1); const ps = new Date(s); ps.setDate(ps.getDate()-1); return { start: s, end: e, prevStart: ps, prevEnd: s }; }},
-  { label: "This Week", getDates: () => { const s = new Date(); s.setDate(s.getDate()-s.getDay()); s.setHours(0,0,0,0); const e = new Date(); e.setDate(e.getDate()+1); e.setHours(0,0,0,0); const ps = new Date(s); ps.setDate(ps.getDate()-7); return { start: s, end: e, prevStart: ps, prevEnd: s }; }},
-  { label: "This Month", getDates: () => { const s = new Date(); s.setDate(1); s.setHours(0,0,0,0); const e = new Date(); e.setDate(e.getDate()+1); e.setHours(0,0,0,0); const ps = new Date(s); ps.setMonth(ps.getMonth()-1); return { start: s, end: e, prevStart: ps, prevEnd: s }; }},
-];
+// The `get_dashboard_metrics` RPC isn't in the generated supabase types yet;
+// cast through `any` so TS doesn't reject the call.
+const supabase = supabaseTyped as any;
 
-const fmt = (n: number) => `₦${n.toLocaleString()}`;
-const pctChange = (curr: number, prev: number) => prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / prev) * 1000) / 10;
+// ----------------------------------------------------------------------------
+// Response shape
+// ----------------------------------------------------------------------------
+
+interface Block1 {
+  gmv_today: number | null;
+  gmv_yesterday: number | null;
+  gmv_mtd: number | null;
+  monthly_target: number | null;
+  target_by_today: number | null;
+  revenue_pacing_pct: number | null;
+  daily_run_rate: number | null;
+  orders_today: number | null;
+  orders_yesterday: number | null;
+  aov_today: number | null;
+  aov_mtd: number | null;
+}
+
+interface Block2 {
+  new_customers_today: number | null;
+  new_customers_yesterday: number | null;
+  new_customers_7d: number | null;
+  new_customers_30d: number | null;
+}
+
+interface Block3 {
+  repeat_rate_30d: number | null;
+  repeat_customers_30d: number | null;
+  total_customers_30d: number | null;
+  repeat_buyers_this_month: number | null;
+}
+
+interface Block4 {
+  fulfillment_rate: number | null;
+  total_orders_today: number | null;
+  pending_orders: number | null;
+  delayed_orders: number | null;
+  returns_today: number | null;
+  oos_skus: number | null;
+}
+
+interface TopSku {
+  rank: number;
+  product: string;
+  brand: string;
+  revenue: number;
+  units: number;
+}
+
+interface Block5 {
+  top_skus_7d: TopSku[] | null;
+  new_revenue_mtd: number | null;
+  new_customers_mtd_count: number | null;
+  returning_revenue_mtd: number | null;
+  returning_customers_mtd_count: number | null;
+  abandoned_carts_7d: number | null;
+}
+
+interface DashboardMetrics {
+  block1: Block1;
+  block2: Block2;
+  block3: Block3;
+  block4: Block4;
+  block5: Block5;
+}
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+
+const fmt = (n?: number | null) => "₦" + (n || 0).toLocaleString("en-NG");
+const fmtK = (n?: number | null) => {
+  const v = n || 0;
+  if (v >= 1_000_000) return "₦" + (v / 1_000_000).toFixed(1) + "M";
+  if (v >= 1000) return "₦" + (v / 1000).toFixed(0) + "k";
+  return fmt(v);
+};
+function delta(today?: number | null, yesterday?: number | null) {
+  if (!yesterday) return null;
+  const t = today || 0;
+  const pct = ((t - yesterday) / yesterday) * 100;
+  return { pct: pct.toFixed(1), up: t >= yesterday };
+}
+
+function DeltaPill({ d }: { d: { pct: string; up: boolean } | null }) {
+  if (!d) return null;
+  const cls = d.up
+    ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+    : "bg-red-100 text-red-700 border-red-200";
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-semibold ${cls}`}>
+      {d.up ? "↑" : "↓"} {d.pct}% vs yesterday
+    </span>
+  );
+}
+
+function Flag({
+  tone,
+  children,
+}: {
+  tone: "red" | "amber" | "green";
+  children: React.ReactNode;
+}) {
+  const cls =
+    tone === "red"
+      ? "bg-red-100 text-red-700 border-red-200"
+      : tone === "amber"
+        ? "bg-amber-100 text-amber-800 border-amber-200"
+        : "bg-emerald-100 text-emerald-700 border-emerald-200";
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-semibold ${cls}`}>
+      {children}
+    </span>
+  );
+}
+
+function pacingTone(pct: number | null | undefined): "green" | "amber" | "red" {
+  const v = pct ?? 0;
+  if (v >= 100) return "green";
+  if (v >= 85) return "amber";
+  return "red";
+}
+function pacingBg(pct: number | null | undefined) {
+  const t = pacingTone(pct);
+  return t === "green" ? "bg-emerald-600" : t === "amber" ? "bg-amber-500" : "bg-red-600";
+}
+
+// ----------------------------------------------------------------------------
+// Page
+// ----------------------------------------------------------------------------
 
 export default function AdminDashboard() {
-  const { can, loading: permLoading } = usePermissions();
-  const queryClient = useQueryClient();
-  const [preset, setPreset] = useState("This Month");
-
-
-  // Realtime new order toast
-  useEffect(() => {
-    const channel = supabase.channel("dashboard-new-orders")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
-        const o = payload.new as any;
-        toast.success(`New order received — ${o.order_number || "New Order"}`, { duration: 6000 });
-        queryClient.invalidateQueries({ queryKey: ["dashboard-orders"] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
-
-  const dates = useMemo(() => DATE_PRESETS.find(p => p.label === preset)!.getDates(), [preset]);
-
-  const { data: products } = useQuery({
-    queryKey: ["dashboard-products"],
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<DashboardMetrics>({
+    queryKey: ["dashboard-metrics"],
     queryFn: async () => {
-      const { count } = await supabase.from("products").select("id", { count: "exact" }).eq("is_active", true);
-      return count || 0;
-    },
-  });
-
-  const { data: orders, isLoading } = useQuery({
-    queryKey: ["dashboard-orders"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("orders").select("id, total, payment_status, order_status, created_at");
+      const { data, error } = await supabase.rpc("get_dashboard_metrics");
       if (error) throw error;
-      return data || [];
+      return data as DashboardMetrics;
     },
-  });
-
-  const { data: recentOrders } = useQuery({
-    queryKey: ["dashboard-recent-orders"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(10);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  // Active subscribers — replaces the old 'Pending' stat card.
-  const { data: activeSubscribers = 0 } = useQuery({
-    queryKey: ["dashboard-active-subscribers"],
-    queryFn: async () => {
-      const { count, error } = await (supabase as any)
-        .from("subscriptions")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "active");
-      if (error) return 0;
-      return count || 0;
-    },
+    refetchInterval: 5 * 60 * 1000,
     staleTime: 60_000,
   });
 
-  // Today's subscription deliveries — only rendered when > 0.
-  const { data: subDeliveriesToday = [] } = useQuery({
-    queryKey: ["dashboard-subscription-deliveries-today"],
-    queryFn: async () => {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
-      const { data, error } = await (supabase as any)
-        .from("orders")
-        .select("id, customer_name, customer_email, total, delivery_city")
-        .eq("is_subscription_order", true)
-        .gte("created_at", start)
-        .lt("created_at", end);
-      if (error) return [];
-      return (data || []) as Array<{ id: string; customer_name: string | null; customer_email: string | null; total: number | null; delivery_city: string | null }>;
-    },
-    staleTime: 60_000,
+  const todayLabel = new Date().toLocaleDateString("en-NG", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   });
 
-  const { data: lowStock } = useQuery({
-    queryKey: ["dashboard-low-stock"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("brands").select("brand_name, stock_quantity, product_id, products(name)").lt("stock_quantity", 10).not("stock_quantity", "is", null);
-      if (error) throw error;
-      return data;
-    },
-  });
+  // Show full skeleton on first fetch only.
+  if (isLoading) {
+    return <DashboardSkeleton todayLabel={todayLabel} />;
+  }
 
-  const { data: recentActivity } = useQuery({
-    queryKey: ["dashboard-activity"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("activity_log").select("*").order("created_at", { ascending: false }).limit(15);
-      if (error) throw error;
-      return data;
-    },
-  });
+  // On error: render a sticky banner with everything as "—".
+  const showErrorBanner = isError;
+  const b1 = data?.block1;
+  const b2 = data?.block2;
+  const b3 = data?.block3;
+  const b4 = data?.block4;
+  const b5 = data?.block5;
 
-  const stats = useMemo(() => {
-    if (!orders) return null;
-    const inRange = orders.filter((o: any) => o.created_at >= dates.start.toISOString() && (!dates.end || o.created_at < dates.end.toISOString()));
-    const prevRange = orders.filter((o: any) => o.created_at >= dates.prevStart.toISOString() && o.created_at < dates.prevEnd.toISOString());
+  const dash = (v: any) => (v === undefined || v === null ? "—" : v);
 
-    const calc = (arr: any[]) => ({
-      total: arr.length,
-      gmv: arr.reduce((s, o) => s + (o.total || 0), 0),
-      paid: arr.filter(o => o.payment_status === "paid"),
-      paidCount: arr.filter(o => o.payment_status === "paid").length,
-      revenue: arr.filter(o => o.payment_status === "paid").reduce((s, o) => s + (o.total || 0), 0),
-      pending: arr.filter(o => o.order_status === "pending").length,
-      cancelled: arr.filter(o => o.order_status === "cancelled").length,
-      returned: arr.filter(o => o.order_status === "returned").length,
-    });
+  // Block 1 derived values
+  const pacingPct = b1?.revenue_pacing_pct ?? null;
+  const gmvTodayDelta = delta(b1?.gmv_today, b1?.gmv_yesterday);
+  const ordersTodayDelta = delta(b1?.orders_today, b1?.orders_yesterday);
+  const monthlyTarget = b1?.monthly_target ?? 116_666_666;
+  const mtdProgressPct = Math.max(0, Math.min(100, ((b1?.gmv_mtd || 0) / (monthlyTarget || 1)) * 100));
 
-    const curr = calc(inRange);
-    const prev = calc(prevRange);
+  // Block 2
+  const newCustTodayDelta = delta(b2?.new_customers_today, b2?.new_customers_yesterday);
 
-    return {
-      activeProducts: products || 0,
-      totalOrders: curr.total, totalOrdersChange: pctChange(curr.total, prev.total),
-      gmv: curr.gmv, gmvChange: pctChange(curr.gmv, prev.gmv),
-      paidOrders: curr.paidCount, paidOrdersChange: pctChange(curr.paidCount, prev.paidCount),
-      revenue: curr.revenue, revenueChange: pctChange(curr.revenue, prev.revenue),
-      pending: curr.pending, pendingChange: pctChange(curr.pending, prev.pending),
-      cancelled: curr.cancelled, cancelledChange: pctChange(curr.cancelled, prev.cancelled),
-      returned: curr.returned, returnedChange: pctChange(curr.returned, prev.returned),
-    };
-  }, [orders, dates, products]);
-
-  const STATUS_COLORS: Record<string, string> = {
-    confirmed: "bg-blue-100 text-blue-700", processing: "bg-yellow-100 text-yellow-700",
-    packed: "bg-purple-100 text-purple-700", shipped: "bg-cyan-100 text-cyan-700",
-    delivered: "bg-green-100 text-green-700", cancelled: "bg-red-100 text-red-700",
-    pending: "bg-gray-100 text-gray-700",
-  };
-
-  const cards = stats ? [
-    { label: "Active Products", value: stats.activeProducts, change: null, icon: Package, color: "text-forest" },
-    { label: "Total Orders", value: stats.totalOrders, change: stats.totalOrdersChange, icon: ClipboardList, color: "text-forest" },
-    { label: "GMV", value: fmt(stats.gmv), change: stats.gmvChange, icon: DollarSign, color: "text-coral" },
-    { label: "Paid Orders", value: stats.paidOrders, change: stats.paidOrdersChange, icon: ClipboardList, color: "text-forest" },
-    { label: "Revenue", value: fmt(stats.revenue), change: stats.revenueChange, icon: TrendingUp, color: "text-coral" },
-    { label: "Active Subscribers", value: activeSubscribers, change: null, icon: RefreshCw, color: "text-forest", to: "/admin/subscriptions" },
-    { label: "Cancelled", value: stats.cancelled, change: stats.cancelledChange, icon: XCircle, color: "text-destructive" },
-    { label: "Returned", value: stats.returned, change: stats.returnedChange, icon: RotateCcw, color: "text-orange-600" },
-  ] : [];
-
+  // Block 5 — new vs returning
+  const newRev = b5?.new_revenue_mtd || 0;
+  const retRev = b5?.returning_revenue_mtd || 0;
+  const totalRev = newRev + retRev;
+  const newPct = totalRev > 0 ? (newRev / totalRev) * 100 : 0;
+  const retPct = totalRev > 0 ? (retRev / totalRev) * 100 : 0;
+  const noSplit = totalRev === 0;
 
   return (
     <div>
-      {subDeliveriesToday.length > 0 && (
-        <Link
-          to="/admin/orders?filter=subscriptions"
-          className="block mb-4 bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 hover:bg-teal-100/80 transition-colors"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm text-teal-900 font-semibold">
-              📦 {subDeliveriesToday.length} subscription deliver{subDeliveriesToday.length === 1 ? "y" : "ies"} today
-            </div>
-            <span className="text-xs font-semibold text-teal-700">View orders →</span>
-          </div>
-        </Link>
+      {showErrorBanner && (
+        <div className="sticky top-0 z-20 mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-800 px-4 py-2.5 rounded-lg text-sm font-semibold">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Dashboard data unavailable. Retrying…
+        </div>
       )}
+
+      {/* Page header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="pf text-2xl font-bold text-foreground">Dashboard</h1>
-        <div className="flex gap-2">
-          {DATE_PRESETS.map(p => (
-            <button key={p.label} onClick={() => setPreset(p.label)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${preset === p.label ? "border-forest bg-forest/10 text-forest" : "border-border text-muted-foreground"}`}>
-              {p.label}
-            </button>
-          ))}
+        <div>
+          <h1 className="pf text-2xl font-bold text-foreground">Your Daily Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">{todayLabel}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Refreshes every 5 min</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? "animate-spin" : ""}`} />
+            Refresh now
+          </Button>
         </div>
       </div>
 
-      {/* Metric Cards */}
-      {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {Array.from({length:8}).map((_,i)=><Skeleton key={i} className="h-24 rounded-xl" />)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {cards.map(c => {
-            const body = (
-              <>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-muted-foreground text-xs font-semibold">{c.label}</span>
-                  <c.icon className={`w-4 h-4 ${c.color}`} />
+      <div className="space-y-8">
+        {/* ============================================================ */}
+        {/* Block 1 — Revenue Pulse                                       */}
+        {/* ============================================================ */}
+        <section className="space-y-4">
+          <h2 className="pf text-lg font-bold">Revenue Pulse</h2>
+
+          {/* Hero card */}
+          <div className={`${pacingBg(pacingPct)} text-white rounded-xl p-6 shadow-sm`}>
+            <div className="text-5xl font-bold pf">
+              {pacingPct === null || pacingPct === undefined ? "—" : `${pacingPct}%`}
+            </div>
+            <div className="text-sm mt-1 text-white/90">MTD GMV vs target-to-date</div>
+            <div className="text-base mt-3 font-semibold">
+              {fmtK(b1?.gmv_mtd)} of {fmtK(b1?.target_by_today)} needed by today
+            </div>
+            <div className="text-xs mt-1 text-white/80">
+              Monthly target: ₦116,666,666 | Daily run rate: {fmtK(b1?.daily_run_rate)}
+            </div>
+          </div>
+
+          {/* 4 metric cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">GMV Today</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{fmtK(b1?.gmv_today)}</div>
+                <DeltaPill d={gmvTodayDelta} />
+                <div className="text-[11px] text-muted-foreground">
+                  Daily run rate needed: {fmtK(b1?.daily_run_rate)}
                 </div>
-                <div className="text-2xl font-bold pf">{c.value}</div>
-                {c.change !== null && (
-                  <div className={`text-[10px] mt-0.5 font-semibold ${c.change >= 0 ? "text-green-600" : "text-destructive"}`}>
-                    {c.change >= 0 ? "↑" : "↓"} {Math.abs(c.change).toFixed(1)}% vs prev period
-                  </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">GMV Month-to-Date</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{fmtK(b1?.gmv_mtd)}</div>
+                <div className="text-[11px] text-muted-foreground">of ₦116.7M target</div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-forest"
+                    style={{ width: `${mtdProgressPct}%` }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">Orders Today</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b1?.orders_today)}</div>
+                <DeltaPill d={ordersTodayDelta} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">Average Order Value</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{fmt(b1?.aov_today)}</div>
+                {b1?.aov_today != null && b1.aov_today > 0 && b1.aov_today < 35000 && (
+                  <Flag tone="amber">Below ₦35k threshold</Flag>
                 )}
-              </>
-            );
-            const base = "bg-card border border-border rounded-xl p-5";
-            return (c as any).to ? (
-              <Link key={c.label} to={(c as any).to} className={`${base} hover:border-forest/40 transition-colors`}>
-                {body}
-              </Link>
-            ) : (
-              <div key={c.label} className={base}>{body}</div>
-            );
-          })}
-        </div>
-      )}
+                <div className="text-[11px] text-muted-foreground">MTD avg: {fmt(b1?.aov_mtd)}</div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
 
-      <div className="grid md:grid-cols-2 gap-6 mb-6">
-        {/* Recent Orders */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="pf text-sm font-bold">Recent Orders</h2>
-            <Link to="/admin/orders" className="text-xs text-forest font-semibold hover:underline">View all</Link>
+        {/* ============================================================ */}
+        {/* Block 2 — Acquisition Health                                  */}
+        {/* ============================================================ */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="pf text-lg font-bold">Acquisition Health</h2>
+            <p className="text-xs italic text-muted-foreground mt-0.5">Meta Ads data requires integration</p>
           </div>
-          <div className="space-y-2">
-            {(recentOrders || []).slice(0, 8).map((o: any) => (
-              <div key={o.id} className="flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-semibold">{o.order_number || "—"}</span>
-                  <span className="text-muted-foreground ml-2">{o.customer_name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.order_status] || "bg-muted text-muted-foreground"}`}>{o.order_status}</span>
-                  <span className="font-semibold">{fmt(o.total || 0)}</span>
-                </div>
-              </div>
-            ))}
-            {(!recentOrders || recentOrders.length === 0) && <p className="text-xs text-muted-foreground">No data yet</p>}
-          </div>
-        </div>
 
-        {/* Low Stock Alerts */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="w-4 h-4 text-coral" />
-            <h2 className="pf text-sm font-bold">Low Stock Alerts</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">New Customers Today</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b2?.new_customers_today)}</div>
+                <DeltaPill d={newCustTodayDelta} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">New Customers (7-day)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold pf">{dash(b2?.new_customers_7d)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">New Customers (30-day)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold pf">{dash(b2?.new_customers_30d)}</div>
+              </CardContent>
+            </Card>
           </div>
-          <div className="space-y-2">
-            {(lowStock || []).map((b: any, i: number) => (
-              <div key={i} className="flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-semibold">{b.brand_name}</span>
-                  <span className="text-muted-foreground ml-1">({(b.products as any)?.name})</span>
-                </div>
-                <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${(b.stock_quantity || 0) <= 3 ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}>
-                  {b.stock_quantity} left
-                </span>
-              </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+            {["Meta Ads Spend", "Cost Per Purchase", "ROAS"].map((label) => (
+              <Card key={label} className="border-dashed opacity-60">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-semibold text-muted-foreground">{label}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-2xl font-bold pf text-muted-foreground">—</div>
+                  <span className="text-xs text-forest font-semibold cursor-pointer hover:underline">
+                    Connect Meta Ads →
+                  </span>
+                </CardContent>
+              </Card>
             ))}
-            {(!lowStock || lowStock.length === 0) && <p className="text-xs text-muted-foreground">All stock levels OK ✅</p>}
           </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/* Block 3 — Retention Engine                                    */}
+        {/* ============================================================ */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="pf text-lg font-bold">Retention Engine</h2>
+            <p className="text-xs italic text-muted-foreground mt-0.5">WhatsApp data requires integration</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Repeat Purchase Rate (30-day)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">
+                  {b3?.repeat_rate_30d != null ? `${b3.repeat_rate_30d}%` : "—"}
+                </div>
+                {b3?.repeat_rate_30d != null && (
+                  b3.repeat_rate_30d < 35
+                    ? <Flag tone="red">Below 35% target</Flag>
+                    : <Flag tone="green">On target</Flag>
+                )}
+                <div className="text-[11px] text-muted-foreground">
+                  {dash(b3?.repeat_customers_30d)} of {dash(b3?.total_customers_30d)} customers bought again
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Repeat Buyers This Month
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b3?.repeat_buyers_this_month)}</div>
+                <div className="text-[11px] text-muted-foreground">Customers with 2+ orders this month</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            {["Broadcast Open Rate", "Click-to-Order Rate"].map((label) => (
+              <Card key={label} className="border-dashed opacity-60">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-semibold text-muted-foreground">{label}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-2xl font-bold pf text-muted-foreground">—</div>
+                  <span className="text-xs text-forest font-semibold cursor-pointer hover:underline">
+                    Connect WhatsApp Business →
+                  </span>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/* Block 4 — Operational Health                                  */}
+        {/* ============================================================ */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="pf text-lg font-bold">Operational Health</h2>
+            <p className="text-xs italic text-muted-foreground mt-0.5">
+              Logistics is your brand. Watch this block daily.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Fulfillment */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Same Day / Next Day Fulfillment
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {b4?.fulfillment_rate == null || (b4?.total_orders_today ?? 0) === 0 ? (
+                  <div className="text-sm text-muted-foreground">No orders today</div>
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold pf">{b4.fulfillment_rate}%</div>
+                    {b4.fulfillment_rate < 85
+                      ? <Flag tone="red">Below 85%</Flag>
+                      : <Flag tone="green">On target</Flag>}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Pending / Delayed */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Pending / Delayed Orders
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b4?.pending_orders)} pending</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {dash(b4?.delayed_orders)} delayed &gt;24h
+                </div>
+                {b4?.pending_orders != null && (
+                  b4.pending_orders > 5
+                    ? <Flag tone="red">Action needed</Flag>
+                    : b4.pending_orders > 0
+                      ? <Flag tone="amber">Monitor</Flag>
+                      : <Flag tone="green">Clear</Flag>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Returns */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Returns / Complaints Today
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b4?.returns_today)}</div>
+                {b4?.returns_today != null && (
+                  b4.returns_today > 0
+                    ? <Flag tone="amber">Review immediately</Flag>
+                    : <Flag tone="green">Clear</Flag>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* OOS SKUs */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Out of Stock SKUs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b4?.oos_skus)}</div>
+                {b4?.oos_skus != null && (
+                  b4.oos_skus > 0
+                    ? <Flag tone="amber">Check if top SKU affected</Flag>
+                    : <Flag tone="green">All in stock</Flag>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/* Block 5 — Weekly Glance                                       */}
+        {/* ============================================================ */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="pf text-lg font-bold">Weekly Glance</h2>
+            <p className="text-xs italic text-muted-foreground mt-0.5">
+              Trend indicators — not for daily action.
+            </p>
+          </div>
+
+          {/* Top SKUs table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold">Top 5 SKUs by Revenue (7-day)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!b5?.top_skus_7d || b5.top_skus_7d.length === 0 ? (
+                <div className="text-center text-sm text-muted-foreground py-6">No sales data yet</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="py-2 pr-2 font-semibold">Rank</th>
+                        <th className="py-2 pr-2 font-semibold">Product</th>
+                        <th className="py-2 pr-2 font-semibold">Brand</th>
+                        <th className="py-2 pr-2 font-semibold">Revenue (7d)</th>
+                        <th className="py-2 pr-2 font-semibold">Units</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {b5.top_skus_7d.map((s, i) => (
+                        <tr key={`${s.rank}-${i}`} className="border-b border-border/60 last:border-b-0">
+                          <td className="py-2 pr-2 font-semibold">{s.rank}</td>
+                          <td className="py-2 pr-2">{s.product}</td>
+                          <td className="py-2 pr-2 text-muted-foreground">{s.brand}</td>
+                          <td className="py-2 pr-2 font-semibold">{fmtK(s.revenue)}</td>
+                          <td className="py-2 pr-2">{s.units}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 3-card row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  New vs Returning Revenue Split (MTD)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="font-semibold">
+                      New: {fmtK(newRev)} — {b5?.new_customers_mtd_count ?? 0} customers
+                    </span>
+                  </div>
+                  <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-forest"
+                      style={{ width: noSplit ? "0%" : `${newPct}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span className="font-semibold">
+                      Returning: {fmtK(retRev)} — {b5?.returning_customers_mtd_count ?? 0} customers
+                    </span>
+                  </div>
+                  <div className="h-[3px] bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-coral"
+                      style={{ width: noSplit ? "0%" : `${retPct}%` }}
+                    />
+                  </div>
+                </div>
+                {noSplit && <div className="text-[11px] text-muted-foreground">No data yet</div>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Abandoned Carts (7-day)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf">{dash(b5?.abandoned_carts_7d)}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  Potential orders lost this week
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed opacity-60">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Email / WhatsApp List Growth
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-2xl font-bold pf text-muted-foreground">—</div>
+                <div className="text-[11px] text-muted-foreground">Requires integration</div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Skeleton (first-fetch only)
+// ----------------------------------------------------------------------------
+
+function DashboardSkeleton({ todayLabel }: { todayLabel: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="pf text-2xl font-bold text-foreground">Your Daily Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">{todayLabel}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">Refreshes every 5 min</span>
+          <Button variant="outline" size="sm" disabled>
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+            Refresh now
+          </Button>
         </div>
       </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Quick Actions */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h2 className="pf text-sm font-bold mb-3">Quick Actions</h2>
-          <div className="flex flex-wrap gap-2">
-            <Link to="/admin/products" className="flex items-center gap-1.5 px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold hover:bg-forest/90"><Plus className="w-3 h-3" /> Add Product</Link>
-            <Link to="/admin/orders" className="flex items-center gap-1.5 px-3 py-2 bg-coral text-primary-foreground rounded-lg text-xs font-semibold hover:bg-coral/90"><ClipboardList className="w-3 h-3" /> View Orders</Link>
-            <Link to="/admin/blog" className="flex items-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted"><FileText className="w-3 h-3" /> Write Blog Post</Link>
-            <Link to="/admin/settings" className="flex items-center gap-1.5 px-3 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted"><Settings className="w-3 h-3" /> Site Settings</Link>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-4 h-4 text-forest" />
-            <h2 className="pf text-sm font-bold">Recent Activity</h2>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {(recentActivity || []).map((a: any) => (
-              <div key={a.id} className="text-xs flex items-start gap-2">
-                <span className="text-muted-foreground whitespace-nowrap">{new Date(a.created_at).toLocaleString("en-NG", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                <span><span className="font-semibold capitalize">{a.action}</span> {a.entity_type} {a.entity_name ? `"${a.entity_name}"` : ""}</span>
-              </div>
+      <div className="space-y-8">
+        {/* Block 1 */}
+        <section className="space-y-4">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-32 w-full bg-muted-foreground/30 rounded-xl" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
             ))}
-            {(!recentActivity || recentActivity.length === 0) && <p className="text-xs text-muted-foreground">No data yet</p>}
           </div>
-        </div>
+        </section>
+        {/* Block 2 */}
+        <section className="space-y-3">
+          <Skeleton className="h-6 w-48" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+        </section>
+        {/* Block 3 */}
+        <section className="space-y-3">
+          <Skeleton className="h-6 w-44" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+        </section>
+        {/* Block 4 */}
+        <section className="space-y-3">
+          <Skeleton className="h-6 w-44" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
+          </div>
+        </section>
+        {/* Block 5 */}
+        <section className="space-y-3">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
