@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,8 +6,7 @@ import { toast } from "sonner";
 import { Loader2, Check } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { useAdminUser, useGrantAdminPermission } from "@/hooks/useAdminPermissions";
-import { useAdmin } from "@/hooks/useAdmin";
+import { useGrantAdminPermission } from "@/hooks/useAdminPermissions";
 
 const MODULES: Array<{ key: string; label: string }> = [
   { key: "dashboard",  label: "Dashboard" },
@@ -69,12 +68,38 @@ function permsLatestTimestamp(perms: any): string | null {
 }
 
 export default function AdminPermissions() {
-  // useAdminUser() is enabled only once useAdmin() resolves the auth user.
-  // We must wait on BOTH the auth lookup and the admin_users row fetch
-  // before deciding whether to redirect — otherwise the role check fires
-  // while the row is still null and a real super_admin gets bounced.
-  const { user: authUser, loading: authLoading } = useAdmin();
-  const { data: adminUser, isLoading: adminLoading, isFetching: adminFetching } = useAdminUser();
+  // Self-contained super-admin guard. We do auth.getUser() and the role
+  // lookup in one effect rather than relying on shared hooks, to avoid
+  // any "looks ready but data still arriving" race that bounced real
+  // super_admins out of this page on first nav.
+  const [authReady, setAuthReady] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (!cancelled) {
+          setIsSuperAdmin(false);
+          setAuthReady(true);
+        }
+        return;
+      }
+      const { data } = await supabase
+        .from("admin_users")
+        .select("role")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      setIsSuperAdmin(data?.role === "super_admin");
+      setAuthReady(true);
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [pendingCell, setPendingCell] = useState<string | null>(null);
   const [recentlyOk, setRecentlyOk] = useState<string | null>(null);
@@ -121,20 +146,16 @@ export default function AdminPermissions() {
     return null;
   }, [permsQuery.data, localUpdatedAt]);
 
-  // Order: wait for auth → if no auth user, send to login → wait for the
-  // admin_users row → if not super_admin, send to /admin. Never redirect
-  // before all three are resolved.
-  if (authLoading || (authUser && (adminLoading || adminFetching) && !adminUser)) {
+  // Render nothing until BOTH auth + role lookups have resolved. Only
+  // then decide between rendering the page or redirecting.
+  if (!authReady) {
     return (
-      <div className="flex items-center justify-center py-20 text-text-med">
-        <Loader2 className="w-5 h-5 animate-spin" />
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" />
       </div>
     );
   }
-  if (!authUser) {
-    return <Navigate to="/admin/login" replace />;
-  }
-  if (!adminUser || adminUser.role !== "super_admin") {
+  if (!isSuperAdmin) {
     return <Navigate to="/admin" replace />;
   }
 
