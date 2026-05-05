@@ -56,9 +56,12 @@ function AdminLayoutInner() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Fetch nav items exclusively from get_admin_nav RPC. Refetched on every
-  // route change so a permission grant elsewhere (or a server-side function
-  // update) reflects in the sidebar without a hard refresh.
+  // Fetch nav items exclusively from get_admin_nav RPC. Always considered
+  // stale + refetched on mount so a newly-built page (is_built flipped from
+  // false to true), a permission grant elsewhere, or a server-side function
+  // update reflects in the sidebar without a hard refresh.
+  // The QueryClient's 5-minute default staleTime is overridden here on
+  // purpose — nav freshness matters more than network savings.
   const { data: dbNavItems, refetch: refetchNav } = useQuery({
     queryKey: ["admin-nav-items", adminUser?.id],
     queryFn: async () => {
@@ -67,6 +70,9 @@ function AdminLayoutInner() {
       return (data as unknown as NavItemFromDB[]) || [];
     },
     enabled: !!adminUser,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 
   useEffect(() => {
