@@ -154,7 +154,7 @@ export default function SubscriptionCheckout() {
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
       const popup = new PaystackPop();
-      const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_ee6db593cdee9f92b4114a9b15f4a2a72e71ee20";
+      const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_20a41e2a150aa2424a8aeacee13ac2fbbdb378e4";
       const reference = `sub_${Date.now()}`;
       const amountKobo = Math.max(0, firstPayment) * 100;
 
