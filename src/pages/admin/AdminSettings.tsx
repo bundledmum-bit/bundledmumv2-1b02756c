@@ -6,7 +6,7 @@ import { Save, Plus, Trash2, Lock } from "lucide-react";
 import AdminQuizExitPopupTab from "@/components/admin/AdminQuizExitPopupTab";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
-const ALL_TABS = ["General", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
+const ALL_TABS = ["General", "Revenue Targets", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
 const RESTRICTED_TABS: Record<string, { module: string; action: string }> = {
   "Quiz Exit Popup": { module: "content", action: "manage_quiz_exit_popup" },
 };
@@ -71,14 +71,19 @@ const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "tex
 
 export default function AdminSettings() {
   const queryClient = useQueryClient();
-  const { can } = usePermissions();
+  const { can, adminUser } = usePermissions();
   const [activeTab, setActiveTab] = useState("General");
   const [editValues, setEditValues] = useState<Record<string, string>>({});
+
+  // Revenue Targets is gated to super_admin / admin only — never shown to
+  // custom or fulfilment roles.
+  const canEditRevenueTargets = adminUser?.role === "super_admin" || adminUser?.role === "admin";
 
   // Filter tabs based on permissions. Restricted tabs are auto-allowed for
   // super_admin + admin (handled inside can()), and require an explicit
   // permission grant for other roles.
   const TABS = ALL_TABS.filter(tab => {
+    if (tab === "Revenue Targets") return canEditRevenueTargets;
     const req = RESTRICTED_TABS[tab];
     if (!req) return true;
     return can(req.module, req.action);
@@ -140,7 +145,9 @@ export default function AdminSettings() {
         ))}
       </div>
 
-      {activeTab === "Quiz Exit Popup" ? (
+      {activeTab === "Revenue Targets" ? (
+        canEditRevenueTargets ? <RevenueTargetsPanel /> : null
+      ) : activeTab === "Quiz Exit Popup" ? (
         can("content", "manage_quiz_exit_popup") ? (
           <AdminQuizExitPopupTab />
         ) : (
@@ -309,6 +316,170 @@ const KEY_META: Record<string, { label?: string; description?: string; prefix?: 
   upsell_max_recommendations: { label: "Max recommendations per email", description: "Cap the number of suggested products shown in upsell emails", suffix: "products", min: 0, max: 12 },
   anniversary_email_every_n_cycles: { label: "Anniversary email cadence", description: "Send an anniversary email every N completed cycles (0 turns this off)", suffix: "deliveries (0 = off)", min: 0, max: 24 },
 };
+
+// ---------------------------------------------------------------------------
+// Revenue Targets — annual GMV target, start date, derived monthly target.
+// Stored in three site_settings rows: annual_gmv_target,
+// gmv_target_start_date, monthly_gmv_target. Monthly is computed from annual
+// + remaining months until end-of-year and persisted alongside on save.
+// ---------------------------------------------------------------------------
+
+function computeMonthly(annual: number, startDateStr: string): number {
+  if (!annual || !startDateStr) return 0;
+  const start = new Date(startDateStr);
+  if (isNaN(start.getTime())) return 0;
+  const yearEnd = new Date(start.getFullYear(), 11, 31);
+  const msRemaining = yearEnd.getTime() - start.getTime();
+  const monthsRemaining = msRemaining / (1000 * 60 * 60 * 24 * 30.44);
+  if (monthsRemaining <= 0) return annual;
+  return Math.round(annual / monthsRemaining);
+}
+
+function RevenueTargetsPanel() {
+  const queryClient = useQueryClient();
+  const [annualTarget, setAnnualTarget] = useState<number>(1_400_000_000);
+  const [startDate, setStartDate] = useState<string>("");
+  const [derivedMonthly, setDerivedMonthly] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Load the three keys on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["annual_gmv_target", "gmv_target_start_date", "monthly_gmv_target"]);
+      if (cancelled) return;
+      if (error) {
+        toast.error(error.message || "Failed to load revenue targets");
+        setLoading(false);
+        return;
+      }
+      const map: Record<string, any> = {};
+      (data || []).forEach((row: any) => {
+        // Stored values may be numbers or quoted strings depending on writer.
+        let v = row.value;
+        if (typeof v === "string") {
+          // Strip surrounding quotes if any.
+          v = v.replace(/^"|"$/g, "");
+        }
+        map[row.key] = v;
+      });
+      const annual = Number(map.annual_gmv_target) || 1_400_000_000;
+      const start = typeof map.gmv_target_start_date === "string" ? map.gmv_target_start_date : "";
+      const monthly = Number(map.monthly_gmv_target) || computeMonthly(annual, start);
+      setAnnualTarget(annual);
+      setStartDate(start);
+      setDerivedMonthly(monthly);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Live-recompute whenever annualTarget or startDate changes.
+  useEffect(() => {
+    setDerivedMonthly(computeMonthly(annualTarget, startDate));
+  }, [annualTarget, startDate]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const monthly = computeMonthly(annualTarget, startDate);
+    const { error } = await supabase
+      .from("site_settings")
+      .upsert(
+        [
+          { key: "annual_gmv_target", value: annualTarget },
+          { key: "gmv_target_start_date", value: startDate },
+          { key: "monthly_gmv_target", value: monthly },
+        ],
+        { onConflict: "key" },
+      );
+    setSaving(false);
+    if (error) {
+      toast.error("Failed to save revenue targets");
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+    queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+    toast.success("Revenue targets saved");
+  };
+
+  if (loading) {
+    return <div className="text-center py-10 text-text-med">Loading…</div>;
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 space-y-5">
+      <div>
+        <h2 className="text-base font-bold mb-1">Revenue Targets</h2>
+        <p className="text-xs text-text-light">
+          Annual GMV goal and the date tracking starts. Monthly target is
+          derived automatically from the months remaining until year-end.
+        </p>
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-text-med block mb-1">Annual GMV Target</label>
+        <p className="text-[11px] text-text-light mb-1.5">Total revenue target for the year, in naira.</p>
+        <input
+          type="text"
+          inputMode="numeric"
+          value={annualTarget.toLocaleString("en-NG")}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/[^0-9]/g, "");
+            setAnnualTarget(Number(raw) || 0);
+          }}
+          placeholder="e.g. 1,400,000,000"
+          className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-text-med block mb-1">Target Start Date</label>
+        <p className="text-[11px] text-text-light mb-1.5">Date from which GMV tracking begins.</p>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs font-semibold text-text-med block mb-1">Derived Monthly Target</label>
+        <p className="text-[11px] text-text-light mb-1.5">
+          Auto-calculated: annual target ÷ months remaining from start date.
+        </p>
+        <div className="w-full bg-muted/50 rounded-lg px-3 py-2 text-sm font-semibold text-foreground">
+          ₦{derivedMonthly.toLocaleString("en-NG")}
+        </div>
+      </div>
+
+      <div className="pt-2 flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
+        >
+          {saving ? (
+            <>
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Save className="w-3.5 h-3.5" /> Save Revenue Targets
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function AdminSubscriptionsTab() {
   const qc = useQueryClient();
