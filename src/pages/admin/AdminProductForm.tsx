@@ -75,6 +75,18 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
 
   const handleSave = async () => {
     if (!form.name || !form.description) { toast.error("Name and description are required"); return; }
+    // weight_kg is required on every brand variant — courier rates are
+    // computed per shipped weight, so a missing or zero weight produces
+    // wrong delivery quotes.
+    const badWeightIdx = brands.findIndex((b: any) => {
+      const n = Number(b.weight_kg);
+      return !Number.isFinite(n) || n <= 0;
+    });
+    if (badWeightIdx >= 0) {
+      const label = brands[badWeightIdx]?.brand_name?.trim() || `Brand #${badWeightIdx + 1}`;
+      toast.error(`Weight is required so courier costs can be calculated correctly. Fix "${label}".`);
+      return;
+    }
     setSaving(true);
     try {
       const slug = form.slug || autoSlug(form.name);
@@ -169,9 +181,11 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
             pack_count: b.pack_count != null && b.pack_count !== "" ? Number(b.pack_count) : null,
             diaper_type: b.diaper_type || null,
             sku: b.sku?.trim?.() || b.sku || null,
+            // Shipping weight per single unit/pack as sold — required.
+            weight_kg: Number(b.weight_kg),
           };
         });
-        const { error } = await supabase.from("brands").insert(brandRows);
+        const { error } = await (supabase.from("brands") as any).insert(brandRows);
         if (error) throw error;
       }
 
@@ -336,7 +350,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
             <TabsContent value="brands" className="space-y-3 mt-0">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold">Brand Variants</label>
-                <button type="button" onClick={() => setBrands(b => [...b, { brand_name: "", price: 0, tier: "standard", is_default_for_tier: false, compare_at_price: null, stock_quantity: null, in_stock: true, image_url: null, logo_url: null }])}
+                <button type="button" onClick={() => setBrands(b => [...b, { brand_name: "", price: 0, tier: "standard", is_default_for_tier: false, compare_at_price: null, stock_quantity: null, in_stock: true, image_url: null, logo_url: null, weight_kg: "" }])}
                   className="flex items-center gap-1 text-xs text-forest font-semibold"><Plus className="w-3 h-3" /> Add Brand</button>
               </div>
               {brands.map((b, i) => (
@@ -411,6 +425,28 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                           className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background" /></div>
                     </div>
                   )}
+                  {/* Shipping weight — required on every brand variant
+                      regardless of subcategory; courier rates depend on it. */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-text-med block mb-0.5">
+                      Weight (kg) <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step={0.01}
+                      min={0.01}
+                      max={50}
+                      required
+                      value={b.weight_kg ?? ""}
+                      placeholder="e.g. 0.50"
+                      onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? {
+                        ...br,
+                        weight_kg: e.target.value === "" ? "" : parseFloat(e.target.value),
+                      } : br))}
+                      className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background"
+                    />
+                    <p className="text-[10px] text-text-light mt-0.5">Shipping weight per single unit/pack as sold</p>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Size Variant</label>
                       <input value={b.size_variant || ""} placeholder="e.g. ×10, 40ml"

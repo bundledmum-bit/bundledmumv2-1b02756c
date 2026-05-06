@@ -399,6 +399,9 @@ function PackInfoCell({ brands }: { brands: any[] }) {
   if (cheapest.pack_count) parts.push(String(cheapest.pack_count));
   if (cheapest.diaper_type) parts.push(cheapest.diaper_type);
   if (cheapest.weight_range_kg) parts.push(cheapest.weight_range_kg);
+  // Shipping weight per single unit — surfaced for spot-checking that
+  // every brand variant has a weight set (courier costs depend on it).
+  if (cheapest.weight_kg != null) parts.push(`${Number(cheapest.weight_kg).toFixed(2)}kg`);
   return parts.length > 0 ? <span className="text-text-med">{parts.join(" / ")}</span> : <span className="text-text-light">—</span>;
 }
 
