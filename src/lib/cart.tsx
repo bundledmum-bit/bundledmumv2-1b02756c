@@ -54,6 +54,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { localStorage.setItem("bm-cart", JSON.stringify(cart)); }, [cart]);
   useEffect(() => { localStorage.setItem("bm-saved", JSON.stringify(savedItems)); }, [savedItems]);
 
+  // Cross-tab cart sync: when another tab mutates `bm-cart` (typically a
+  // clearCart() after a successful order), mirror the change into this
+  // tab's React state so the cart panel + checkout snapshot stay
+  // truthful. Without this, a customer with two checkout tabs open could
+  // see "items in summary" while localStorage is already empty, and the
+  // place-order request would silently send `items: []`.
+  useEffect(() => {
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key !== "bm-cart") return;
+      try {
+        const parsed = event.newValue ? JSON.parse(event.newValue) : [];
+        setCart(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setCart([]);
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
   const addToCart = useCallback((product: any) => {
     setCart(prev => {
       const key = `${product.id}-${product.selectedBrand?.id || "default"}-${product.selectedSize || ""}`;

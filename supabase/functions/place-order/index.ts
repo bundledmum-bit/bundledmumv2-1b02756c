@@ -22,6 +22,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Reject empty items arrays before touching the orders table —
+    // `!items` above is false for `[]` (empty arrays are truthy), so an
+    // empty array would otherwise pass validation and produce a paid
+    // order row with zero order_items. This is the last line of defence
+    // behind the frontend guards.
+    if (!Array.isArray(items) || items.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Order must contain at least one item" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
