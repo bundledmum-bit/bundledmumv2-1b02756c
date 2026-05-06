@@ -71,13 +71,17 @@ const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "tex
 
 export default function AdminSettings() {
   const queryClient = useQueryClient();
-  const { can, adminUser } = usePermissions();
+  const { can, adminUser, loading: permissionsLoading } = usePermissions();
   const [activeTab, setActiveTab] = useState("General");
   const [editValues, setEditValues] = useState<Record<string, string>>({});
 
   // Revenue Targets is gated to super_admin / admin only — never shown to
-  // custom or fulfilment roles.
-  const canEditRevenueTargets = adminUser?.role === "super_admin" || adminUser?.role === "admin";
+  // custom or fulfilment roles. Wait for permissions to finish loading so
+  // we don't permanently hide the tab if adminUser is still being fetched
+  // when the filter first runs.
+  const canEditRevenueTargets =
+    !permissionsLoading &&
+    (adminUser?.role === "super_admin" || adminUser?.role === "admin");
 
   // Filter tabs based on permissions. Restricted tabs are auto-allowed for
   // super_admin + admin (handled inside can()), and require an explicit

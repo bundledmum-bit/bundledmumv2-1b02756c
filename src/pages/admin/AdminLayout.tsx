@@ -12,23 +12,33 @@ import {
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
   type LucideIcon,
 } from "lucide-react";
-import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
+import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
 
-// Map icon name strings from DB to lucide components
+// Map icon-name strings stored on admin_nav_items.icon to lucide components.
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard, Package, Boxes, ShoppingBag, ClipboardList, Users, Tag,
   Gift, Truck, MapPin, MessageSquare, FileText, Image, MessageCircleQuestion,
   Workflow, BarChart3, Settings, Mail, Rocket,
-  Layout, ShieldCheck, RotateCcw, Megaphone,
+  Layout, Shield, ShieldCheck, RotateCcw, Megaphone,
   PageIcon, // alias
 };
 
-function getIcon(iconName: string | null): LucideIcon {
-  if (!iconName) return LayoutDashboard;
-  return ICON_MAP[iconName] || LayoutDashboard;
+// Per-nav_key fallback for rows whose icon column is null or unrecognised.
+// We never want a missing icon to silently drop a sidebar item — this map
+// gives stable defaults for known nav keys, and getIcon() falls through to
+// LayoutDashboard for anything else so the link always renders.
+const NAV_KEY_ICON_MAP: Record<string, LucideIcon> = {
+  admin_users: Shield,
+  delivery: Truck,
+};
+
+function getIcon(iconName: string | null, navKey?: string): LucideIcon {
+  if (iconName && ICON_MAP[iconName]) return ICON_MAP[iconName];
+  if (navKey && NAV_KEY_ICON_MAP[navKey]) return NAV_KEY_ICON_MAP[navKey];
+  return LayoutDashboard;
 }
 
 interface NavItemFromDB {
@@ -112,7 +122,7 @@ function AdminLayoutInner() {
       return {
         to: resolvedPath,
         label: item.label,
-        icon: getIcon(item.icon),
+        icon: getIcon(item.icon, item.nav_key),
         exact: resolvedPath === "/admin",
         navKey: item.nav_key,
       };
