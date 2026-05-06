@@ -32,6 +32,10 @@ export default function AdminUsers() {
       if (error) throw error;
       return data;
     },
+    // Refresh every minute so the "Active now" indicator stays current
+    // without a page reload.
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   const toggleActive = useMutation({
@@ -124,8 +128,8 @@ export default function AdminUsers() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-text-light">
-                        {u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : "Never"}
+                      <td className="px-4 py-3 text-xs">
+                        <LastLoginCell value={u.last_login_at} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         {can("admin", "edit_users") && u.auth_user_id !== currentAdmin?.auth_user_id && (
@@ -148,6 +152,66 @@ export default function AdminUsers() {
       )}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Last login renderer — four tiers driven by the recency of last_login_at:
+//   < 30 min  → pulsing green dot + "Active now"
+//   < 24 h    → "N hours ago"
+//   < 7 days  → "N days ago"
+//   else      → "D MMM, HH:mm" in Africa/Lagos
+//   null      → muted "Never"
+// ---------------------------------------------------------------------------
+
+function LastLoginCell({ value }: { value: string | null | undefined }) {
+  if (!value) {
+    return <span className="text-text-light">Never</span>;
+  }
+
+  const ts = new Date(value).getTime();
+  if (isNaN(ts)) {
+    return <span className="text-text-light">—</span>;
+  }
+  const ageMs = Date.now() - ts;
+  const ageMin = ageMs / 60_000;
+  const ageHr = ageMs / 3_600_000;
+  const ageDay = ageMs / 86_400_000;
+
+  if (ageMin < 30) {
+    return (
+      <span className="flex items-center gap-1.5">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        </span>
+        <span className="text-green-600 text-sm font-medium">Active now</span>
+      </span>
+    );
+  }
+
+  if (ageHr < 24) {
+    const hrs = Math.max(1, Math.floor(ageHr));
+    return <span className="text-text-light">{hrs} hour{hrs === 1 ? "" : "s"} ago</span>;
+  }
+
+  if (ageDay < 7) {
+    const days = Math.max(1, Math.floor(ageDay));
+    return <span className="text-text-light">{days} day{days === 1 ? "" : "s"} ago</span>;
+  }
+
+  // Older than a week — render the absolute date in Lagos time as
+  // "D MMM, HH:mm" (e.g. "4 May, 14:27").
+  const lagos = new Date(value).toLocaleString("en-GB", {
+    timeZone: "Africa/Lagos",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  // en-GB outputs "4 May, 14:27" already — just normalise any stray comma
+  // placement across browsers.
+  return <span className="text-text-light">{lagos.replace(/,\s*/, ", ")}</span>;
 }
 
 function UserForm({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
