@@ -154,7 +154,10 @@ export default function SubscriptionCheckout() {
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
       const popup = new PaystackPop();
-      const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_20a41e2a150aa2424a8aeacee13ac2fbbdb378e4";
+      const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+      if (!paystackKey) {
+        throw new Error("Paystack public key is not configured. Set VITE_PAYSTACK_PUBLIC_KEY in your environment variables.");
+      }
       const reference = `sub_${Date.now()}`;
       const amountKobo = Math.max(0, firstPayment) * 100;
 

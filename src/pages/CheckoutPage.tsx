@@ -857,10 +857,20 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Read + validate the Paystack public key BEFORE the try/catch below —
+    // the catch falls back to a DEMO order on any error, which would
+    // silently mask a misconfigured environment and produce a fake paid
+    // order. Throwing up here stops the flow and surfaces the misconfig.
+    const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+    if (!paystackKey) {
+      setProcessing(false);
+      toast.error("Paystack public key is not configured. Contact support.");
+      throw new Error("Paystack public key is not configured. Set VITE_PAYSTACK_PUBLIC_KEY in your environment variables.");
+    }
+
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
       const popup = new PaystackPop();
-      const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY || "pk_test_20a41e2a150aa2424a8aeacee13ac2fbbdb378e4";
       pixelTrack("AddPaymentInfo", pixelMoney(grand));
       popup.newTransaction({
         key: paystackKey,
