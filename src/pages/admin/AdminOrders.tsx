@@ -608,16 +608,9 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     toast.success("Note added");
   };
 
-  const updatePaymentStatus = async (newPayment: string) => {
-    await supabase.from("orders").update({ payment_status: newPayment }).eq("id", o.id);
-    await supabase.from("order_status_history").insert({
-      order_id: o.id, old_status: o.order_status, new_status: o.order_status,
-      changed_by: adminUser?.id || null, note: `Payment status changed to ${newPayment}`,
-      is_payment_update: true, old_payment_status: o.payment_status, new_payment_status: newPayment,
-    });
-    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
-    toast.success("Payment status updated");
-  };
+  // updatePaymentStatus(...) was replaced by <PaymentStatusControl />
+  // which renders one of four scenarios per the orders.confirm_transfer_payment
+  // and orders.override_card_payment permissions and the order's method/status.
 
   const saveDeliveryInfo = async () => {
     await supabase.from("orders").update({ tracking_number: trackingNumber || null, actual_delivery_date: actualDelivery || null }).eq("id", o.id);
@@ -693,18 +686,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           <h3 className="text-sm font-bold mb-3">Payment Info</h3>
           <div className="space-y-1 text-sm">
             <div><span className="text-muted-foreground text-xs">Method:</span> <span className="capitalize">{o.payment_method}</span></div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">Status:</span>
-              {can("orders", "edit_payment") && o.payment_method === "transfer" && o.payment_status === "pending" ? (
-                <select value={o.payment_status} onChange={e => updatePaymentStatus(e.target.value)}
-                  className="border border-input rounded px-2 py-0.5 text-xs bg-background">
-                  <option value="pending">pending</option>
-                  <option value="paid">paid</option>
-                </select>
-              ) : (
-                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
-              )}
-            </div>
+            <PaymentStatusControl order={o} adminUser={adminUser} can={can} />
             {showPayRef && o.payment_reference && <div><span className="text-muted-foreground text-xs">Reference:</span> {o.payment_reference}</div>}
             {showPayRef && o.paystack_transaction_id && <div><span className="text-muted-foreground text-xs">Paystack ID:</span> {o.paystack_transaction_id}</div>}
           </div>
@@ -969,6 +951,257 @@ async function getLabelLogo(): Promise<string> {
 
 // Editable courier card shown above the order detail grid. Lets admin
 // override the auto-assigned courier + log the actual delivery cost.
+// ============================================================================
+// PaymentStatusControl — renders the payment_status row in Payment Info,
+// branching across four scenarios:
+//   A. transfer + pending + can confirm_transfer_payment → green confirm dialog
+//   B. card/ussd + no override permission → read-only + auto-paid notice
+//   C. card/ussd + has override_card_payment + not paid → notice + red override
+//   D. payment_status === 'paid' → green badge + "use Refund to reverse"
+// All other admin order-detail behaviour is unchanged.
+// ============================================================================
+function PaymentStatusControl({
+  order: o,
+  adminUser,
+  can,
+}: {
+  order: any;
+  adminUser: any;
+  can: (m: string, a: string) => boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [showTransferDlg, setShowTransferDlg] = useState(false);
+  const [showOverrideDlg, setShowOverrideDlg] = useState(false);
+  const [transferNote, setTransferNote] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideAck, setOverrideAck] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Bank info pulled from site_settings if present; falls back to defaults.
+  const { data: settingsRows } = useQuery({
+    queryKey: ["site_settings_bank"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["bank_name", "bank_account_number"]);
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const bank = (() => {
+    const map: Record<string, any> = {};
+    (settingsRows || []).forEach((r: any) => {
+      let v = r.value;
+      if (typeof v === "string") v = v.replace(/^"|"$/g, "");
+      map[r.key] = v;
+    });
+    return {
+      name: typeof map.bank_name === "string" && map.bank_name.trim() ? map.bank_name : "Kuda",
+      account: typeof map.bank_account_number === "string" && map.bank_account_number.trim() ? map.bank_account_number : "3003758996",
+    };
+  })();
+
+  const isTransfer = o.payment_method === "transfer";
+  const isCardOrUssd = o.payment_method === "card" || o.payment_method === "ussd";
+  const isPaid = o.payment_status === "paid";
+  const canConfirmTransfer = can("orders", "confirm_transfer_payment");
+  const canOverrideCard = can("orders", "override_card_payment");
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
+    queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
+  };
+
+  const writePaid = async (overrideType: "transfer_confirmation" | "card_override", note: string) => {
+    setSubmitting(true);
+    try {
+      const oldPayment = o.payment_status;
+      const upd = await supabase.from("orders").update({ payment_status: "paid" }).eq("id", o.id);
+      if (upd.error) throw upd.error;
+      const ins = await supabase.from("order_status_history").insert({
+        order_id: o.id,
+        old_status: o.order_status,
+        new_status: o.order_status,
+        old_payment_status: oldPayment,
+        new_payment_status: "paid",
+        is_payment_update: true,
+        override_type: overrideType,
+        note: note || null,
+        changed_by: adminUser?.id || null,
+      } as any);
+      if (ins.error) throw ins.error;
+      refresh();
+      if (overrideType === "transfer_confirmation") {
+        toast.success("Payment confirmed. Order moved to processing.");
+      } else {
+        toast.success("Payment status overridden. This action has been logged.");
+      }
+      setShowTransferDlg(false);
+      setShowOverrideDlg(false);
+      setTransferNote("");
+      setOverrideReason("");
+      setOverrideAck(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update payment status");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatNaira = (n: number) => `₦${(n || 0).toLocaleString("en-NG")}`;
+
+  // ---- SCENARIO D — already paid ----------------------------------------
+  if (isPaid) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-xs">Status:</span>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS["paid"] || "bg-green-100 text-green-700"}`}>paid</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground italic">
+          Payment confirmed. To reverse, use the Refund action.
+        </p>
+      </div>
+    );
+  }
+
+  // ---- SCENARIO A — bank transfer, pending, can confirm -----------------
+  if (isTransfer && canConfirmTransfer) {
+    return (
+      <>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">Status:</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
+          </div>
+          <button
+            onClick={() => setShowTransferDlg(true)}
+            className="self-start flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-700"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" /> Confirm Payment Received
+          </button>
+        </div>
+        {showTransferDlg && (
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => !submitting && setShowTransferDlg(false)}>
+            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-bold mb-2">Confirm Bank Transfer Payment</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Confirm you have received <span className="font-semibold text-foreground">{formatNaira(o.total)}</span> into your <span className="font-semibold">{bank.name}</span> account (<span className="font-mono">{bank.account}</span>) before marking this order as paid.
+              </p>
+              <label className="text-xs font-semibold text-text-med block mb-1">
+                Payment reference or note <span className="text-destructive">*</span>
+              </label>
+              <input
+                value={transferNote}
+                onChange={e => setTransferNote(e.target.value)}
+                placeholder="e.g. Transfer reference: T2025050112345"
+                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mb-4"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowTransferDlg(false)}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-border rounded-lg text-sm font-semibold disabled:opacity-50"
+                >Cancel</button>
+                <button
+                  onClick={() => writePaid("transfer_confirmation", transferNote.trim())}
+                  disabled={submitting || transferNote.trim().length < 5}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-green-700"
+                >
+                  {submitting ? "Saving..." : "Confirm Payment"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ---- SCENARIO B / C — card or ussd ------------------------------------
+  if (isCardOrUssd) {
+    return (
+      <>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">Status:</span>
+            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground italic">
+            Card payments are confirmed automatically by Paystack. Manual changes are not permitted.
+          </p>
+          {/* SCENARIO C — override allowed */}
+          {canOverrideCard && (
+            <button
+              onClick={() => setShowOverrideDlg(true)}
+              className="self-start mt-1 flex items-center gap-1.5 border border-destructive text-destructive px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-destructive/10"
+            >
+              <XIcon className="w-3.5 h-3.5" /> Override Payment Status
+            </button>
+          )}
+        </div>
+        {showOverrideDlg && (
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => !submitting && setShowOverrideDlg(false)}>
+            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+              <h3 className="text-base font-bold mb-3 flex items-center gap-2 text-destructive">
+                <XIcon className="w-5 h-5" /> Override Card Payment Status
+              </h3>
+              <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-3 text-xs mb-4">
+                This order was paid by card. Paystack should confirm card payments automatically. Only override if you have independently verified this payment was successful.
+              </div>
+              <label className="text-xs font-semibold text-text-med block mb-1">
+                Reason for override <span className="text-destructive">*</span>
+              </label>
+              <textarea
+                value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+                placeholder="Explain why you are manually overriding this payment..."
+                rows={4}
+                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mb-3"
+              />
+              <label className="flex items-start gap-2 text-xs mb-4 cursor-pointer">
+                <Checkbox
+                  checked={overrideAck}
+                  onCheckedChange={v => setOverrideAck(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  I confirm I have verified this payment externally and accept full responsibility for this override.
+                </span>
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowOverrideDlg(false)}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-border rounded-lg text-sm font-semibold disabled:opacity-50"
+                >Cancel</button>
+                <button
+                  onClick={() => writePaid("card_override", overrideReason.trim())}
+                  disabled={submitting || !overrideAck || overrideReason.trim().length === 0}
+                  className="px-4 py-2 bg-destructive text-white rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-destructive/90"
+                >
+                  {submitting ? "Saving..." : "Override Payment Status"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ---- DEFAULT — transfer without permission, or unknown method ---------
+  return (
+    <div className="flex items-center gap-2" title="You don't have permission to confirm payments.">
+      <span className="text-muted-foreground text-xs">Status:</span>
+      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
+    </div>
+  );
+}
+
 // Read-only courier info block shown above the order detail grid.
 // All assignment + cost edits moved out — this is just a summary.
 function CourierAssignmentEditor({ order: o }: { order: any }) {
