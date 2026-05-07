@@ -6,9 +6,10 @@ import { Save, Plus, Trash2, Lock } from "lucide-react";
 import AdminQuizExitPopupTab from "@/components/admin/AdminQuizExitPopupTab";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
-const ALL_TABS = ["General", "Revenue Targets", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
+const ALL_TABS = ["General", "Revenue Targets", "Notification Recipients", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
 const RESTRICTED_TABS: Record<string, { module: string; action: string }> = {
   "Quiz Exit Popup": { module: "content", action: "manage_quiz_exit_popup" },
+  "Notification Recipients": { module: "settings", action: "manage_notifications" },
 };
 
 const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "textarea" | "number" | "toggle" | "color" | "url" | "email" }[]> = {
@@ -151,6 +152,8 @@ export default function AdminSettings() {
 
       {activeTab === "Revenue Targets" ? (
         canEditRevenueTargets ? <RevenueTargetsPanel /> : null
+      ) : activeTab === "Notification Recipients" ? (
+        can("settings", "manage_notifications") ? <NotificationRecipientsPanel /> : null
       ) : activeTab === "Quiz Exit Popup" ? (
         can("content", "manage_quiz_exit_popup") ? (
           <AdminQuizExitPopupTab />
@@ -477,6 +480,162 @@ function RevenueTargetsPanel() {
           ) : (
             <>
               <Save className="w-3.5 h-3.5" /> Save Revenue Targets
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notification Recipients — exposes two operational email keys from
+// site_settings (fulfilment_manager_email, order_manager_email) to admins
+// with the `settings.manage_notifications` permission.
+// The whole tab is filtered out of the tab list for users without that
+// permission via RESTRICTED_TABS, but we also gate the panel render
+// defensively in case the route is hit via stale state.
+// ---------------------------------------------------------------------------
+
+function isValidEmail(s: string): boolean {
+  // Pragmatic single-line regex — same shape used elsewhere in the codebase.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+function NotificationRecipientsPanel() {
+  const queryClient = useQueryClient();
+  const [fulfilmentEmail, setFulfilmentEmail] = useState("");
+  const [orderManagerEmail, setOrderManagerEmail] = useState("");
+  const [touched, setTouched] = useState({ fulfilment: false, order: false });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["fulfilment_manager_email", "order_manager_email"]);
+      if (cancelled) return;
+      if (error) {
+        toast.error(error.message || "Could not load notification recipients");
+        setLoading(false);
+        return;
+      }
+      const map: Record<string, any> = {};
+      (data || []).forEach((row: any) => {
+        let v = row.value;
+        if (typeof v === "string") v = v.replace(/^"|"$/g, "");
+        map[row.key] = v;
+      });
+      setFulfilmentEmail(typeof map.fulfilment_manager_email === "string" ? map.fulfilment_manager_email : "");
+      setOrderManagerEmail(typeof map.order_manager_email === "string" ? map.order_manager_email : "");
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const fulfilmentValid = isValidEmail(fulfilmentEmail);
+  const orderValid = isValidEmail(orderManagerEmail);
+  const bothValid = fulfilmentValid && orderValid;
+
+  const handleSave = async () => {
+    setTouched({ fulfilment: true, order: true });
+    if (!bothValid) return;
+    setSaving(true);
+    try {
+      const { error: e1 } = await supabase
+        .from("site_settings")
+        .upsert({ key: "fulfilment_manager_email", value: fulfilmentEmail.trim() }, { onConflict: "key" });
+      if (e1) throw e1;
+      const { error: e2 } = await supabase
+        .from("site_settings")
+        .upsert({ key: "order_manager_email", value: orderManagerEmail.trim() }, { onConflict: "key" });
+      if (e2) throw e2;
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+      toast.success("Notification recipients updated");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not save changes. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-10 text-text-med">Loading…</div>;
+  }
+
+  const showFulfilmentError = touched.fulfilment && !fulfilmentValid;
+  const showOrderError = touched.order && !orderValid;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-bold mb-1">Notification Recipients</h2>
+        <p className="text-xs text-text-light">
+          Choose who receives operational order notifications. These are
+          internal emails, not visible to customers.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-bold mb-1">New Paid Order Notifications</h3>
+          <p className="text-[11px] text-text-light mb-3">
+            Sent when a customer pays for an order. The recipient should be
+            whoever picks and dispatches orders.
+          </p>
+          <input
+            type="email"
+            value={fulfilmentEmail}
+            onChange={e => setFulfilmentEmail(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, fulfilment: true }))}
+            placeholder="picker@bundledmum.ng"
+            className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${showFulfilmentError ? "border-destructive" : "border-input"}`}
+          />
+          {showFulfilmentError && (
+            <p className="text-[11px] text-destructive mt-1">Please enter a valid email</p>
+          )}
+        </div>
+
+        <div className="bg-card border border-border rounded-xl p-5">
+          <h3 className="text-sm font-bold mb-1">Order Picked Notifications</h3>
+          <p className="text-[11px] text-text-light mb-3">
+            Sent when an order is marked as picked and ready for dispatch.
+            The recipient should be whoever coordinates with couriers.
+          </p>
+          <input
+            type="email"
+            value={orderManagerEmail}
+            onChange={e => setOrderManagerEmail(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, order: true }))}
+            placeholder="dispatch@bundledmum.ng"
+            className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${showOrderError ? "border-destructive" : "border-input"}`}
+          />
+          {showOrderError && (
+            <p className="text-[11px] text-destructive mt-1">Please enter a valid email</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSave}
+          disabled={saving || !bothValid}
+          className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
+        >
+          {saving ? (
+            <>
+              <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Save className="w-3.5 h-3.5" /> Save Changes
             </>
           )}
         </button>
