@@ -497,16 +497,33 @@ function RevenueTargetsPanel() {
 // defensively in case the route is hit via stale state.
 // ---------------------------------------------------------------------------
 
-function isValidEmail(s: string): boolean {
-  // Pragmatic single-line regex — same shape used elsewhere in the codebase.
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+// Parse a free-form list of emails — accepts newline / comma / semicolon
+// separators, trims whitespace, drops empties, dedupes (case-insensitive),
+// and partitions into valid + invalid groups for inline error rendering.
+function parseEmailList(value: string): { valid: string[]; invalid: string[] } {
+  const tokens = value.split(/[\n,;]+/).map(t => t.trim()).filter(t => t.length > 0);
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    if (!emailRegex.test(t)) {
+      invalid.push(t);
+    } else if (!seen.has(t.toLowerCase())) {
+      seen.add(t.toLowerCase());
+      valid.push(t);
+    }
+  }
+  return { valid, invalid };
 }
+
+const RECIPIENTS_PLACEHOLDER =
+  "Enter one email per line\nexample@bundledmum.ng\nfulfilment@bundledmum.ng";
 
 function NotificationRecipientsPanel() {
   const queryClient = useQueryClient();
-  const [fulfilmentEmail, setFulfilmentEmail] = useState("");
-  const [orderManagerEmail, setOrderManagerEmail] = useState("");
-  const [touched, setTouched] = useState({ fulfilment: false, order: false });
+  const [fulfilmentInput, setFulfilmentInput] = useState("");
+  const [orderManagerInput, setOrderManagerInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -529,8 +546,12 @@ function NotificationRecipientsPanel() {
         if (typeof v === "string") v = v.replace(/^"|"$/g, "");
         map[row.key] = v;
       });
-      setFulfilmentEmail(typeof map.fulfilment_manager_email === "string" ? map.fulfilment_manager_email : "");
-      setOrderManagerEmail(typeof map.order_manager_email === "string" ? map.order_manager_email : "");
+      // Normalise whatever's stored (single email, comma list, mixed) into
+      // a one-email-per-line view for editing.
+      const fulfilmentRaw = typeof map.fulfilment_manager_email === "string" ? map.fulfilment_manager_email : "";
+      const orderRaw = typeof map.order_manager_email === "string" ? map.order_manager_email : "";
+      setFulfilmentInput(parseEmailList(fulfilmentRaw).valid.join("\n"));
+      setOrderManagerInput(parseEmailList(orderRaw).valid.join("\n"));
       setLoading(false);
     })();
     return () => {
@@ -538,25 +559,34 @@ function NotificationRecipientsPanel() {
     };
   }, []);
 
-  const fulfilmentValid = isValidEmail(fulfilmentEmail);
-  const orderValid = isValidEmail(orderManagerEmail);
-  const bothValid = fulfilmentValid && orderValid;
+  const fulfilmentParsed = parseEmailList(fulfilmentInput);
+  const orderParsed = parseEmailList(orderManagerInput);
+
+  // Save is allowed only when each field has at least one valid email AND
+  // no invalid entries are present in either field.
+  const fulfilmentOk = fulfilmentParsed.valid.length > 0 && fulfilmentParsed.invalid.length === 0;
+  const orderOk = orderParsed.valid.length > 0 && orderParsed.invalid.length === 0;
+  const canSave = fulfilmentOk && orderOk && !saving;
 
   const handleSave = async () => {
-    setTouched({ fulfilment: true, order: true });
-    if (!bothValid) return;
+    if (!fulfilmentOk || !orderOk) return;
     setSaving(true);
     try {
+      const fulfilmentValue = fulfilmentParsed.valid.join(", ");
+      const orderManagerValue = orderParsed.valid.join(", ");
       const { error: e1 } = await supabase
         .from("site_settings")
-        .upsert({ key: "fulfilment_manager_email", value: fulfilmentEmail.trim() }, { onConflict: "key" });
+        .upsert({ key: "fulfilment_manager_email", value: fulfilmentValue }, { onConflict: "key" });
       if (e1) throw e1;
       const { error: e2 } = await supabase
         .from("site_settings")
-        .upsert({ key: "order_manager_email", value: orderManagerEmail.trim() }, { onConflict: "key" });
+        .upsert({ key: "order_manager_email", value: orderManagerValue }, { onConflict: "key" });
       if (e2) throw e2;
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+      // Reflect normalised values back into the inputs (one per line).
+      setFulfilmentInput(fulfilmentParsed.valid.join("\n"));
+      setOrderManagerInput(orderParsed.valid.join("\n"));
       toast.success("Notification recipients updated");
     } catch (e: any) {
       toast.error(e?.message || "Could not save changes. Please try again.");
@@ -569,9 +599,6 @@ function NotificationRecipientsPanel() {
     return <div className="text-center py-10 text-text-med">Loading…</div>;
   }
 
-  const showFulfilmentError = touched.fulfilment && !fulfilmentValid;
-  const showOrderError = touched.order && !orderValid;
-
   return (
     <div className="space-y-5">
       <div>
@@ -583,49 +610,26 @@ function NotificationRecipientsPanel() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-bold mb-1">New Paid Order Notifications</h3>
-          <p className="text-[11px] text-text-light mb-3">
-            Sent when a customer pays for an order. The recipient should be
-            whoever picks and dispatches orders.
-          </p>
-          <input
-            type="email"
-            value={fulfilmentEmail}
-            onChange={e => setFulfilmentEmail(e.target.value)}
-            onBlur={() => setTouched(t => ({ ...t, fulfilment: true }))}
-            placeholder="picker@bundledmum.ng"
-            className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${showFulfilmentError ? "border-destructive" : "border-input"}`}
-          />
-          {showFulfilmentError && (
-            <p className="text-[11px] text-destructive mt-1">Please enter a valid email</p>
-          )}
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-5">
-          <h3 className="text-sm font-bold mb-1">Order Picked Notifications</h3>
-          <p className="text-[11px] text-text-light mb-3">
-            Sent when an order is marked as picked and ready for dispatch.
-            The recipient should be whoever coordinates with couriers.
-          </p>
-          <input
-            type="email"
-            value={orderManagerEmail}
-            onChange={e => setOrderManagerEmail(e.target.value)}
-            onBlur={() => setTouched(t => ({ ...t, order: true }))}
-            placeholder="dispatch@bundledmum.ng"
-            className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${showOrderError ? "border-destructive" : "border-input"}`}
-          />
-          {showOrderError && (
-            <p className="text-[11px] text-destructive mt-1">Please enter a valid email</p>
-          )}
-        </div>
+        <RecipientCard
+          title="New Paid Order Notifications"
+          description="Sent when a customer pays for an order. The recipient should be whoever picks and dispatches orders."
+          value={fulfilmentInput}
+          onChange={setFulfilmentInput}
+          parsed={fulfilmentParsed}
+        />
+        <RecipientCard
+          title="Order Picked Notifications"
+          description="Sent when an order is marked as picked and ready for dispatch. The recipient should be whoever coordinates with couriers."
+          value={orderManagerInput}
+          onChange={setOrderManagerInput}
+          parsed={orderParsed}
+        />
       </div>
 
       <div className="flex justify-end">
         <button
           onClick={handleSave}
-          disabled={saving || !bothValid}
+          disabled={!canSave}
           className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
         >
           {saving ? (
@@ -640,6 +644,48 @@ function NotificationRecipientsPanel() {
           )}
         </button>
       </div>
+    </div>
+  );
+}
+
+function RecipientCard({
+  title,
+  description,
+  value,
+  onChange,
+  parsed,
+}: {
+  title: string;
+  description: string;
+  value: string;
+  onChange: (v: string) => void;
+  parsed: { valid: string[]; invalid: string[] };
+}) {
+  const hasInvalid = parsed.invalid.length > 0;
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h3 className="text-sm font-bold mb-1">{title}</h3>
+      <p className="text-[11px] text-text-light mb-3">{description}</p>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={4}
+        placeholder={RECIPIENTS_PLACEHOLDER}
+        className={`w-full border rounded-lg px-3 py-2 text-sm bg-background font-mono ${hasInvalid ? "border-destructive" : "border-input"}`}
+      />
+      <p className="text-[11px] text-text-light mt-1">
+        Enter one email address per line. Multiple recipients all receive the notification.
+      </p>
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[11px] font-semibold rounded-pill bg-forest/10 text-forest px-2 py-0.5">
+          {parsed.valid.length} recipient{parsed.valid.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {hasInvalid && (
+        <p className="text-[11px] text-destructive mt-1">
+          Some entries are not valid email addresses: {parsed.invalid.join(", ")}
+        </p>
+      )}
     </div>
   );
 }
