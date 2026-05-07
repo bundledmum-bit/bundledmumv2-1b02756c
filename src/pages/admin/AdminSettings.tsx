@@ -489,9 +489,11 @@ function RevenueTargetsPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Notification Recipients — exposes two operational email keys from
-// site_settings (fulfilment_manager_email, order_manager_email) to admins
-// with the `settings.manage_notifications` permission.
+// Notification Recipients — exposes four operational email keys from
+// site_settings to admins with the `settings.manage_notifications`
+// permission. Each card is a multi-recipient textarea backed by the
+// parseEmailList helper. Schema-style array below makes it trivial to add
+// more recipient categories later.
 // The whole tab is filtered out of the tab list for users without that
 // permission via RESTRICTED_TABS, but we also gate the panel render
 // defensively in case the route is hit via stale state.
@@ -520,10 +522,40 @@ function parseEmailList(value: string): { valid: string[]; invalid: string[] } {
 const RECIPIENTS_PLACEHOLDER =
   "Enter one email per line\nexample@bundledmum.ng\nfulfilment@bundledmum.ng";
 
+interface RecipientField {
+  key: string;
+  title: string;
+  description: string;
+}
+
+const RECIPIENT_FIELDS: RecipientField[] = [
+  {
+    key: "fulfilment_manager_email",
+    title: "New Paid Order Notifications",
+    description: "Sent when a customer pays for an order. The recipient should be whoever picks and dispatches orders.",
+  },
+  {
+    key: "order_manager_email",
+    title: "Order Picked Notifications",
+    description: "Sent when an order is marked as picked and ready for dispatch. The recipient should be whoever coordinates with couriers.",
+  },
+  {
+    key: "customer_experience_email",
+    title: "Return & Refund Requests",
+    description: "Sent when a customer submits a return or refund request. The recipient should be whoever handles customer issues and decides on returns.",
+  },
+  {
+    key: "daily_summary_email",
+    title: "Daily Sales Summary",
+    description: "Sent at 7am Lagos time every morning. Contains yesterday's orders, revenue, GMV vs target, and current ops state.",
+  },
+];
+
 function NotificationRecipientsPanel() {
   const queryClient = useQueryClient();
-  const [fulfilmentInput, setFulfilmentInput] = useState("");
-  const [orderManagerInput, setOrderManagerInput] = useState("");
+  const [inputs, setInputs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(RECIPIENT_FIELDS.map(f => [f.key, ""])),
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -533,7 +565,7 @@ function NotificationRecipientsPanel() {
       const { data, error } = await supabase
         .from("site_settings")
         .select("key, value")
-        .in("key", ["fulfilment_manager_email", "order_manager_email"]);
+        .in("key", RECIPIENT_FIELDS.map(f => f.key));
       if (cancelled) return;
       if (error) {
         toast.error(error.message || "Could not load notification recipients");
@@ -548,10 +580,12 @@ function NotificationRecipientsPanel() {
       });
       // Normalise whatever's stored (single email, comma list, mixed) into
       // a one-email-per-line view for editing.
-      const fulfilmentRaw = typeof map.fulfilment_manager_email === "string" ? map.fulfilment_manager_email : "";
-      const orderRaw = typeof map.order_manager_email === "string" ? map.order_manager_email : "";
-      setFulfilmentInput(parseEmailList(fulfilmentRaw).valid.join("\n"));
-      setOrderManagerInput(parseEmailList(orderRaw).valid.join("\n"));
+      const next: Record<string, string> = {};
+      for (const f of RECIPIENT_FIELDS) {
+        const raw = typeof map[f.key] === "string" ? map[f.key] : "";
+        next[f.key] = parseEmailList(raw).valid.join("\n");
+      }
+      setInputs(next);
       setLoading(false);
     })();
     return () => {
@@ -559,34 +593,43 @@ function NotificationRecipientsPanel() {
     };
   }, []);
 
-  const fulfilmentParsed = parseEmailList(fulfilmentInput);
-  const orderParsed = parseEmailList(orderManagerInput);
+  const parsedByKey = useMemo(() => {
+    const out: Record<string, ReturnType<typeof parseEmailList>> = {};
+    for (const f of RECIPIENT_FIELDS) {
+      out[f.key] = parseEmailList(inputs[f.key] || "");
+    }
+    return out;
+  }, [inputs]);
 
-  // Save is allowed only when each field has at least one valid email AND
-  // no invalid entries are present in either field.
-  const fulfilmentOk = fulfilmentParsed.valid.length > 0 && fulfilmentParsed.invalid.length === 0;
-  const orderOk = orderParsed.valid.length > 0 && orderParsed.invalid.length === 0;
-  const canSave = fulfilmentOk && orderOk && !saving;
+  // Save is allowed only when EVERY field has at least one valid email AND
+  // no invalid entries are present anywhere.
+  const allOk = RECIPIENT_FIELDS.every(f => {
+    const p = parsedByKey[f.key];
+    return p.valid.length > 0 && p.invalid.length === 0;
+  });
+  const canSave = allOk && !saving;
 
   const handleSave = async () => {
-    if (!fulfilmentOk || !orderOk) return;
+    if (!allOk) return;
     setSaving(true);
     try {
-      const fulfilmentValue = fulfilmentParsed.valid.join(", ");
-      const orderManagerValue = orderParsed.valid.join(", ");
-      const { error: e1 } = await supabase
-        .from("site_settings")
-        .upsert({ key: "fulfilment_manager_email", value: fulfilmentValue }, { onConflict: "key" });
-      if (e1) throw e1;
-      const { error: e2 } = await supabase
-        .from("site_settings")
-        .upsert({ key: "order_manager_email", value: orderManagerValue }, { onConflict: "key" });
-      if (e2) throw e2;
+      // Sequential upserts — keeps error attribution clean if one fails
+      // while still preserving the others' success state.
+      for (const f of RECIPIENT_FIELDS) {
+        const value = parsedByKey[f.key].valid.join(", ");
+        const { error } = await supabase
+          .from("site_settings")
+          .upsert({ key: f.key, value }, { onConflict: "key" });
+        if (error) throw error;
+      }
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       queryClient.invalidateQueries({ queryKey: ["site_settings"] });
       // Reflect normalised values back into the inputs (one per line).
-      setFulfilmentInput(fulfilmentParsed.valid.join("\n"));
-      setOrderManagerInput(orderParsed.valid.join("\n"));
+      const normalised: Record<string, string> = {};
+      for (const f of RECIPIENT_FIELDS) {
+        normalised[f.key] = parsedByKey[f.key].valid.join("\n");
+      }
+      setInputs(normalised);
       toast.success("Notification recipients updated");
     } catch (e: any) {
       toast.error(e?.message || "Could not save changes. Please try again.");
@@ -610,20 +653,16 @@ function NotificationRecipientsPanel() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <RecipientCard
-          title="New Paid Order Notifications"
-          description="Sent when a customer pays for an order. The recipient should be whoever picks and dispatches orders."
-          value={fulfilmentInput}
-          onChange={setFulfilmentInput}
-          parsed={fulfilmentParsed}
-        />
-        <RecipientCard
-          title="Order Picked Notifications"
-          description="Sent when an order is marked as picked and ready for dispatch. The recipient should be whoever coordinates with couriers."
-          value={orderManagerInput}
-          onChange={setOrderManagerInput}
-          parsed={orderParsed}
-        />
+        {RECIPIENT_FIELDS.map(f => (
+          <RecipientCard
+            key={f.key}
+            title={f.title}
+            description={f.description}
+            value={inputs[f.key] || ""}
+            onChange={v => setInputs(prev => ({ ...prev, [f.key]: v }))}
+            parsed={parsedByKey[f.key]}
+          />
+        ))}
       </div>
 
       <div className="flex justify-end">
