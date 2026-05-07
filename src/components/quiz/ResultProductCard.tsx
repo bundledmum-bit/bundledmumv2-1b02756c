@@ -34,7 +34,12 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || (brands.length > 0 ? brands[0] : null);
   const displayImage = selectedBrand?.imageUrl || item.brand?.image_url || item.image_url;
   const displayPrice = selectedBrand?.price ?? item.brand?.price ?? 0;
-  const brandOos = selectedBrand ? !selectedBrand.inStock : false;
+  // "Coming soon" — no purchasable brand variant exists for this SKU.
+  // Distinct from out-of-stock (which has a brand but inStock=false).
+  // We hide the price, swap the Add button for a Coming Soon pill, and
+  // upstream HomeQuiz.handleAddProduct refuses the cart insert.
+  const comingSoon = !selectedBrand && !item.brand;
+  const brandOos = !comingSoon && selectedBrand ? !selectedBrand.inStock : false;
   const isLowStock = selectedBrand?.stockQuantity != null && selectedBrand.stockQuantity > 0 && selectedBrand.stockQuantity <= 5;
   const showSale = selectedBrand?.compareAtPrice && selectedBrand.compareAtPrice > (selectedBrand?.price || 0);
 
@@ -45,12 +50,12 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   const displayBrands = showMore ? brands : visibleBrands;
 
   const handleAdd = () => {
-    if (brandOos) return;
+    if (brandOos || comingSoon) return;
     onAdd(selectedBrand, selectedSize);
   };
 
   return (
-    <div className={`bg-card rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all group ${brandOos ? "opacity-60" : ""}`}>
+    <div className={`bg-card rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all group ${(brandOos || comingSoon) ? "opacity-60" : ""}`}>
       <div className="relative h-36 md:h-44 flex items-center justify-center overflow-hidden bg-muted/30 cursor-pointer" onClick={onViewDetail}>
         {item.priority === "essential" && (
           <span className="absolute top-2.5 left-2.5 bg-coral text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase tracking-wide z-10">Essential</span>
@@ -133,11 +138,19 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
 
         <div className="flex items-end justify-between mt-1">
           <div>
-            <p className="pf text-lg font-bold text-forest">{fmt(displayPrice * (item.quantity || 1))}</p>
-            {showSale && <p className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</p>}
-            {!showSale && brands.length > 1 && <p className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</p>}
+            {comingSoon ? (
+              <p className="text-muted-foreground text-[11px] italic">Price not available</p>
+            ) : (
+              <>
+                <p className="pf text-lg font-bold text-forest">{fmt(displayPrice * (item.quantity || 1))}</p>
+                {showSale && <p className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</p>}
+                {!showSale && brands.length > 1 && <p className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</p>}
+              </>
+            )}
           </div>
-          {brandOos ? (
+          {comingSoon ? (
+            <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 text-[10px] font-semibold font-body">Coming soon</span>
+          ) : brandOos ? (
             <span className="rounded-pill bg-border px-3 py-1.5 text-[10px] font-semibold text-muted-foreground font-body">Sold Out</span>
           ) : isInCart && cartItem && onQtyUpdate ? (
             <QtyControl qty={cartItem.qty} onUpdate={(newQty) => onQtyUpdate(cartItem._key, newQty)} maxQty={selectedBrand?.stockQuantity ?? undefined} />

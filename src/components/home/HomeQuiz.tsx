@@ -421,10 +421,23 @@ function ResultsScreen({
   const setQty = (item: RecommendedProduct, next: number) =>
     setQuantities(q => ({ ...q, [item.product_id]: Math.max(1, next) }));
 
+  // True when an item has at least one purchasable brand variant — the
+  // run_quiz_recommendation RPC returns brand=null for SKUs we don't yet
+  // stock, and we never want those rows to enter the cart payload sent
+  // to place-order. The recommendation card UI surfaces these as
+  // "Coming soon" instead of showing an Add button.
+  const isPurchasable = (r: RecommendedProduct): boolean => !!r.brand && (r.brand as any).price != null;
+
   // Cart payload mirrors the old quiz's handleAddProduct byte-for-byte.
   // qtyOverride lets callers push N copies of the same product (Add All +
   // the pre-add qty stepper both use this).
   const handleAddProduct = (item: RecommendedProduct, overrideBrand?: Brand | null, overrideSize?: string, qtyOverride?: number) => {
+    // Guard against null-brand SKUs sneaking into the cart — without a
+    // brand_id, place-order can't insert a valid order_items row.
+    if (!overrideBrand && !isPurchasable(item)) {
+      toast("This item is coming soon and can't be added yet.");
+      return;
+    }
     const brandName = overrideBrand?.label || item.brand?.brand_name || "Standard";
     const brandPrice = overrideBrand?.price ?? item.brand?.price ?? 0;
     const brandId = overrideBrand?.id || item.brand?.id || item.product_id;
@@ -528,9 +541,14 @@ function ResultsScreen({
   const mumItems = isGift ? [] : results.filter(r => r.category === "mum" && !isHospital(r) && !isNice(r));
 
   // Recommendation total — reactive to the user's pre-add qty steppers.
-  // Uses each item's recommended brand price (brand switches inside a
-  // card don't affect this total).
-  const recommendationTotal = results.reduce((s, r) => s + (r.brand?.price || 0) * qtyFor(r), 0);
+  // Uses each item's recommended brand price; null-brand "coming soon"
+  // SKUs contribute zero (and are excluded entirely from cart / share /
+  // copy below).
+  const recommendationTotal = results.reduce((sum, item) => {
+    const price = item.brand?.price ?? 0;
+    const qty = qtyFor(item) ?? 1;
+    return sum + price * qty;
+  }, 0);
   const grandTotal = recommendationTotal;
   const budgetLabel = answers.budget === "starter" ? "Starter" : answers.budget === "premium" ? "Premium" : "Standard";
   const multiples = 1;
@@ -555,24 +573,39 @@ function ResultsScreen({
   ];
 
   const handleAddAll = () => {
-    // Use the user's pre-add qty if they touched the stepper; otherwise
-    // fall back to the engine's suggested quantity. handleAddProduct loops
-    // internally, so no outer loop here.
-    results.forEach(item => {
+    // Skip null-brand "Coming soon" items — they have no purchasable
+    // variant and would be rejected by the place-order edge function.
+    const buyable = results.filter(isPurchasable);
+    const skipped = results.length - buyable.length;
+    buyable.forEach(item => {
       handleAddProduct(item, undefined, undefined, qtyFor(item));
     });
-    toast.success("✓ Your full bundle has been added to cart!");
+    if (skipped > 0) {
+      toast.success(`✓ Added ${buyable.length} items to cart. ${skipped} coming-soon item${skipped === 1 ? "" : "s"} skipped.`);
+    } else {
+      toast.success("✓ Your full bundle has been added to cart!");
+    }
     navigate("/cart");
   };
 
   const handleShare = () => setShowShareModal(true);
   const handleCopyChecklist = () => {
-    const list = results.map(r => `${r.quantity > 1 ? `×${r.quantity} ` : ""}${r.name} (${r.brand?.brand_name || "Standard"}) — ${fmt((r.brand?.price || 0) * (r.quantity || 1))}`).join("\n");
+    const list = results.map(r => {
+      if (!isPurchasable(r)) {
+        return `${r.quantity > 1 ? `×${r.quantity} ` : ""}${r.name} — Coming soon`;
+      }
+      const price = r.brand?.price ?? 0;
+      const qty = r.quantity ?? 1;
+      return `${qty > 1 ? `×${qty} ` : ""}${r.name} (${r.brand?.brand_name || "Standard"}) — ${fmt(price * qty)}`;
+    }).join("\n");
     const text = `My BundledMum ${budgetLabel} Bundle\n${"=".repeat(30)}\n\n${list}\n\nTotal: ${fmt(grandTotal)}\n\nBuild yours: https://bundledmum.com`;
     navigator.clipboard.writeText(text).then(() => toast.success("Checklist copied to clipboard!"));
   };
 
-  const shareItems = results.map(r => ({ name: r.name, price: (r.brand?.price || 0) * (r.quantity || 1) }));
+  // Share modal only includes priced items — no point showing "₦0" rows.
+  const shareItems = results
+    .filter(isPurchasable)
+    .map(r => ({ name: r.name, price: ((r.brand?.price ?? 0)) * (r.quantity ?? 1) }));
 
   return (
     <div className="min-h-screen bg-background pt-[68px] pb-16 md:pb-0">
