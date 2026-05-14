@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
 import PixelRouteListener from "@/components/PixelRouteListener";
+import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import SkipNav from "@/components/SkipNav";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -295,6 +296,7 @@ const App = () => (
             <PageTracker>
             <ScrollToTop />
             <PixelRouteListener />
+            <AnalyticsRouteListener />
             <PasswordRecoveryListener />
             <Routes>
               {/* Admin routes */}
