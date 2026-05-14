@@ -97,6 +97,72 @@ export type Database = {
           },
         ]
       }
+      admin_approval_requests: {
+        Row: {
+          action: string
+          created_at: string
+          description: string
+          id: string
+          proposed_data: Json | null
+          requested_at: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          reviewer_note: string | null
+          status: string
+          target_record_id: string | null
+          target_table: string
+          updated_at: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          description: string
+          id?: string
+          proposed_data?: Json | null
+          requested_at?: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          status?: string
+          target_record_id?: string | null
+          target_table: string
+          updated_at?: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          description?: string
+          id?: string
+          proposed_data?: Json | null
+          requested_at?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          reviewer_note?: string | null
+          status?: string
+          target_record_id?: string | null
+          target_table?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_approval_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_approval_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_nav_items: {
         Row: {
           created_at: string | null
@@ -104,6 +170,7 @@ export type Database = {
           icon: string | null
           id: string
           is_active: boolean | null
+          is_built: boolean | null
           label: string
           nav_key: string
           parent_key: string | null
@@ -117,6 +184,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          is_built?: boolean | null
           label: string
           nav_key: string
           parent_key?: string | null
@@ -130,6 +198,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          is_built?: boolean | null
           label?: string
           nav_key?: string
           parent_key?: string | null
@@ -323,6 +392,7 @@ export type Database = {
           id: string
           module: string
           notes: string | null
+          updated_at: string | null
         }
         Insert: {
           action: string
@@ -333,6 +403,7 @@ export type Database = {
           id?: string
           module: string
           notes?: string | null
+          updated_at?: string | null
         }
         Update: {
           action?: string
@@ -343,6 +414,7 @@ export type Database = {
           id?: string
           module?: string
           notes?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -648,6 +720,7 @@ export type Database = {
           tier: string
           updated_at: string
           vendor_id: string | null
+          weight_kg: number | null
           weight_range_kg: string | null
         }
         Insert: {
@@ -676,6 +749,7 @@ export type Database = {
           tier: string
           updated_at?: string
           vendor_id?: string | null
+          weight_kg?: number | null
           weight_range_kg?: string | null
         }
         Update: {
@@ -704,6 +778,7 @@ export type Database = {
           tier?: string
           updated_at?: string
           vendor_id?: string | null
+          weight_kg?: number | null
           weight_range_kg?: string | null
         }
         Relationships: [
@@ -4107,6 +4182,8 @@ export type Database = {
           old_payment_status: string | null
           old_status: string | null
           order_id: string
+          override_reason: string | null
+          override_type: string | null
         }
         Insert: {
           changed_by?: string | null
@@ -4119,6 +4196,8 @@ export type Database = {
           old_payment_status?: string | null
           old_status?: string | null
           order_id: string
+          override_reason?: string | null
+          override_type?: string | null
         }
         Update: {
           changed_by?: string | null
@@ -4131,6 +4210,8 @@ export type Database = {
           old_payment_status?: string | null
           old_status?: string | null
           order_id?: string
+          override_reason?: string | null
+          override_type?: string | null
         }
         Relationships: [
           {
@@ -4436,11 +4517,13 @@ export type Database = {
       }
       pages: {
         Row: {
+          body_blocks: Json | null
           content: string
           created_at: string | null
           hero_text: string | null
           id: string
           is_published: boolean | null
+          last_updated_label: string | null
           meta_description: string | null
           meta_title: string | null
           slug: string
@@ -4448,11 +4531,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          body_blocks?: Json | null
           content?: string
           created_at?: string | null
           hero_text?: string | null
           id?: string
           is_published?: boolean | null
+          last_updated_label?: string | null
           meta_description?: string | null
           meta_title?: string | null
           slug: string
@@ -4460,11 +4545,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          body_blocks?: Json | null
           content?: string
           created_at?: string | null
           hero_text?: string | null
           id?: string
           is_published?: boolean | null
+          last_updated_label?: string | null
           meta_description?: string | null
           meta_title?: string | null
           slug?: string
@@ -6592,52 +6679,67 @@ export type Database = {
           brand_name: string | null
           compare_at_price: number | null
           created_at: string | null
+          diaper_type: string | null
           display_order: number | null
           id: string | null
           image_url: string | null
+          images: string[] | null
           in_stock: boolean | null
           is_default_for_tier: boolean | null
           logo_url: string | null
+          pack_count: number | null
           price: number | null
           product_id: string | null
           size_variant: string | null
           stock_quantity: number | null
           thumbnail_url: string | null
           tier: string | null
+          updated_at: string | null
+          weight_range_kg: string | null
         }
         Insert: {
           brand_name?: string | null
           compare_at_price?: number | null
           created_at?: string | null
+          diaper_type?: string | null
           display_order?: number | null
           id?: string | null
           image_url?: string | null
+          images?: string[] | null
           in_stock?: boolean | null
           is_default_for_tier?: boolean | null
           logo_url?: string | null
+          pack_count?: number | null
           price?: number | null
           product_id?: string | null
           size_variant?: string | null
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier?: string | null
+          updated_at?: string | null
+          weight_range_kg?: string | null
         }
         Update: {
           brand_name?: string | null
           compare_at_price?: number | null
           created_at?: string | null
+          diaper_type?: string | null
           display_order?: number | null
           id?: string | null
           image_url?: string | null
+          images?: string[] | null
           in_stock?: boolean | null
           is_default_for_tier?: boolean | null
           logo_url?: string | null
+          pack_count?: number | null
           price?: number | null
           product_id?: string | null
           size_variant?: string | null
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier?: string | null
+          updated_at?: string | null
+          weight_range_kg?: string | null
         }
         Relationships: [
           {
@@ -7172,6 +7274,7 @@ export type Database = {
           still_pending: Json
         }[]
       }
+      get_dashboard_metrics: { Args: never; Returns: Json }
       get_delivery_fee: {
         Args: { p_city: string; p_state: string; p_subtotal: number }
         Returns: {
@@ -7182,8 +7285,21 @@ export type Database = {
         }[]
       }
       get_subscription_settings: { Args: never; Returns: Json }
+      get_user_permissions: {
+        Args: { p_target_user_id: string }
+        Returns: Json
+      }
+      grant_admin_permission: {
+        Args: {
+          p_action: string
+          p_granted?: boolean
+          p_module: string
+          p_target_user_id: string
+        }
+        Returns: Json
+      }
       has_admin_permission: {
-        Args: { p_action: string; p_section: string }
+        Args: { p_action?: string; p_section: string }
         Returns: boolean
       }
       initiate_return:
@@ -7223,11 +7339,25 @@ export type Database = {
         Returns: string
       }
       orders_paid_only_restricted: { Args: never; Returns: boolean }
+      process_admin_approval: {
+        Args: { p_approved: boolean; p_note?: string; p_request_id: string }
+        Returns: Json
+      }
       process_annual_leave_carryover: {
         Args: { p_from_year?: number; p_max_carryover?: number }
         Returns: Json
       }
       process_recurring_expenses: { Args: never; Returns: Json }
+      request_admin_action: {
+        Args: {
+          p_action: string
+          p_description?: string
+          p_proposed_data?: Json
+          p_record_id?: string
+          p_target_table: string
+        }
+        Returns: Json
+      }
       run_push_gift_recommendation: {
         Args: { p_budget_tier: string; p_category: string; p_timing: string }
         Returns: Json
