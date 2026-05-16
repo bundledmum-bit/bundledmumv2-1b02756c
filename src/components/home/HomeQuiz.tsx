@@ -416,7 +416,19 @@ function ResultsScreen({
           });
           if (cancelled) return;
           if (error) throw error;
-          setResult(data as unknown as RecommendationResult);
+          // Engine v4.8 returns { engine_version, product_count, products, ... }.
+          // Some Supabase JSONB shapes wrap this further, so unwrap defensively.
+          const raw: any = data;
+          const unwrapped = raw && typeof raw === "object" && Array.isArray(raw.products)
+            ? raw
+            : (raw && typeof raw === "object" && raw.data && Array.isArray(raw.data.products) ? raw.data : raw);
+          // eslint-disable-next-line no-console
+          console.log("[quiz results] data:", unwrapped, "products:", unwrapped?.products?.length);
+          const normalised: RecommendationResult = {
+            ...(unwrapped || {}),
+            products: Array.isArray(unwrapped?.products) ? unwrapped.products : [],
+          } as RecommendationResult;
+          setResult(normalised);
         }
       } catch (err: any) {
         if (!cancelled) setError(err?.message || "Something went wrong.");
@@ -554,7 +566,10 @@ function ResultsScreen({
       </div>
     );
   }
-  if (!result || result.products.length === 0) {
+  // Empty state — guards both "no result" and "products array missing/empty".
+  // Without optional chaining here a malformed RPC response would crash
+  // the screen instead of surfacing this panel, which is what blanks the page.
+  if (!result || !Array.isArray(result.products) || result.products.length === 0) {
     return (
       <div className="min-h-screen bg-background pt-[68px] px-4 flex items-center justify-center">
         <div className="text-center max-w-md">
