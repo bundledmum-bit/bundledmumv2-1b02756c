@@ -9,6 +9,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions } from "@/hooks/useQuizConfig";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
+import { analytics, trackEcommerce } from "@/lib/ga";
 import OptionalTextStep from "@/components/quiz/OptionalTextStep";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
@@ -297,11 +298,13 @@ function QuizScreen({
 function ResultsScreen({
   budget, categories, gender,
   onBack,
+  onComplete,
 }: {
   budget: number;
   categories: Set<Category>;
   gender: Gender;
   onBack: () => void;
+  onComplete?: () => void;
 }) {
   const navigate = useNavigate();
   const { cart, addToCart, setCart } = useCart();
@@ -321,6 +324,20 @@ function ResultsScreen({
       setLoading(true); setError(null);
       const budgetTier = budgetTierFor(budget);
       const isGift = categories.has("gift");
+      // GA4 quiz_complete — fire once before kicking off the RPC. Mark the
+      // quiz as completed so the abandon-on-unmount cleanup no-ops.
+      try {
+        onComplete?.();
+        analytics.push({
+          event: "quiz_complete",
+          quiz_name: "bundle_recommendation",
+          budget_tier: budgetTier,
+          budget_amount: budget,
+          scope: isGift ? "gift" : scopeFor(categories),
+          stage: isGift ? "newborn" : stageFor(categories),
+          gender: gender || "unknown",
+        });
+      } catch { /* ignore */ }
       try {
         if (isGift) {
           // Gift path uses the push-gift recommendation engine — it queries
@@ -472,6 +489,34 @@ function ResultsScreen({
       } as any);
     }
     toast.success(`✓ ${item.name} added to cart${qty > 1 ? ` (×${qty})` : ""}`);
+
+    // GA4 quiz_add_to_cart — carries quiz context alongside the standard
+    // add_to_cart already fired by cart.tsx. Both fire so the regular GA4
+    // funnel still tracks the add, while quiz_add_to_cart enables quiz-
+    // specific dashboards.
+    try {
+      trackEcommerce("add_to_cart", {
+        currency: "NGN",
+        value: brandPrice,
+        items: [{
+          item_id: String(item.product_id),
+          item_name: item.name,
+          item_brand: brandName,
+          item_variant: (overrideBrand as any)?.sku ?? (item.brand as any)?.sku ?? "",
+          item_category: item.category ?? "",
+          item_category2: item.subcategory ?? "",
+          price: brandPrice,
+          quantity: 1,
+          item_list_id: "quiz_results",
+          item_list_name: "Quiz Recommendations",
+        }],
+      });
+      analytics.push({
+        event: "quiz_add_to_cart",
+        budget_tier: budgetTierFor(budget),
+        product_priority: item.priority,
+      });
+    } catch { /* ignore */ }
   };
 
   const handleRemoveProduct = (item: RecommendedProduct) => {
@@ -520,6 +565,41 @@ function ResultsScreen({
   const recommendation = result;
   const results = recommendation.products;
   const isGift = answers.shopper === "gift";
+
+  // GA4 quiz_results_view — fire once per recommendation, when results are
+  // populated. Ref keyed by recommendation identity to survive re-renders.
+  const resultsViewFiredRef = useRef<RecommendationResult | null>(null);
+  useEffect(() => {
+    if (!results.length) return;
+    if (resultsViewFiredRef.current === recommendation) return;
+    resultsViewFiredRef.current = recommendation;
+    try {
+      trackEcommerce("view_item_list", {
+        item_list_id: "quiz_results",
+        item_list_name: "Quiz Recommendations",
+        items: results.map((p, index) => ({
+          item_id: String(p.product_id),
+          item_name: p.name,
+          item_brand: p.brand?.brand_name ?? "",
+          item_variant: (p.brand as any)?.sku ?? "",
+          item_category: p.category ?? "",
+          item_category2: p.subcategory ?? "",
+          price: p.brand?.price ?? 0,
+          index,
+          item_list_id: "quiz_results",
+          item_list_name: "Quiz Recommendations",
+        })),
+      });
+      analytics.push({
+        event: "quiz_results_view",
+        quiz_name: "bundle_recommendation",
+        result_count: results.length,
+        total_value: results.reduce((sum, p) => sum + (p.brand?.price ?? 0), 0),
+        budget_tier: budgetTierFor(budget),
+        budget_amount: budget,
+      });
+    } catch { /* ignore */ }
+  }, [recommendation, results, budget]);
 
   // On the gift path, push-gift RPC returns category = "push-gift" (and a
   // handful of "mum"). Render them all in a single "Gift Bundle" section
@@ -885,6 +965,45 @@ export default function HomeQuiz({
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [, setWhatsapp] = useState<string | null>(null);
 
+  // ── GA4 quiz funnel ────────────────────────────────────────────────
+  // quiz_start once per mount, regardless of how many re-renders happen.
+  const quizStartFiredRef = useRef(false);
+  useEffect(() => {
+    if (quizStartFiredRef.current) return;
+    quizStartFiredRef.current = true;
+    try {
+      analytics.push({ event: "quiz_start", quiz_name: "bundle_recommendation" });
+    } catch { /* ignore */ }
+  }, []);
+
+  // quiz_abandon — fire on unmount if results haven't loaded. Ref so the
+  // cleanup reads the latest "completed" value, not a stale closure.
+  const quizCompletedRef = useRef(false);
+  const lastScreenRef = useRef<Screen>("quiz");
+  useEffect(() => {
+    lastScreenRef.current = screen;
+  }, [screen]);
+  useEffect(() => {
+    return () => {
+      if (quizCompletedRef.current) return;
+      try {
+        // Step index/name based on the screen at unmount time.
+        const stepMap: Record<Screen, { n: number; name: string }> = {
+          quiz: { n: 1, name: "answers" },
+          whatsapp: { n: 2, name: "whatsapp" },
+          results: { n: 3, name: "results" },
+        };
+        const cur = stepMap[lastScreenRef.current] || stepMap.quiz;
+        analytics.push({
+          event: "quiz_abandon",
+          quiz_name: "bundle_recommendation",
+          last_step: cur.n,
+          last_step_name: cur.name,
+        });
+      } catch { /* ignore */ }
+    };
+  }, []);
+
   const { data: questions } = useQuizQuestions();
   const whatsappQuestion = (questions || []).find(q => q.step_id === "whatsapp");
 
@@ -902,6 +1021,32 @@ export default function HomeQuiz({
       categories: Array.from(categories),
       gender: gender || "unknown",
     });
+    // GA4 quiz_step — emit one event per answer captured. Single-screen
+    // quiz collects all three on the same view, so the "transition" to the
+    // next screen is the moment to record each step's answer.
+    try {
+      analytics.push({
+        event: "quiz_step",
+        quiz_name: "bundle_recommendation",
+        step_number: 1,
+        step_name: "budget",
+        step_value: budgetTierFor(budget),
+      });
+      analytics.push({
+        event: "quiz_step",
+        quiz_name: "bundle_recommendation",
+        step_number: 2,
+        step_name: "scope",
+        step_value: scopeFor(categories),
+      });
+      analytics.push({
+        event: "quiz_step",
+        quiz_name: "bundle_recommendation",
+        step_number: 3,
+        step_name: "gender",
+        step_value: gender || "unknown",
+      });
+    } catch { /* ignore */ }
     if (onSubmit && gender) {
       // Host-controlled: let the host page handle transition (e.g. Home
       // routing to /quiz before showing WhatsApp).
@@ -932,6 +1077,7 @@ export default function HomeQuiz({
       <ResultsScreen
         budget={budget} categories={categories} gender={gender as Gender}
         onBack={() => setScreen("quiz")}
+        onComplete={() => { quizCompletedRef.current = true; }}
       />
     ) : (
       <OptionalTextStep
@@ -955,6 +1101,7 @@ export default function HomeQuiz({
       <ResultsScreen
         budget={budget} categories={categories} gender={gender as Gender}
         onBack={() => setScreen("quiz")}
+        onComplete={() => { quizCompletedRef.current = true; }}
       />
     </div>,
     document.body
