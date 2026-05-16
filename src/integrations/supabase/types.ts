@@ -6691,6 +6691,7 @@ export type Database = {
           price: number | null
           product_id: string | null
           size_variant: string | null
+          sku: string | null
           stock_quantity: number | null
           thumbnail_url: string | null
           tier: string | null
@@ -6713,6 +6714,7 @@ export type Database = {
           price?: number | null
           product_id?: string | null
           size_variant?: string | null
+          sku?: string | null
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier?: string | null
@@ -6735,6 +6737,7 @@ export type Database = {
           price?: number | null
           product_id?: string | null
           size_variant?: string | null
+          sku?: string | null
           stock_quantity?: number | null
           thumbnail_url?: string | null
           tier?: string | null

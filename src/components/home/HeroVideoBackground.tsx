@@ -98,9 +98,15 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
   }, [videoId]);
 
   return (
-    <div
-      ref={containerRef}
-      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full"
-    />
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div
+        ref={containerRef}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full pointer-events-none"
+        style={{ pointerEvents: "none" }}
+      />
+      {/* Shield blocks all hover/click interactions with the YouTube iframe,
+          which is what triggers the title bar, pause button, and channel name. */}
+      <div className="absolute inset-0 z-10" aria-hidden="true" />
+    </div>
   );
 }
