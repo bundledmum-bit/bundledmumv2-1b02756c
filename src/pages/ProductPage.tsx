@@ -96,13 +96,31 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const skuParam = searchParams.get("sku");
 
   // Pre-select brand variant from ?sku= param if present and matched.
-  // Falls back to the standard-tier default otherwise.
+  // Otherwise pick a default: prefer in-stock brands, then lowest
+  // display_order (nulls last), then lowest price. If everything is OOS,
+  // we still surface the first brand rather than nothing.
+  const pickDefaultBrand = (brands: Brand[]): Brand => {
+    const inStock = brands.filter(b => b.inStock !== false);
+    const pool = inStock.length > 0 ? inStock : brands;
+    const sorted = [...pool].sort((a, b) => {
+      const aHas = a.displayOrder != null;
+      const bHas = b.displayOrder != null;
+      if (aHas && bHas) {
+        if (a.displayOrder! !== b.displayOrder!) return a.displayOrder! - b.displayOrder!;
+        return (a.price || 0) - (b.price || 0);
+      }
+      if (aHas) return -1;
+      if (bHas) return 1;
+      return (a.price || 0) - (b.price || 0);
+    });
+    return sorted[0];
+  };
   const defaultBrand = (() => {
     if (skuParam) {
       const match = product.brands.find(b => b.sku === skuParam);
       if (match) return match;
     }
-    return getBrandForBudget(product, "standard");
+    return pickDefaultBrand(product.brands);
   })();
   const [selectedBrand, setSelectedBrand] = useState<Brand>(defaultBrand);
 

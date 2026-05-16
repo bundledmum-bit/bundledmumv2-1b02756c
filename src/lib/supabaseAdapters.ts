@@ -27,6 +27,7 @@ export interface Brand {
   packCount?: number | null;
   diaperType?: "Tape" | "Pant" | "Underlay" | string | null;
   sku?: string | null;
+  displayOrder?: number | null;
 }
 
 export interface Product {
@@ -178,6 +179,7 @@ export function adaptProduct(row: any): Product {
         packCount: b.pack_count != null ? Number(b.pack_count) : null,
         diaperType: b.diaper_type || null,
         sku: b.sku || null,
+        displayOrder: b.display_order != null ? Number(b.display_order) : null,
       };
     });
 
