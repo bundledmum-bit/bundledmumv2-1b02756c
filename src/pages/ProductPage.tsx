@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adaptProduct, isProductOOS, type Product, type Brand } from "@/lib/supabaseAdapters";
@@ -21,7 +21,7 @@ function useProduct(slug: string) {
     queryFn: async () => {
       let { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -30,7 +30,7 @@ function useProduct(slug: string) {
       if (!data) {
         const res = await supabase
           .from("products")
-          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
           .eq("id", slug)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -91,8 +91,39 @@ export default function ProductPage() {
 }
 
 function ProductPageContent({ product, raw, settings }: { product: Product; raw: any; settings: any }) {
-  const defaultBrand = getBrandForBudget(product, "standard");
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const skuParam = searchParams.get("sku");
+
+  // Pre-select brand variant from ?sku= param if present and matched.
+  // Falls back to the standard-tier default otherwise.
+  const defaultBrand = (() => {
+    if (skuParam) {
+      const match = product.brands.find(b => b.sku === skuParam);
+      if (match) return match;
+    }
+    return getBrandForBudget(product, "standard");
+  })();
   const [selectedBrand, setSelectedBrand] = useState<Brand>(defaultBrand);
+
+  // If the SKU param changes after mount (e.g. user pastes a new URL in
+  // the same SPA session) and the brands have loaded, sync the selection.
+  useEffect(() => {
+    if (!skuParam || !product.brands?.length) return;
+    const match = product.brands.find(b => b.sku === skuParam);
+    if (match && match.id !== selectedBrand.id) setSelectedBrand(match);
+  }, [skuParam, product.brands]);
+
+  // Wrap brand selection so the URL stays in sync — keeps the SKU
+  // shareable when a customer switches variants manually.
+  const selectBrand = (b: Brand) => {
+    setSelectedBrand(b);
+    if (b.sku) {
+      const next = new URLSearchParams(searchParams);
+      next.set("sku", b.sku);
+      navigate(`?${next.toString()}`, { replace: true });
+    }
+  };
   const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || "");
   const { cart, addToCart, updateQty } = useCart();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -232,7 +263,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                     // Auto-select brand when clicking its image
                     if (img.brandId) {
                       const brand = product.brands.find(b => b.id === img.brandId);
-                      if (brand) setSelectedBrand(brand);
+                      if (brand) selectBrand(brand);
                     }
                   }}
                     className={`w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${activeImageIdx === i ? "border-forest" : "border-transparent hover:border-border"}`}>
@@ -337,7 +368,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   const brandOos = !b.inStock || product.isOutOfStock;
                   const pcLabel = packCountLabel(b);
                   return (
-                    <button key={b.id} onClick={() => { setSelectedBrand(b); setActiveImageIdx(0); }}
+                    <button key={b.id} onClick={() => { selectBrand(b); setActiveImageIdx(0); }}
                       className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body flex items-center gap-1.5 ${brandOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
                       {b.logoUrl && <img src={b.logoUrl} alt="" className="w-4 h-4 object-contain" />}
                       <span>{b.label}{pcLabel ? ` ${pcLabel}` : ""} — {fmt(b.price)}{brandOos ? " (out of stock)" : ""}</span>
