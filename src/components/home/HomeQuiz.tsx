@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { Baby, ShoppingBag, Gift, Check, Share2, ClipboardCopy } from "lucide-react";
@@ -565,6 +565,48 @@ function ResultsScreen({
 
   const addedIds = new Set(cart.map(c => c.id));
 
+  // ── GA4 quiz_results_view — fire once per recommendation when results
+  // are populated. MUST sit above the loading/error/empty early-returns
+  // below: React's rules of hooks require every hook to run the same
+  // order on every render, so a conditional return that skips this useRef
+  // / useEffect would crash the next render with "Rendered more hooks
+  // than during the previous render". (That crash is exactly what blanked
+  // the results page in production.)
+  const resultsViewFiredRef = useRef<RecommendationResult | null>(null);
+  useEffect(() => {
+    if (!result) return;
+    const products = Array.isArray(result.products) ? result.products : [];
+    if (!products.length) return;
+    if (resultsViewFiredRef.current === result) return;
+    resultsViewFiredRef.current = result;
+    try {
+      trackEcommerce("view_item_list", {
+        item_list_id: "quiz_results",
+        item_list_name: "Quiz Recommendations",
+        items: products.map((p, index) => ({
+          item_id: String(p.product_id),
+          item_name: p.name,
+          item_brand: p.brand?.brand_name ?? "",
+          item_variant: (p.brand as any)?.sku ?? "",
+          item_category: p.category ?? "",
+          item_category2: p.subcategory ?? "",
+          price: p.brand?.price ?? 0,
+          index,
+          item_list_id: "quiz_results",
+          item_list_name: "Quiz Recommendations",
+        })),
+      });
+      analytics.push({
+        event: "quiz_results_view",
+        quiz_name: "bundle_recommendation",
+        result_count: products.length,
+        total_value: products.reduce((sum, p) => sum + (p.brand?.price ?? 0), 0),
+        budget_tier: budgetTierFor(budget),
+        budget_amount: budget,
+      });
+    } catch { /* ignore */ }
+  }, [result, budget]);
+
   // ---- Loading / error states ---------------------------------------------
   if (loading) {
     return (
@@ -605,43 +647,11 @@ function ResultsScreen({
 
   // ---- Results rendering (mirrors the old quiz layout) --------------------
   const recommendation = result;
-  const results = recommendation.products;
+  // Defensive: even though the guard above ensures result.products is a
+  // non-empty array, downstream code does .reduce / .filter / .map on it,
+  // so coerce one more time. A malformed entry shouldn't blank the page.
+  const results = Array.isArray(recommendation?.products) ? recommendation.products : [];
   const isGift = answers.shopper === "gift";
-
-  // GA4 quiz_results_view — fire once per recommendation, when results are
-  // populated. Ref keyed by recommendation identity to survive re-renders.
-  const resultsViewFiredRef = useRef<RecommendationResult | null>(null);
-  useEffect(() => {
-    if (!results.length) return;
-    if (resultsViewFiredRef.current === recommendation) return;
-    resultsViewFiredRef.current = recommendation;
-    try {
-      trackEcommerce("view_item_list", {
-        item_list_id: "quiz_results",
-        item_list_name: "Quiz Recommendations",
-        items: results.map((p, index) => ({
-          item_id: String(p.product_id),
-          item_name: p.name,
-          item_brand: p.brand?.brand_name ?? "",
-          item_variant: (p.brand as any)?.sku ?? "",
-          item_category: p.category ?? "",
-          item_category2: p.subcategory ?? "",
-          price: p.brand?.price ?? 0,
-          index,
-          item_list_id: "quiz_results",
-          item_list_name: "Quiz Recommendations",
-        })),
-      });
-      analytics.push({
-        event: "quiz_results_view",
-        quiz_name: "bundle_recommendation",
-        result_count: results.length,
-        total_value: results.reduce((sum, p) => sum + (p.brand?.price ?? 0), 0),
-        budget_tier: budgetTierFor(budget),
-        budget_amount: budget,
-      });
-    } catch { /* ignore */ }
-  }, [recommendation, results, budget]);
 
   // On the gift path, push-gift RPC returns category = "push-gift" (and a
   // handful of "mum"). Render them all in a single "Gift Bundle" section
@@ -981,6 +991,55 @@ function ResultsScreen({
 }
 
 /**
+ * Catches any render-time crash in the quiz results subtree and surfaces
+ * the actual error message + stack instead of letting React unmount the
+ * tree silently (which is what shows up as the dreaded white blank page).
+ */
+class QuizResultsErrorBoundary extends React.Component<
+  { children: React.ReactNode; onBack?: () => void },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode; onBack?: () => void }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error("[QuizResults] render crash:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-background pt-[68px] px-4 flex items-center justify-center">
+          <div className="max-w-md w-full bg-card border border-destructive/40 rounded-card p-5 text-left">
+            <p className="pf text-lg font-bold text-destructive mb-1">Quiz results couldn't load</p>
+            <p className="text-sm text-text-med mb-3">
+              We hit a snag rendering your recommendation. Please try again — if it keeps happening, share the message below with support.
+            </p>
+            <pre className="text-[11px] text-text-med whitespace-pre-wrap break-words bg-warm-cream rounded-lg p-2 max-h-48 overflow-auto">
+              {this.state.error?.message}
+              {this.state.error?.stack ? `\n\n${this.state.error.stack}` : ""}
+            </pre>
+            {this.props.onBack && (
+              <button
+                onClick={this.props.onBack}
+                className="mt-3 rounded-pill border border-forest text-forest px-4 py-2 text-xs font-semibold"
+              >
+                Edit answers
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/**
  * Soft warning shown when the user submits the quiz with a budget below
  * the engine's starter floor. Doesn't block — the user can bump up or
  * proceed at the entered amount.
@@ -1203,11 +1262,13 @@ export default function HomeQuiz({
 
   if (screen === "whatsapp") {
     const content = !whatsappQuestion ? (
-      <ResultsScreen
-        budget={budget} categories={categories} gender={gender as Gender}
-        onBack={() => setScreen("quiz")}
-        onComplete={() => { quizCompletedRef.current = true; }}
-      />
+      <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
+        <ResultsScreen
+          budget={budget} categories={categories} gender={gender as Gender}
+          onBack={() => setScreen("quiz")}
+          onComplete={() => { quizCompletedRef.current = true; }}
+        />
+      </QuizResultsErrorBoundary>
     ) : (
       <OptionalTextStep
         question={whatsappQuestion}
@@ -1227,11 +1288,13 @@ export default function HomeQuiz({
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-background overflow-y-auto">
-      <ResultsScreen
-        budget={budget} categories={categories} gender={gender as Gender}
-        onBack={() => setScreen("quiz")}
-        onComplete={() => { quizCompletedRef.current = true; }}
-      />
+      <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
+        <ResultsScreen
+          budget={budget} categories={categories} gender={gender as Gender}
+          onBack={() => setScreen("quiz")}
+          onComplete={() => { quizCompletedRef.current = true; }}
+        />
+      </QuizResultsErrorBoundary>
     </div>,
     document.body
   );
