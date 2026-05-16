@@ -7,6 +7,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import ReferralSection from "@/components/ReferralSection";
 import ShareModal from "@/components/ShareModal";
 import { trackOnce as pixelTrackOnce, moneyPayload as pixelMoney } from "@/lib/metaPixel";
+import { analytics, trackEcommerce } from "@/lib/ga";
 
 export default function OrderConfirmedPage() {
   const [searchParams] = useSearchParams();
@@ -59,6 +60,38 @@ export default function OrderConfirmedPage() {
         num_items: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
         contents: items.map(i => ({ id: i.product_id, quantity: Number(i.quantity) || 0 })),
       }));
+
+      // GA4 purchase — fire once per order_number, dedup via localStorage so a
+      // page refresh on the confirmation page never re-fires the event.
+      try {
+        const orderNum = (order.order_number || order.id) as string;
+        const firedKey = `ga4_purchase_fired_${orderNum}`;
+        if (orderNum && !localStorage.getItem(firedKey)) {
+          localStorage.setItem(firedKey, "1");
+          trackEcommerce("purchase", {
+            transaction_id: orderNum,
+            value: Number(order.total) || 0,
+            tax: 0,
+            shipping: Number(order.delivery_fee) || 0,
+            currency: "NGN",
+            coupon: order.coupon_code ?? "",
+            payment_type: order.payment_method ?? "",
+            items: items.map((it: any) => ({
+              item_id: String(it.product_id ?? ""),
+              item_name: it.product_name ?? "",
+              item_brand: it.brand_name ?? "",
+              item_variant: it.sku ?? "",
+              item_category: it.category ?? "",
+              item_category2: it.subcategory ?? "",
+              price: Number(it.unit_price ?? it.line_total ?? 0),
+              quantity: Number(it.quantity) || 1,
+            })),
+          });
+          analytics.push({ event: "checkout_step", checkout_step: 4, checkout_step_name: "confirmation" });
+        }
+      } catch (e) {
+        console.warn("[ga] purchase failed:", e);
+      }
     }
   }, [order]);
 

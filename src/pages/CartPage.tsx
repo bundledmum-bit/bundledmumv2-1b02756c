@@ -7,7 +7,7 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { trackEcommerce } from "@/lib/ga";
+import { analytics, trackEcommerce } from "@/lib/ga";
 
 /**
  * Coerce a cart item's `img` value to a usable <img src>. Accepts:
@@ -48,6 +48,16 @@ export default function CartPage() {
   const { data: thresholds } = useSpendThresholds();
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
+
+  // GA4 funnel — checkout_step 1 (cart) fires on CartPage mount with items.
+  useEffect(() => {
+    if (!cart || cart.length === 0) return;
+    try {
+      analytics.push({ event: "checkout_step", checkout_step: 1, checkout_step_name: "cart" });
+    } catch { /* ignore */ }
+    // Fire once per mount; cart changes don't re-arm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // GA4 view_cart — fire once per CartPage mount when there's at least one
   // item. Ref-gated so qty changes / re-renders don't re-fire. Subsequent
@@ -104,6 +114,35 @@ export default function CartPage() {
   // Route through context's removeFromCart so the GA remove_from_cart
   // event fires with the item's full details before the row is dropped.
   const removeItem = (key: string) => removeFromCart(key);
+
+  // GA4 begin_checkout — fires on the "Proceed to Checkout" click.
+  // Wrapped in try/catch; never blocks navigation.
+  const fireBeginCheckout = () => {
+    if (!cart || cart.length === 0) return;
+    try {
+      trackEcommerce("begin_checkout", {
+        currency: "NGN",
+        value: subtotal,
+        coupon: "",
+        items: cart.map((item: any) => {
+          const brand = item.selectedBrand;
+          const unitPrice = Number(brand?.price ?? item.price ?? 0);
+          return {
+            item_id: String(item.id),
+            item_name: item.name,
+            item_brand: brand?.label ?? "",
+            item_variant: brand?.sku ?? "",
+            item_category: item.category ?? "",
+            item_category2: item.subcategory ?? "",
+            price: unitPrice,
+            quantity: Number(item.qty ?? 1),
+          };
+        }),
+      });
+    } catch (e) {
+      console.warn("[ga] begin_checkout failed:", e);
+    }
+  };
 
   const { data: allProductsData } = useAllProducts();
   const ALL_PRODUCTS = allProductsData || [];
@@ -304,7 +343,7 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Link to="/checkout" className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
+              <Link to="/checkout" onClick={fireBeginCheckout} className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
                 Proceed to Checkout 🔒
               </Link>
               <p className="text-center font-body text-xs text-text-light mt-3">Secured by Paystack · All cards accepted</p>
@@ -329,6 +368,7 @@ export default function CartPage() {
             </div>
             <Link
               to="/checkout"
+              onClick={fireBeginCheckout}
               className="flex-1 inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep"
             >
               Proceed to Checkout →

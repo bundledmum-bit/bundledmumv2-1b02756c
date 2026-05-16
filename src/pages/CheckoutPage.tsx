@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart, fmt } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import { trackEvent, getSessionId, getAttribution, markSessionConverted } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { syncOrderToSheets } from "@/lib/googleSheets";
+import { analytics, trackEcommerce } from "@/lib/ga";
 
 interface FormData {
   firstName: string; lastName: string; phone: string; email: string;
@@ -360,6 +361,74 @@ export default function CheckoutPage() {
 
   const giftWrapFee = giftWrap ? giftWrapPrice : 0;
   const grand = Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount);
+
+  // ── GA4 funnel instrumentation ───────────────────────────────────────
+  // Cart-shaped item list reused by add_shipping_info / add_payment_info.
+  const gaItems = () => cart.map((item: any) => {
+    const brand = item.selectedBrand;
+    const unitPrice = Number(brand?.price ?? item.price ?? 0);
+    return {
+      item_id: String(item.id),
+      item_name: item.name,
+      item_brand: brand?.label ?? "",
+      item_variant: brand?.sku ?? "",
+      item_category: item.category ?? "",
+      item_category2: item.subcategory ?? "",
+      price: unitPrice,
+      quantity: Number(item.qty ?? 1),
+    };
+  });
+
+  // checkout_step 2 (delivery) fires once on CheckoutPage mount.
+  useEffect(() => {
+    if (!cart || cart.length === 0) return;
+    try {
+      analytics.push({ event: "checkout_step", checkout_step: 2, checkout_step_name: "delivery" });
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // add_shipping_info + checkout_step 3 (payment) — fire once when the
+  // delivery section becomes "ready" (state + zone/city are filled in).
+  // This is the moment in a single-page checkout where the customer has
+  // effectively "submitted" delivery info and moved on to payment.
+  const shippingInfoFiredRef = useRef(false);
+  useEffect(() => {
+    if (shippingInfoFiredRef.current) return;
+    if (!deliveryReady || !cart || cart.length === 0) return;
+    shippingInfoFiredRef.current = true;
+    try {
+      trackEcommerce("add_shipping_info", {
+        currency: "NGN",
+        value: grand,
+        shipping_tier: form.city || form.state || "",
+        items: gaItems(),
+      });
+      analytics.push({ event: "checkout_step", checkout_step: 3, checkout_step_name: "payment" });
+    } catch (e) {
+      console.warn("[ga] add_shipping_info failed:", e);
+    }
+  }, [deliveryReady, cart.length, grand, form.city, form.state]);
+
+  // add_payment_info — fire each time the user changes payment method.
+  // Wrap setPayment so the event fires alongside the state update.
+  const lastPaymentFiredRef = useRef<string | null>(null);
+  const selectPayment = (method: "card" | "transfer" | "ussd") => {
+    setPayment(method);
+    if (!cart || cart.length === 0) return;
+    if (lastPaymentFiredRef.current === method) return;
+    lastPaymentFiredRef.current = method;
+    try {
+      trackEcommerce("add_payment_info", {
+        currency: "NGN",
+        value: grand,
+        payment_type: method,
+        items: gaItems(),
+      });
+    } catch (e) {
+      console.warn("[ga] add_payment_info failed:", e);
+    }
+  };
 
   // Delivery date estimate
   const now = new Date();
@@ -1233,7 +1302,7 @@ export default function CheckoutPage() {
                     </div>
                   );
                   return visible.map(m => (
-                    <button key={m.id} onClick={() => setPayment(m.id)} className={`flex items-center gap-3.5 p-4 rounded-[14px] border-2 text-left transition-all font-body ${payment === m.id ? "border-forest bg-forest-light" : "border-border bg-card"}`}>
+                    <button key={m.id} onClick={() => selectPayment(m.id)} className={`flex items-center gap-3.5 p-4 rounded-[14px] border-2 text-left transition-all font-body ${payment === m.id ? "border-forest bg-forest-light" : "border-border bg-card"}`}>
                       <span className="text-xl">{m.icon}</span>
                       <div className="flex-1">
                         <div className="font-bold text-sm">{m.label}</div>
