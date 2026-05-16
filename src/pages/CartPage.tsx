@@ -6,7 +6,8 @@ import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { trackEcommerce } from "@/lib/ga";
 
 /**
  * Coerce a cart item's `img` value to a usable <img src>. Accepts:
@@ -42,11 +43,44 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
-  const { cart, setCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved } = useCart();
+  const { cart, setCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
+
+  // GA4 view_cart — fire once per CartPage mount when there's at least one
+  // item. Ref-gated so qty changes / re-renders don't re-fire. Subsequent
+  // visits to the cart (full page mount) will fire again, which is what
+  // GA4 expects for "view_cart".
+  const viewCartFiredRef = useRef(false);
+  useEffect(() => {
+    if (viewCartFiredRef.current) return;
+    if (!cart || cart.length === 0) return;
+    viewCartFiredRef.current = true;
+    try {
+      trackEcommerce("view_cart", {
+        currency: "NGN",
+        value: subtotal,
+        items: cart.map((item: any) => {
+          const brand = item.selectedBrand;
+          const unitPrice = Number(brand?.price ?? item.price ?? 0);
+          return {
+            item_id: String(item.id),
+            item_name: item.name,
+            item_brand: brand?.label ?? "",
+            item_variant: brand?.sku ?? "",
+            item_category: item.category ?? "",
+            item_category2: item.subcategory ?? "",
+            price: unitPrice,
+            quantity: Number(item.qty ?? 1),
+          };
+        }),
+      });
+    } catch (e) {
+      console.warn("[ga] view_cart failed:", e);
+    }
+  }, [cart, subtotal]);
 
   const serviceFeeEnabled = settings?.service_fee_enabled !== false;
   const serviceFee = serviceFeeEnabled ? (parseInt(settings?.service_fee) || 0) : 0;
@@ -67,7 +101,9 @@ export default function CartPage() {
     else setCart(prev => prev.map(i => i._key === key ? { ...i, qty: newQty } : i));
   };
 
-  const removeItem = (key: string) => setCart(prev => prev.filter(i => i._key !== key));
+  // Route through context's removeFromCart so the GA remove_from_cart
+  // event fires with the item's full details before the row is dropped.
+  const removeItem = (key: string) => removeFromCart(key);
 
   const { data: allProductsData } = useAllProducts();
   const ALL_PRODUCTS = allProductsData || [];

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
+import { trackEcommerce } from "@/lib/ga";
 
 export interface CartItem {
   id: string | number;
@@ -82,6 +83,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return [...prev, { ...product, _key: key, qty: 1 }];
     });
     trackEvent("cart_updated", { action: "add", product_id: product.id, product_name: product.name });
+    // GA4 add_to_cart — one event per click, quantity is always 1 (qty
+    // increments treat each click as a discrete add per the spec).
+    try {
+      const brand = product.selectedBrand;
+      const unitPrice = Number(brand?.price ?? product.price ?? 0);
+      trackEcommerce("add_to_cart", {
+        currency: "NGN",
+        value: unitPrice,
+        items: [{
+          item_id: String(product.id),
+          item_name: product.name,
+          item_brand: brand?.label ?? "",
+          item_variant: brand?.sku ?? "",
+          item_category: product.category ?? "",
+          item_category2: product.subcategory ?? "",
+          price: unitPrice,
+          quantity: 1,
+        }],
+      });
+    } catch (e) {
+      console.warn("[ga] add_to_cart failed:", e);
+    }
     // Meta Pixel AddToCart — one event per click (qty increment adds one item).
     pixelTrack("AddToCart", pixelMoney(Number(product.selectedBrand?.price ?? product.price ?? 0), {
       content_ids: [product.id],
@@ -101,7 +124,34 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeFromCart = useCallback((key: string) => {
-    setCart(prev => prev.filter(i => i._key !== key));
+    setCart(prev => {
+      // Capture the item BEFORE removing so the GA event has full context.
+      const item = prev.find(i => i._key === key) as any;
+      if (item) {
+        try {
+          const brand = item.selectedBrand;
+          const unitPrice = Number(brand?.price ?? item.price ?? 0);
+          const qty = Number(item.qty ?? 1);
+          trackEcommerce("remove_from_cart", {
+            currency: "NGN",
+            value: unitPrice * qty,
+            items: [{
+              item_id: String(item.id),
+              item_name: item.name,
+              item_brand: brand?.label ?? "",
+              item_variant: brand?.sku ?? "",
+              item_category: item.category ?? "",
+              item_category2: item.subcategory ?? "",
+              price: unitPrice,
+              quantity: qty,
+            }],
+          });
+        } catch (e) {
+          console.warn("[ga] remove_from_cart failed:", e);
+        }
+      }
+      return prev.filter(i => i._key !== key);
+    });
   }, []);
 
   const getCartItem = useCallback((productId: string | number) => {
