@@ -52,6 +52,9 @@ function unwrapInt(v: any, fallback: number): number {
 // Quiz tier classifier — single source of truth lives in @/lib/budgetTiers.
 const budgetTierFor = getBudgetTier;
 
+// Scope vocabulary the engine recognises — these match the values in the
+// products.scopes column ('hospital-bag', 'general-baby-prep'), plus a
+// combined marker the engine treats as "both".
 function scopeFor(categories: Set<Category>): "hospital-bag" | "general-baby-prep" | "hospital-bag+general" {
   if (categories.has("gift")) return "hospital-bag+general";
   if (categories.has("maternity") && categories.has("baby")) return "hospital-bag+general";
@@ -401,19 +404,38 @@ function ResultsScreen({
         } else {
           const scope = scopeFor(categories);
           const stage = stageFor(categories);
-          const { data, error } = await supabase.rpc("run_quiz_recommendation", {
+          // RPC v4.8 contract (verified against pg_proc):
+          //   p_budget_tier        — 'starter' | 'standard' | 'premium'
+          //   p_hospital_type      — 'both'    (storefront quiz doesn't ask)
+          //   p_delivery_method    — 'both'    (storefront quiz doesn't ask)
+          //   p_gender             — 'boy' | 'girl' | 'neutral'
+          //                          ('unknown' from the UI maps to 'neutral')
+          //   p_gift_relationship  — string or null
+          //
+          // Previously we were sending p_hospital_type='public' and
+          // p_delivery_method='vaginal', plus p_gender='unknown' for the
+          // "It's a Surprise!" answer — none of which the engine recognised,
+          // so it fell through to its empty fallback bracket.
+          const params = {
             p_budget_tier: budgetTier,
             p_scope: scope,
             p_stage: stage,
-            p_hospital_type: "public",
-            p_delivery_method: "vaginal",
+            p_hospital_type: "both",
+            p_delivery_method: "both",
             p_multiples: 1,
-            p_gender: gender,
-            p_first_baby: false,
+            p_gender: gender === "unknown" ? "neutral" : gender,
             p_is_gift: false,
+            p_first_baby: false,
             p_gift_relationship: null,
             p_budget_amount: budget,
-          });
+          };
+          // eslint-disable-next-line no-console
+          console.log("[quiz] calling RPC with params:", JSON.stringify(params, null, 2));
+          const { data, error } = await supabase.rpc("run_quiz_recommendation", params as any);
+          // eslint-disable-next-line no-console
+          console.log("[quiz] RPC response:", JSON.stringify(data, null, 2));
+          // eslint-disable-next-line no-console
+          console.log("[quiz] RPC error:", error);
           if (cancelled) return;
           if (error) throw error;
           // Engine v4.8 returns { engine_version, product_count, products, ... }.
