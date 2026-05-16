@@ -20,10 +20,12 @@ const DELIVERY = [
   { id: "both", label: "Unsure", emoji: "🤷‍♀️" },
 ];
 
+// Quiz engine v4.8 tier price ranges. Admin can override via
+// site_settings.calculator_base_prices.
 const DEFAULT_BASE_PRICES: Record<string, [number, number]> = {
-  starter: [50000, 100000],
-  standard: [100000, 200000],
-  premium: [200000, 450000],
+  starter:  [178000,  400000],
+  standard: [400001,  900000],
+  premium:  [900001,  2500000],
 };
 
 const DEFAULT_MODIFIERS = {
@@ -43,7 +45,7 @@ function calcRange(scope: string, multiples: string, delivery: string, basePrice
     return {
       tier,
       label: tier === "starter" ? "🌱 Starter" : tier === "standard" ? "🌿 Standard" : "✨ Premium",
-      items: tier === "starter" ? "~8 essentials" : tier === "standard" ? "~14 items" : "~20 items, top brands",
+      items: tier === "starter" ? "28-45 items" : tier === "standard" ? "45-75 items" : "75-130 items, top brands",
       low: Math.round(low / 500) * 500,
       high: Math.round(high / 500) * 500,
       popular: tier === "standard",

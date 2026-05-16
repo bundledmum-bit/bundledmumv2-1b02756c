@@ -201,7 +201,7 @@ function BundleTiers() {
               <div className="text-4xl mb-3">{t.icon}</div>
               <h3 className={`pf text-xl font-bold mb-1 ${t.popular ? "text-forest" : "text-primary-foreground"}`}>{t.name}</h3>
               <div className={`text-2xl font-bold pf mb-2 ${t.popular ? "text-forest" : "text-coral"}`}>
-                {idx === 0 ? "₦50,000 – ₦100,000" : idx === 1 ? "₦100,000 – ₦200,000" : "₦200,000 – ₦450,000"}
+                {idx === 0 ? "₦178,000 – ₦400,000" : idx === 1 ? "₦400,000 – ₦900,000" : "₦900,000 – ₦2,500,000"}
               </div>
               <p className={`text-sm mb-1 ${t.popular ? "text-text-med" : "text-primary-foreground/60"}`}>{t.tagline}</p>
               <p className={`text-xs mb-4 ${t.popular ? "text-text-light" : "text-primary-foreground/40"}`}>{t.items}</p>

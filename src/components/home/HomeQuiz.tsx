@@ -10,6 +10,12 @@ import { useQuizQuestions } from "@/hooks/useQuizConfig";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
+import {
+  getBudgetTier,
+  isBelowEssentialsFloor,
+  ESSENTIALS_FLOOR,
+  BUDGET_MAX,
+} from "@/lib/budgetTiers";
 import OptionalTextStep from "@/components/quiz/OptionalTextStep";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
@@ -25,7 +31,9 @@ type Gender = "boy" | "girl" | "unknown";
 // Fallback defaults — overridden by site_settings (see QuizScreen).
 // Keeping the constants here so tests / SSR / first render before settings
 // load still behaves sensibly.
-const MIN_BUDGET_FALLBACK = 80_000;
+// Budget engine v4.8 expects ≥ ₦178,000 to deliver a complete starter
+// bundle. The hard fallback floor is the engine's starter minimum.
+const MIN_BUDGET_FALLBACK = ESSENTIALS_FLOOR;
 // Budget starts empty so the placeholder shows; user must enter an amount.
 const DEFAULT_BUDGET = 0;
 
@@ -41,11 +49,8 @@ function unwrapInt(v: any, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function budgetTierFor(amount: number): "starter" | "standard" | "premium" {
-  if (amount < 200_000) return "starter";
-  if (amount < 750_000) return "standard";
-  return "premium";
-}
+// Quiz tier classifier — single source of truth lives in @/lib/budgetTiers.
+const budgetTierFor = getBudgetTier;
 
 function scopeFor(categories: Set<Category>): "hospital-bag" | "general-baby-prep" | "hospital-bag+general" {
   if (categories.has("gift")) return "hospital-bag+general";
@@ -140,7 +145,10 @@ function QuizScreen({
     setCategories(next);
   };
 
-  const canSubmit = categories.size > 0 && !!gender && budget >= minBudget;
+  // Don't gate the CTA on the essentials floor — the parent shows a soft
+  // warning modal on submit if the user is below it, and lets them either
+  // bump up to the floor or continue at their entered amount.
+  const canSubmit = categories.size > 0 && !!gender && budget > 0;
 
   const categoryCards = [
     { id: "maternity" as const, title: s("quiz_category_maternity_title", "Maternity List"), sub: s("quiz_category_maternity_sub", "Hospital bag — mum and baby"), Icon: ShoppingBag },
@@ -189,12 +197,9 @@ function QuizScreen({
               const n = digits ? parseInt(digits, 10) : 0;
               setBudget(n);
             }}
-            onBlur={() => {
-              if (budget > 0 && budget < minBudget) {
-                setBudget(minBudget);
-                setSnapFlash(x => x + 1);
-              }
-            }}
+            // No auto-snap on blur — the parent's submit handler shows a
+            // soft warning if the entered amount is below the floor, so we
+            // never overwrite what the customer actually typed.
             placeholder="Type Your Budget Here"
             aria-label="Budget"
             className={`w-full ${budget > 0 ? "pl-12" : "pl-5"} pr-5 py-3 text-center bg-white border-2 rounded-[14px] pf text-midnight text-[26px] md:text-[30px] font-bold tracking-tight outline-none transition-colors placeholder:text-midnight/40 placeholder:text-[16px] placeholder:font-semibold ${belowMin && budget > 0 ? "border-white" : "border-white/30 focus:border-white"}`}
@@ -938,6 +943,65 @@ function ResultsScreen({
   );
 }
 
+/**
+ * Soft warning shown when the user submits the quiz with a budget below
+ * the engine's starter floor. Doesn't block — the user can bump up or
+ * proceed at the entered amount.
+ */
+function FloorWarningModal({
+  amount,
+  onIncrease,
+  onContinue,
+  onClose,
+}: {
+  amount: number;
+  onIncrease: () => void;
+  onContinue: () => void;
+  onClose: () => void;
+}) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[600] bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-card rounded-2xl max-w-sm w-full p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-3">
+          <span className="text-2xl">💡</span>
+          <div>
+            <h3 className="pf font-bold text-base text-foreground leading-tight mb-1">
+              Heads up — your budget is below the typical starter floor
+            </h3>
+            <p className="text-sm text-text-med leading-relaxed">
+              At {fmt(amount)}, your bundle may not include every hospital essential.
+              The recommended minimum for a complete maternity list is{" "}
+              <span className="font-semibold text-foreground">{fmt(ESSENTIALS_FLOOR)}</span>.
+              Continue anyway?
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-2 mt-4">
+          <button
+            onClick={onIncrease}
+            className="w-full rounded-pill bg-forest py-2.5 text-sm font-semibold text-primary-foreground hover:bg-forest-deep interactive"
+          >
+            Increase to {fmt(ESSENTIALS_FLOOR)}
+          </button>
+          <button
+            onClick={onContinue}
+            className="w-full rounded-pill border-2 border-border bg-card py-2.5 text-sm font-semibold text-text-med hover:bg-warm-cream interactive"
+          >
+            Continue at {fmt(amount)}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 // =============================================================================
 // Container — 3-screen state machine
 // =============================================================================
@@ -964,6 +1028,10 @@ export default function HomeQuiz({
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [, setWhatsapp] = useState<string | null>(null);
+  // Soft below-floor warning state. When the user submits with a budget
+  // below ₦178,000, we hold the submit, surface the warning, and let them
+  // choose: bump up to the floor, or continue at their entered amount.
+  const [floorWarning, setFloorWarning] = useState(false);
 
   // ── GA4 quiz funnel ────────────────────────────────────────────────
   // quiz_start once per mount, regardless of how many re-renders happen.
@@ -1015,7 +1083,11 @@ export default function HomeQuiz({
     setScreen("results");
   };
 
-  const handleSubmitFromQuiz = () => {
+  // Internal continuation — called either directly when the budget is at
+  // or above the essentials floor, or via the warning modal "Continue
+  // anyway" path.
+  const continueSubmit = () => {
+    setFloorWarning(false);
     pixelTrack("CustomizeProduct", {
       budget,
       categories: Array.from(categories),
@@ -1056,14 +1128,34 @@ export default function HomeQuiz({
     setScreen("whatsapp");
   };
 
+  // Public submit handler — wraps continueSubmit with the below-floor
+  // warning. If the user is under ₦178,000, we intercept and ask first.
+  const handleSubmitFromQuiz = () => {
+    if (isBelowEssentialsFloor(budget)) {
+      setFloorWarning(true);
+      return;
+    }
+    continueSubmit();
+  };
+
   if (screen === "quiz") {
     return (
-      <QuizScreen
-        budget={budget} setBudget={setBudget}
-        categories={categories} setCategories={setCategories}
-        gender={gender} setGender={setGender}
-        onNext={handleSubmitFromQuiz}
-      />
+      <>
+        <QuizScreen
+          budget={budget} setBudget={setBudget}
+          categories={categories} setCategories={setCategories}
+          gender={gender} setGender={setGender}
+          onNext={handleSubmitFromQuiz}
+        />
+        {floorWarning && (
+          <FloorWarningModal
+            amount={budget}
+            onIncrease={() => { setBudget(ESSENTIALS_FLOOR); continueSubmit(); }}
+            onContinue={continueSubmit}
+            onClose={() => setFloorWarning(false)}
+          />
+        )}
+      </>
     );
   }
 
