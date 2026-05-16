@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { analytics } from "@/lib/ga";
 
 const BAR_HEIGHT = 40;
 
@@ -33,15 +34,28 @@ export default function AnnouncementBar({
   const textColor = settings.announcement_text_color || "#ffffff";
   const text = settings.announcement_text;
   const link = settings.announcement_link;
+  const promoId = `announcement_bar_${(text || "").slice(0, 40)}`;
+  const promoName = text || "Announcement";
 
   return (
-    <div
-      className="fixed top-0 left-0 right-0 z-[1001] flex items-center justify-center px-10 transition-all duration-300"
-      style={{ backgroundColor: bgColor, color: textColor, height: BAR_HEIGHT }}
-    >
+    <AnnouncementImpressionTracker promoId={promoId} promoName={promoName}>
+      <div
+        className="fixed top-0 left-0 right-0 z-[1001] flex items-center justify-center px-10 transition-all duration-300"
+        style={{ backgroundColor: bgColor, color: textColor, height: BAR_HEIGHT }}
+      >
       {link ? (
         <a
           href={link}
+          onClick={() => {
+            try {
+              analytics.push({
+                event: "select_promotion",
+                promotion_id: promoId,
+                promotion_name: promoName,
+                creative_slot: "announcement_bar",
+              });
+            } catch { /* ignore */ }
+          }}
           className="text-[13px] font-medium font-body hover:underline truncate"
           style={{ color: textColor }}
         >
@@ -57,6 +71,54 @@ export default function AnnouncementBar({
       >
         <X size={14} style={{ color: textColor }} />
       </button>
-    </div>
+      </div>
+    </AnnouncementImpressionTracker>
   );
+}
+
+/**
+ * Wrapper that fires a single GA4 view_promotion event when the banner
+ * scrolls into view (≥50% intersection). Ref-guarded so it fires once
+ * per page load per promo id.
+ */
+function AnnouncementImpressionTracker({
+  promoId,
+  promoName,
+  children,
+}: {
+  promoId: string;
+  promoName: string;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (firedRef.current) return;
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          if (entry.intersectionRatio < 0.5) continue;
+          if (firedRef.current) return;
+          firedRef.current = true;
+          try {
+            analytics.push({
+              event: "view_promotion",
+              promotion_id: promoId,
+              promotion_name: promoName,
+              creative_slot: "announcement_bar",
+            });
+          } catch { /* ignore */ }
+          obs.disconnect();
+          return;
+        }
+      },
+      { threshold: 0.5 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [promoId, promoName]);
+  return <div ref={ref}>{children}</div>;
 }

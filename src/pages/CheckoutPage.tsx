@@ -449,6 +449,13 @@ export default function CheckoutPage() {
       const result = typeof data === "string" ? JSON.parse(data) : data;
       if (!result?.valid) {
         toast.error(result?.message || "Invalid coupon code");
+        try {
+          analytics.push({
+            event: "coupon_failed",
+            coupon_code: code,
+            error_reason: result?.message || "invalid",
+          });
+        } catch { /* ignore */ }
         setCouponLoading(false);
         return;
       }
@@ -460,8 +467,23 @@ export default function CheckoutPage() {
         discount_amount: result.discount_amount || 0,
       });
       toast.success(result.message || `Coupon "${code}" applied!`);
+      try {
+        analytics.push({
+          event: "coupon_applied",
+          coupon_code: code,
+          coupon_type: "promo",
+          discount_amount: Number(result.discount_amount) || 0,
+        });
+      } catch { /* ignore */ }
     } catch {
       toast.error("Failed to validate coupon");
+      try {
+        analytics.push({
+          event: "coupon_failed",
+          coupon_code: code,
+          error_reason: "network_error",
+        });
+      } catch { /* ignore */ }
     } finally {
       setCouponLoading(false);
     }
@@ -483,6 +505,13 @@ export default function CheckoutPage() {
       const result = typeof data === "string" ? JSON.parse(data) : data;
       if (!result?.valid) {
         toast.error(result?.message || "Invalid referral code");
+        try {
+          analytics.push({
+            event: "coupon_failed",
+            coupon_code: code,
+            error_reason: result?.message || "invalid_referral",
+          });
+        } catch { /* ignore */ }
         setReferralLoading(false);
         return;
       }
@@ -492,6 +521,14 @@ export default function CheckoutPage() {
         discount_amount: result.discount_amount || 0,
       });
       toast.success(result.message || `Referral code "${code}" applied — saving ${fmt(result.discount_amount)}!`);
+      try {
+        analytics.push({
+          event: "referral_applied",
+          referral_code: code,
+          referrer_credit: Number(result.referrer_credit) || 0,
+          discount_amount: Number(result.discount_amount) || 0,
+        });
+      } catch { /* ignore */ }
     } catch {
       toast.error("Failed to validate referral code");
     } finally {

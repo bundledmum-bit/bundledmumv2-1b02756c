@@ -6,6 +6,7 @@ import { Mail, Loader2, ArrowLeft } from "lucide-react";
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { track as pixelTrack, trackOnce as pixelTrackOnce } from "@/lib/metaPixel";
+import { analytics } from "@/lib/ga";
 
 /**
  * Passwordless email magic-link login.
@@ -67,6 +68,9 @@ export default function AccountLoginPage() {
       });
       if (error) throw error;
       pixelTrack("Lead", { lead_source: "account_login_magic_link", content_name: "Account sign-in magic link requested" });
+      try {
+        analytics.push({ event: "magic_link_requested", location: "account_login" });
+      } catch { /* ignore */ }
       setStage("sent");
       setCooldown(30);
       toast.success("Login link sent — check your inbox.");

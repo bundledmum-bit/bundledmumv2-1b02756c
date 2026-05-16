@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ArrowLeft, Copy, Gift, MessageCircle, Share2 } from "lucide-react";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { analytics } from "@/lib/ga";
 
 interface ReferralRow {
   email: string;
@@ -52,6 +53,12 @@ export default function AccountReferralPage() {
       await navigator.clipboard.writeText(value);
       setCopied(which);
       toast.success("Copied to clipboard");
+      try {
+        analytics.push({
+          event: "referral_share",
+          share_method: which === "code" ? "copy_code" : "copy_link",
+        });
+      } catch { /* ignore */ }
       setTimeout(() => setCopied(c => (c === which ? null : c)), 2000);
     } catch {
       toast.error("Couldn't copy — please copy manually.");
@@ -121,6 +128,9 @@ export default function AccountReferralPage() {
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => {
+                    try { analytics.push({ event: "referral_share", share_method: "whatsapp" }); } catch { /* ignore */ }
+                  }}
                   className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-pill bg-[#25D366] text-white px-4 py-2.5 text-sm font-semibold hover:opacity-90 min-h-[44px]"
                 >
                   <MessageCircle className="w-4 h-4" /> Share on WhatsApp

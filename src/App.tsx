@@ -13,6 +13,7 @@ import ScrollToTop from "@/components/ScrollToTop";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import AuthAnalyticsListener from "@/components/AuthAnalyticsListener";
+import WhatsAppClickListener from "@/components/WhatsAppClickListener";
 import SkipNav from "@/components/SkipNav";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -299,6 +300,7 @@ const App = () => (
             <PixelRouteListener />
             <AnalyticsRouteListener />
             <AuthAnalyticsListener />
+            <WhatsAppClickListener />
             <PasswordRecoveryListener />
             <Routes>
               {/* Admin routes */}

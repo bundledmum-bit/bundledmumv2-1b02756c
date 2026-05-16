@@ -3,6 +3,7 @@ import { Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { fmt } from "@/lib/cart";
+import { analytics } from "@/lib/ga";
 
 interface Props {
   referralCode: string | null;
@@ -27,17 +28,23 @@ export default function ReferralSection({ referralCode, paymentMethod, paymentSt
 
   const link = referralCode ? `https://bundledmum.com/?ref=${referralCode}` : "";
 
+  const fireReferralShare = (method: "copy_code" | "copy_link" | "whatsapp") => {
+    try { analytics.push({ event: "referral_share", share_method: method }); } catch { /* ignore */ }
+  };
+
   const handleCopy = () => {
     if (!referralCode) return;
     navigator.clipboard.writeText(referralCode);
     setCopied(true);
     toast.success("Referral code copied!");
+    fireReferralShare("copy_code");
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleWhatsApp = () => {
     if (!referralCode) return;
     const text = `I just packed my hospital bag with BundledMum and loved it! 🎁 Use my referral code ${referralCode} to get ${fmt(referralAmount)} off your first bundle: ${link}`;
+    fireReferralShare("whatsapp");
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -45,6 +52,7 @@ export default function ReferralSection({ referralCode, paymentMethod, paymentSt
     if (!referralCode) return;
     navigator.clipboard.writeText(`Use my BundledMum referral code: ${referralCode} — Get ${fmt(referralAmount)} off! ${link}`);
     toast.success("Link copied! Paste it in your Instagram bio or story.");
+    fireReferralShare("copy_link");
   };
 
   // If no code and generating message has timed out, hide the entire section

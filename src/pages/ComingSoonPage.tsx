@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2, Check } from "lucide-react";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { track as pixelTrack } from "@/lib/metaPixel";
+import { analytics } from "@/lib/ga";
 
 const NG_PHONE = /^(?:\+234|0)(70|71|80|81|90|91|80|81|70|90)\d{8}$/;
 
@@ -95,6 +96,7 @@ export default function ComingSoonPage() {
       setDone(true);
       setPhone("");
       pixelTrack("Lead", { lead_source: "coming_soon_waitlist", content_name: "Site-wide coming-soon waitlist" });
+      try { analytics.push({ event: "generate_lead", form_name: "coming_soon_waitlist" }); } catch { /* ignore */ }
     } catch (err: any) {
       toast.error(err?.message || "Something went wrong. Please try again.");
     } finally {
