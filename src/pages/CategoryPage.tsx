@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adaptProducts, isProductOOS, type Brand, type Product } from "@/lib/supabaseAdapters";
 import { useCart, fmt } from "@/lib/cart";
+import { trackEcommerce } from "@/lib/ga";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ProductImage from "@/components/ProductImage";
@@ -99,6 +100,48 @@ export default function CategoryPage() {
   const isLoading = loadingAll || loadingPins;
   const totalProducts = products.length;
 
+  // GA4 view_item_list — fire when the merged product list resolves with
+  // at least one item. Re-fires if the slug or product set changes.
+  const listId = `category_${slug}`;
+  const listName = heading || slug;
+  useEffect(() => {
+    if (!products.length) return;
+    trackEcommerce("view_item_list", {
+      item_list_id: listId,
+      item_list_name: listName,
+      items: products.map((pin, index) => ({
+        item_id: pin.product.id,
+        item_name: pin.product.name,
+        item_brand: pin.product.brands?.[0]?.label ?? "",
+        item_category: pin.product.category ?? "",
+        item_category2: pin.product.subcategory ?? "",
+        price: pin.product.brands?.[0]?.price ?? 0,
+        index,
+        item_list_id: listId,
+        item_list_name: listName,
+      })),
+    });
+  }, [listId, listName, products]);
+
+  // GA4 select_item — fired when a card opens the drawer.
+  const handleSelectItem = (product: Product, index: number) => {
+    const brand = product.brands?.[0];
+    trackEcommerce("select_item", {
+      item_list_id: listId,
+      item_list_name: listName,
+      items: [{
+        item_id: product.id,
+        item_name: product.name,
+        item_brand: brand?.label ?? "",
+        item_variant: brand?.sku ?? "",
+        item_category: product.category ?? "",
+        item_category2: product.subcategory ?? "",
+        price: brand?.price ?? 0,
+        index,
+      }],
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0 pt-[68px]">
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 pt-4 md:pt-6">
@@ -150,7 +193,10 @@ export default function CategoryPage() {
                 pin={pin}
                 palette={HEADER_PALETTE[idx % HEADER_PALETTE.length]}
                 brandOverrides={brandOverrides}
-                onOpenDetail={(brandId) => setDetail({ product: pin.product, brandId })}
+                onOpenDetail={(brandId) => {
+                  handleSelectItem(pin.product, idx);
+                  setDetail({ product: pin.product, brandId });
+                }}
               />
             ))}
           </div>

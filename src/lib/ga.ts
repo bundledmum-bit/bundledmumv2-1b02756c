@@ -25,8 +25,28 @@ export interface GAItem {
 
 function push(payload: Record<string, any>) {
   if (typeof window === "undefined") return;
-  window.dataLayer = window.dataLayer || [];
-  window.dataLayer.push(payload);
+  try {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push(payload);
+  } catch (err) {
+    // Tracking failures must never break the page.
+    console.warn("[ga] push failed:", err);
+  }
+}
+
+/**
+ * Push a GA4 e-commerce event. Always clears the `ecommerce` object first
+ * (GA4 requires this between events to prevent item-array merging).
+ *
+ * Wrapped in try/catch — analytics failures must never break the page.
+ */
+export function trackEcommerce(event: string, ecommerce: Record<string, any>) {
+  try {
+    push({ ecommerce: null });
+    push({ event, ecommerce });
+  } catch (err) {
+    console.warn("[ga] trackEcommerce failed:", err);
+  }
 }
 
 function pushEcommerce(event: string, items: GAItem[], extra: Record<string, any> = {}) {
@@ -45,6 +65,12 @@ function pushEcommerce(event: string, items: GAItem[], extra: Record<string, any
 }
 
 export const analytics = {
+  // Raw dataLayer push — escape hatch for any payload not covered by the
+  // named helpers below. Safe to call anywhere; failures are swallowed.
+  push(payload: Record<string, any>) {
+    push(payload);
+  },
+
   // Generic
   event(name: string, params: Record<string, any> = {}) {
     push({ event: name, ...params });

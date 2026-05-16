@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +7,7 @@ import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/analytics";
+import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
 import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat } from "lucide-react";
@@ -126,6 +127,30 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const [selectedBrand, setSelectedBrand] = useState<Brand | undefined>(
     () => resolveBrand(product.brands, skuParam),
   );
+
+  // GA4 view_item — fire once per product. Switching brand variants on the
+  // same product must NOT re-fire (per spec). We key the ref on product.id
+  // so navigating to a different product page re-arms the effect.
+  const viewedProductRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedBrand) return;
+    if (viewedProductRef.current === product.id) return;
+    viewedProductRef.current = product.id;
+    trackEcommerce("view_item", {
+      currency: "NGN",
+      value: selectedBrand.price,
+      items: [{
+        item_id: product.id,
+        item_name: product.name,
+        item_brand: selectedBrand.label,
+        item_variant: selectedBrand.sku ?? "",
+        item_category: product.category ?? "",
+        item_category2: product.subcategory ?? "",
+        price: selectedBrand.price,
+        quantity: 1,
+      }],
+    });
+  }, [product.id, selectedBrand?.id]);
 
   // Re-resolve whenever brands or the ?sku= param change. Both deps matter:
   //   - brands: brands may load/refresh asynchronously

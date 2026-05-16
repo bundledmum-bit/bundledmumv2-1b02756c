@@ -10,6 +10,7 @@ import { useProductCategories } from "@/hooks/useProductCategories";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { track as pixelTrack } from "@/lib/metaPixel";
+import { analytics, trackEcommerce } from "@/lib/ga";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
@@ -336,6 +337,65 @@ export default function ShopPage() {
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
 
+  // GA4 search — fires once per stable (debounced) non-empty query.
+  const trimmedSearch = search.trim();
+  useEffect(() => {
+    if (!trimmedSearch) return;
+    const t = setTimeout(() => {
+      analytics.push({
+        event: "search",
+        search_term: trimmedSearch,
+        search_results_count: filtered.length,
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [trimmedSearch, filtered.length]);
+
+  // GA4 view_item_list — name varies with the active tab/category/search.
+  const listId = trimmedSearch
+    ? `search_${trimmedSearch}`
+    : `shop_${tab}${categoryF ? `_${categoryF}` : ""}`;
+  const listName = trimmedSearch
+    ? `Search: ${trimmedSearch}`
+    : (categoryF || tab === "all" ? `Shop — ${categoryF || "All"}` : `Shop — ${tab}`);
+  useEffect(() => {
+    if (!filtered.length) return;
+    trackEcommerce("view_item_list", {
+      item_list_id: listId,
+      item_list_name: listName,
+      items: filtered.slice(0, 30).map((hit, index) => ({
+        item_id: hit.product.id,
+        item_name: hit.product.name,
+        item_brand: hit.product.brands?.[0]?.label ?? "",
+        item_category: hit.product.category ?? "",
+        item_category2: hit.product.subcategory ?? "",
+        price: hit.product.brands?.[0]?.price ?? 0,
+        index,
+        item_list_id: listId,
+        item_list_name: listName,
+      })),
+    });
+  }, [listId, listName, filtered]);
+
+  // GA4 select_item helper — called from product card open handlers.
+  const fireSelectItem = (product: Product, index: number) => {
+    const brand = product.brands?.[0];
+    trackEcommerce("select_item", {
+      item_list_id: listId,
+      item_list_name: listName,
+      items: [{
+        item_id: product.id,
+        item_name: product.name,
+        item_brand: brand?.label ?? "",
+        item_variant: brand?.sku ?? "",
+        item_category: product.category ?? "",
+        item_category2: product.subcategory ?? "",
+        price: brand?.price ?? 0,
+        index,
+      }],
+    });
+  };
+
   const isBaby = tab === "baby";
   const isMum = tab === "mum";
 
@@ -627,7 +687,7 @@ export default function ShopPage() {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
-              {visibleProducts.map(hit => (
+              {visibleProducts.map((hit, idx) => (
                 <ProductCard
                   key={`${hit.product.id}${hit.brandId ? `-${hit.brandId}` : ""}`}
                   product={hit.product}
@@ -637,7 +697,7 @@ export default function ShopPage() {
                   matchBadge={hit.isBrandMatch ? "Brand match" : undefined}
                   deliveryText={deliveryText}
                   onAdd={item => { addToCart(item); toast.success(`✓ ${item.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } }); }}
-                  onViewDetail={() => setDetailProduct(hit.product)}
+                  onViewDetail={() => { fireSelectItem(hit.product, idx); setDetailProduct(hit.product); }}
                 />
               ))}
             </div>
