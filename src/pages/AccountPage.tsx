@@ -1,9 +1,11 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Package, User, Gift, Truck, LogOut, ChevronRight, Repeat } from "lucide-react";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { analytics } from "@/lib/ga";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-gray-100 text-gray-700",
@@ -27,14 +29,34 @@ export default function AccountPage() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("customers")
-        .select("full_name, total_orders, total_spent, last_order_at")
+        .select("full_name, total_orders, total_spent, last_order_at, acquisition_channel")
         .eq("email", email)
         .maybeSingle();
       if (error) throw error;
-      return data as { full_name: string | null; total_orders: number | null; total_spent: number | null; last_order_at: string | null } | null;
+      return data as { full_name: string | null; total_orders: number | null; total_spent: number | null; last_order_at: string | null; acquisition_channel: string | null } | null;
     },
     staleTime: 60_000,
   });
+
+  // GA4 user_properties — fire once per customer record load. Ref-gated
+  // by customer-row identity so React Query refetches don't re-fire it.
+  const userPropsFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!customer || !email) return;
+    if (userPropsFiredRef.current === email) return;
+    userPropsFiredRef.current = email;
+    try {
+      const totalOrders = Number(customer.total_orders) || 0;
+      analytics.push({
+        event: "user_properties",
+        user_properties: {
+          customer_type: totalOrders === 0 ? "new" : "returning",
+          total_orders: totalOrders,
+          acquisition_channel: customer.acquisition_channel ?? "direct",
+        },
+      });
+    } catch { /* ignore */ }
+  }, [customer, email]);
 
   const { data: lastOrder } = useQuery({
     queryKey: ["my-last-order", email],

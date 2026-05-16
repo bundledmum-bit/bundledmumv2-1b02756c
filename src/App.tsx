@@ -12,6 +12,7 @@ import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
+import AuthAnalyticsListener from "@/components/AuthAnalyticsListener";
 import SkipNav from "@/components/SkipNav";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -297,6 +298,7 @@ const App = () => (
             <ScrollToTop />
             <PixelRouteListener />
             <AnalyticsRouteListener />
+            <AuthAnalyticsListener />
             <PasswordRecoveryListener />
             <Routes>
               {/* Admin routes */}
