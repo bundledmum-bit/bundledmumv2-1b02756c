@@ -95,14 +95,21 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const navigate = useNavigate();
   const skuParam = searchParams.get("sku");
 
-  // Pre-select brand variant from ?sku= param if present and matched.
-  // Otherwise pick a default: prefer in-stock brands, then lowest
-  // display_order (nulls last), then lowest price. If everything is OOS,
-  // we still surface the first brand rather than nothing.
-  const pickDefaultBrand = (brands: Brand[]): Brand => {
+  // Resolve which brand variant should be active given the current
+  // `?sku=` param and the brand list. Priority order:
+  //   1. ?sku= match (if present)
+  //   2. In-stock brand with lowest display_order (nulls last), tie-break on price
+  //   3. If everything is OOS, first brand overall so the page still renders
+  //   4. undefined if the product has zero brands (handled below)
+  const resolveBrand = (brands: Brand[], sku: string | null): Brand | undefined => {
+    if (!brands || brands.length === 0) return undefined;
+    if (sku) {
+      const match = brands.find(b => b.sku === sku);
+      if (match) return match;
+    }
     const inStock = brands.filter(b => b.inStock !== false);
     const pool = inStock.length > 0 ? inStock : brands;
-    const sorted = [...pool].sort((a, b) => {
+    return [...pool].sort((a, b) => {
       const aHas = a.displayOrder != null;
       const bHas = b.displayOrder != null;
       if (aHas && bHas) {
@@ -112,25 +119,24 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       if (aHas) return -1;
       if (bHas) return 1;
       return (a.price || 0) - (b.price || 0);
-    });
-    return sorted[0];
+    })[0];
   };
-  const defaultBrand = (() => {
-    if (skuParam) {
-      const match = product.brands.find(b => b.sku === skuParam);
-      if (match) return match;
-    }
-    return pickDefaultBrand(product.brands);
-  })();
-  const [selectedBrand, setSelectedBrand] = useState<Brand>(defaultBrand);
 
-  // If the SKU param changes after mount (e.g. user pastes a new URL in
-  // the same SPA session) and the brands have loaded, sync the selection.
+  // Seed state on first render so the JSX has a defined brand to read.
+  const [selectedBrand, setSelectedBrand] = useState<Brand | undefined>(
+    () => resolveBrand(product.brands, skuParam),
+  );
+
+  // Re-resolve whenever brands or the ?sku= param change. Both deps matter:
+  //   - brands: brands may load/refresh asynchronously
+  //   - skuParam: user can paste a different SKU URL in the same SPA session
+  // Without re-resolving on brands change, the page could stay blank after a
+  // refetch returns a different variant list.
   useEffect(() => {
-    if (!skuParam || !product.brands?.length) return;
-    const match = product.brands.find(b => b.sku === skuParam);
-    if (match && match.id !== selectedBrand.id) setSelectedBrand(match);
-  }, [skuParam, product.brands]);
+    const next = resolveBrand(product.brands, skuParam);
+    if (next && next.id !== selectedBrand?.id) setSelectedBrand(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.brands, skuParam]);
 
   // Wrap brand selection so the URL stays in sync — keeps the SKU
   // shareable when a customer switches variants manually.
@@ -175,9 +181,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
   // Sync active image to selected brand
   useEffect(() => {
+    if (!selectedBrand) return;
     const idx = brandImages.findIndex(img => img.brandId === selectedBrand.id);
     if (idx >= 0) setActiveImageIdx(idx);
-  }, [selectedBrand.id]);
+  }, [selectedBrand?.id]);
 
   const displayImage = brandImages[activeImageIdx]?.url || selectedBrand?.imageUrl || product.imageUrl;
   const longDescription = raw?.long_description || "";
@@ -228,6 +235,20 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       }
     }
   };
+
+  // Guard: if the product has no brands at all, render an "unavailable"
+  // state instead of crashing on selectedBrand.X reads below. This is
+  // a defensive backstop — the data path should always include at least
+  // one brand variant — but the page must never go blank.
+  if (!selectedBrand) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 pt-24">
+        <h1 className="pf text-2xl font-bold">{product.name}</h1>
+        <p className="text-muted-foreground text-sm">This product is currently unavailable.</p>
+        <Link to="/shop" className="text-forest font-semibold hover:underline">← Back to Shop</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
