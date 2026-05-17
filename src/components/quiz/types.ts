@@ -36,4 +36,8 @@ export interface RecommendationResult {
   target_count: number;
   engine_version: string;
   products: RecommendedProduct[];
+  // v4.9 — products that fit the customer's tier/scope but were excluded
+  // from the main bundle due to budget or subcategory caps. Up to 5 items.
+  // May be missing on older engine responses; treat as optional.
+  also_recommended?: RecommendedProduct[];
 }

@@ -949,6 +949,42 @@ function ResultsScreen({
           </Link>
         </div>
 
+        {/* v4.9 also_recommended — items that fit the customer's tier/scope
+            but were trimmed from the main bundle for budget or subcategory
+            reasons. Empty / missing → render nothing (engine v4.8 fallback
+            doesn't ship this field). Reuses ResultProductCard for parity. */}
+        {Array.isArray(recommendation.also_recommended) && recommendation.also_recommended.length > 0 && (
+          <section className="mt-10 pt-8 border-t border-border mb-10">
+            <h2 className="pf text-xl md:text-2xl font-bold text-foreground mb-2">
+              Other products you can add if you have more budget
+            </h2>
+            <p className="text-text-med text-sm md:text-base mb-5">
+              These items fit your selection but didn't make it into your bundle. Add them individually if you'd like.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 md:gap-5">
+              {recommendation.also_recommended.map(item => (
+                <ResultProductCard
+                  key={`alsorec-${item.product_id}`}
+                  item={item}
+                  isInCart={addedIds.has(item.product_id)}
+                  cartItem={cart.find(c => c.id === item.product_id)}
+                  onQtyUpdate={(key, qty) => {
+                    const c = cart.find(x => x._key === key);
+                    if (!c) return;
+                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
+                  }}
+                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
+                  onRemove={() => handleRemoveProduct(item)}
+                  fullProduct={productMap.get(item.product_id)}
+                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
+                  preAddQty={qtyFor(item)}
+                  onPreAddQtyChange={(n) => setQty(item, n)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
         <div className="bg-forest rounded-card p-6 md:p-8 text-center mb-8">
           <h3 className="pf text-xl text-primary-foreground mb-2">💬 Know Another Expecting Mum?</h3>
           <p className="text-primary-foreground/70 text-sm mb-4 max-w-[400px] mx-auto">Help her shop baby essentials, mum items, and baby gifts without stepping foot in any market.</p>
