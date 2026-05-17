@@ -137,7 +137,15 @@ function PinOverridesFields({
   );
 }
 
-type TopTab = ShopVariant | "categories" | "section-brands";
+type TopTab = ShopVariant | "categories" | "section-brands" | "gift-boxes" | "recovery-kits" | "maternity-lists";
+
+type BundleFamily = "gift-boxes" | "recovery-kits" | "maternity-lists";
+
+const BUNDLE_FAMILIES: { key: BundleFamily; label: string; nameRegex: RegExp }[] = [
+  { key: "gift-boxes",      label: "Baby Shower Gift Boxes",  nameRegex: /^Baby Shower Gift Box/i },
+  { key: "recovery-kits",   label: "Postpartum Recovery Kits", nameRegex: /^Postpartum Recovery Kit/i },
+  { key: "maternity-lists", label: "Maternity Lists",          nameRegex: /^Maternity Bundle/i },
+];
 
 const SHOPS: { key: ShopVariant; label: string }[] = [
   { key: "all", label: "All Shop" },
@@ -164,6 +172,9 @@ export default function AdminMerchandising() {
           ))}
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="section-brands">Section Brands</TabsTrigger>
+          {BUNDLE_FAMILIES.map(f => (
+            <TabsTrigger key={f.key} value={f.key}>{f.label}</TabsTrigger>
+          ))}
         </TabsList>
         {SHOPS.map(s => (
           <TabsContent key={s.key} value={s.key} className="mt-4">
@@ -176,6 +187,11 @@ export default function AdminMerchandising() {
         <TabsContent value="section-brands" className="mt-4">
           <SectionBrandsTab />
         </TabsContent>
+        {BUNDLE_FAMILIES.map(f => (
+          <TabsContent key={f.key} value={f.key} className="mt-4">
+            <BundleOrderPanel family={f} />
+          </TabsContent>
+        ))}
       </Tabs>
     </div>
   );
@@ -858,5 +874,119 @@ function AddProductDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Bundle ordering panel — controls shop_section_order within each
+// bundle family on the storefront /shop and /bundles pages. The shop
+// page reads from the same column, so saves reflect immediately.
+// ─────────────────────────────────────────────────────────────────────
+function BundleOrderPanel({ family }: { family: { key: BundleFamily; label: string; nameRegex: RegExp } }) {
+  const qc = useQueryClient();
+  const queryKey = ["admin-merch-bundles", family.key];
+
+  const { data: items = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, slug, bundle_label, shop_section_order, is_active")
+        .eq("is_gift_box", true)
+        .eq("is_active", true)
+        .order("shop_section_order", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return ((data || []) as any[]).filter((p: any) => family.nameRegex.test(p.name));
+    },
+  });
+
+  // Local draft so the admin can shuffle without committing per click.
+  const [draft, setDraft] = useState<any[] | null>(null);
+  useEffect(() => {
+    setDraft(items.length > 0 ? [...items] : null);
+  }, [items]);
+
+  const list: any[] = draft ?? [];
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...list];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setDraft(next);
+  };
+
+  const dirty = useMemo(() => {
+    if (!draft) return false;
+    return draft.some((p, i) => p.id !== items[i]?.id);
+  }, [draft, items]);
+
+  const saving = useMutation({
+    mutationFn: async () => {
+      if (!draft) return;
+      // Assign 1-based shop_section_order in the new order.
+      await Promise.all(draft.map((p, idx) =>
+        supabase.from("products").update({ shop_section_order: idx + 1 }).eq("id", p.id),
+      ));
+    },
+    onSuccess: () => {
+      toast.success("Bundle order saved");
+      qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: ["bundle-products"] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to save"),
+  });
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+        <p className="text-text-med text-sm max-w-2xl">
+          Drag the order using the up/down arrows. Position 1 appears first in this section on the storefront.
+        </p>
+        <Button
+          size="sm"
+          disabled={!dirty || saving.isPending}
+          onClick={() => saving.mutate()}
+        >
+          {saving.isPending ? "Saving…" : "Save Order"}
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="text-center py-10 text-text-med">Loading…</div>
+      ) : list.length === 0 ? (
+        <div className="text-center py-10 text-text-med">No products in this section.</div>
+      ) : (
+        <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-card">
+          {list.map((p, idx) => (
+            <li key={p.id} className="flex items-center gap-3 px-3 py-2.5">
+              <span className="text-xs font-bold w-6 text-text-light tabular-nums">#{idx + 1}</span>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold truncate">{p.name}</div>
+                {p.bundle_label && (
+                  <div className="text-[11px] text-text-med">{p.bundle_label}</div>
+                )}
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => move(idx, -1)}
+                  disabled={idx === 0}
+                  className="p-1.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Move up"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => move(idx, 1)}
+                  disabled={idx === list.length - 1}
+                  className="p-1.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Move down"
+                >
+                  <ArrowDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
