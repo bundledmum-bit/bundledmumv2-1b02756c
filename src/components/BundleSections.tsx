@@ -25,7 +25,7 @@ interface BundleProduct {
   is_gift_box: boolean;
   bundle_label: string | null;
   shop_section_order: number | null;
-  brands: { id: string; sku: string | null; brand_name: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null }[];
+  brands: { id: string; sku: string | null; brand_name: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null; images?: string[] | null }[];
 }
 
 interface EnrichedBundle extends BundleProduct {
@@ -61,7 +61,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
         .from("products")
         .select(`
           id, name, slug, description, is_gift_box, bundle_label, shop_section_order,
-          brands ( id, sku, brand_name, price, tier, in_stock, image_url )
+          brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, images )
         `)
         .eq("is_gift_box", true)
         .eq("is_active", true)
@@ -229,7 +229,12 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
   // over the tier-derived default. Tier still drives the badge colour.
   const label = item.bundle_label?.trim() || tierLabel(tier);
   const badge = tierBadgeClasses(tier);
-  const image = item.brands?.[0]?.image_url || null;
+  // Bundle products keep imagery on the brand row (brands.image_url,
+  // brands.images[]) — products.image_url is NULL for every bundle.
+  const brand = item.brands?.[0];
+  const image = brand?.image_url
+    || (Array.isArray(brand?.images) ? brand!.images![0] : null)
+    || null;
   const isBundlesPage = variant === "bundles";
   return (
     <Link
@@ -240,7 +245,14 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
         {image ? (
           <img src={image} alt={item.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-5xl">🎁</div>
+          <div
+            className="w-full h-full flex items-center justify-center px-4"
+            style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }}
+          >
+            <span className="text-primary-foreground font-bold text-center text-sm md:text-base leading-snug">
+              {item.bundle_label || item.name}
+            </span>
+          </div>
         )}
         <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill ${badge}`}>
           {label}
