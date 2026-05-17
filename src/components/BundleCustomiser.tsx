@@ -58,6 +58,15 @@ interface BundleItem {
   quantity: number;
   is_included: boolean;
   is_default: boolean;
+  // Optional gender axis — only populated for products where
+  // gender_relevant === true. Stored per-item so the cart payload can
+  // carry the choice through to the order.
+  selected_gender: string | null;
+}
+
+interface GenderInfo {
+  gender_relevant: boolean;
+  gender_colors: Record<string, string> | null;
 }
 
 export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku }: BundleCustomiserProps) {
@@ -118,6 +127,28 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
   const productIds = (defaultsQuery.data?.items || []).map(i => i.product_id);
   const productIdsKey = productIds.join(",");
 
+  // ── Load gender flags for every item product ──────────────────────
+  const genderQuery = useQuery({
+    queryKey: ["bundle-customiser-gender", productIdsKey],
+    enabled: productIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, gender_relevant, gender_colors")
+        .in("id", productIds);
+      if (error) throw error;
+      const map: Record<string, GenderInfo> = {};
+      ((data || []) as any[]).forEach(p => {
+        map[p.id] = {
+          gender_relevant: !!p.gender_relevant,
+          gender_colors: p.gender_colors || null,
+        };
+      });
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
   // ── Load available brands for every item product ──────────────────
   const brandsQuery = useQuery({
     queryKey: ["bundle-customiser-brands", productIdsKey],
@@ -149,6 +180,7 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
   const buildInitialItems = useMemo(() => {
     if (!defaultsQuery.data) return null;
     const brandsMap = brandsQuery.data || {};
+    const genderMap = genderQuery.data || {};
     return defaultsQuery.data.items
       .filter(it => it.is_enabled !== false)
       .map<BundleItem>(it => {
@@ -161,6 +193,10 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
           size_variant: null,
           in_stock: true,
         };
+        const gender = genderMap[it.product_id];
+        const seedGender = gender?.gender_relevant && gender?.gender_colors
+          ? (Object.keys(gender.gender_colors).find(k => k === "neutral") || Object.keys(gender.gender_colors)[0] || null)
+          : null;
         return {
           product_id: it.product_id,
           product_name: it.product_name,
@@ -169,9 +205,10 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
           quantity: it.quantity || 1,
           is_included: true,
           is_default: true,
+          selected_gender: seedGender,
         };
       });
-  }, [defaultsQuery.data, brandsQuery.data]);
+  }, [defaultsQuery.data, brandsQuery.data, genderQuery.data]);
 
   useEffect(() => {
     if (!initialised && buildInitialItems) {
@@ -195,6 +232,9 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
   };
   const selectBrand = (productId: string, brand: BrandRow) => {
     setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, selected_brand: brand } : i));
+  };
+  const setItemGender = (productId: string, key: string) => {
+    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, selected_gender: key } : i));
   };
   const removeCustomItem = (productId: string) => {
     setBundleItems(items => items.filter(i => !(i.product_id === productId && !i.is_default)));
@@ -249,6 +289,7 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
       quantity: 1,
       is_included: true,
       is_default: false,
+      selected_gender: null,
     }]);
     setAddSearch("");
   };
@@ -282,6 +323,8 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
         quantity: i.quantity,
         lineTotal: i.selected_brand.price * i.quantity,
         isDefault: i.is_default,
+        color: i.selected_gender ?? null,
+        size: i.selected_brand.size_variant ?? null,
       })),
       removedDefaultCount: bundleItems.filter(i => i.is_default && !i.is_included).length,
     } as any);
@@ -337,8 +380,31 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
       <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden mb-4">
         {bundleItems.map(item => {
           const lineTotal = item.selected_brand.price * item.quantity;
-          const hasOptions = item.available_brands.length > 1;
-          const useDropdown = item.available_brands.length > 3;
+          // ── Level 1: variant axis (age range / size) ───────────────
+          const hasVariants = item.available_brands.some(b => !!b.variant_type);
+          const variantOptions = hasVariants
+            ? Array.from(new Set(item.available_brands.filter(b => !!b.size_variant).map(b => b.size_variant as string)))
+            : [];
+          const variantLabel = item.available_brands.find(b => b.variant_type === "age_range")
+            ? "Age Range"
+            : item.available_brands.find(b => b.variant_type === "size")
+              ? "Size"
+              : "Variant";
+          // ── Level 2: brand pool filtered by selected variant ───────
+          const brandsToShow = hasVariants
+            ? item.available_brands.filter(b => b.size_variant === item.selected_brand.size_variant)
+            : item.available_brands;
+          const hasBrandChoice = brandsToShow.length > 1;
+          const useDropdown = brandsToShow.length > 3;
+          // ── Level 3: gender / colour ───────────────────────────────
+          const gender = genderQuery.data?.[item.product_id];
+          const colorOptions = gender?.gender_relevant && gender.gender_colors
+            ? Object.entries(gender.gender_colors).map(([key, color]) => ({
+                key,
+                label: key === "boy" ? "Boy" : key === "girl" ? "Girl" : "Neutral",
+                color,
+              }))
+            : [];
           return (
             <li key={item.product_id} className={`px-3 py-2.5 ${item.is_included ? "" : "opacity-60"}`}>
               <div className="flex items-start gap-3">
@@ -364,40 +430,91 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
                     {item.quantity > 1 && <span className="text-text-light font-normal"> × {item.quantity}</span>}
                     {!item.is_default && <span className="ml-2 text-[10px] uppercase tracking-wider text-coral font-bold">Added</span>}
                   </div>
-                  {hasOptions && item.is_included && (
-                    <div className="mt-1">
-                      {useDropdown ? (
-                        <select
-                          value={item.selected_brand.id}
-                          onChange={e => {
-                            const b = item.available_brands.find(x => x.id === e.target.value);
-                            if (b) selectBrand(item.product_id, b);
-                          }}
-                          className="text-[11px] border border-input rounded-md px-2 py-1 bg-background"
-                        >
-                          {item.available_brands.map(b => (
-                            <option key={b.id} value={b.id}>
-                              {b.brand_name}{b.size_variant ? ` (${b.size_variant})` : ""} — {fmt(b.price)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {item.available_brands.map(b => (
-                            <button
-                              key={b.id}
-                              onClick={() => selectBrand(item.product_id, b)}
-                              className={`text-[11px] px-2 py-0.5 rounded-pill border ${b.id === item.selected_brand.id ? "border-forest bg-forest-light text-forest font-semibold" : "border-border bg-card text-text-med"}`}
+
+                  {item.is_included && (
+                    <div className="mt-1 space-y-1.5">
+                      {/* Level 1 — Age Range / Size */}
+                      {hasVariants && variantOptions.length > 1 && (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-0.5">{variantLabel}</div>
+                          <div className="flex flex-wrap gap-1">
+                            {variantOptions.map(v => (
+                              <button
+                                key={v}
+                                onClick={() => {
+                                  // Snap brand to first match for the new variant
+                                  const firstMatch = item.available_brands.find(b => b.size_variant === v);
+                                  if (firstMatch) selectBrand(item.product_id, firstMatch);
+                                }}
+                                className={`text-[11px] px-2 py-0.5 rounded-pill border ${item.selected_brand.size_variant === v ? "border-forest bg-forest-light text-forest font-semibold" : "border-border bg-card text-text-med"}`}
+                              >
+                                {v}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Level 2 — Brand (filtered by selected variant) */}
+                      {hasBrandChoice ? (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-0.5">Brand</div>
+                          {useDropdown ? (
+                            <select
+                              value={item.selected_brand.id}
+                              onChange={e => {
+                                const b = item.available_brands.find(x => x.id === e.target.value);
+                                if (b) selectBrand(item.product_id, b);
+                              }}
+                              className="text-[11px] border border-input rounded-md px-2 py-1 bg-background w-full"
                             >
-                              {b.brand_name}{b.size_variant ? ` (${b.size_variant})` : ""} — {fmt(b.price)}
-                            </button>
-                          ))}
+                              {brandsToShow.map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.brand_name} — {fmt(b.price)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {brandsToShow.map(b => (
+                                <button
+                                  key={b.id}
+                                  onClick={() => selectBrand(item.product_id, b)}
+                                  className={`text-[11px] px-2 py-0.5 rounded-pill border ${b.id === item.selected_brand.id ? "border-forest bg-forest-light text-forest font-semibold" : "border-border bg-card text-text-med"}`}
+                                >
+                                  {b.brand_name} — {fmt(b.price)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        // Single-brand product — show the name as static text
+                        <div className="text-[11px] text-text-med">{item.selected_brand.brand_name || "—"}</div>
+                      )}
+
+                      {/* Level 3 — Colour / Gender */}
+                      {colorOptions.length > 0 && (
+                        <div>
+                          <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-0.5">Colour</div>
+                          <div className="flex flex-wrap gap-1">
+                            {colorOptions.map(opt => (
+                              <button
+                                key={opt.key}
+                                onClick={() => setItemGender(item.product_id, opt.key)}
+                                className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-pill border ${item.selected_gender === opt.key ? "border-forest bg-forest-light text-forest font-semibold" : "border-border bg-card text-text-med"}`}
+                              >
+                                <span
+                                  className="inline-block rounded-full border border-border"
+                                  style={{ width: 10, height: 10, backgroundColor: opt.color }}
+                                />
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
-                  )}
-                  {!hasOptions && (
-                    <div className="text-[11px] text-text-med">{item.selected_brand.brand_name || "—"}</div>
                   )}
                 </div>
                 <div className="text-right flex-shrink-0">

@@ -36,6 +36,8 @@ export interface CartItem {
     quantity: number;
     lineTotal: number;
     isDefault?: boolean;
+    color?: string | null;
+    size?: string | null;
   }>;
   removedDefaultCount?: number;
 }
