@@ -719,6 +719,7 @@ export type Database = {
           thumbnail_url: string | null
           tier: string
           updated_at: string
+          variant_type: string | null
           vendor_id: string | null
           weight_kg: number | null
           weight_range_kg: string | null
@@ -748,6 +749,7 @@ export type Database = {
           thumbnail_url?: string | null
           tier: string
           updated_at?: string
+          variant_type?: string | null
           vendor_id?: string | null
           weight_kg?: number | null
           weight_range_kg?: string | null
@@ -777,6 +779,7 @@ export type Database = {
           thumbnail_url?: string | null
           tier?: string
           updated_at?: string
+          variant_type?: string | null
           vendor_id?: string | null
           weight_kg?: number | null
           weight_range_kg?: string | null
@@ -2286,6 +2289,68 @@ export type Database = {
           wht_rate_services?: number | null
         }
         Relationships: []
+      }
+      gift_box_items: {
+        Row: {
+          brand_id: string | null
+          created_at: string
+          display_order: number
+          gift_box_id: string
+          id: string
+          is_optional: boolean
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          brand_id?: string | null
+          created_at?: string
+          display_order?: number
+          gift_box_id: string
+          id?: string
+          is_optional?: boolean
+          product_id: string
+          quantity?: number
+        }
+        Update: {
+          brand_id?: string | null
+          created_at?: string
+          display_order?: number
+          gift_box_id?: string
+          id?: string
+          is_optional?: boolean
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gift_box_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_box_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_box_items_gift_box_id_fkey"
+            columns: ["gift_box_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gift_box_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       homepage_sections: {
         Row: {
@@ -4842,6 +4907,7 @@ export type Database = {
           first_baby: boolean | null
           gender_colors: Json | null
           gender_relevant: boolean | null
+          gift_box_markup_pct: number | null
           hospital_types: string[] | null
           how_to_use: string | null
           id: string
@@ -4851,6 +4917,7 @@ export type Database = {
           is_consumable: boolean | null
           is_convenience: boolean | null
           is_featured: boolean | null
+          is_gift_box: boolean
           is_out_of_stock: boolean
           is_push_gift_eligible: boolean | null
           is_subscribable: boolean
@@ -4901,6 +4968,7 @@ export type Database = {
           first_baby?: boolean | null
           gender_colors?: Json | null
           gender_relevant?: boolean | null
+          gift_box_markup_pct?: number | null
           hospital_types?: string[] | null
           how_to_use?: string | null
           id?: string
@@ -4910,6 +4978,7 @@ export type Database = {
           is_consumable?: boolean | null
           is_convenience?: boolean | null
           is_featured?: boolean | null
+          is_gift_box?: boolean
           is_out_of_stock?: boolean
           is_push_gift_eligible?: boolean | null
           is_subscribable?: boolean
@@ -4960,6 +5029,7 @@ export type Database = {
           first_baby?: boolean | null
           gender_colors?: Json | null
           gender_relevant?: boolean | null
+          gift_box_markup_pct?: number | null
           hospital_types?: string[] | null
           how_to_use?: string | null
           id?: string
@@ -4969,6 +5039,7 @@ export type Database = {
           is_consumable?: boolean | null
           is_convenience?: boolean | null
           is_featured?: boolean | null
+          is_gift_box?: boolean
           is_out_of_stock?: boolean
           is_push_gift_eligible?: boolean | null
           is_subscribable?: boolean
@@ -6696,6 +6767,7 @@ export type Database = {
           thumbnail_url: string | null
           tier: string | null
           updated_at: string | null
+          variant_type: string | null
           weight_range_kg: string | null
         }
         Insert: {
@@ -6719,6 +6791,7 @@ export type Database = {
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
+          variant_type?: string | null
           weight_range_kg?: string | null
         }
         Update: {
@@ -6742,6 +6815,7 @@ export type Database = {
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
+          variant_type?: string | null
           weight_range_kg?: string | null
         }
         Relationships: [
@@ -7287,6 +7361,7 @@ export type Database = {
           zone: string
         }[]
       }
+      get_gift_box_price: { Args: { p_gift_box_id: string }; Returns: Json }
       get_subscription_settings: { Args: never; Returns: Json }
       get_user_permissions: {
         Args: { p_target_user_id: string }

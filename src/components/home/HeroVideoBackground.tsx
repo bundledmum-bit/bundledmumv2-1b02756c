@@ -98,15 +98,27 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
   }, [videoId]);
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div
+      className="absolute inset-0 overflow-hidden pointer-events-none select-none"
+      // @ts-expect-error inert is a valid HTML attribute
+      inert=""
+      aria-hidden="true"
+besides
+    >
       <div
         ref={containerRef}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full pointer-events-none"
+        tabIndex={-1}
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full pointer-events-none [&_iframe]:pointer-events-none [&_iframe]:select-none"
         style={{ pointerEvents: "none" }}
       />
-      {/* Shield blocks all hover/click interactions with the YouTube iframe,
+      {/* Shield blocks all hover/click/focus interactions with the YouTube iframe,
           which is what triggers the title bar, pause button, and channel name. */}
-      <div className="absolute inset-0 z-10" aria-hidden="true" />
+      <div
+        className="absolute inset-0 z-10 pointer-events-auto cursor-default"
+        aria-hidden="true"
+        onClick={(e) => e.preventDefault()}
+        onMouseDown={(e) => e.preventDefault()}
+      />
     </div>
   );
 }
