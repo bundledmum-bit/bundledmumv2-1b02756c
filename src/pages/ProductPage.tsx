@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
-import BundleContents from "@/components/BundleContents";
+import BundleCustomiser from "@/components/BundleCustomiser";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -670,7 +670,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               <p className="text-[#E65100] text-xs font-semibold mb-3">🔥 Only {selectedBrand.stockQuantity} left!</p>
             )}
 
-            {/* Add to Cart */}
+            {/* Add to Cart — hidden for bundle products since
+                BundleCustomiser owns its own customise + add-to-cart CTA */}
+            {!raw?.is_gift_box && (
             <div className="flex items-center gap-4 mb-6">
               {isOutOfStock ? (
                 <button className="rounded-pill bg-border px-8 py-3.5 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[48px] flex-1">
@@ -690,6 +692,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 <Share2 className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
+            )}
 
             <SubscribeAndSaveBadge productId={raw?.id} isSubscribable={raw?.is_subscribable === true} />
 
@@ -752,11 +755,19 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             </div>
           </section>
 
-          {/* What's Inside — only for bundle products (is_gift_box=true).
-              Pulls items + price from the get_gift_box_price RPC, or from
-              maternity_bundle_snapshots when this is a Maternity Bundle. */}
+          {/* Bundle customisation — replaces the static What's Inside
+              panel for is_gift_box products. Customer can include/exclude
+              items, swap brands, add catalogue products, reset to default,
+              and add the customised bundle to cart from inside this
+              component. The stock Add-to-Cart button above is hidden for
+              bundles so there's a single source-of-truth control. */}
           {raw?.is_gift_box && (
-            <BundleContents productId={product.id} productName={product.name} />
+            <BundleCustomiser
+              productId={product.id}
+              productName={product.name}
+              bundleLabel={raw?.bundle_label || null}
+              bundleSku={selectedBrand?.sku || null}
+            />
           )}
 
           {/* Long Description */}
@@ -829,7 +840,8 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         </div>
       </div>
 
-      {/* Sticky mobile CTA */}
+      {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own) */}
+      {!raw?.is_gift_box && (
       <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 bg-card border-t border-border p-3 flex items-center justify-between gap-4 z-40 md:hidden safe-area-bottom">
         <div>
           <p className="pf text-lg font-bold text-forest">{fmt(selectedBrand.price)}</p>
@@ -848,6 +860,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

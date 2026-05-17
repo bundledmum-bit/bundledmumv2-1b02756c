@@ -16,6 +16,28 @@ export interface CartItem {
   selectedSize?: string;
   selectedColor?: string;
   bundleName?: string;
+  // ── Bundle support ────────────────────────────────────────────────
+  // When type==='bundle', the row represents a customised gift box /
+  // recovery kit / maternity bundle. The bundle's child items are
+  // captured here for display + checkout expansion. The row's `price`
+  // is the customer's computed bundle price; qty is always 1.
+  type?: "bundle";
+  bundleId?: string;
+  bundleLabel?: string;
+  bundleSku?: string;
+  bundlePrice?: number;
+  bundleItems?: Array<{
+    productId: string;
+    productName: string;
+    brandId: string | null;
+    brandName: string | null;
+    sku?: string | null;
+    price: number;
+    quantity: number;
+    lineTotal: number;
+    isDefault?: boolean;
+  }>;
+  removedDefaultCount?: number;
 }
 
 interface CartContextType {
@@ -77,6 +99,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = useCallback((product: any) => {
     setCart(prev => {
+      // Bundles never merge — each customisation may differ, and merging
+      // would silently overwrite the customer's previous picks. Stamp a
+      // unique _key so every Add-to-Cart click adds a fresh bundle row.
+      if (product?.type === "bundle") {
+        const key = `bundle-${product.bundleId || product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        return [...prev, { ...product, _key: key, qty: 1 }];
+      }
       const key = `${product.id}-${product.selectedBrand?.id || "default"}-${product.selectedSize || ""}`;
       const existing = prev.find(i => i._key === key);
       if (existing) return prev.map(i => i._key === key ? { ...i, qty: i.qty + 1 } : i);

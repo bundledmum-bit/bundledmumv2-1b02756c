@@ -256,11 +256,17 @@ export default function CartPage() {
               // have since been deactivated or had every brand variant pulled.
               const liveProduct = ALL_PRODUCTS.find(p => p.id === item.id);
               const liveBrand = liveProduct?.brands.find(b => b.id === item.selectedBrand?.id);
-              const stillShoppable = !!liveProduct && (
-                // selectedBrand variant still in stock OR product has any shoppable variant
-                (liveBrand && liveBrand.inStock !== false && (liveBrand.price || 0) > 0)
-                || liveProduct.brands.some(b => b.inStock !== false && (b.price || 0) > 0)
-              );
+              // Bundle rows aren't validated through the regular ALL_PRODUCTS
+              // shoppability check — their child items live in item.bundleItems
+              // and were filtered for shoppability when added. Treat them as
+              // always shoppable here so they don't render as "no longer
+              // available" just because they don't appear in the products feed.
+              const stillShoppable = item.type === "bundle"
+                ? true
+                : !!liveProduct && (
+                    (liveBrand && liveBrand.inStock !== false && (liveBrand.price || 0) > 0)
+                    || liveProduct.brands.some(b => b.inStock !== false && (b.price || 0) > 0)
+                  );
               return (
               <div key={item._key} className={`bg-card rounded-card shadow-card p-3 sm:p-4 ${!stillShoppable ? "opacity-60" : ""}`}>
                 {!stillShoppable && (
@@ -289,6 +295,35 @@ export default function CartPage() {
                     </button>
                   </div>
                 </div>
+                {item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-border/50">
+                    <ul className="space-y-1">
+                      {item.bundleItems.map((bi, idx) => (
+                        <li key={`${item._key}-${bi.productId}-${idx}`} className="flex items-start gap-2 text-[12px] text-text-med">
+                          <span className="text-text-light flex-shrink-0">↳</span>
+                          <span className="flex-1 min-w-0 truncate">
+                            {bi.productName}
+                            {bi.brandName ? <span className="text-text-light"> — {bi.brandName}</span> : null}
+                            {bi.quantity > 1 ? <span className="text-text-light"> × {bi.quantity}</span> : null}
+                            {bi.isDefault === false && <span className="ml-1 text-[10px] uppercase tracking-wider text-coral font-bold">added</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {(item.removedDefaultCount ?? 0) > 0 && (
+                      <p className="mt-1 text-[11px] text-text-light">
+                        {item.removedDefaultCount} item{(item.removedDefaultCount ?? 0) === 1 ? "" : "s"} removed from default
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between mt-2">
+                      <Link to={`/products/${liveProduct?.slug || ""}`} className="text-[11px] text-forest font-semibold hover:underline">
+                        Edit bundle →
+                      </Link>
+                      <p className="font-body font-bold text-sm">{fmt(item.price)}</p>
+                    </div>
+                  </div>
+                )}
+                {item.type !== "bundle" && (
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateQty(item._key, item.qty - 1)} className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-warm-cream flex items-center justify-center interactive">
@@ -301,6 +336,7 @@ export default function CartPage() {
                   </div>
                   <p className="font-body font-bold text-sm">{fmt(item.price * item.qty)}</p>
                 </div>
+                )}
               </div>
               );
             })}
