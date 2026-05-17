@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { adaptProduct, isProductOOS, type Product, type Brand } from "@/lib/supabaseAdapters";
+import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Brand } from "@/lib/supabaseAdapters";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { toast } from "sonner";
@@ -85,6 +85,23 @@ export default function ProductPage() {
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
       <h1 className="pf text-2xl font-bold">Product not found</h1>
       <Link to="/shop" className="text-forest font-semibold hover:underline">← Back to Shop</Link>
+    </div>
+  );
+  // Direct-URL safety net — the query already filters is_active=true and
+  // deleted_at IS NULL, but a customer arriving at a deep link to a product
+  // whose every brand was deactivated would otherwise see an empty page.
+  // Surface a friendly "no longer available" state so SEO/email traffic
+  // never lands on a broken-looking detail screen.
+  if (!isProductShoppable(product)) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6 text-center">
+      <h1 className="pf text-2xl font-bold">Currently unavailable</h1>
+      <p className="text-muted-foreground max-w-md">
+        {product.name} is temporarily out of stock. Browse our other items or chat with us on WhatsApp to be notified when it's back.
+      </p>
+      <div className="flex flex-wrap gap-3 justify-center">
+        <Link to="/shop" className="rounded-pill bg-forest text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-forest-deep">Browse products</Link>
+        <a href="https://wa.me/+2347040667424" target="_blank" rel="noopener noreferrer" className="rounded-pill border border-forest text-forest px-5 py-2.5 text-sm font-semibold hover:bg-forest-light">WhatsApp us</a>
+      </div>
     </div>
   );
 

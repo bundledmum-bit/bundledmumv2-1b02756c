@@ -74,6 +74,21 @@ export interface Product {
  *   - product.isOutOfStock is true, OR
  *   - every brand on the product has inStock === false
  */
+/**
+ * A product is "shoppable" on the storefront if at least one of its real
+ * brand variants is currently in stock. Use this as the customer-facing
+ * gate for category pages, search, recommendations, cart cross-sell, etc.
+ *
+ * Note: `product.brands` is already pruned by adaptProduct to drop admin
+ * placeholders (price=0 or 'Brand TBD%'), so a brand reaching this point
+ * is by definition a real one — the only thing left to check is in-stock.
+ */
+export function isProductShoppable(product: Product): boolean {
+  if (!product) return false;
+  if (!Array.isArray(product.brands) || product.brands.length === 0) return false;
+  return product.brands.some(b => b && b.inStock !== false && (b.price || 0) > 0);
+}
+
 export function isProductOOS(product: Product): boolean {
   if (product.isOutOfStock) return true;
   if (product.brands.length > 0 && product.brands.every(b => b.inStock === false)) return true;
@@ -153,7 +168,22 @@ export function adaptProduct(row: any): Product {
   const scopeTags = tags.filter((t: any) => t.tag_type === "scope").map((t: any) => t.tag_value);
   const stageTags = tags.filter((t: any) => t.tag_type === "stage").map((t: any) => t.tag_value);
 
+  // Strip admin placeholders before adapting. A brand is "real" only if
+  // it has a positive price AND a name that isn't the "Brand TBD..."
+  // sentinel sales/marketing uses while a SKU is being sourced. These
+  // placeholders must never reach customer-facing UI — they show as
+  // "₦0" and pollute the variant picker.
+  // OOS real brands (in_stock=false but priced + named) are kept on
+  // purpose so the product detail page can still surface them with
+  // their "out of stock" badge.
   const brands: Brand[] = ((row.brands || []) as any[])
+    .filter((b: any) => {
+      const price = Number(b?.price) || 0;
+      const name = String(b?.brand_name || "");
+      if (price <= 0) return false;
+      if (/^brand tbd/i.test(name.trim())) return false;
+      return true;
+    })
     .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
     .map((b: any) => {
       // Gallery images: prefer the DB array, fall back to the single
@@ -241,12 +271,16 @@ export function adaptProduct(row: any): Product {
  */
 export function adaptProducts(
   rows: any[],
-  opts: { includeInactive?: boolean } = {}
+  opts: { includeInactive?: boolean; includeUnshoppable?: boolean } = {}
 ): Product[] {
   const safe = opts.includeInactive
     ? rows || []
     : (rows || []).filter((r: any) => r && r.is_active !== false && !r.deleted_at);
-  return safe.map(adaptProduct);
+  const adapted = safe.map(adaptProduct);
+  if (opts.includeUnshoppable) return adapted;
+  // Drop products with no shoppable brand variant — they can't be added
+  // to cart so showing them on listings is pure dead-end UX.
+  return adapted.filter(isProductShoppable);
 }
 
 // ─── Bundle adapter ────────────────────────────────────────────
@@ -268,7 +302,18 @@ export function adaptBundle(row: any): Bundle {
       // If there's no joined product (e.g. brand-only line), keep the item.
       if (!bi || bi.products == null) return true;
       const p = bi.products;
-      return p.is_active !== false && !p.deleted_at;
+      if (p.is_active === false || p.deleted_at) return false;
+      // Drop bundle items whose chosen brand is an admin placeholder
+      // (Brand TBD or ₦0). These would render as a ₦0 line item and
+      // confuse the bundle's stated price.
+      const b = bi.brands;
+      if (b) {
+        const price = Number(b.price) || 0;
+        const name = String(b.brand_name || "");
+        if (price <= 0) return false;
+        if (/^brand tbd/i.test(name.trim())) return false;
+      }
+      return true;
     })
     .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
 

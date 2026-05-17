@@ -149,6 +149,20 @@ export default function CartPage() {
   const cartIds = new Set(cart.map(i => i.id));
   const hasBundleItem = cart.some(i => !!i.bundleName);
 
+  // True if any cart line item references a product (or brand variant)
+  // that has since been deactivated server-side. We disable the checkout
+  // buttons until the customer removes the dead row — otherwise
+  // place-order would fail and they'd hit a confusing error at payment.
+  // Only meaningful once the live product feed has loaded; while it's
+  // still loading we never block (allProductsData is undefined → false).
+  const hasUnshoppableCartItem = allProductsData != null && cart.some(item => {
+    const live = ALL_PRODUCTS.find(p => p.id === item.id);
+    if (!live) return true;
+    const brand = live.brands.find(b => b.id === item.selectedBrand?.id);
+    if (brand && brand.inStock !== false && (brand.price || 0) > 0) return false;
+    return !live.brands.some(b => b.inStock !== false && (b.price || 0) > 0);
+  });
+
   // DB-driven cross-sell: pick the rule that matches the current cart.
   // bundle_item trigger wins when the cart already contains a bundle;
   // otherwise fall back to 'always'. Heading + max_items come from the
@@ -236,8 +250,25 @@ export default function CartPage() {
         <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
           <div className="space-y-3">
             <SpendMoreBanner variant="cart" />
-            {cart.map(item => (
-              <div key={item._key} className="bg-card rounded-card shadow-card p-3 sm:p-4">
+            {cart.map(item => {
+              // Cross-reference the live ALL_PRODUCTS feed (already filtered
+              // by the adapter to active + shoppable) to detect items that
+              // have since been deactivated or had every brand variant pulled.
+              const liveProduct = ALL_PRODUCTS.find(p => p.id === item.id);
+              const liveBrand = liveProduct?.brands.find(b => b.id === item.selectedBrand?.id);
+              const stillShoppable = !!liveProduct && (
+                // selectedBrand variant still in stock OR product has any shoppable variant
+                (liveBrand && liveBrand.inStock !== false && (liveBrand.price || 0) > 0)
+                || liveProduct.brands.some(b => b.inStock !== false && (b.price || 0) > 0)
+              );
+              return (
+              <div key={item._key} className={`bg-card rounded-card shadow-card p-3 sm:p-4 ${!stillShoppable ? "opacity-60" : ""}`}>
+                {!stillShoppable && (
+                  <div className="mb-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] text-destructive flex items-center justify-between gap-2">
+                    <span>This item is no longer available. Remove from cart to proceed to checkout.</span>
+                    <button onClick={() => removeItem(item._key)} className="rounded-pill border border-destructive text-destructive px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap hover:bg-destructive hover:text-primary-foreground">Remove</button>
+                  </div>
+                )}
                 <div className="flex items-start gap-3">
                   <ProductImage imageUrl={resolveImgUrl(item.img)} emoji={resolveEmojiFallback(item.img) || resolveEmojiFallback(item.baseImg)} alt={item.name} className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-warm-cream" emojiClassName="text-xl sm:text-2xl" />
                   <div className="flex-1 min-w-0">
@@ -271,7 +302,8 @@ export default function CartPage() {
                   <p className="font-body font-bold text-sm">{fmt(item.price * item.qty)}</p>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {savedItems.length > 0 && (
               <div className="mt-6">
@@ -343,9 +375,18 @@ export default function CartPage() {
                 </div>
               </div>
 
-              <Link to="/checkout" onClick={fireBeginCheckout} className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
-                Proceed to Checkout 🔒
-              </Link>
+              {hasUnshoppableCartItem ? (
+                <button
+                  disabled
+                  className="mt-5 block w-full rounded-pill bg-border py-3 text-center font-body font-semibold text-muted-foreground cursor-not-allowed"
+                >
+                  Remove unavailable items to continue
+                </button>
+              ) : (
+                <Link to="/checkout" onClick={fireBeginCheckout} className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
+                  Proceed to Checkout 🔒
+                </Link>
+              )}
               <p className="text-center font-body text-xs text-text-light mt-3">Secured by Paystack · All cards accepted</p>
               <div className="flex justify-center gap-3 mt-2 text-xs text-text-light">
                 <span>💳 Visa</span><span>💳 Mastercard</span><span>🏦 USSD</span><span>📱 Transfer</span>
@@ -366,13 +407,22 @@ export default function CartPage() {
               <div className="text-[10px] text-text-light font-semibold uppercase tracking-wide">Subtotal</div>
               <div className="text-sm font-bold text-forest tabular-nums">{fmt(subtotal)}</div>
             </div>
-            <Link
-              to="/checkout"
-              onClick={fireBeginCheckout}
-              className="flex-1 inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep"
-            >
-              Proceed to Checkout →
-            </Link>
+            {hasUnshoppableCartItem ? (
+              <button
+                disabled
+                className="flex-1 inline-flex items-center justify-center rounded-pill bg-border text-muted-foreground py-2.5 text-sm font-semibold cursor-not-allowed"
+              >
+                Remove unavailable items
+              </button>
+            ) : (
+              <Link
+                to="/checkout"
+                onClick={fireBeginCheckout}
+                className="flex-1 inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep"
+              >
+                Proceed to Checkout →
+              </Link>
+            )}
           </div>
         </div>
       )}
