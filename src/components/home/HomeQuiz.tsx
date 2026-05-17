@@ -812,7 +812,7 @@ function ResultsScreen({
         {giftItems.length > 0 && (
           <div className="mb-10">
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🎁 Gift Bundle for the New Parents</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {giftItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -838,7 +838,7 @@ function ResultsScreen({
         {mumItems.length > 0 && (
           <div className="mb-10">
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">💛 Mum Essentials</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {mumItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -864,7 +864,7 @@ function ResultsScreen({
         {hospitalItems.length > 0 && (
           <div className="mb-10">
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🏥 Hospital Consumables</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {hospitalItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -890,7 +890,7 @@ function ResultsScreen({
         {babyItems.length > 0 && (
           <div className="mb-10">
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">👶 Baby Essentials</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {babyItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -916,7 +916,7 @@ function ResultsScreen({
         {extrasItems.length > 0 && (
           <div className="mb-10">
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">✨ Convenience Extras</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {extrasItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -961,7 +961,7 @@ function ResultsScreen({
             <p className="text-text-med text-sm md:text-base mb-5">
               These items fit your selection but didn't make it into your bundle. Add them individually if you'd like.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
               {recommendation.also_recommended.map(item => (
                 <ResultProductCard
                   key={`alsorec-${item.product_id}`}
