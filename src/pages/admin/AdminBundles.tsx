@@ -8,13 +8,16 @@ import TrashTabs from "@/components/admin/TrashTabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import AdminBundleForm from "./AdminBundleForm";
 import AdminGiftBoxes, { useCanManageGiftBoxes } from "./AdminGiftBoxes";
+import AdminMaternityBundles from "./AdminMaternityBundles";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+
+type Section = "legacy" | "gift-boxes" | "recovery-kits" | "maternity-bundles";
 
 export default function AdminBundles() {
   const queryClient = useQueryClient();
   const { adminUser } = usePermissions();
   const canManageGiftBoxes = useCanManageGiftBoxes(adminUser?.role);
-  const [section, setSection] = useState<"maternity" | "gift-boxes">("maternity");
+  const [section, setSection] = useState<Section>("legacy");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [trashTab, setTrashTab] = useState<"active" | "trash">("active");
   const [showForm, setShowForm] = useState(false);
@@ -64,9 +67,12 @@ export default function AdminBundles() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="pf text-2xl font-bold">
-          {section === "maternity" ? `Bundles (${displayList.length})` : "Gift Boxes"}
+          {section === "legacy" ? `Bundles (${displayList.length})`
+            : section === "gift-boxes" ? "Gift Boxes"
+            : section === "recovery-kits" ? "Recovery Kits"
+            : "Maternity Bundles"}
         </h1>
-        {section === "maternity" && (
+        {section === "legacy" && (
           <button onClick={() => { setEditingBundle(null); setShowForm(true); }}
             className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep">
             <Plus className="w-4 h-4" /> Add Bundle
@@ -74,26 +80,33 @@ export default function AdminBundles() {
         )}
       </div>
 
-      {/* Section switcher — Gift Boxes pane is gated to super_admin / admin */}
+      {/* Section switcher — new product-table-backed bundle panes are gated
+          to super_admin / admin roles. */}
       {canManageGiftBoxes && (
-        <div className="flex gap-1 mb-5 border-b border-border">
-          <button
-            onClick={() => setSection("maternity")}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${section === "maternity" ? "border-forest text-forest" : "border-transparent text-text-med hover:text-foreground"}`}
-          >
-            Maternity Bundles
-          </button>
-          <button
-            onClick={() => setSection("gift-boxes")}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${section === "gift-boxes" ? "border-forest text-forest" : "border-transparent text-text-med hover:text-foreground"}`}
-          >
-            Gift Boxes
-          </button>
+        <div className="flex gap-1 mb-5 border-b border-border flex-wrap">
+          {[
+            { id: "legacy" as const, label: "Bundles (Legacy)" },
+            { id: "gift-boxes" as const, label: "Gift Boxes" },
+            { id: "recovery-kits" as const, label: "Recovery Kits" },
+            { id: "maternity-bundles" as const, label: "Maternity Bundles" },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSection(t.id)}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${section === t.id ? "border-forest text-forest" : "border-transparent text-text-med hover:text-foreground"}`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       )}
 
       {section === "gift-boxes" && canManageGiftBoxes ? (
-        <AdminGiftBoxes />
+        <AdminGiftBoxes filter="gift-box" />
+      ) : section === "recovery-kits" && canManageGiftBoxes ? (
+        <AdminGiftBoxes filter="recovery-kit" />
+      ) : section === "maternity-bundles" && canManageGiftBoxes ? (
+        <AdminMaternityBundles />
       ) : (
       <>
       <TrashTabs activeTab={trashTab} onTabChange={t => { setTrashTab(t); setSelected(new Set()); }} activeCount={activeBundles.length} trashCount={trashedBundles.length} />

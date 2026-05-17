@@ -10,8 +10,23 @@ interface GiftBoxRow {
   id: string;
   name: string;
   slug: string;
-  gift_box_markup_pct: number;
+  bundle_discount_pct: number;
 }
+
+type BundleFilter = "gift-box" | "recovery-kit";
+
+const FILTER_LABELS: Record<BundleFilter, { tableName: string; matchRegex: RegExp; emptyText: string }> = {
+  "gift-box": {
+    tableName: "Gift boxes",
+    matchRegex: /Baby Shower Gift Box/i,
+    emptyText: "No gift boxes configured.",
+  },
+  "recovery-kit": {
+    tableName: "Recovery kits",
+    matchRegex: /Postpartum Recovery Kit/i,
+    emptyText: "No recovery kits configured.",
+  },
+};
 
 interface GiftBoxItem {
   gift_box_item_id: string;
@@ -28,31 +43,35 @@ interface GiftBoxItem {
 interface GiftBoxPrice {
   gift_box_id: string;
   item_count: number;
-  cost_total: number;
-  markup_pct: number;
+  retail_total?: number;
+  cost_total?: number;       // legacy field name from older RPC version
+  discount_pct?: number;
+  markup_pct?: number;       // legacy field name
   sell_price: number;
   items: GiftBoxItem[];
 }
 
-export default function AdminGiftBoxes() {
+export default function AdminGiftBoxes({ filter = "gift-box" }: { filter?: BundleFilter } = {}) {
+  const cfg = FILTER_LABELS[filter];
   const { data: boxes, isLoading } = useQuery({
-    queryKey: ["admin-gift-boxes"],
+    queryKey: ["admin-gift-boxes", filter],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, name, slug, gift_box_markup_pct")
+        .select("id, name, slug, bundle_discount_pct")
         .eq("is_gift_box", true)
+        .eq("is_active", true)
         .order("slug");
       if (error) throw error;
-      return (data || []) as GiftBoxRow[];
+      return ((data || []) as GiftBoxRow[]).filter(b => cfg.matchRegex.test(b.name));
     },
   });
 
   if (isLoading) {
-    return <div className="text-center py-10 text-text-med">Loading gift boxes...</div>;
+    return <div className="text-center py-10 text-text-med">Loading {cfg.tableName.toLowerCase()}...</div>;
   }
   if (!boxes || boxes.length === 0) {
-    return <div className="text-center py-10 text-text-med">No gift boxes configured.</div>;
+    return <div className="text-center py-10 text-text-med">{cfg.emptyText}</div>;
   }
 
   return (
@@ -66,8 +85,8 @@ export default function AdminGiftBoxes() {
 
 function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
   const qc = useQueryClient();
-  const [markupDraft, setMarkupDraft] = useState<string>(String(box.gift_box_markup_pct ?? 25));
-  const [savingMarkup, setSavingMarkup] = useState(false);
+  const [discountDraft, setDiscountDraft] = useState<string>(String(box.bundle_discount_pct ?? 0));
+  const [saving, setSaving] = useState(false);
 
   const priceQuery = useQuery({
     queryKey: ["gift-box-price", box.id],
@@ -82,52 +101,52 @@ function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
   const price = priceQuery.data;
 
   useEffect(() => {
-    // Keep the markup draft in sync if the RPC returns a different value
+    // Keep the discount draft in sync if the RPC returns a different value
     // than the one cached on the products row (e.g. another admin edited).
-    if (price && Number(price.markup_pct) !== Number(markupDraft)) {
-      setMarkupDraft(String(price.markup_pct));
+    const rpcDiscount = (price as any)?.discount_pct ?? (price as any)?.markup_pct;
+    if (rpcDiscount != null && Number(rpcDiscount) !== Number(discountDraft)) {
+      setDiscountDraft(String(rpcDiscount));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [price?.markup_pct]);
+  }, [price]);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["gift-box-price", box.id] });
     qc.invalidateQueries({ queryKey: ["admin-gift-boxes"] });
   };
 
-  const saveMarkup = async () => {
-    const n = Number(markupDraft);
+  const saveDiscount = async () => {
+    const n = Number(discountDraft);
     if (!Number.isFinite(n) || n < 0 || n > 100) {
-      toast.error("Markup must be between 0 and 100.");
+      toast.error("Discount must be between 0 and 100.");
       return;
     }
-    setSavingMarkup(true);
+    setSaving(true);
     try {
-      // 1) write new markup on the gift-box product row
+      // 1) write new discount on the bundle product row
       const { error: e1 } = await (supabase as any)
         .from("products")
-        .update({ gift_box_markup_pct: n })
+        .update({ bundle_discount_pct: n })
         .eq("id", box.id);
       if (e1) throw e1;
-      // 2) recompute price via RPC (trigger already keeps the cost in sync,
-      //    but the brand row's price field needs a refresh based on the new
-      //    markup)
+      // 2) recompute price via RPC — the trigger keeps cost in sync, but
+      //    the brand row's price field still needs the post-discount value.
       const { data: fresh, error: e2 } = await (supabase as any)
         .rpc("get_gift_box_price", { p_gift_box_id: box.id });
       if (e2) throw e2;
-      // 3) push the new sell_price down to brands.price for this gift box
+      // 3) push the new sell_price down to brands.price for this bundle
       const sell = Number((fresh as any)?.sell_price ?? 0);
       const { error: e3 } = await (supabase as any)
         .from("brands")
         .update({ price: sell })
         .eq("product_id", box.id);
       if (e3) throw e3;
-      toast.success("Markup updated");
+      toast.success("Discount updated");
       refresh();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save markup");
+      toast.error(e?.message || "Failed to save discount");
     } finally {
-      setSavingMarkup(false);
+      setSaving(false);
     }
   };
 
@@ -156,36 +175,41 @@ function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
             <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light">Sell Price</div>
             <div className="pf text-2xl font-bold text-forest">{fmt(price.sell_price)}</div>
             <div className="text-[11px] text-text-med">
-              Cost: {fmt(price.cost_total)} · {price.item_count} item{price.item_count === 1 ? "" : "s"}
+              Retail: {fmt(Number(price.retail_total ?? price.cost_total ?? 0))} · {price.item_count} item{price.item_count === 1 ? "" : "s"}
             </div>
           </div>
         ) : null}
       </div>
 
-      {/* Markup editor */}
-      <div className="flex items-end gap-2 mb-5">
-        <div>
-          <label className="text-[10px] uppercase tracking-widest font-semibold text-text-light block mb-1">Markup</label>
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={markupDraft}
-              onChange={e => setMarkupDraft(e.target.value)}
-              className="w-24 border border-input rounded-lg px-2 py-1.5 text-sm bg-background"
-            />
-            <span className="text-sm text-text-med">%</span>
+      {/* Discount editor */}
+      <div className="mb-5">
+        <div className="flex items-end gap-2 mb-1">
+          <div>
+            <label className="text-[10px] uppercase tracking-widest font-semibold text-text-light block mb-1">Discount</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={discountDraft}
+                onChange={e => setDiscountDraft(e.target.value)}
+                className="w-24 border border-input rounded-lg px-2 py-1.5 text-sm bg-background"
+              />
+              <span className="text-sm text-text-med">%</span>
+            </div>
           </div>
+          <button
+            onClick={saveDiscount}
+            disabled={saving}
+            className="bg-forest text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? "Saving…" : "Save Discount"}
+          </button>
         </div>
-        <button
-          onClick={saveMarkup}
-          disabled={savingMarkup}
-          className="bg-forest text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {savingMarkup ? "Saving…" : "Save Markup"}
-        </button>
+        <p className="text-[11px] text-text-light max-w-md mt-1 leading-snug">
+          0% = sell at the full retail price of items. Enter a % discount to reduce the bundle price below retail. Example: 10 means customers pay 10% less than buying items separately.
+        </p>
       </div>
 
       {/* Items list */}
