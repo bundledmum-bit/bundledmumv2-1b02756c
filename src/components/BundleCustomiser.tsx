@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -72,6 +73,7 @@ interface GenderInfo {
 export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku }: BundleCustomiserProps) {
   const isMaternityBundle = /^Maternity Bundle/i.test(productName || "");
   const { addToCart } = useCart();
+  const navigate = useNavigate();
 
   // ── Load default items + the original "sell price" reference ──────
   const defaultsQuery = useQuery({
@@ -299,8 +301,11 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
     setAddSearch("");
   };
 
-  // ── Add to cart ─────────────────────────────────────────────────────
-  const handleAddToCart = () => {
+  // ── Proceed to checkout ─────────────────────────────────────────────
+  // Bundle CTA goes straight to /checkout instead of staying on the
+  // page — the customer has already specified everything they need on
+  // the customiser, so the intermediate /cart trip is friction.
+  const handleProceedToCheckout = () => {
     const included = bundleItems.filter(i => i.is_included);
     if (included.length === 0) {
       toast.error("Bundle is empty — include at least one item.");
@@ -333,9 +338,7 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
       })),
       removedDefaultCount: bundleItems.filter(i => i.is_default && !i.is_included).length,
     } as any);
-    toast.success(`✓ ${productName} added to cart`, {
-      action: { label: "View Cart →", onClick: () => window.location.href = "/cart" },
-    });
+    navigate("/checkout");
   };
 
   if (defaultsQuery.isLoading || (productIds.length > 0 && brandsQuery.isLoading && !initialised)) {
@@ -600,11 +603,11 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
       )}
 
       <button
-        onClick={handleAddToCart}
+        onClick={handleProceedToCheckout}
         className="w-full rounded-pill bg-coral px-6 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark inline-flex items-center justify-center gap-2"
       >
         <ShoppingBag className="w-4 h-4" />
-        Add bundle to cart — {fmt(bundlePrice)}
+        Proceed to Checkout — {fmt(bundlePrice)}
       </button>
     </section>
   );
