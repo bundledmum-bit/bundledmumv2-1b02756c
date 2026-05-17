@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
+import BundleContents from "@/components/BundleContents";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -750,6 +751,13 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               )}
             </div>
           </section>
+
+          {/* What's Inside — only for bundle products (is_gift_box=true).
+              Pulls items + price from the get_gift_box_price RPC, or from
+              maternity_bundle_snapshots when this is a Maternity Bundle. */}
+          {raw?.is_gift_box && (
+            <BundleContents productId={product.id} productName={product.name} />
+          )}
 
           {/* Long Description */}
           {longDescription && (

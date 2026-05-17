@@ -36,8 +36,10 @@ interface GiftBoxItem {
   brand_name: string | null;
   unit_price: number;
   quantity: number;
-  line_cost: number;
+  line_cost?: number;
+  line_retail?: number;
   is_optional: boolean;
+  is_enabled?: boolean;
 }
 
 interface GiftBoxPrice {
@@ -161,6 +163,18 @@ function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
     refresh();
   };
 
+  // Toggle is_enabled on a single line. The DB trigger recomputes
+  // retail_total + sell_price + brands.price; the UI refreshes the
+  // gift-box-price query to pick up the new numbers.
+  const toggleItem = async (giftBoxItemId: string, nextEnabled: boolean) => {
+    const { error } = await (supabase as any)
+      .from("gift_box_items")
+      .update({ is_enabled: nextEnabled })
+      .eq("id", giftBoxItemId);
+    if (error) { toast.error(error.message); return; }
+    refresh();
+  };
+
   return (
     <div className="bg-card border border-border rounded-xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -219,18 +233,31 @@ function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
           <div className="text-center py-4 text-text-med text-sm">Loading…</div>
         ) : price && price.items.length > 0 ? (
           <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-            {price.items.map(it => (
-              <li key={it.gift_box_item_id} className="flex items-center justify-between gap-3 px-3 py-2 bg-background">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold truncate">{it.product_name}</div>
-                  <div className="text-[11px] text-text-med">
-                    {it.brand_id
-                      ? <>Brand: {it.brand_name}</>
-                      : <span className="italic">Auto — cheapest in stock</span>}
-                    {" · "}Qty {it.quantity} × {fmt(it.unit_price)} = <span className="font-semibold">{fmt(it.line_cost)}</span>
-                    {it.is_optional && <span className="ml-2 text-[10px] uppercase tracking-wider text-text-light">(optional)</span>}
+            {price.items.map(it => {
+              const enabled = it.is_enabled !== false;
+              const lineTotal = Number(it.line_retail ?? it.line_cost ?? (it.unit_price * it.quantity));
+              return (
+              <li key={it.gift_box_item_id} className={`flex items-center justify-between gap-3 px-3 py-2 ${enabled ? "bg-background" : "bg-muted/30"}`}>
+                <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={() => toggleItem(it.gift_box_item_id, !enabled)}
+                    className="h-4 w-4 flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-semibold truncate ${enabled ? "" : "line-through text-muted-foreground"}`}>
+                      {it.product_name}
+                    </div>
+                    <div className={`text-[11px] ${enabled ? "text-text-med" : "text-muted-foreground"}`}>
+                      {it.brand_id
+                        ? <>Brand: {it.brand_name}</>
+                        : <span className="italic">Auto — cheapest in stock</span>}
+                      {" · "}Qty {it.quantity} × {fmt(it.unit_price)} = <span className="font-semibold">{fmt(lineTotal)}</span>
+                      {it.is_optional && <span className="ml-2 text-[10px] uppercase tracking-wider text-text-light">(optional)</span>}
+                    </div>
                   </div>
-                </div>
+                </label>
                 <button
                   title="Remove"
                   onClick={() => removeItem(it.gift_box_item_id)}
@@ -239,7 +266,8 @@ function GiftBoxPanel({ box }: { box: GiftBoxRow }) {
                   <X className="w-4 h-4" />
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         ) : (
           <div className="text-text-light text-sm italic">No items yet — add your first product below.</div>

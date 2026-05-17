@@ -23,6 +23,8 @@ interface BundleProduct {
   slug: string;
   description: string | null;
   is_gift_box: boolean;
+  bundle_label: string | null;
+  shop_section_order: number | null;
   brands: { id: string; sku: string | null; brand_name: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null }[];
 }
 
@@ -57,11 +59,13 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
       const { data, error } = await (supabase as any)
         .from("products")
         .select(`
-          id, name, slug, description, is_gift_box,
+          id, name, slug, description, is_gift_box, bundle_label, shop_section_order,
           brands ( id, sku, brand_name, price, tier, in_stock, image_url )
         `)
         .eq("is_gift_box", true)
         .eq("is_active", true)
+        // Admin-controlled within each section, then slug as a stable tiebreaker.
+        .order("shop_section_order", { ascending: true, nullsFirst: false })
         .order("slug");
       if (error) throw error;
       return (data || []) as BundleProduct[];
@@ -102,10 +106,9 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   // Split by name pattern. The DB seeded exactly two families today; the
   // filters tolerate any future "Baby Shower Gift Box - …" / "Postpartum
   // Recovery Kit - …" naming convention without code edits.
-  const giftBoxes = useMemo(() => (enriched || []).filter(p => /Baby Shower Gift Box/i.test(p.name))
-    .sort(byTier), [enriched]);
-  const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name))
-    .sort(byTier), [enriched]);
+  // Preserve the query's shop_section_order; no client-side re-sort needed.
+  const giftBoxes = useMemo(() => (enriched || []).filter(p => /Baby Shower Gift Box/i.test(p.name)), [enriched]);
+  const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name)), [enriched]);
 
   return (
     <div className={variant === "bundles" ? "space-y-10 md:space-y-14" : "space-y-8 mb-8"}>
@@ -128,13 +131,6 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
       <ComingSoonSection variant={variant} />
     </div>
   );
-}
-
-function byTier(a: EnrichedBundle, b: EnrichedBundle): number {
-  const rank = (t: string | null | undefined) => t === "premium" ? 2 : t === "standard" ? 1 : 0;
-  const at = a.brands?.[0]?.tier ?? null;
-  const bt = b.brands?.[0]?.tier ?? null;
-  return rank(at) - rank(bt);
 }
 
 function BundleSection({ heading, subtitle, items, loading, variant }: {
@@ -175,7 +171,9 @@ function BundleSection({ heading, subtitle, items, loading, variant }: {
 
 function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant }) {
   const tier = item.brands?.[0]?.tier ?? null;
-  const label = tierLabel(tier);
+  // Admin-edited display label (e.g. "Basic", "₦200,000") takes precedence
+  // over the tier-derived default. Tier still drives the badge colour.
+  const label = item.bundle_label?.trim() || tierLabel(tier);
   const badge = tierBadgeClasses(tier);
   const image = item.brands?.[0]?.image_url || null;
   const isBundlesPage = variant === "bundles";
