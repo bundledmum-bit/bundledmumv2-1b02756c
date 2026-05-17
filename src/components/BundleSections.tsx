@@ -31,6 +31,7 @@ interface BundleProduct {
 interface EnrichedBundle extends BundleProduct {
   item_count: number;
   computed_price: number;
+  is_maternity: boolean;
 }
 
 function tierLabel(tier: string | null | undefined): "Basic" | "Standard" | "Premium" {
@@ -73,26 +74,59 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
     staleTime: 60_000,
   });
 
-  // Enrich with item_count + freshest computed sell_price via the
-  // get_gift_box_price RPC. Failures are swallowed: a missing RPC value
-  // falls back to the cached brand price, never blocks rendering.
+  // Enrich with item_count + freshest computed sell_price.
+  //  - Maternity bundles use the latest maternity_bundle_snapshots row.
+  //  - Fixed bundles use the get_gift_box_price RPC.
+  // Failures fall back to the cached brand price + a 0 item_count.
   const [enriched, setEnriched] = useState<EnrichedBundle[] | null>(null);
   useEffect(() => {
     if (!products || products.length === 0) { setEnriched([]); return; }
     let cancelled = false;
     (async () => {
+      const matIds = products.filter(p => /^Maternity Bundle/i.test(p.name)).map(p => p.id);
+      const snapshotMap: Record<string, { item_count: number; sell_price: number }> = {};
+      if (matIds.length > 0) {
+        try {
+          const { data } = await (supabase as any)
+            .from("maternity_bundle_snapshots")
+            .select("bundle_id, item_count, sell_price, snapped_at")
+            .in("bundle_id", matIds)
+            .order("snapped_at", { ascending: false });
+          (data || []).forEach((s: any) => {
+            if (!snapshotMap[s.bundle_id]) {
+              snapshotMap[s.bundle_id] = {
+                item_count: Number(s.item_count ?? 0),
+                sell_price: Number(s.sell_price ?? 0),
+              };
+            }
+          });
+        } catch { /* fall through */ }
+      }
+
       const out = await Promise.all(products.map(async p => {
+        const isMaternity = /^Maternity Bundle/i.test(p.name);
+        if (isMaternity) {
+          const snap = snapshotMap[p.id];
+          return {
+            ...p,
+            is_maternity: true,
+            item_count: snap?.item_count ?? 0,
+            computed_price: snap?.sell_price || Number(p.brands?.[0]?.price ?? 0),
+          } as EnrichedBundle;
+        }
         try {
           const { data } = await (supabase as any)
             .rpc("get_gift_box_price", { p_gift_box_id: p.id });
           return {
             ...p,
+            is_maternity: false,
             item_count: Number((data as any)?.item_count ?? 0),
             computed_price: Number((data as any)?.sell_price ?? p.brands?.[0]?.price ?? 0),
           } as EnrichedBundle;
         } catch {
           return {
             ...p,
+            is_maternity: false,
             item_count: 0,
             computed_price: Number(p.brands?.[0]?.price ?? 0),
           } as EnrichedBundle;
@@ -106,9 +140,13 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   // Split by name pattern. The DB seeded exactly two families today; the
   // filters tolerate any future "Baby Shower Gift Box - …" / "Postpartum
   // Recovery Kit - …" naming convention without code edits.
-  // Preserve the query's shop_section_order; no client-side re-sort needed.
-  const giftBoxes = useMemo(() => (enriched || []).filter(p => /Baby Shower Gift Box/i.test(p.name)), [enriched]);
-  const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name)), [enriched]);
+  // Preserve the query's shop_section_order; re-sort after filtering to
+  // be defensive against any incidental reorder during async enrichment.
+  const sortByOrder = (a: EnrichedBundle, b: EnrichedBundle) =>
+    (a.shop_section_order ?? 99) - (b.shop_section_order ?? 99);
+  const giftBoxes = useMemo(() => (enriched || []).filter(p => /Baby Shower Gift Box/i.test(p.name)).sort(sortByOrder), [enriched]);
+  const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name)).sort(sortByOrder), [enriched]);
+  const maternityBundles = useMemo(() => (enriched || []).filter(p => /^Maternity Bundle/i.test(p.name)).sort(sortByOrder), [enriched]);
 
   return (
     <div className={variant === "bundles" ? "space-y-10 md:space-y-14" : "space-y-8 mb-8"}>
@@ -128,19 +166,35 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
         variant={variant}
       />
       {variant === "bundles" && <div className="border-t border-border" />}
-      <ComingSoonSection variant={variant} />
+      <BundleSection
+        heading="Maternity Lists"
+        subtitle={variant === "bundles"
+          ? "Complete hospital bag and baby prep lists, curated by budget"
+          : "Quiz-curated bundles by budget — from starter to premium"}
+        items={maternityBundles}
+        loading={isLoading || enriched === null}
+        variant={variant}
+        gridCols={variant === "shop" ? "1-2-4" : "1-2-3"}
+      />
     </div>
   );
 }
 
-function BundleSection({ heading, subtitle, items, loading, variant }: {
+function BundleSection({ heading, subtitle, items, loading, variant, gridCols = "1-2-3" }: {
   heading: string;
   subtitle: string;
   items: EnrichedBundle[];
   loading: boolean;
   variant: Variant;
+  gridCols?: "1-2-3" | "1-2-4";
 }) {
   const isBundlesPage = variant === "bundles";
+  // Maternity Lists on /shop runs 4-up so 8 cards lay out cleanly;
+  // the default 3-up keeps Gift Boxes / Recovery Kits matching the
+  // 3-card spec.
+  const gridClass = gridCols === "1-2-4"
+    ? "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5"
+    : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-5";
   return (
     <section>
       <div className="flex items-end justify-between mb-3 md:mb-4 gap-3 flex-wrap">
@@ -155,13 +209,13 @@ function BundleSection({ heading, subtitle, items, loading, variant }: {
         )}
       </div>
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+        <div className={gridClass}>
           {[0, 1, 2].map(i => <div key={i} className={`bg-card rounded-card shadow-card animate-pulse ${isBundlesPage ? "h-72" : "h-56"}`} />)}
         </div>
       ) : items.length === 0 ? (
         <div className="text-text-light text-sm italic">No items yet.</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+        <div className={gridClass}>
           {items.map(item => <BundleCard key={item.id} item={item} variant={variant} />)}
         </div>
       )}
@@ -216,33 +270,3 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
   );
 }
 
-function ComingSoonSection({ variant }: { variant: Variant }) {
-  const isBundlesPage = variant === "bundles";
-  return (
-    <section>
-      <div className="mb-3 md:mb-4">
-        <h2 className={`pf font-bold ${isBundlesPage ? "text-2xl md:text-3xl" : "text-xl md:text-2xl"}`}>Maternity Lists</h2>
-        <p className="text-text-med text-sm">Complete hospital bag and baby prep lists — coming soon</p>
-      </div>
-      <div className={`bg-warm-cream border border-dashed border-border rounded-card ${isBundlesPage ? "p-8 md:p-10" : "p-6"} text-center`}>
-        <span className="inline-block text-[10px] font-bold uppercase tracking-wider bg-coral/15 text-coral px-2 py-0.5 rounded-pill mb-3">
-          Coming soon
-        </span>
-        <h3 className={`pf font-bold text-foreground mb-1 ${isBundlesPage ? "text-xl md:text-2xl" : "text-base md:text-lg"}`}>
-          Personalised maternity lists are on the way
-        </h3>
-        <p className="text-text-med text-sm mb-4 max-w-md mx-auto">
-          We're putting together complete, ready-to-shop hospital bag and baby prep lists. Be the first to know when they go live.
-        </p>
-        <a
-          href="https://wa.me/+2347040667424?text=Hi%20BundledMum%21%20Please%20notify%20me%20when%20Maternity%20Lists%20launch."
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground font-semibold px-5 py-2.5 text-sm hover:bg-forest-deep"
-        >
-          Get notified on WhatsApp
-        </a>
-      </div>
-    </section>
-  );
-}
