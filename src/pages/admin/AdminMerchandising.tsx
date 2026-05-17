@@ -137,7 +137,7 @@ function PinOverridesFields({
   );
 }
 
-type TopTab = ShopVariant | "categories" | "section-brands" | "gift-boxes" | "recovery-kits" | "maternity-lists";
+type TopTab = ShopVariant | "categories" | "section-brands" | "gift-boxes" | "recovery-kits" | "maternity-lists" | "shop-sections";
 
 type BundleFamily = "gift-boxes" | "recovery-kits" | "maternity-lists";
 
@@ -172,6 +172,7 @@ export default function AdminMerchandising() {
           ))}
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="section-brands">Section Brands</TabsTrigger>
+          <TabsTrigger value="shop-sections">Shop Sections</TabsTrigger>
           {BUNDLE_FAMILIES.map(f => (
             <TabsTrigger key={f.key} value={f.key}>{f.label}</TabsTrigger>
           ))}
@@ -186,6 +187,9 @@ export default function AdminMerchandising() {
         </TabsContent>
         <TabsContent value="section-brands" className="mt-4">
           <SectionBrandsTab />
+        </TabsContent>
+        <TabsContent value="shop-sections" className="mt-4">
+          <ShopSectionsPanel />
         </TabsContent>
         {BUNDLE_FAMILIES.map(f => (
           <TabsContent key={f.key} value={f.key} className="mt-4">
@@ -987,6 +991,226 @@ function BundleOrderPanel({ family }: { family: { key: BundleFamily; label: stri
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Shop Sections — unified ordering / visibility for both bundle and
+// category sections on the storefront /shop page. Backed by the
+// shop_sections table; storefront renderers read display_order +
+// is_visible from here as the canonical source.
+// ─────────────────────────────────────────────────────────────────────
+interface ShopSection {
+  id: string;
+  section_key: string;
+  label: string;
+  title: string;
+  subtitle: string | null;
+  section_type: "bundle_group" | "category";
+  filter_value: string;
+  display_order: number;
+  is_visible: boolean;
+}
+
+function ShopSectionsPanel() {
+  const qc = useQueryClient();
+  const queryKey = ["admin-shop-sections"];
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shop_sections")
+        .select("*")
+        .order("display_order");
+      if (error) throw error;
+      return (data || []) as ShopSection[];
+    },
+  });
+
+  // Local draft for drag-style reordering via up/down arrows.
+  const [draft, setDraft] = useState<ShopSection[] | null>(null);
+  useEffect(() => { setDraft(rows.length > 0 ? [...rows] : null); }, [rows]);
+  const list: ShopSection[] = draft ?? [];
+
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...list];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setDraft(next);
+  };
+
+  const dirty = useMemo(() => {
+    if (!draft) return false;
+    return draft.some((s, i) => s.id !== rows[i]?.id);
+  }, [draft, rows]);
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey });
+    // Storefront also reads shop_sections; nudge the BundleSections
+    // query so the public site picks up the change on next render.
+    qc.invalidateQueries({ queryKey: ["bundle-products"] });
+    qc.invalidateQueries({ queryKey: ["shop-sections"] });
+  };
+
+  const saveOrder = useMutation({
+    mutationFn: async () => {
+      if (!draft) return;
+      const now = new Date().toISOString();
+      await Promise.all(draft.map((s, idx) =>
+        supabase
+          .from("shop_sections")
+          .update({ display_order: (idx + 1) * 10, updated_at: now })
+          .eq("id", s.id),
+      ));
+    },
+    onSuccess: () => { toast.success("Section order updated"); invalidateAll(); },
+    onError: (e: any) => toast.error(e?.message || "Failed to save order"),
+  });
+
+  const toggleVisibility = async (s: ShopSection) => {
+    const next = !s.is_visible;
+    const { error } = await supabase
+      .from("shop_sections")
+      .update({ is_visible: next, updated_at: new Date().toISOString() })
+      .eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(next ? "Section visible" : "Section hidden");
+    invalidateAll();
+  };
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [subtitleDraft, setSubtitleDraft] = useState("");
+
+  const beginEdit = (s: ShopSection) => {
+    setEditingId(s.id);
+    setTitleDraft(s.title || "");
+    setSubtitleDraft(s.subtitle || "");
+  };
+  const saveEdit = async (s: ShopSection) => {
+    const t = titleDraft.trim();
+    const sub = subtitleDraft.trim();
+    const { error } = await supabase
+      .from("shop_sections")
+      .update({
+        title: t || s.label,
+        subtitle: sub || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Section text updated");
+    setEditingId(null);
+    invalidateAll();
+  };
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+        <p className="text-text-med text-sm max-w-2xl">
+          Drag the order of every section on the shop page — bundles and product categories live in the same list.
+          Hidden sections don't render on the storefront.
+        </p>
+        <Button
+          size="sm"
+          disabled={!dirty || saveOrder.isPending}
+          onClick={() => saveOrder.mutate()}
+        >
+          {saveOrder.isPending ? "Saving…" : "Save Order"}
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="text-center py-10 text-text-med">Loading sections…</div>
+      ) : list.length === 0 ? (
+        <div className="text-center py-10 text-text-med">No sections configured.</div>
+      ) : (
+        <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-card">
+          {list.map((s, idx) => {
+            const isBundle = s.section_type === "bundle_group";
+            const isEditing = editingId === s.id;
+            return (
+              <li key={s.id} className={`flex items-start gap-3 px-3 py-2.5 ${s.is_visible ? "" : "bg-muted/30"}`}>
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0 pt-0.5">
+                  <button
+                    onClick={() => move(idx, -1)}
+                    disabled={idx === 0}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Move up"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => move(idx, 1)}
+                    disabled={idx === list.length - 1}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Move down"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => toggleVisibility(s)}
+                  className={`p-1.5 rounded hover:bg-muted flex-shrink-0 mt-0.5 ${s.is_visible ? "" : "opacity-40"}`}
+                  title={s.is_visible ? "Hide section" : "Show section"}
+                >
+                  {s.is_visible
+                    ? <span aria-hidden>👁</span>
+                    : <span aria-hidden>🚫</span>}
+                </button>
+                <div className="min-w-0 flex-1">
+                  {isEditing ? (
+                    <div className="space-y-1.5">
+                      <Input
+                        value={titleDraft}
+                        onChange={e => setTitleDraft(e.target.value)}
+                        placeholder="Section title"
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        value={subtitleDraft}
+                        onChange={e => setSubtitleDraft(e.target.value)}
+                        placeholder="Section subtitle (optional)"
+                        className="h-8 text-sm"
+                      />
+                      <div className="flex gap-1.5">
+                        <Button size="sm" onClick={() => saveEdit(s)}>Save</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => beginEdit(s)}
+                      className="text-left w-full"
+                      title="Edit title / subtitle"
+                    >
+                      <div className={`text-sm font-semibold ${s.is_visible ? "" : "text-muted-foreground"}`}>
+                        {s.title || s.label}
+                      </div>
+                      {s.subtitle && (
+                        <div className="text-[11px] text-text-med truncate">{s.subtitle}</div>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill flex-shrink-0 ${
+                    isBundle ? "bg-coral/15 text-coral" : "bg-emerald-100 text-emerald-700"
+                  }`}
+                  title={s.filter_value}
+                >
+                  {isBundle ? "Bundle" : "Category"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="text-[11px] text-text-light mt-3">
+        Tip: bundle sections pull products from is_gift_box=true filtered by name prefix.
+        Category sections pull from active products filtered by subcategory.
+      </p>
     </div>
   );
 }

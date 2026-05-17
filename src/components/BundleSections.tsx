@@ -160,34 +160,64 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name)).sort(sortByOrder), [enriched]);
   const maternityBundles = useMemo(() => (enriched || []).filter(p => /^Maternity Bundle/i.test(p.name)).sort(sortByOrder), [enriched]);
 
+  // ── Admin-driven section config (shop_sections table) ───────────────
+  // Holds the storefront title/subtitle/display_order/visibility for
+  // each of the three bundle groups. The /bundles page is curated and
+  // ignores this — only /shop respects admin reordering / hiding so the
+  // marketing page stays canonical.
+  const sectionsQuery = useQuery({
+    queryKey: ["shop-sections", "bundles"],
+    enabled: variant === "shop",
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shop_sections")
+        .select("section_key, title, subtitle, filter_value, display_order, is_visible, section_type")
+        .eq("section_type", "bundle_group")
+        .order("display_order");
+      if (error) throw error;
+      return (data || []) as Array<{
+        section_key: string; title: string; subtitle: string | null;
+        filter_value: string; display_order: number; is_visible: boolean;
+        section_type: string;
+      }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const sectionFor = (filter: string) => sectionsQuery.data?.find(s => s.filter_value === filter);
+  const SECTION_DEFAULTS = {
+    "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes",  subtitle: "Thoughtfully curated gifts for the new mum",  order: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const },
+    "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits", subtitle: "Everything a new mum needs to heal and thrive", order: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const },
+    "Maternity Bundle":         { title: "Maternity Lists",          subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", order: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const },
+  };
+  const blocks = Object.entries(SECTION_DEFAULTS).map(([filter, d]) => {
+    const cfg = sectionFor(filter);
+    return {
+      filter,
+      title: cfg?.title || d.title,
+      subtitle: cfg?.subtitle ?? d.subtitle,
+      order: cfg?.display_order ?? d.order,
+      visible: cfg ? cfg.is_visible : d.visible,
+      items: d.items,
+      grid: d.grid,
+    };
+  }).sort((a, b) => a.order - b.order);
+
   return (
     <div className={variant === "bundles" ? "space-y-10 md:space-y-14" : "space-y-8 mb-8"}>
-      <BundleSection
-        heading="Baby Shower Gift Boxes"
-        subtitle="Thoughtfully curated gifts for the new mum"
-        items={giftBoxes}
-        loading={isLoading || enriched === null}
-        variant={variant}
-      />
-      {variant === "bundles" && <div className="border-t border-border" />}
-      <BundleSection
-        heading="Postpartum Recovery Kits"
-        subtitle="Everything a new mum needs to heal and thrive"
-        items={recoveryKits}
-        loading={isLoading || enriched === null}
-        variant={variant}
-      />
-      {variant === "bundles" && <div className="border-t border-border" />}
-      <BundleSection
-        heading="Maternity Lists"
-        subtitle={variant === "bundles"
-          ? "Complete hospital bag and baby prep lists, curated by budget"
-          : "Quiz-curated bundles by budget — from starter to premium"}
-        items={maternityBundles}
-        loading={isLoading || enriched === null}
-        variant={variant}
-        gridCols={variant === "shop" ? "1-2-4" : "1-2-3"}
-      />
+      {blocks.filter(b => b.visible).map((b, i, arr) => (
+        <div key={b.filter}>
+          <BundleSection
+            heading={b.title}
+            subtitle={b.subtitle || ""}
+            items={b.items}
+            loading={isLoading || enriched === null}
+            variant={variant}
+            gridCols={b.grid}
+          />
+          {variant === "bundles" && i < arr.length - 1 && <div className="border-t border-border mt-10" />}
+        </div>
+      ))}
     </div>
   );
 }
