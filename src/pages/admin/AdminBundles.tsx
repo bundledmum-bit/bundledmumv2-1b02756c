@@ -7,9 +7,14 @@ import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import TrashTabs from "@/components/admin/TrashTabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import AdminBundleForm from "./AdminBundleForm";
+import AdminGiftBoxes, { useCanManageGiftBoxes } from "./AdminGiftBoxes";
+import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
 export default function AdminBundles() {
   const queryClient = useQueryClient();
+  const { adminUser } = usePermissions();
+  const canManageGiftBoxes = useCanManageGiftBoxes(adminUser?.role);
+  const [section, setSection] = useState<"maternity" | "gift-boxes">("maternity");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [trashTab, setTrashTab] = useState<"active" | "trash">("active");
   const [showForm, setShowForm] = useState(false);
@@ -57,14 +62,40 @@ export default function AdminBundles() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="pf text-2xl font-bold">Bundles ({displayList.length})</h1>
-        <button onClick={() => { setEditingBundle(null); setShowForm(true); }}
-          className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep">
-          <Plus className="w-4 h-4" /> Add Bundle
-        </button>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <h1 className="pf text-2xl font-bold">
+          {section === "maternity" ? `Bundles (${displayList.length})` : "Gift Boxes"}
+        </h1>
+        {section === "maternity" && (
+          <button onClick={() => { setEditingBundle(null); setShowForm(true); }}
+            className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep">
+            <Plus className="w-4 h-4" /> Add Bundle
+          </button>
+        )}
       </div>
 
+      {/* Section switcher — Gift Boxes pane is gated to super_admin / admin */}
+      {canManageGiftBoxes && (
+        <div className="flex gap-1 mb-5 border-b border-border">
+          <button
+            onClick={() => setSection("maternity")}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${section === "maternity" ? "border-forest text-forest" : "border-transparent text-text-med hover:text-foreground"}`}
+          >
+            Maternity Bundles
+          </button>
+          <button
+            onClick={() => setSection("gift-boxes")}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${section === "gift-boxes" ? "border-forest text-forest" : "border-transparent text-text-med hover:text-foreground"}`}
+          >
+            Gift Boxes
+          </button>
+        </div>
+      )}
+
+      {section === "gift-boxes" && canManageGiftBoxes ? (
+        <AdminGiftBoxes />
+      ) : (
+      <>
       <TrashTabs activeTab={trashTab} onTabChange={t => { setTrashTab(t); setSelected(new Set()); }} activeCount={activeBundles.length} trashCount={trashedBundles.length} />
 
       <BulkActionsBar selectedCount={selected.size} actions={bulkActions}
@@ -132,6 +163,9 @@ export default function AdminBundles() {
             </tbody>
           </table>
         </div>
+      )}
+
+      </>
       )}
 
       {showForm && (
