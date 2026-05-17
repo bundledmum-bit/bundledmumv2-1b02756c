@@ -46,6 +46,18 @@ function tierBadgeClasses(tier: string | null | undefined): string {
   return "bg-green-100 text-green-800";
 }
 
+/**
+ * Round a naira amount to its nearest thousand for compact price tags.
+ *   189_625 → "₦190k", 991_625 → "₦992k"
+ * Reads live `brands[0].price` so nightly refreshes propagate without
+ * any code edits.
+ */
+function abbreviatePrice(price: number): string {
+  if (!Number.isFinite(price) || price <= 0) return "";
+  const thousands = Math.round(price / 1000);
+  return `₦${thousands}k`;
+}
+
 function truncate(s: string | null, max: number): string {
   if (!s) return "";
   const t = s.trim();
@@ -257,6 +269,28 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
         <span className={`absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill ${badge}`}>
           {label}
         </span>
+        {/* Maternity bundles share a single base image — overlay a coral
+            price tag so the customer can tell them apart at a glance.
+            Pulled from live brands[0].price; nightly refresh updates it
+            automatically. */}
+        {item.is_maternity && (item.brands?.[0]?.price ?? 0) > 0 && (
+          <span
+            className="absolute bottom-3 left-3"
+            style={{
+              background: "#F4845F",
+              color: "#FFFFFF",
+              fontFamily: "Nunito, sans-serif",
+              fontWeight: 900,
+              fontSize: 14,
+              padding: "4px 12px",
+              borderRadius: 100,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+              letterSpacing: "0.3px",
+            }}
+          >
+            {abbreviatePrice(item.brands![0].price)}
+          </span>
+        )}
       </div>
       <div className="p-4 flex flex-col flex-1">
         <h3 className={`font-bold ${isBundlesPage ? "text-base md:text-lg" : "text-sm"} text-foreground mb-1 leading-snug`}>

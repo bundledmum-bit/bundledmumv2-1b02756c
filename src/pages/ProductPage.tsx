@@ -462,6 +462,27 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 </span>
               )}
               <ProductImage imageUrl={displayImage} emoji={selectedBrand.img || product.baseImg} alt={product.name} className="w-full h-full object-contain p-6" emojiClassName="text-8xl" />
+              {/* Maternity bundles share a base image — overlay a coral
+                  price tag (larger than the listing card) derived from
+                  live brand price so nightly refreshes update it. */}
+              {/^Maternity Bundle/i.test(product.name) && (selectedBrand?.price ?? 0) > 0 && (
+                <span
+                  className="absolute bottom-3 left-3 z-10"
+                  style={{
+                    background: "#F4845F",
+                    color: "#FFFFFF",
+                    fontFamily: "Nunito, sans-serif",
+                    fontWeight: 900,
+                    fontSize: 18,
+                    padding: "6px 16px",
+                    borderRadius: 100,
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    letterSpacing: "0.3px",
+                  }}
+                >
+                  ₦{Math.round(selectedBrand.price / 1000)}k
+                </span>
+              )}
               {displayImage && (
                 <div className="absolute bottom-3 right-3 bg-card/80 rounded-full p-2 opacity-60 group-hover:opacity-100 transition-opacity pointer-events-none">
                   <ZoomIn className="h-5 w-5 text-foreground" />
