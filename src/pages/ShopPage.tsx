@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, Link, useLocation } from "react-router-dom";
 import CuratedSections from "@/components/CuratedSections";
+import BundleSections from "@/components/BundleSections";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { toast } from "sonner";
@@ -642,6 +643,12 @@ export default function ShopPage() {
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-10">
         <SpendMoreBanner variant="shop" />
+
+        {/* Bundle sections (gift boxes + recovery kits + maternity-list
+            placeholder). Only shown alongside the storefront variants —
+            search queries and category-specific tabs skip them so the
+            results stay focused. */}
+        {sectionsOnlyMode && <BundleSections variant="shop" />}
 
         {/* Storefront variants render as a popularity-ranked list of category
             sections (initial 10 + lazy-load more). The flat grid + filter UI
