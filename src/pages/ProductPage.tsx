@@ -192,6 +192,50 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     return product.brands.filter(b => b.sizeVariant === selectedVariant);
   })();
 
+  // ── Colour / gender selector ────────────────────────────────────────
+  // Products with gender_relevant=true and a gender_colors map surface a
+  // colour pill row. The chosen key is persisted into the cart payload so
+  // ops can pack the right tone (boy/girl/neutral).
+  const hasGenderOptions = product.genderRelevant === true
+    && !!product.genderColors
+    && Object.keys(product.genderColors).length > 0;
+  const genderOptions = hasGenderOptions
+    ? (Object.entries(product.genderColors as Record<string, string>) as [string, string][])
+      .filter(([, c]) => !!c)
+      .map(([key, color]) => ({
+        key,
+        label: key === "boy" ? "Boy" : key === "girl" ? "Girl" : "Neutral",
+        color,
+      }))
+    : [];
+  const [selectedGender, setSelectedGender] = useState<string | null>(() => {
+    if (!hasGenderOptions || genderOptions.length === 0) return null;
+    const neutral = genderOptions.find(o => o.key === "neutral");
+    return (neutral?.key ?? genderOptions[0].key) || null;
+  });
+
+  // ── Age-range badge (read-only, no variant selector) ────────────────
+  // For products that DON'T expose a variant selector but DO have a single
+  // consistent size_variant across every brand, surface that age range as
+  // a subtle informational badge beneath the title. Skip when the age
+  // appears verbatim inside the product name (e.g. "Onesies (0-3 months)")
+  // so we don't duplicate the same hint twice on the page.
+  const ageBadgeText = (() => {
+    if (hasVariants) return null;
+    const unique = Array.from(new Set(
+      product.brands.map(b => (b.sizeVariant || "").trim()).filter(Boolean),
+    ));
+    if (unique.length !== 1) return null;
+    const age = unique[0];
+    // Only surface as an age badge when the value actually LOOKS like an
+    // age range. Packaging sizes ('500ml', '100g', 'Cot') also live in
+    // size_variant — they should not show up as "Suitable for:".
+    const looksLikeAge = /(\d+\s*(months?|weeks?|years?|m|w|y)\b)|all ages|newborn|infant|toddler/i.test(age);
+    if (!looksLikeAge) return null;
+    if (product.name.toLowerCase().includes(age.toLowerCase())) return null;
+    return age;
+  })();
+
   // GA4 view_item — fire once per product. Switching brand variants on the
   // same product must NOT re-fire (per spec). We key the ref on product.id
   // so navigating to a different product page re-arms the effect.
@@ -323,6 +367,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       price: selectedBrand.price,
       name: `${product.name} (${selectedBrand.label})`,
       selectedSize,
+      color: selectedGender || null,
     });
     toast.success(`✓ ${product.name} added to cart`, {
       action: { label: "View Cart →", onClick: () => window.location.href = "/cart" },
@@ -437,6 +482,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           <div className="flex flex-col">
             <h1 className="pf text-2xl md:text-3xl font-bold mb-2">{product.name}</h1>
 
+            {ageBadgeText && (
+              <span className="inline-flex items-center gap-1 mb-2 rounded-pill bg-forest-light text-forest text-[11px] font-semibold px-2.5 py-1">
+                Suitable for: {ageBadgeText}
+              </span>
+            )}
+
             {/* Rating */}
             <div className="flex items-center gap-2 mb-3">
               <div className="flex">
@@ -518,6 +569,32 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <div className="flex items-center gap-2 bg-forest-light rounded-lg px-3 py-2 text-xs text-forest font-semibold mb-4">
               <Truck className="h-4 w-4" /> {deliveryText}
             </div>
+
+            {/* Colour / Gender selector — pill row with a colour dot per
+                option. Only shown for products that admins have flagged
+                as gender-relevant AND that ship a gender_colors mapping. */}
+            {hasGenderOptions && genderOptions.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Colour
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {genderOptions.map(opt => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setSelectedGender(opt.key)}
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body inline-flex items-center gap-1.5 ${selectedGender === opt.key ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}
+                    >
+                      <span
+                        className="inline-block rounded-full border border-border"
+                        style={{ width: 12, height: 12, backgroundColor: opt.color }}
+                      />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Variant Selector — age range / size pills.
                 Only shown for products whose brands carry variant_type. */}
