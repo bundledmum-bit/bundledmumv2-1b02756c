@@ -103,7 +103,6 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
       // @ts-expect-error inert is a valid HTML attribute
       inert=""
       aria-hidden="true"
-besides
     >
       <div
         ref={containerRef}
