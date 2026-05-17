@@ -47,7 +47,8 @@ function buildOrderEmail(order: any, items: any[]): string {
         ${item.bundle_name ? `<span style="display:inline-block;background:${CORAL_LT};color:${CORAL};font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:4px;">📦 ${item.bundle_name}</span><br/>` : ""}
         <strong>${item.product_name}</strong>
         ${item.brand_name ? `<br/><span style="color:${MUTED};font-size:12px;">Brand: ${item.brand_name}</span>` : ""}
-        ${item.size ? `<br/><span style="color:${MUTED};font-size:12px;">Size: ${item.size}</span>` : ""}
+        ${item.size ? `<br/><span style="color:${MUTED};font-size:12px;">Size / Age: ${item.size}</span>` : ""}
+        ${item.color ? `<br/><span style="color:${MUTED};font-size:12px;">Colour: ${item.color === "boy" ? "Boy (Blue)" : item.color === "girl" ? "Girl (Pink)" : item.color === "neutral" ? "Neutral (White)" : item.color}</span>` : ""}
       </td>
       <td style="padding:12px 16px;border-bottom:1px solid ${DIVIDER};text-align:center;font-family:'Lato',Arial,sans-serif;font-size:14px;color:${BLACK};">${item.quantity}</td>
       <td style="padding:12px 16px;border-bottom:1px solid ${DIVIDER};text-align:right;font-family:'Lato',Arial,sans-serif;font-size:14px;font-weight:700;color:${BLACK};">${fmt(item.line_total)}</td>

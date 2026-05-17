@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { fmt } from "@/lib/cart";
+import { fmt, formatColor } from "@/lib/cart";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -220,7 +220,8 @@ export default function OrderConfirmedPage() {
                       <div className="text-sm font-semibold">{item.product_name}</div>
                       <div className="text-text-light text-xs flex flex-wrap gap-2">
                         {item.brand_name && <span>Brand: {item.brand_name}</span>}
-                        {item.size && <span>Size: {item.size}</span>}
+                        {item.size && <span>Size / Age: {item.size}</span>}
+                        {item.color && <span>Colour: {formatColor(item.color)}</span>}
                         <span>Qty: {item.quantity}</span>
                       </div>
                     </div>

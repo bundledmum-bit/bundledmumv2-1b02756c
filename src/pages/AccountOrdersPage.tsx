@@ -19,6 +19,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const fmt = (n: number | null | undefined) => `₦${Math.round(Number(n) || 0).toLocaleString()}`;
+const formatColor = (color: string | null | undefined): string => {
+  if (!color) return "";
+  if (color === "boy") return "Boy (Blue)";
+  if (color === "girl") return "Girl (Pink)";
+  if (color === "neutral") return "Neutral (White)";
+  return color;
+};
 
 export default function AccountOrdersPage() {
   const { user } = useCustomerAuth();
@@ -106,11 +113,19 @@ export default function AccountOrdersPage() {
                         <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-1">Items</div>
                         <ul className="space-y-1">
                           {items.map((it: any) => (
-                            <li key={it.id} className="flex items-center justify-between gap-2">
-                              <span className="truncate">
-                                {it.bundle_name ? <span className="text-coral font-semibold mr-1">[{it.bundle_name}]</span> : null}
-                                {it.product_name}{it.brand_name ? ` (${it.brand_name})` : ""} × {it.quantity}
-                              </span>
+                            <li key={it.id} className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate">
+                                  {it.bundle_name ? <span className="text-coral font-semibold mr-1">[{it.bundle_name}]</span> : null}
+                                  {it.product_name}{it.brand_name ? ` (${it.brand_name})` : ""} × {it.quantity}
+                                </div>
+                                {(it.size || it.color) && (
+                                  <div className="text-[11px] text-text-light flex flex-wrap gap-x-2">
+                                    {it.size && <span>Size / Age: {it.size}</span>}
+                                    {it.color && <span>Colour: {formatColor(it.color)}</span>}
+                                  </div>
+                                )}
+                              </div>
                               <span className="tabular-nums text-text-med">{fmt(it.line_total || (it.unit_price * it.quantity))}</span>
                             </li>
                           ))}

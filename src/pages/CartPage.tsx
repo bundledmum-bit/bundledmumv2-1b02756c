@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useCart, fmt } from "@/lib/cart";
+import { useCart, fmt, formatColor } from "@/lib/cart";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
@@ -275,8 +275,8 @@ export default function CartPage() {
                     <h3 className="font-body font-semibold text-[13px] sm:text-sm leading-tight line-clamp-2">{item.name}</h3>
                     <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                       {item.selectedBrand && <span className="font-body text-[11px] text-forest">{item.selectedBrand.label}</span>}
-                      {item.selectedSize && <span className="font-body text-[11px] text-text-light">Size: {item.selectedSize}</span>}
-                      {item.selectedColor && <span className="font-body text-[11px] text-text-light">Color: {item.selectedColor}</span>}
+                      {item.selectedSize && <span className="font-body text-[11px] text-text-light">Size / Age: {item.selectedSize}</span>}
+                      {item.selectedColor && <span className="font-body text-[11px] text-text-light">Colour: {formatColor(item.selectedColor)}</span>}
                     </div>
                     <p className="font-body font-bold text-coral text-sm mt-1">{fmt(item.price)}</p>
                   </div>

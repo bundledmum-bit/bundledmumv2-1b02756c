@@ -40,6 +40,13 @@ const DATE_PRESETS = [
 ];
 
 const fmt = (n: number) => `₦${n.toLocaleString()}`;
+const formatColor = (color: string | null | undefined): string => {
+  if (!color) return "";
+  if (color === "boy") return "Boy (Blue)";
+  if (color === "girl") return "Girl (Pink)";
+  if (color === "neutral") return "Neutral (White)";
+  return color;
+};
 
 export default function AdminOrders() {
   const queryClient = useQueryClient();
@@ -701,7 +708,12 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             <div key={item.id} className="flex justify-between text-xs bg-muted/30 rounded p-2">
               <div className="min-w-0">
                 {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
-                <span>{item.product_name} ({item.brand_name}){item.size ? ` · ${item.size}` : ""}{item.color ? ` · ${item.color}` : ""} × {item.quantity}</span>
+                <div className="font-semibold">{item.product_name} <span className="font-normal text-muted-foreground">× {item.quantity}</span></div>
+                <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
+                  {item.brand_name && <span>Brand: {item.brand_name}</span>}
+                  {item.size && <span>Size / Age: {item.size}</span>}
+                  {item.color && <span>Colour: {formatColor(item.color)}</span>}
+                </div>
               </div>
               {showFinance && <span className="font-semibold flex-shrink-0 ml-2">{fmt(item.line_total || 0)}</span>}
             </div>

@@ -361,13 +361,23 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       toast.error("Please select a size.");
       return;
     }
+    // Persist all three variant axes onto the cart item so the cart UI,
+    // checkout, place-order edge function, and admin order detail can
+    // surface the customer's exact selection:
+    //   - selectedColor → order_items.color  (gender choice: boy/girl/neutral)
+    //   - selectedSize  → order_items.size   (age range or size variant)
+    // If the product also exposes the legacy product.sizes axis, that value
+    // wins for selectedSize (it's the size the engine cares about) and the
+    // variant axis is preserved as `selectedVariant` for display only.
+    const sizeForCart = selectedSize || (hasVariants ? selectedVariant : selectedBrand.sizeVariant) || null;
     addToCart({
       ...product,
       selectedBrand,
       price: selectedBrand.price,
       name: `${product.name} (${selectedBrand.label})`,
-      selectedSize,
-      color: selectedGender || null,
+      selectedSize: sizeForCart,
+      selectedColor: selectedGender || null,
+      selectedVariant: hasVariants ? selectedVariant : null,
     });
     toast.success(`✓ ${product.name} added to cart`, {
       action: { label: "View Cart →", onClick: () => window.location.href = "/cart" },

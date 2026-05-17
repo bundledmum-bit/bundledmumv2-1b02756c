@@ -198,6 +198,19 @@ export function useCart() {
 }
 
 export const fmt = (n: number) => `₦${n.toLocaleString()}`;
+
+/**
+ * Pretty-print the gender/colour key stored on cart and order_items.
+ * Falls back to the raw value if a future option is added that this
+ * helper doesn't yet recognise.
+ */
+export const formatColor = (color: string | null | undefined): string => {
+  if (!color) return "";
+  if (color === "boy") return "Boy (Blue)";
+  if (color === "girl") return "Girl (Pink)";
+  if (color === "neutral") return "Neutral (White)";
+  return color;
+};
 export const generateOrderId = () => `ORD-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
 const BRANDS_BY_BUDGET: Record<string, number> = { starter: 0, standard: 1, premium: 2 };
