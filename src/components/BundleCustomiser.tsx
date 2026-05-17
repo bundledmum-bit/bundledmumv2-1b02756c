@@ -236,6 +236,11 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
   const setItemGender = (productId: string, key: string) => {
     setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, selected_gender: key } : i));
   };
+  // Min qty 1; no upper bound. bundlePrice recomputes via useMemo.
+  const updateQuantity = (productId: string, newQty: number) => {
+    if (newQty < 1) return;
+    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, quantity: newQty } : i));
+  };
   const removeCustomItem = (productId: string) => {
     setBundleItems(items => items.filter(i => !(i.product_id === productId && !i.is_default)));
   };
@@ -427,7 +432,6 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
                 <div className="min-w-0 flex-1">
                   <div className={`text-sm font-semibold ${item.is_included ? "" : "line-through"}`}>
                     {item.product_name}
-                    {item.quantity > 1 && <span className="text-text-light font-normal"> × {item.quantity}</span>}
                     {!item.is_default && <span className="ml-2 text-[10px] uppercase tracking-wider text-coral font-bold">Added</span>}
                   </div>
 
@@ -517,7 +521,29 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
                     </div>
                   )}
                 </div>
-                <div className="text-right flex-shrink-0">
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {/* Quantity stepper — disabled when item is excluded. */}
+                  <div className={`inline-flex items-center gap-1 ${item.is_included ? "" : "opacity-50"}`}>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.product_id, item.quantity - 1)}
+                      disabled={!item.is_included || item.quantity <= 1}
+                      aria-label="Decrease quantity"
+                      className="h-6 w-6 rounded-full bg-warm-cream flex items-center justify-center text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-warm-cream/80"
+                    >
+                      −
+                    </button>
+                    <span className="text-xs font-bold tabular-nums w-5 text-center">{item.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateQuantity(item.product_id, item.quantity + 1)}
+                      disabled={!item.is_included}
+                      aria-label="Increase quantity"
+                      className="h-6 w-6 rounded-full bg-warm-cream flex items-center justify-center text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-warm-cream/80"
+                    >
+                      +
+                    </button>
+                  </div>
                   <div className={`text-sm font-semibold tabular-nums ${item.is_included ? "" : "text-muted-foreground"}`}>
                     {item.is_included ? fmt(lineTotal) : fmt(0)}
                   </div>
