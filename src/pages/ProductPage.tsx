@@ -22,7 +22,7 @@ function useProduct(slug: string) {
     queryFn: async () => {
       let { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -31,7 +31,7 @@ function useProduct(slug: string) {
       if (!data) {
         const res = await supabase
           .from("products")
-          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
           .eq("id", slug)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -113,6 +113,30 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const navigate = useNavigate();
   const skuParam = searchParams.get("sku");
 
+  // ── Variant axis (age_range / size) ─────────────────────────────────
+  // Eligible products (baby bouncer ages, bedding-set sizes, etc.) ship
+  // multiple brands grouped by an age or size axis. We surface a variant
+  // selector ABOVE the brand selector, filter brands to the selected
+  // variant, and hide the whole row for products with variant_type = null
+  // (i.e. behave exactly as before).
+  const hasVariants = product.brands.some(b => !!b.variantType);
+  const variantType = product.brands.find(b => !!b.variantType)?.variantType || null;
+  const allVariants = (() => {
+    if (!hasVariants) return [] as string[];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const b of product.brands) {
+      if (!b.variantType || !b.sizeVariant) continue;
+      if (seen.has(b.sizeVariant)) continue;
+      seen.add(b.sizeVariant);
+      out.push(b.sizeVariant);
+    }
+    return out;
+  })();
+  const variantLabel = variantType === "age_range" ? "Age Range"
+    : variantType === "size" ? "Size"
+    : "Variant";
+
   // Resolve which brand variant should be active given the current
   // `?sku=` param and the brand list. Priority order:
   //   1. ?sku= match (if present)
@@ -144,6 +168,29 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const [selectedBrand, setSelectedBrand] = useState<Brand | undefined>(
     () => resolveBrand(product.brands, skuParam),
   );
+
+  // Seed selectedVariant from the sku-matched brand (if any) or the first
+  // axis value, so the variant pill and brand selector land in sync on
+  // first render. Products without a variant axis pass through as null.
+  const [selectedVariant, setSelectedVariant] = useState<string | null>(() => {
+    if (!hasVariants || allVariants.length === 0) return null;
+    if (skuParam) {
+      const m = product.brands.find(b => b.sku === skuParam);
+      if (m?.sizeVariant && m.variantType) return m.sizeVariant;
+    }
+    // Default to the variant that the initial selected brand belongs to,
+    // so we never start with a mismatch between the two selectors.
+    const seed = resolveBrand(product.brands, null);
+    if (seed?.sizeVariant && seed.variantType) return seed.sizeVariant;
+    return allVariants[0];
+  });
+
+  // Brands shown to the user, filtered by the active variant axis value.
+  // Products without a variant axis are passed through unchanged.
+  const filteredBrands = (() => {
+    if (!hasVariants || !selectedVariant) return product.brands;
+    return product.brands.filter(b => b.sizeVariant === selectedVariant);
+  })();
 
   // GA4 view_item — fire once per product. Switching brand variants on the
   // same product must NOT re-fire (per spec). We key the ref on product.id
@@ -177,8 +224,39 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   useEffect(() => {
     const next = resolveBrand(product.brands, skuParam);
     if (next && next.id !== selectedBrand?.id) setSelectedBrand(next);
+    // If the resolved brand sits on a different variant axis value than
+    // what's currently active, pull the variant pill into alignment too.
+    if (next?.sizeVariant && next.variantType && next.sizeVariant !== selectedVariant) {
+      setSelectedVariant(next.sizeVariant);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product.brands, skuParam]);
+
+  // When the user switches variant axis manually, snap the selected brand
+  // to the best in-stock option within that axis value. Keeps the brand
+  // selector and price/image display in sync without a stale brand carrying
+  // over from the previous variant.
+  const selectVariant = (variant: string) => {
+    setSelectedVariant(variant);
+    try {
+      const pool = product.brands.filter(b => b.sizeVariant === variant);
+      const next = resolveBrand(pool, null);
+      if (next) {
+        setSelectedBrand(next);
+        if (next.sku) {
+          const sp = new URLSearchParams(searchParams);
+          sp.set("sku", next.sku);
+          navigate(`?${sp.toString()}`, { replace: true });
+        }
+      } else {
+        // No brands at all for this variant — leave selectedBrand alone;
+        // the JSX below renders an "out of stock" / unavailable panel.
+        setSelectedBrand(undefined);
+      }
+    } catch (e) {
+      console.warn("[product] selectVariant failed:", e);
+    }
+  };
 
   // Wrap brand selection so the URL stays in sync — keeps the SKU
   // shareable when a customer switches variants manually.
@@ -441,16 +519,39 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               <Truck className="h-4 w-4" /> {deliveryText}
             </div>
 
+            {/* Variant Selector — age range / size pills.
+                Only shown for products whose brands carry variant_type. */}
+            {hasVariants && allVariants.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  {variantLabel}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {allVariants.map(v => (
+                    <button
+                      key={v}
+                      onClick={() => { selectVariant(v); setActiveImageIdx(0); }}
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedVariant === v ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Brand Selector */}
             <div className="mb-4">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Choose Brand</p>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{hasVariants ? "Brand" : "Choose Brand"}</p>
               <div className="flex flex-wrap gap-2">
-                {product.brands.map(b => {
+                {filteredBrands.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No brands available for this selection.</p>
+                ) : filteredBrands.map(b => {
                   const brandOos = !b.inStock || product.isOutOfStock;
                   const pcLabel = packCountLabel(b);
                   return (
                     <button key={b.id} onClick={() => { selectBrand(b); setActiveImageIdx(0); }}
-                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body flex items-center gap-1.5 ${brandOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body flex items-center gap-1.5 ${brandOos ? "opacity-50" : ""} ${selectedBrand?.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
                       {b.logoUrl && <img src={b.logoUrl} alt="" className="w-4 h-4 object-contain" />}
                       <span>{b.label}{pcLabel ? ` ${pcLabel}` : ""} — {fmt(b.price)}{brandOos ? " (out of stock)" : ""}</span>
                       {b.compareAtPrice && b.compareAtPrice > b.price && !brandOos && (

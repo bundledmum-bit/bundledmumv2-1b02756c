@@ -28,6 +28,9 @@ export interface Brand {
   diaperType?: "Tape" | "Pant" | "Underlay" | string | null;
   sku?: string | null;
   displayOrder?: number | null;
+  /** Optional variant axis for products that ship in multiple ages/sizes
+   * (e.g. baby bouncer ages, bedding-set sizes). NULL → no variant axis. */
+  variantType?: "age_range" | "size" | null;
 }
 
 export interface Product {
@@ -209,6 +212,7 @@ export function adaptProduct(row: any): Product {
         packCount: b.pack_count != null ? Number(b.pack_count) : null,
         diaperType: b.diaper_type || null,
         sku: b.sku || null,
+        variantType: b.variant_type || null,
         displayOrder: b.display_order != null ? Number(b.display_order) : null,
       };
     });
