@@ -2297,6 +2297,7 @@ export type Database = {
           display_order: number
           gift_box_id: string
           id: string
+          is_enabled: boolean
           is_optional: boolean
           product_id: string
           quantity: number
@@ -2307,6 +2308,7 @@ export type Database = {
           display_order?: number
           gift_box_id: string
           id?: string
+          is_enabled?: boolean
           is_optional?: boolean
           product_id: string
           quantity?: number
@@ -2317,6 +2319,7 @@ export type Database = {
           display_order?: number
           gift_box_id?: string
           id?: string
+          is_enabled?: boolean
           is_optional?: boolean
           product_id?: string
           quantity?: number
@@ -3560,6 +3563,59 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "orders_report"
             referencedColumns: ["order_uuid"]
+          },
+        ]
+      }
+      maternity_bundle_snapshots: {
+        Row: {
+          budget_amount: number
+          bundle_id: string
+          bundle_tier: string
+          gender: string
+          id: string
+          item_count: number
+          items_snapshot: Json
+          retail_total: number
+          scope: string
+          sell_price: number
+          snapped_at: string
+          stage: string
+        }
+        Insert: {
+          budget_amount: number
+          bundle_id: string
+          bundle_tier: string
+          gender?: string
+          id?: string
+          item_count?: number
+          items_snapshot?: Json
+          retail_total?: number
+          scope?: string
+          sell_price?: number
+          snapped_at?: string
+          stage?: string
+        }
+        Update: {
+          budget_amount?: number
+          bundle_id?: string
+          bundle_tier?: string
+          gender?: string
+          id?: string
+          item_count?: number
+          items_snapshot?: Json
+          retail_total?: number
+          scope?: string
+          sell_price?: number
+          snapped_at?: string
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maternity_bundle_snapshots_bundle_id_fkey"
+            columns: ["bundle_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4894,6 +4950,8 @@ export type Database = {
           allergen_info: string | null
           badge: string | null
           badge_label: string | null
+          bundle_discount_pct: number
+          bundle_label: string | null
           category: string
           category_label: string | null
           contents: string | null
@@ -4940,6 +4998,7 @@ export type Database = {
           safety_info: string | null
           scheduled_for: string | null
           scopes: string[] | null
+          shop_section_order: number | null
           sku: string | null
           slug: string
           stage_order: number | null
@@ -4955,6 +5014,8 @@ export type Database = {
           allergen_info?: string | null
           badge?: string | null
           badge_label?: string | null
+          bundle_discount_pct?: number
+          bundle_label?: string | null
           category: string
           category_label?: string | null
           contents?: string | null
@@ -5001,6 +5062,7 @@ export type Database = {
           safety_info?: string | null
           scheduled_for?: string | null
           scopes?: string[] | null
+          shop_section_order?: number | null
           sku?: string | null
           slug: string
           stage_order?: number | null
@@ -5016,6 +5078,8 @@ export type Database = {
           allergen_info?: string | null
           badge?: string | null
           badge_label?: string | null
+          bundle_discount_pct?: number
+          bundle_label?: string | null
           category?: string
           category_label?: string | null
           contents?: string | null
@@ -5062,6 +5126,7 @@ export type Database = {
           safety_info?: string | null
           scheduled_for?: string | null
           scopes?: string[] | null
+          shop_section_order?: number | null
           sku?: string | null
           slug?: string
           stage_order?: number | null
@@ -5987,6 +6052,48 @@ export type Database = {
           primary_partner?: string | null
           secondary_partner?: string | null
           states?: string[] | null
+        }
+        Relationships: []
+      }
+      shop_sections: {
+        Row: {
+          created_at: string
+          display_order: number
+          filter_value: string | null
+          id: string
+          is_visible: boolean
+          label: string
+          section_key: string
+          section_type: string
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          filter_value?: string | null
+          id?: string
+          is_visible?: boolean
+          label: string
+          section_key: string
+          section_type: string
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          filter_value?: string | null
+          id?: string
+          is_visible?: boolean
+          label?: string
+          section_key?: string
+          section_type?: string
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -7362,6 +7469,10 @@ export type Database = {
         }[]
       }
       get_gift_box_price: { Args: { p_gift_box_id: string }; Returns: Json }
+      get_gift_category_products: {
+        Args: { p_budget_amount?: number; p_category: string }
+        Returns: Json
+      }
       get_subscription_settings: { Args: never; Returns: Json }
       get_user_permissions: {
         Args: { p_target_user_id: string }
@@ -7426,6 +7537,7 @@ export type Database = {
         Returns: Json
       }
       process_recurring_expenses: { Args: never; Returns: Json }
+      refresh_maternity_bundle_prices: { Args: never; Returns: Json }
       request_admin_action: {
         Args: {
           p_action: string
