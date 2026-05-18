@@ -2,14 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Share2, ClipboardCopy } from "lucide-react";
+import { Share2, ClipboardCopy, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt } from "@/lib/cart";
 import { useAllProducts } from "@/hooks/useSupabaseData";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import BundleCustomiser from "@/components/BundleCustomiser";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { RecommendedProduct } from "@/components/quiz/types";
 
 /**
@@ -129,6 +128,16 @@ export default function GiftResultsPage() {
   const openBundleModal = (item: RecommendedProduct) => setModalBundle(item);
   const closeBundleModal = () => setModalBundle(null);
 
+  // Escape key closes the "What's Inside" modal — matches the
+  // BundleCustomiser's own image-zoom shortcut so the keyboard
+  // affordance is consistent across both layers.
+  useEffect(() => {
+    if (!modalBundle) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeBundleModal(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalBundle]);
+
   // ── Loading state — matches the general results screen. ────────────
   if (isLoading) {
     return (
@@ -155,9 +164,11 @@ export default function GiftResultsPage() {
   }
 
   const products = data.products || [];
+  // Section 1 = engine-flagged bundles (gift-box packages); section 2
+  // = everything else. Items with no `section` value land in singles
+  // so a future engine change doesn't accidentally hide them.
   const bundles = products.filter(p => p.section === "bundle");
-  const singles = products.filter(p => p.section === "single");
-  const isPostpartum = category === "postpartum_kits";
+  const singles = products.filter(p => p.section !== "bundle");
 
   const grandTotal = data.total_spend;
   const amount = `₦${budget.toLocaleString("en-NG")}`;
@@ -220,7 +231,7 @@ export default function GiftResultsPage() {
           onClick={() => openBundleModal(item)}
           className="w-full rounded-pill border-2 border-forest text-forest text-xs font-semibold py-2 hover:bg-forest hover:text-primary-foreground transition-colors"
         >
-          What's Inside ↓
+          Click here to see what's inside
         </button>
       </div>
     );
@@ -288,30 +299,40 @@ export default function GiftResultsPage() {
       </div>
 
       <div id="quiz-results-items" className="max-w-[1000px] mx-auto px-4 md:px-10 py-8 md:py-10">
-        {isPostpartum ? (
-          <>
-            {bundles.length > 0 && (
-              <div className="mb-10">
-                <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🎁 Postpartum Recovery Kits</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
-                  {bundles.map(renderCard)}
-                </div>
-              </div>
-            )}
-            {singles.length > 0 && (
-              <div className="mb-10">
-                <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">✨ Individual Postpartum Products</h2>
+        {/* SECTION 1 — Recommended Gift Bundles
+            Engine sets section="bundle" on every bundle product the
+            customer can buy as a packaged gift. Empty for categories
+            where the curator has no bundle output yet. */}
+        {bundles.length > 0 && (
+          <div className="mb-10">
+            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">
+              🎁 Recommended Gift Bundles
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+              {bundles.map(renderCard)}
+            </div>
+          </div>
+        )}
+
+        {/* SECTION 2 — Other Products You Can Add
+            Visually distinct from the bundle row above: top divider,
+            outer heading + subtitle, then a soft-grey rounded panel
+            wrapping the grid so the eye reads it as a different layer
+            even when the bundle section is short. */}
+        {singles.length > 0 && (
+          <div className="mt-12 mb-10">
+            <div className="border-t border-border pt-10">
+              <h2 className="pf text-xl md:text-2xl font-bold text-foreground mb-1">
+                Other Products You Can Add
+              </h2>
+              <p className="text-text-med text-sm mb-6">
+                Add individual items alongside your chosen bundle.
+              </p>
+              <div className="bg-muted/40 rounded-2xl p-4 md:p-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                   {singles.map(renderCard)}
                 </div>
               </div>
-            )}
-          </>
-        ) : (
-          <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🎁 {categoryLabel}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
-              {products.map(renderCard)}
             </div>
           </div>
         )}
@@ -346,28 +367,50 @@ export default function GiftResultsPage() {
         </div>
       </div>
 
-      {/* What's Inside modal — embeds the same BundleCustomiser the
-          bundle product page uses, so the checkbox / brand / variant /
-          colour / qty controls and the Proceed-to-Checkout flow all
-          behave identically. The customiser's own CTA navigates to
-          /checkout, which dismisses the modal naturally. */}
-      <Dialog open={!!modalBundle} onOpenChange={(open) => { if (!open) closeBundleModal(); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="pf text-lg md:text-xl font-bold">
-              {modalBundle?.name}
-            </DialogTitle>
-          </DialogHeader>
-          {modalBundle && (
-            <BundleCustomiser
-              productId={modalBundle.product_id}
-              productName={modalBundle.name}
-              bundleLabel={(modalBundle as any).bundle_label || null}
-              bundleSku={modalBundle.brand?.id ?? null}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* What's Inside modal — custom overlay (not shadcn Dialog) so
+          the close button can sit in a sticky modal-panel header
+          guaranteed to be visible above the site nav. z-9999 puts the
+          overlay above every other layer including the storefront
+          fixed header. BundleCustomiser inside owns the checkbox /
+          brand / variant / colour / qty controls; its Proceed-to-
+          Checkout CTA navigates away and dismisses the modal. */}
+      {modalBundle && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={closeBundleModal}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="relative max-w-2xl w-full bg-card rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Sticky header — close button always visible regardless
+                of scroll position inside the modal body. */}
+            <div className="flex items-center justify-between gap-3 px-5 md:px-6 py-3 md:py-4 border-b border-border flex-shrink-0">
+              <h2 className="pf text-base md:text-lg font-bold truncate">
+                {modalBundle.name}
+              </h2>
+              <button
+                onClick={closeBundleModal}
+                aria-label="Close"
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-muted hover:bg-muted/80 text-text-med hover:text-foreground transition-colors flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-5 md:px-6 pb-5 md:pb-6">
+              <BundleCustomiser
+                productId={modalBundle.product_id}
+                productName={modalBundle.name}
+                bundleLabel={(modalBundle as any).bundle_label || null}
+                bundleSku={modalBundle.brand?.id ?? null}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
