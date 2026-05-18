@@ -98,7 +98,7 @@ function HeroSection() {
             </h1>
           )}
           <p className="animate-fade-up-3 text-primary-foreground/70 text-[13px] md:text-[15px] leading-[1.65] mb-4 max-w-[480px] font-body">
-            Shop baby essentials, mum items, and baby gifts without stepping foot in any market.
+            Shop baby essentials, mum items, and bundles & kits without stepping foot in any market.
           </p>
 
           {/* Homepage search — submits to /shop?q=… which the Shop page
