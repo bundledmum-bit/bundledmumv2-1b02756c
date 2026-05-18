@@ -85,10 +85,19 @@ function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender)
 // =============================================================================
 // Screen 1 — Quiz form
 // =============================================================================
+// Internal slug values must match the get_gift_category_products RPC.
+type GiftSubcategory = "postpartum_kits" | "baby_shower_boxes" | "push_gifts";
+const GIFT_OPTIONS: { value: GiftSubcategory; label: string }[] = [
+  { value: "postpartum_kits", label: "Postpartum Kits" },
+  { value: "baby_shower_boxes", label: "Baby Shower Gift Boxes" },
+  { value: "push_gifts", label: "Push Gifts" },
+];
+
 function QuizScreen({
   budget, setBudget,
   categories, setCategories,
   gender, setGender,
+  giftSubcategory, setGiftSubcategory,
   onNext,
 }: {
   budget: number;
@@ -97,6 +106,8 @@ function QuizScreen({
   setCategories: (s: Set<Category>) => void;
   gender: Gender | null;
   setGender: (g: Gender) => void;
+  giftSubcategory: GiftSubcategory | null;
+  setGiftSubcategory: (g: GiftSubcategory | null) => void;
   onNext: () => void;
 }) {
   const [snapFlash, setSnapFlash] = useState(0);
@@ -136,7 +147,12 @@ function QuizScreen({
       next.add("gift");
     } else {
       // Tapping maternity or baby while gift is on → deselect gift first
-      if (next.has("gift")) next.delete("gift");
+      // and clear the gift subcategory so the dropdown selection doesn't
+      // linger if the customer comes back to gift later.
+      if (next.has("gift")) {
+        next.delete("gift");
+        setGiftSubcategory(null);
+      }
       if (next.has(c)) {
         // Don't let both be deselected — at-least-one rule
         if (next.size === 1) return;
@@ -148,10 +164,15 @@ function QuizScreen({
     setCategories(next);
   };
 
+  const giftSelected = categories.has("gift");
   // Don't gate the CTA on the essentials floor — the parent shows a soft
   // warning modal on submit if the user is below it, and lets them either
-  // bump up to the floor or continue at their entered amount.
-  const canSubmit = categories.size > 0 && !!gender && budget > 0;
+  // bump up to the floor or continue at their entered amount. Gift flow
+  // additionally requires a gift subcategory pick before submit.
+  const canSubmit = categories.size > 0
+    && !!gender
+    && budget > 0
+    && (!giftSelected || !!giftSubcategory);
 
   const categoryCards = [
     { id: "maternity" as const, title: s("quiz_category_maternity_title", "Maternity List"), sub: s("quiz_category_maternity_sub", "Hospital bag — mum and baby"), Icon: ShoppingBag },
@@ -253,6 +274,25 @@ function QuizScreen({
             );
           })}
         </div>
+        {/* Gift subcategory dropdown — only renders when Gift is the
+            active category. Required before the Build CTA enables. */}
+        {giftSelected && (
+          <div className="mt-2 px-1">
+            <label className="text-primary-foreground/80 text-[11px] font-bold uppercase tracking-[2.5px] mb-1.5 block">
+              Gift Category
+            </label>
+            <select
+              value={giftSubcategory || ""}
+              onChange={e => setGiftSubcategory((e.target.value || null) as GiftSubcategory | null)}
+              className="w-full bg-primary-foreground border-2 border-primary-foreground/20 rounded-[14px] px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-coral"
+            >
+              <option value="" disabled>Choose a gift category…</option>
+              {GIFT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* QUESTION 3 — Baby's Gender */}
@@ -1159,6 +1199,8 @@ export default function HomeQuiz({
   const [budget, setBudget] = useState<number>(initialState?.budget ?? DEFAULT_BUDGET);
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
+  const [giftSubcategory, setGiftSubcategory] = useState<GiftSubcategory | null>(null);
+  const navigateRoot = useNavigate();
   const [, setWhatsapp] = useState<string | null>(null);
   // Soft below-floor warning state. When the user submits with a budget
   // below ₦178,000, we hold the submit, surface the warning, and let them
@@ -1251,6 +1293,17 @@ export default function HomeQuiz({
         step_value: gender || "unknown",
       });
     } catch { /* ignore */ }
+    // Gift flow short-circuit — when the customer picked Gift + a
+    // subcategory, skip the WhatsApp / regular ResultsScreen path
+    // entirely and route to the dedicated gift results page.
+    if (categories.has("gift") && giftSubcategory) {
+      const sp = new URLSearchParams({
+        category: giftSubcategory,
+        budget: String(budget),
+      });
+      navigateRoot(`/quiz/gift-results?${sp.toString()}`);
+      return;
+    }
     if (onSubmit && gender) {
       // Host-controlled: let the host page handle transition (e.g. Home
       // routing to /quiz before showing WhatsApp).
@@ -1277,6 +1330,7 @@ export default function HomeQuiz({
           budget={budget} setBudget={setBudget}
           categories={categories} setCategories={setCategories}
           gender={gender} setGender={setGender}
+          giftSubcategory={giftSubcategory} setGiftSubcategory={setGiftSubcategory}
           onNext={handleSubmitFromQuiz}
         />
         {floorWarning && (

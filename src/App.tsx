@@ -37,6 +37,7 @@ import BundleDetailPage from "@/pages/BundleDetailPage";
 import ShopPage from "@/pages/ShopPage";
 import CategoryPage from "@/pages/CategoryPage";
 import QuizPage from "@/pages/QuizPage";
+import GiftResultsPage from "@/pages/GiftResultsPage";
 import CartPage from "@/pages/CartPage";
 import CheckoutPage from "@/pages/CheckoutPage";
 import OrderConfirmedPage from "@/pages/OrderConfirmedPage";
@@ -256,6 +257,7 @@ function StorefrontShell() {
           <Route path="/subscriptions/checkout" element={<SubscriptionCheckout />} />
           <Route path="/subscriptions/thank-you" element={<SubscriptionThankYou />} />
           <Route path="/quiz" element={<QuizPage />} />
+          <Route path="/quiz/gift-results" element={<GiftResultsPage />} />
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/order-confirmed" element={<OrderConfirmedPage />} />
