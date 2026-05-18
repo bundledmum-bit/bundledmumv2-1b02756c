@@ -161,23 +161,26 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   const maternityBundles = useMemo(() => (enriched || []).filter(p => /^Maternity Bundle/i.test(p.name)).sort(sortByOrder), [enriched]);
 
   // ── Admin-driven section config (shop_sections table) ───────────────
-  // Holds the storefront title/subtitle/display_order/visibility for
-  // each of the three bundle groups. The /bundles page is curated and
-  // ignores this — only /shop respects admin reordering / hiding so the
-  // marketing page stays canonical.
+  // Two parallel orderings live on the same shop_sections row:
+  //   - display_order / is_visible  → /shop page (handled elsewhere)
+  //   - bundles_display_order / bundles_is_visible → /bundles page
+  // Plus standalone_page_slug + see_all_label drive the per-section
+  // "See all" link surfaced at the top-right of each bundles page row.
   const sectionsQuery = useQuery({
-    queryKey: ["shop-sections", "bundles"],
-    enabled: variant === "shop",
+    queryKey: ["shop-sections", "bundles", variant],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shop_sections")
-        .select("section_key, title, subtitle, filter_value, display_order, is_visible, section_type")
+        .select("section_key, title, subtitle, filter_value, display_order, is_visible, bundles_display_order, bundles_is_visible, standalone_page_slug, see_all_label, section_type")
         .eq("section_type", "bundle_group")
-        .order("display_order");
+        .order(variant === "bundles" ? "bundles_display_order" : "display_order");
       if (error) throw error;
       return (data || []) as Array<{
         section_key: string; title: string; subtitle: string | null;
-        filter_value: string; display_order: number; is_visible: boolean;
+        filter_value: string;
+        display_order: number; is_visible: boolean;
+        bundles_display_order: number | null; bundles_is_visible: boolean | null;
+        standalone_page_slug: string | null; see_all_label: string | null;
         section_type: string;
       }>;
     },
@@ -186,25 +189,34 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
 
   const sectionFor = (filter: string) => sectionsQuery.data?.find(s => s.filter_value === filter);
   const SECTION_DEFAULTS = {
-    "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes for your Budget",  subtitle: "Thoughtfully curated gifts for the new mum",  order: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const },
-    "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits for your Budget", subtitle: "Everything a new mum needs to heal and thrive", order: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const },
-    "Maternity Bundle":         { title: variant === "bundles" ? "Maternity List for your Budget" : "Bundles & Kits", subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", order: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const },
+    "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes for your Budget",  subtitle: "Thoughtfully curated gifts for the new mum",  shopOrder: 10, bundlesOrder: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const, slug: "baby-shower-gift-boxes",  seeAllLabel: "See all Baby Shower Gift Boxes" },
+    "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits for your Budget", subtitle: "Everything a new mum needs to heal and thrive", shopOrder: 20, bundlesOrder: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const, slug: "postpartum-recovery-kits", seeAllLabel: "See all Postpartum Recovery Kits" },
+    "Maternity Bundle":         { title: variant === "bundles" ? "Maternity List for your Budget" : "Bundles & Kits", subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", shopOrder: 30, bundlesOrder: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const, slug: "maternity-bundles", seeAllLabel: "See all Maternity Bundles" },
   };
+  const isBundlesVariant = variant === "bundles";
   const blocks = Object.entries(SECTION_DEFAULTS).map(([filter, d]) => {
     const cfg = sectionFor(filter);
+    const adminOrder = isBundlesVariant
+      ? cfg?.bundles_display_order ?? cfg?.display_order
+      : cfg?.display_order;
+    const adminVisible = isBundlesVariant
+      ? (cfg?.bundles_is_visible ?? cfg?.is_visible)
+      : cfg?.is_visible;
     return {
       filter,
       title: cfg?.title || d.title,
       subtitle: cfg?.subtitle ?? d.subtitle,
-      order: cfg?.display_order ?? d.order,
-      visible: cfg ? cfg.is_visible : d.visible,
+      order: adminOrder ?? (isBundlesVariant ? d.bundlesOrder : d.shopOrder),
+      visible: cfg ? (adminVisible !== false) : d.visible,
+      slug: cfg?.standalone_page_slug || d.slug,
+      seeAllLabel: cfg?.see_all_label || d.seeAllLabel,
       items: d.items,
       grid: d.grid,
     };
   }).sort((a, b) => a.order - b.order);
 
   return (
-    <div className={variant === "bundles" ? "space-y-10 md:space-y-14" : "space-y-8 mb-8"}>
+    <div className={isBundlesVariant ? "space-y-10 md:space-y-14" : "space-y-8 mb-8"}>
       {blocks.filter(b => b.visible).map((b, i, arr) => (
         <div key={b.filter}>
           <BundleSection
@@ -214,21 +226,25 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
             loading={isLoading || enriched === null}
             variant={variant}
             gridCols={b.grid}
+            seeAllHref={isBundlesVariant ? `/bundles/${b.slug}` : undefined}
+            seeAllLabel={isBundlesVariant ? b.seeAllLabel : undefined}
           />
-          {variant === "bundles" && i < arr.length - 1 && <div className="border-t border-border mt-10" />}
+          {isBundlesVariant && i < arr.length - 1 && <div className="border-t border-border mt-10" />}
         </div>
       ))}
     </div>
   );
 }
 
-export function BundleSection({ heading, subtitle, items, loading, variant, gridCols = "1-2-3" }: {
+export function BundleSection({ heading, subtitle, items, loading, variant, gridCols = "1-2-3", seeAllHref, seeAllLabel }: {
   heading: string;
   subtitle: string;
   items: EnrichedBundle[];
   loading: boolean;
   variant: Variant;
   gridCols?: "1-2-3" | "1-2-4";
+  seeAllHref?: string;
+  seeAllLabel?: string;
 }) {
   const isBundlesPage = variant === "bundles";
   // Maternity Lists on /shop runs 4-up so 8 cards lay out cleanly;
@@ -244,7 +260,11 @@ export function BundleSection({ heading, subtitle, items, loading, variant, grid
           <h2 className={`pf font-bold ${isBundlesPage ? "text-2xl md:text-3xl" : "text-xl md:text-2xl"}`}>{heading}</h2>
           <p className="text-text-med text-sm">{subtitle}</p>
         </div>
-        {!isBundlesPage && (
+        {isBundlesPage && seeAllHref ? (
+          <Link to={seeAllHref} className="text-forest text-sm font-semibold hover:underline whitespace-nowrap inline-flex items-center gap-1">
+            {seeAllLabel || "See all"} →
+          </Link>
+        ) : !isBundlesPage && (
           <Link to="/bundles" className="text-forest text-sm font-semibold hover:underline whitespace-nowrap">
             View all →
           </Link>

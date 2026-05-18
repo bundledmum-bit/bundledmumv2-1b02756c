@@ -137,7 +137,7 @@ function PinOverridesFields({
   );
 }
 
-type TopTab = ShopVariant | "categories" | "section-brands" | "gift-boxes" | "recovery-kits" | "maternity-lists" | "shop-sections";
+type TopTab = ShopVariant | "categories" | "section-brands" | "gift-boxes" | "recovery-kits" | "maternity-lists" | "shop-sections" | "bundles-page-sections";
 
 type BundleFamily = "gift-boxes" | "recovery-kits" | "maternity-lists";
 
@@ -173,6 +173,7 @@ export default function AdminMerchandising() {
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="section-brands">Section Brands</TabsTrigger>
           <TabsTrigger value="shop-sections">Shop Sections</TabsTrigger>
+          <TabsTrigger value="bundles-page-sections">Bundles Page Sections</TabsTrigger>
           {BUNDLE_FAMILIES.map(f => (
             <TabsTrigger key={f.key} value={f.key}>{f.label}</TabsTrigger>
           ))}
@@ -190,6 +191,9 @@ export default function AdminMerchandising() {
         </TabsContent>
         <TabsContent value="shop-sections" className="mt-4">
           <ShopSectionsPanel />
+        </TabsContent>
+        <TabsContent value="bundles-page-sections" className="mt-4">
+          <BundlesPageSectionsPanel />
         </TabsContent>
         {BUNDLE_FAMILIES.map(f => (
           <TabsContent key={f.key} value={f.key} className="mt-4">
@@ -1210,6 +1214,169 @@ function ShopSectionsPanel() {
       <p className="text-[11px] text-text-light mt-3">
         Tip: bundle sections pull products from is_gift_box=true filtered by name prefix.
         Category sections pull from active products filtered by subcategory.
+      </p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Bundles Page Sections — parallel ordering for /bundles only.
+// Lives on the same shop_sections row but uses the bundles_*-prefixed
+// columns so the /bundles page can be reordered independently of /shop.
+// Only renders the three bundle_group rows; categories never appear on
+// /bundles so they're filtered out.
+// ─────────────────────────────────────────────────────────────────────
+interface BundlesPageSection {
+  id: string;
+  section_key: string;
+  label: string;
+  title: string;
+  subtitle: string | null;
+  filter_value: string;
+  bundles_display_order: number | null;
+  bundles_is_visible: boolean | null;
+  standalone_page_slug: string | null;
+  see_all_label: string | null;
+}
+
+function BundlesPageSectionsPanel() {
+  const qc = useQueryClient();
+  const queryKey = ["admin-bundles-page-sections"];
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("shop_sections")
+        .select("id, section_key, label, title, subtitle, filter_value, bundles_display_order, bundles_is_visible, standalone_page_slug, see_all_label")
+        .eq("section_type", "bundle_group")
+        .order("bundles_display_order", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return (data || []) as BundlesPageSection[];
+    },
+  });
+
+  const [draft, setDraft] = useState<BundlesPageSection[] | null>(null);
+  useEffect(() => { setDraft(rows.length > 0 ? [...rows] : null); }, [rows]);
+  const list: BundlesPageSection[] = draft ?? [];
+
+  const move = (idx: number, dir: -1 | 1) => {
+    const next = [...list];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setDraft(next);
+  };
+
+  const dirty = useMemo(() => {
+    if (!draft) return false;
+    return draft.some((s, i) => s.id !== rows[i]?.id);
+  }, [draft, rows]);
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey });
+    // Storefront BundleSections + BundleCategoryPage both read these rows.
+    qc.invalidateQueries({ queryKey: ["shop-sections", "bundles", "bundles"] });
+    qc.invalidateQueries({ queryKey: ["bundle-category-section"] });
+  };
+
+  const saveOrder = useMutation({
+    mutationFn: async () => {
+      if (!draft) return;
+      const now = new Date().toISOString();
+      await Promise.all(draft.map((s, idx) =>
+        supabase
+          .from("shop_sections")
+          .update({ bundles_display_order: (idx + 1) * 10, updated_at: now })
+          .eq("id", s.id),
+      ));
+    },
+    onSuccess: () => { toast.success("Bundles page order updated"); invalidateAll(); },
+    onError: (e: any) => toast.error(e?.message || "Failed to save order"),
+  });
+
+  const toggleVisibility = async (s: BundlesPageSection) => {
+    const next = !(s.bundles_is_visible !== false);
+    const { error } = await supabase
+      .from("shop_sections")
+      .update({ bundles_is_visible: next, updated_at: new Date().toISOString() })
+      .eq("id", s.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success(next ? "Section visible on /bundles" : "Section hidden from /bundles");
+    invalidateAll();
+  };
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+        <p className="text-text-med text-sm max-w-2xl">
+          Control how bundle sections appear on the <strong>/bundles</strong> page only. This
+          ordering is independent of the Shop Sections tab (which controls /shop).
+        </p>
+        <Button
+          size="sm"
+          disabled={!dirty || saveOrder.isPending}
+          onClick={() => saveOrder.mutate()}
+        >
+          {saveOrder.isPending ? "Saving…" : "Save Order"}
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="text-center py-10 text-text-med">Loading bundle sections…</div>
+      ) : list.length === 0 ? (
+        <div className="text-center py-10 text-text-med">No bundle sections configured.</div>
+      ) : (
+        <ul className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-card">
+          {list.map((s, idx) => {
+            const visible = s.bundles_is_visible !== false;
+            return (
+              <li key={s.id} className={`flex items-start gap-3 px-3 py-2.5 ${visible ? "" : "bg-muted/30"}`}>
+                <div className="flex flex-col items-center gap-0.5 flex-shrink-0 pt-0.5">
+                  <button
+                    onClick={() => move(idx, -1)}
+                    disabled={idx === 0}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Move up"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => move(idx, 1)}
+                    disabled={idx === list.length - 1}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Move down"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => toggleVisibility(s)}
+                  className={`p-1.5 rounded hover:bg-muted flex-shrink-0 mt-0.5 ${visible ? "" : "opacity-40"}`}
+                  title={visible ? "Hide on /bundles" : "Show on /bundles"}
+                >
+                  {visible ? <span aria-hidden>👁</span> : <span aria-hidden>🚫</span>}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className={`text-sm font-semibold ${visible ? "" : "text-muted-foreground"}`}>
+                    {s.title || s.label}
+                  </div>
+                  <div className="text-[11px] text-text-med flex flex-wrap gap-x-2 mt-0.5">
+                    {s.subtitle && <span className="truncate max-w-[420px]">{s.subtitle}</span>}
+                    {s.standalone_page_slug && (
+                      <span className="text-text-light">/bundles/{s.standalone_page_slug}</span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill flex-shrink-0 bg-coral/15 text-coral">
+                  Bundle
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="text-[11px] text-text-light mt-3">
+        Tip: each section's "See all" link on /bundles points at /bundles/{`{standalone_page_slug}`}.
+        Hidden sections drop off /bundles entirely but stay visible on /shop unless also hidden there.
       </p>
     </div>
   );

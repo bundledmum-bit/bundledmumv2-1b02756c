@@ -33,6 +33,11 @@ import SubscriptionThankYou from "@/pages/SubscriptionThankYou";
 import NewSubscription from "@/pages/account/NewSubscription";
 import AccountSubscriptions from "@/pages/account/AccountSubscriptions";
 import BundlesPage from "@/pages/BundlesPage";
+import {
+  BundleCategoryGiftBoxesPage,
+  BundleCategoryRecoveryKitsPage,
+  BundleCategoryMaternityPage,
+} from "@/pages/BundleCategoryPage";
 import BundleDetailPage from "@/pages/BundleDetailPage";
 import ShopPage from "@/pages/ShopPage";
 import CategoryPage from "@/pages/CategoryPage";
@@ -247,6 +252,12 @@ function StorefrontShell() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/bundles" element={<BundlesPage />} />
+          {/* Standalone bundle-category pages — must sit BEFORE the
+              generic /bundles/:bundleId route so the literal slugs
+              don't get swallowed by the param matcher. */}
+          <Route path="/bundles/baby-shower-gift-boxes" element={<BundleCategoryGiftBoxesPage />} />
+          <Route path="/bundles/postpartum-recovery-kits" element={<BundleCategoryRecoveryKitsPage />} />
+          <Route path="/bundles/maternity-bundles" element={<BundleCategoryMaternityPage />} />
           <Route path="/bundles/:bundleId" element={<BundleDetailPage />} />
           <Route path="/shop" element={<ShopPage />} />
           <Route path="/shop/baby" element={<ShopPage />} />
