@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams, Link, useLocation } from "react-router-dom";
 import CuratedSections from "@/components/CuratedSections";
 import BundleSections from "@/components/BundleSections";
+import ShopSectionsRenderer from "@/components/ShopSectionsRenderer";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { toast } from "sonner";
@@ -644,20 +645,14 @@ export default function ShopPage() {
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-10">
         <SpendMoreBanner variant="shop" />
 
-        {/* Bundle sections (gift boxes + recovery kits + maternity-list
-            placeholder). Only shown alongside the storefront variants —
-            search queries and category-specific tabs skip them so the
-            results stay focused. */}
-        {sectionsOnlyMode && <BundleSections variant="shop" />}
-
-        {/* Storefront variants render as a popularity-ranked list of category
-            sections (initial 10 + lazy-load more). The flat grid + filter UI
-            below only renders for search queries and non-storefront tabs. */}
+        {/* Storefront sections are now fully driven by shop_sections —
+            the admin Merchandising "Shop Sections" tab is the single
+            source of truth for order, visibility, title, and subtitle.
+            Bundle sections and category sections render through the
+            same loop, in admin-configured order. Search queries and
+            category-specific tabs skip the section feed entirely. */}
         {sectionsOnlyMode ? (
-          <CuratedSections
-            shop={tab as ShopVariant}
-            onOpenDetail={p => setDetailProduct(p)}
-          />
+          <ShopSectionsRenderer />
         ) : isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
