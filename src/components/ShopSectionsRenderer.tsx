@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { BundleSection } from "@/components/BundleSections";
+import BundleShopRow from "@/components/BundleShopRow";
 import { CuratedSection, HEADER_PALETTE } from "@/components/CuratedSections";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import type { Product } from "@/lib/supabaseAdapters";
@@ -188,40 +188,36 @@ export default function ShopSectionsRenderer({
     );
   }
 
-  // Count category sections for palette assignment (so colour rotation
-  // matches the previous CuratedSections behaviour). Bundle sections
-  // don't consume palette slots.
-  let categoryIdx = 0;
+  // Bundle and category rows share one palette rotation so the colour
+  // cadence on /shop matches what the legacy CuratedSections produced —
+  // a flat top-to-bottom alternation, regardless of section type.
+  let paletteIdx = 0;
 
   return (
-    <div className="space-y-8 mb-10">
+    <div className="space-y-5 md:space-y-6 mb-10">
       {(sections || []).map(section => {
+        const palette = HEADER_PALETTE[paletteIdx % HEADER_PALETTE.length];
         if (section.section_type === "bundle_group") {
           const items = (enriched || [])
             .filter(p => (p.name || "").startsWith(section.filter_value || ""))
             .sort((a, b) => (a.shop_section_order ?? 99) - (b.shop_section_order ?? 99));
           if (items.length === 0) return null;
-          const isMaternity = /Maternity Bundle/i.test(section.filter_value || "");
-          // Same BundleSection component used pre-refactor — identical
-          // markup, classes, card design.
+          paletteIdx += 1;
+          // BundleShopRow mirrors CuratedSection exactly — rounded-2xl
+          // shell, palette header bar with "(see all)" link, horizontal
+          // snap-scroll of cards sized identically to CuratedCard.
           return (
-            <BundleSection
+            <BundleShopRow
               key={section.section_key}
               heading={section.title || section.section_key}
-              subtitle={section.subtitle || ""}
+              subtitle={section.subtitle}
               items={items as any}
-              loading={false}
-              variant="shop"
-              gridCols={isMaternity ? "1-2-4" : "1-2-3"}
+              palette={palette}
             />
           );
         }
         if (section.section_type === "category") {
-          const palette = HEADER_PALETTE[categoryIdx % HEADER_PALETTE.length];
-          categoryIdx += 1;
-          // Same CuratedSection component used pre-refactor — palette
-          // bar, swiper, pin/brand overrides all preserved. Empty
-          // categories are dropped client-side inside CuratedSection.
+          paletteIdx += 1;
           return (
             <CuratedSection
               key={section.section_key}
