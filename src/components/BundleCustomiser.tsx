@@ -46,6 +46,9 @@ interface DefaultItem {
   product_name: string;
   brand_id: string | null;
   brand_name: string | null;
+  brand_sku?: string | null;
+  brand_image_url?: string | null;
+  brand_size_variant?: string | null;
   unit_price: number;
   quantity: number;
   is_enabled?: boolean;
@@ -94,6 +97,9 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
           product_name: it?.name || "—",
           brand_id: it?.brand?.id ?? null,
           brand_name: it?.brand?.brand_name ?? null,
+          brand_sku: it?.brand?.sku ?? null,
+          brand_image_url: it?.brand?.image_url ?? null,
+          brand_size_variant: it?.brand?.size_variant ?? null,
           unit_price: Number(it?.brand?.price ?? 0),
           quantity: Number(it?.quantity ?? 1),
           is_enabled: true,
@@ -113,6 +119,12 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
         product_name: it.product_name,
         brand_id: it.brand_id,
         brand_name: it.brand_name,
+        brand_sku: it.brand_sku ?? null,
+        // get_gift_box_price emits image_url + size_variant on the
+        // item row when the brand row carries them, but older callers
+        // emit them nested under brand. Cover both shapes.
+        brand_image_url: it.image_url ?? it.brand?.image_url ?? null,
+        brand_size_variant: it.size_variant ?? it.brand?.size_variant ?? null,
         unit_price: Number(it.unit_price ?? 0),
         quantity: Number(it.quantity ?? 1),
         is_enabled: it.is_enabled !== false,
@@ -156,8 +168,10 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
     queryKey: ["bundle-customiser-brands", productIdsKey],
     enabled: productIds.length > 0,
     queryFn: async () => {
+      // brands has no anon SELECT policy — read via the public view
+      // (same pattern ProductPage / BundleSections use).
       const { data, error } = await (supabase as any)
-        .from("brands")
+        .from("brands_public")
         .select("id, product_id, sku, brand_name, price, tier, image_url, size_variant, variant_type, in_stock")
         .in("product_id", productIds)
         .eq("in_stock", true)
@@ -189,10 +203,12 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
         const pool = brandsMap[it.product_id] || [];
         const seeded: BrandRow = pool.find(b => b.id === it.brand_id) || {
           id: it.brand_id || `${it.product_id}-default`,
+          sku: it.brand_sku ?? null,
           brand_name: it.brand_name || "—",
           price: it.unit_price,
           tier: null,
-          size_variant: null,
+          image_url: it.brand_image_url ?? null,
+          size_variant: it.brand_size_variant ?? null,
           in_stock: true,
         };
         const gender = genderMap[it.product_id];
@@ -213,11 +229,17 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
   }, [defaultsQuery.data, brandsQuery.data, genderQuery.data]);
 
   useEffect(() => {
-    if (!initialised && buildInitialItems) {
-      setBundleItems(buildInitialItems);
-      setInitialised(true);
-    }
-  }, [buildInitialItems, initialised]);
+    // Gate on BOTH the bundle defaults AND the brand pool resolving so
+    // each item's selected_brand inherits the real brand row (with
+    // image_url, size_variant, etc.) instead of the synthetic
+    // fallback. Otherwise the thumbnail + brand-switcher both miss data
+    // when brandsQuery resolves a tick later than defaultsQuery.
+    if (initialised) return;
+    if (!buildInitialItems) return;
+    if (productIds.length > 0 && !brandsQuery.data) return;
+    setBundleItems(buildInitialItems);
+    setInitialised(true);
+  }, [buildInitialItems, initialised, brandsQuery.data, productIds.length]);
 
   // ── Live price ──────────────────────────────────────────────────────
   const bundlePrice = useMemo(() => bundleItems
@@ -243,6 +265,20 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
     if (newQty < 1) return;
     setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, quantity: newQty } : i));
   };
+  // ── Per-item image zoom ────────────────────────────────────────────
+  const [zoomImage, setZoomImage] = useState<{ url: string; name: string } | null>(null);
+  const openImageZoom = (url: string | null | undefined, name: string) => {
+    if (!url) return;
+    setZoomImage({ url, name });
+  };
+  const closeImageZoom = () => setZoomImage(null);
+  useEffect(() => {
+    if (!zoomImage) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeImageZoom(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [zoomImage]);
+
   const removeCustomItem = (productId: string) => {
     setBundleItems(items => items.filter(i => !(i.product_id === productId && !i.is_default)));
   };
@@ -416,6 +452,27 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
           return (
             <li key={item.product_id} className={`px-3 py-2.5 ${item.is_included ? "" : "opacity-60"}`}>
               <div className="flex items-start gap-3">
+                {/* Thumbnail — reactive to selected_brand so swapping
+                    brand variants updates the image. Click opens a
+                    full-size zoom lightbox. */}
+                <button
+                  type="button"
+                  onClick={() => openImageZoom(item.selected_brand.image_url, item.product_name)}
+                  aria-label={`View ${item.product_name} image`}
+                  className="flex-shrink-0 w-12 h-12 rounded-md overflow-hidden border border-border hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-forest"
+                >
+                  {item.selected_brand.image_url ? (
+                    <img
+                      src={item.selected_brand.image_url}
+                      alt={item.product_name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-muted flex items-center justify-center text-text-light text-[9px] text-center px-1 leading-tight">
+                      No image
+                    </div>
+                  )}
+                </button>
                 {item.is_default ? (
                   <input
                     type="checkbox"
@@ -609,6 +666,35 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
         <ShoppingBag className="w-4 h-4" />
         Proceed to Checkout — {fmt(bundlePrice)}
       </button>
+
+      {/* Image zoom lightbox — backdrop click + Escape close. */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={closeImageZoom}
+        >
+          <div
+            className="relative max-w-lg w-full bg-card rounded-2xl overflow-hidden shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={closeImageZoom}
+              aria-label="Close image"
+              className="absolute top-3 right-3 z-10 bg-card/80 rounded-full p-1.5 hover:bg-card transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={zoomImage.url}
+              alt={zoomImage.name}
+              className="w-full h-auto max-h-[70vh] object-contain bg-muted"
+            />
+            <div className="px-4 py-3 text-center">
+              <p className="text-sm font-medium text-foreground">{zoomImage.name}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
