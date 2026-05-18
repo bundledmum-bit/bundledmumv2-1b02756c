@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ShoppingBag, X, RotateCcw, Plus } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
+import { analytics } from "@/lib/ga";
 
 /**
  * Interactive customisation UI for bundle product pages.
@@ -246,6 +247,47 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
     .filter(i => i.is_included)
     .reduce((sum, i) => sum + (i.selected_brand.price * i.quantity), 0),
     [bundleItems]);
+
+  // ── WhatsApp order link ────────────────────────────────────────────
+  // Reactive to every customiser tweak (qty +/-, brand swap, include/
+  // exclude, gender) so the pre-filled message always reflects what
+  // the customer sees on screen.
+  const whatsappUrl = useMemo(() => {
+    const included = bundleItems.filter(i => i.is_included);
+    const lines = included.map(item => {
+      const rawBrand = item.selected_brand?.brand_name || "";
+      const brand = rawBrand && rawBrand !== "BundledMum" && rawBrand !== "Generic"
+        ? ` (${rawBrand})`
+        : "";
+      const qty = item.quantity > 1 ? ` x${item.quantity}` : "";
+      const colour = item.selected_gender
+        ? ` — ${item.selected_gender === "boy" ? "Boy (Blue)" : item.selected_gender === "girl" ? "Girl (Pink)" : "Neutral (White)"}`
+        : "";
+      return `  • ${item.product_name}${brand}${qty}${colour}`;
+    }).join("\n");
+    const priceFormatted = `₦${bundlePrice.toLocaleString("en-NG")}`;
+    const labelSuffix = bundleLabel ? ` — ${bundleLabel}` : "";
+    const message = `Hi BundledMum! 👋
+
+I'd like to order the *${productName}*${labelSuffix}
+
+*Bundle Price:* ${priceFormatted}
+*Items included (${included.length}):*
+${lines}
+
+Please let me know the next steps to complete my order. Thank you! 🛍️`;
+    return `https://wa.me/2347040667424?text=${encodeURIComponent(message)}`;
+  }, [productName, bundleLabel, bundlePrice, bundleItems]);
+
+  const trackWhatsAppClick = () => {
+    try {
+      analytics.push({
+        event: "whatsapp_click",
+        click_location: "bundle_product_page",
+        click_type: "bundle_order",
+      });
+    } catch { /* ignore */ }
+  };
 
   const defaultPrice = defaultsQuery.data?.sell_price || 0;
   const priceDelta = bundlePrice - defaultPrice;
@@ -666,6 +708,24 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
         <ShoppingBag className="w-4 h-4" />
         Proceed to Checkout — {fmt(bundlePrice)}
       </button>
+
+      {/* WhatsApp order — opens wa.me with a pre-filled message that
+          mirrors the current customisation state. Reactive via the
+          whatsappUrl memo, so brand swaps / qty changes / item toggles
+          propagate before the customer taps the link. */}
+      <a
+        href={whatsappUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={trackWhatsAppClick}
+        className="mt-2 w-full rounded-pill bg-[#25D366] hover:bg-[#20BA5A] text-white font-semibold py-3 px-6 inline-flex items-center justify-center gap-2 transition-colors text-sm"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+          <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.849L0 24l6.335-1.51A11.955 11.955 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.373l-.36-.213-3.72.977.993-3.634-.234-.374A9.818 9.818 0 1112 21.818z"/>
+        </svg>
+        Order via WhatsApp
+      </a>
 
       {/* Image zoom lightbox — backdrop click + Escape close. */}
       {zoomImage && (
