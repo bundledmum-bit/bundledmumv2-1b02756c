@@ -2355,6 +2355,36 @@ export type Database = {
           },
         ]
       }
+      health_check_log: {
+        Row: {
+          email_sent: boolean
+          id: string
+          issues_found: number
+          results: Json
+          run_at: string
+          severity: string
+          total_checks: number
+        }
+        Insert: {
+          email_sent?: boolean
+          id?: string
+          issues_found?: number
+          results?: Json
+          run_at?: string
+          severity?: string
+          total_checks?: number
+        }
+        Update: {
+          email_sent?: boolean
+          id?: string
+          issues_found?: number
+          results?: Json
+          run_at?: string
+          severity?: string
+          total_checks?: number
+        }
+        Relationships: []
+      }
       homepage_sections: {
         Row: {
           created_at: string | null
@@ -7622,6 +7652,10 @@ export type Database = {
           p_stage?: string
           p_whatsapp_number?: string
         }
+        Returns: Json
+      }
+      search_products: {
+        Args: { p_limit?: number; p_query: string }
         Returns: Json
       }
       set_session_context: {

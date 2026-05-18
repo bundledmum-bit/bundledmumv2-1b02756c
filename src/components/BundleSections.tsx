@@ -186,9 +186,9 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
 
   const sectionFor = (filter: string) => sectionsQuery.data?.find(s => s.filter_value === filter);
   const SECTION_DEFAULTS = {
-    "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes",  subtitle: "Thoughtfully curated gifts for the new mum",  order: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const },
-    "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits", subtitle: "Everything a new mum needs to heal and thrive", order: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const },
-    "Maternity Bundle":         { title: "Bundles & Kits",          subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", order: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const },
+    "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes for your Budget",  subtitle: "Thoughtfully curated gifts for the new mum",  order: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const },
+    "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits for your Budget", subtitle: "Everything a new mum needs to heal and thrive", order: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const },
+    "Maternity Bundle":         { title: variant === "bundles" ? "Maternity List for your Budget" : "Bundles & Kits", subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", order: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const },
   };
   const blocks = Object.entries(SECTION_DEFAULTS).map(([filter, d]) => {
     const cfg = sectionFor(filter);
