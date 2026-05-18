@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import { useCart, fmt } from "@/lib/cart";
 import { useAllProducts } from "@/hooks/useSupabaseData";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import BundleCustomiser from "@/components/BundleCustomiser";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { RecommendedProduct } from "@/components/quiz/types";
 
 /**
@@ -118,6 +120,15 @@ export default function GiftResultsPage() {
 
   const addedIds = new Set(cart.map(c => c.id));
 
+  // ── "What's Inside" modal state ────────────────────────────────────
+  // BundleCustomiser is the single source of truth for the interactive
+  // contents UI — same component the bundle product page uses, so the
+  // checkbox / brand / variant / colour / qty / add-search behaviour
+  // and the "Proceed to Checkout — ₦X" CTA are inherited verbatim.
+  const [modalBundle, setModalBundle] = useState<RecommendedProduct | null>(null);
+  const openBundleModal = (item: RecommendedProduct) => setModalBundle(item);
+  const closeBundleModal = () => setModalBundle(null);
+
   // ── Loading state — matches the general results screen. ────────────
   if (isLoading) {
     return (
@@ -182,22 +193,38 @@ export default function GiftResultsPage() {
     }
   };
 
-  const renderCard = (item: RecommendedProduct) => (
-    <ResultProductCard
-      key={item.product_id}
-      item={item}
-      isInCart={addedIds.has(item.product_id)}
-      cartItem={cart.find(c => c.id === item.product_id)}
-      onQtyUpdate={(key, qty) => {
-        const c = cart.find(x => x._key === key);
-        if (!c) return;
-        setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-      }}
-      onAdd={() => handleAddProduct(item)}
-      onRemove={() => handleRemoveProduct(item)}
-      fullProduct={productMap.get(item.product_id)}
-    />
-  );
+  const renderCard = (item: RecommendedProduct & { section?: "bundle" | "single" }) => {
+    const card = (
+      <ResultProductCard
+        item={item}
+        isInCart={addedIds.has(item.product_id)}
+        cartItem={cart.find(c => c.id === item.product_id)}
+        onQtyUpdate={(key, qty) => {
+          const c = cart.find(x => x._key === key);
+          if (!c) return;
+          setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
+        }}
+        onAdd={() => handleAddProduct(item)}
+        onRemove={() => handleRemoveProduct(item)}
+        fullProduct={productMap.get(item.product_id)}
+      />
+    );
+    // Only bundle-section items get the secondary "What's Inside" CTA —
+    // singles are individual products with no inner contents to expand.
+    if (item.section !== "bundle") return <div key={item.product_id}>{card}</div>;
+    return (
+      <div key={item.product_id} className="flex flex-col gap-2">
+        {card}
+        <button
+          type="button"
+          onClick={() => openBundleModal(item)}
+          className="w-full rounded-pill border-2 border-forest text-forest text-xs font-semibold py-2 hover:bg-forest hover:text-primary-foreground transition-colors"
+        >
+          What's Inside ↓
+        </button>
+      </div>
+    );
+  };
 
   // ── Page shell — mirrors ResultsScreen markup top-to-bottom. ──────
   return (
@@ -318,6 +345,29 @@ export default function GiftResultsPage() {
           </div>
         </div>
       </div>
+
+      {/* What's Inside modal — embeds the same BundleCustomiser the
+          bundle product page uses, so the checkbox / brand / variant /
+          colour / qty controls and the Proceed-to-Checkout flow all
+          behave identically. The customiser's own CTA navigates to
+          /checkout, which dismisses the modal naturally. */}
+      <Dialog open={!!modalBundle} onOpenChange={(open) => { if (!open) closeBundleModal(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="pf text-lg md:text-xl font-bold">
+              {modalBundle?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {modalBundle && (
+            <BundleCustomiser
+              productId={modalBundle.product_id}
+              productName={modalBundle.name}
+              bundleLabel={(modalBundle as any).bundle_label || null}
+              bundleSku={modalBundle.brand?.id ?? null}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
