@@ -1,0 +1,12 @@
+{
+  "name": "bundledmum-health-check",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Twice-daily Playwright health check for bundledmum.com. Posts results to the bundledmum-health-check Supabase edge function for email delivery.",
+  "scripts": {
+    "check": "node health-check.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}
