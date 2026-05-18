@@ -1,0 +1,38 @@
+name: BundledMum Frontend Health Check
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # 07:00 Lagos (06:00 UTC)
+    - cron: '0 18 * * *'   # 19:00 Lagos (18:00 UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install dependencies
+        working-directory: scripts/health-check
+        run: npm install
+      - name: Install Playwright browsers
+        working-directory: scripts/health-check
+        run: npx playwright install chromium --with-deps
+      - name: Run frontend health check
+        working-directory: scripts/health-check
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node health-check.js
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-check-screenshots
+          path: scripts/health-check/screenshots/
+          retention-days: 7
