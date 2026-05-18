@@ -38,7 +38,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   const dark = scrolled || onLight;
 
   const navLinks = [
-    { to: "/bundles", label: "Hospital Bags" },
+    { to: "/bundles", label: "Bundles & Kits" },
     { to: "/shop", label: "All Shop" },
     { to: "/shop/baby", label: "Baby Shop" },
     { to: "/shop/mum", label: "Mum Shop" },

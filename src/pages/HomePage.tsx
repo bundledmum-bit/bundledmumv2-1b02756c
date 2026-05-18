@@ -98,7 +98,7 @@ function HeroSection() {
             </h1>
           )}
           <p className="animate-fade-up-3 text-primary-foreground/70 text-[13px] md:text-[15px] leading-[1.65] mb-4 max-w-[480px] font-body">
-            Shop baby essentials, mum items, and baby gifts without stepping foot in any market.
+            Shop baby essentials, mum items, and bundles & kits without stepping foot in any market.
           </p>
 
           {/* Homepage search — submits to /shop?q=… which the Shop page
@@ -189,7 +189,7 @@ function BundleTiers() {
     <section className="py-16 md:py-24" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
       <div className="max-w-[1100px] mx-auto px-5 md:px-10">
         <div className="text-center mb-10 md:mb-14">
-          <span className="text-coral text-xs font-semibold uppercase tracking-widest">Our Kits</span>
+          <span className="text-coral text-xs font-semibold uppercase tracking-widest">Bundles & Kits</span>
           <h2 className="pf text-2xl md:text-[42px] text-primary-foreground mt-2">Shop by Budget</h2>
         </div>
         <div className="grid gap-4 md:grid-cols-3 items-end">
