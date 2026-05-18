@@ -175,7 +175,7 @@ function QuizScreen({
     && (!giftSelected || !!giftSubcategory);
 
   const categoryCards = [
-    { id: "maternity" as const, title: s("quiz_category_maternity_title", "Maternity List"), sub: s("quiz_category_maternity_sub", "Hospital bag — mum and baby"), Icon: ShoppingBag },
+    { id: "maternity" as const, title: s("quiz_category_maternity_title", "Bundles & Kits"), sub: s("quiz_category_maternity_sub", "Hospital bag — mum and baby"), Icon: ShoppingBag },
     { id: "baby" as const, title: s("quiz_category_baby_title", "Baby Things"), sub: s("quiz_category_baby_sub", "For when you get home"), Icon: Baby },
     { id: "gift" as const, title: s("quiz_category_gift_title", "Gifts for New Parents"), sub: s("quiz_category_gift_sub", "Visiting or sending a gift"), Icon: Gift },
   ];
