@@ -18,7 +18,7 @@ const PAGE_SIZE = 5;
 
 // Solid coloured header bars — distinct adjacent sections. The body of each
 // section card sits on white so cards read clearly against the saturated bar.
-const HEADER_PALETTE: Array<{ bar: string; text: string; link: string }> = [
+export const HEADER_PALETTE: Array<{ bar: string; text: string; link: string }> = [
   { bar: "bg-coral",       text: "text-white",  link: "text-white/90 underline" },
   { bar: "bg-forest",      text: "text-white",  link: "text-white/90 underline" },
   { bar: "bg-mint",        text: "text-forest", link: "text-forest underline" },
@@ -106,7 +106,7 @@ export default function CuratedSections({
   );
 }
 
-function CuratedSection({
+export function CuratedSection({
   shop,
   slug,
   label,

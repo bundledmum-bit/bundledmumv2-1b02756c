@@ -652,7 +652,10 @@ export default function ShopPage() {
             same loop, in admin-configured order. Search queries and
             category-specific tabs skip the section feed entirely. */}
         {sectionsOnlyMode ? (
-          <ShopSectionsRenderer />
+          <ShopSectionsRenderer
+            shop={tab as ShopVariant}
+            onOpenDetail={p => setDetailProduct(p)}
+          />
         ) : isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (

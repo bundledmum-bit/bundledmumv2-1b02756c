@@ -222,7 +222,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   );
 }
 
-function BundleSection({ heading, subtitle, items, loading, variant, gridCols = "1-2-3" }: {
+export function BundleSection({ heading, subtitle, items, loading, variant, gridCols = "1-2-3" }: {
   heading: string;
   subtitle: string;
   items: EnrichedBundle[];
