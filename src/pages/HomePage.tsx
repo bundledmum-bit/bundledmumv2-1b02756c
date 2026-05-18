@@ -189,7 +189,7 @@ function BundleTiers() {
     <section className="py-16 md:py-24" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
       <div className="max-w-[1100px] mx-auto px-5 md:px-10">
         <div className="text-center mb-10 md:mb-14">
-          <span className="text-coral text-xs font-semibold uppercase tracking-widest">Our Kits</span>
+          <span className="text-coral text-xs font-semibold uppercase tracking-widest">Bundles & Kits</span>
           <h2 className="pf text-2xl md:text-[42px] text-primary-foreground mt-2">Shop by Budget</h2>
         </div>
         <div className="grid gap-4 md:grid-cols-3 items-end">
