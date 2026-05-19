@@ -28,6 +28,9 @@ interface ShopSection {
   filter_value: string;
   display_order: number;
   is_visible: boolean;
+  is_visible_on_all: boolean;
+  is_visible_on_mum: boolean;
+  is_visible_on_baby: boolean;
 }
 
 interface BundleProductRow {
@@ -81,7 +84,7 @@ export default function ShopSectionsRenderer({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("shop_sections")
-        .select("id, section_key, title, subtitle, section_type, filter_value, display_order, is_visible")
+        .select("id, section_key, title, subtitle, section_type, filter_value, display_order, is_visible, is_visible_on_all, is_visible_on_mum, is_visible_on_baby")
         .eq("is_visible", true)
         .order("display_order", { ascending: true });
       if (error) throw error;
@@ -103,23 +106,6 @@ export default function ShopSectionsRenderer({
       return (data || []) as BundleProductRow[];
     },
     staleTime: 60_000,
-  });
-
-  // Subcategory → parent_category lookup so we can hide category sections
-  // that don't match the active /shop/mum or /shop/baby variant. "both"
-  // categories (e.g. Bath & Grooming) render on every variant.
-  const { data: parentCategoryMap } = useQuery({
-    queryKey: ["shop-sections-parent-categories"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("product_categories")
-        .select("slug, parent_category");
-      if (error) throw error;
-      const map: Record<string, string> = {};
-      (data || []).forEach((c: any) => { map[c.slug] = c.parent_category || "both"; });
-      return map;
-    },
-    staleTime: 5 * 60_000,
   });
 
   const matIds = (bundleProducts || []).filter(p => /^Maternity Bundle/i.test(p.name)).map(p => p.id);
@@ -216,6 +202,11 @@ export default function ShopSectionsRenderer({
       {(sections || []).map(section => {
         const palette = HEADER_PALETTE[paletteIdx % HEADER_PALETTE.length];
         if (section.section_type === "bundle_group") {
+          // Per-shop visibility flags from shop_sections drive which
+          // rows appear on which /shop variant.
+          if (shop === "all"  && !section.is_visible_on_all)  return null;
+          if (shop === "mum"  && !section.is_visible_on_mum)  return null;
+          if (shop === "baby" && !section.is_visible_on_baby) return null;
           // Filter by name prefix, then by the active /shop variant.
           // /shop/mum  → only category='mum' bundles (Maternity Bundles,
           //               Postpartum Recovery Kits).
@@ -241,12 +232,11 @@ export default function ShopSectionsRenderer({
           );
         }
         if (section.section_type === "category") {
-          // Drop category sections whose parent_category doesn't match
-          // the active variant. "both" categories render everywhere.
-          if (shop === "mum" || shop === "baby") {
-            const parent = parentCategoryMap?.[section.filter_value];
-            if (parent && parent !== shop && parent !== "both") return null;
-          }
+          // Per-shop visibility flags from shop_sections drive which
+          // category rows appear on which /shop variant.
+          if (shop === "all"  && !section.is_visible_on_all)  return null;
+          if (shop === "mum"  && !section.is_visible_on_mum)  return null;
+          if (shop === "baby" && !section.is_visible_on_baby) return null;
           paletteIdx += 1;
           return (
             <CuratedSection
