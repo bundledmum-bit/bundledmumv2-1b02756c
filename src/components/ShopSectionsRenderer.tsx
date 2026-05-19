@@ -38,6 +38,7 @@ interface BundleProductRow {
   shop_section_order: number | null;
   description: string | null;
   is_gift_box: boolean;
+  category: string | null;
   brands: { id: string; sku: string | null; brand_name?: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null; images?: string[] | null }[];
 }
 
@@ -94,7 +95,7 @@ export default function ShopSectionsRenderer({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select(`id, name, slug, bundle_label, shop_section_order, description, is_gift_box,
+        .select(`id, name, slug, bundle_label, shop_section_order, description, is_gift_box, category,
                  brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, images )`)
         .eq("is_gift_box", true)
         .eq("is_active", true);
@@ -102,6 +103,23 @@ export default function ShopSectionsRenderer({
       return (data || []) as BundleProductRow[];
     },
     staleTime: 60_000,
+  });
+
+  // Subcategory → parent_category lookup so we can hide category sections
+  // that don't match the active /shop/mum or /shop/baby variant. "both"
+  // categories (e.g. Bath & Grooming) render on every variant.
+  const { data: parentCategoryMap } = useQuery({
+    queryKey: ["shop-sections-parent-categories"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_categories")
+        .select("slug, parent_category");
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((c: any) => { map[c.slug] = c.parent_category || "both"; });
+      return map;
+    },
+    staleTime: 5 * 60_000,
   });
 
   const matIds = (bundleProducts || []).filter(p => /^Maternity Bundle/i.test(p.name)).map(p => p.id);
@@ -198,14 +216,20 @@ export default function ShopSectionsRenderer({
       {(sections || []).map(section => {
         const palette = HEADER_PALETTE[paletteIdx % HEADER_PALETTE.length];
         if (section.section_type === "bundle_group") {
-          const items = (enriched || [])
+          // Filter by name prefix, then by the active /shop variant.
+          // /shop/mum  → only category='mum' bundles (Maternity Bundles,
+          //               Postpartum Recovery Kits).
+          // /shop/baby → only category='baby' bundles (currently none —
+          //               Baby Shower Gift Boxes are category='push-gift').
+          // /shop      → everything.
+          let items = (enriched || [])
             .filter(p => (p.name || "").startsWith(section.filter_value || ""))
             .sort((a, b) => (a.shop_section_order ?? 99) - (b.shop_section_order ?? 99));
+          if (shop === "mum" || shop === "baby") {
+            items = items.filter(p => p.category === shop);
+          }
           if (items.length === 0) return null;
           paletteIdx += 1;
-          // BundleShopRow mirrors CuratedSection exactly — rounded-2xl
-          // shell, palette header bar with "(see all)" link, horizontal
-          // snap-scroll of cards sized identically to CuratedCard.
           return (
             <BundleShopRow
               key={section.section_key}
@@ -217,6 +241,12 @@ export default function ShopSectionsRenderer({
           );
         }
         if (section.section_type === "category") {
+          // Drop category sections whose parent_category doesn't match
+          // the active variant. "both" categories render everywhere.
+          if (shop === "mum" || shop === "baby") {
+            const parent = parentCategoryMap?.[section.filter_value];
+            if (parent && parent !== shop && parent !== "both") return null;
+          }
           paletteIdx += 1;
           return (
             <CuratedSection
