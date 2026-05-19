@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import Seo from "@/components/Seo";
 import { useEffect } from "react";
 import { useDeliverySettings, useSiteSettings } from "@/hooks/useSupabaseData";
 import { usePage } from "@/hooks/usePage";
@@ -30,6 +31,10 @@ export default function TermsPage() {
 
   return (
     <div className="min-h-screen pt-[68px]">
+      <Seo
+        title="Terms of Service | BundledMum"
+        description="The terms that govern your use of BundledMum — including orders, delivery, payments, and account responsibilities."
+      />
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-5 md:px-10 py-10 md:py-16">
         <div className="max-w-[780px] mx-auto text-center">
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground">Terms & Conditions</h1>

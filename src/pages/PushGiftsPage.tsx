@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import Seo from "@/components/Seo";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
@@ -166,6 +167,10 @@ export default function PushGiftsPage() {
 
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
+      <Seo
+        title="Push Gifts — Thoughtful Gifts for New Mums | BundledMum"
+        description="Hand-picked push gifts to celebrate a new mum. Curated by BundledMum and delivered across Nigeria."
+      />
       {/* Hero */}
       <div className="pt-20" style={{ background: "linear-gradient(135deg, #C2185B 0%, #E91E63 50%, #F06292 100%)" }}>
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-10 md:py-16 text-center">

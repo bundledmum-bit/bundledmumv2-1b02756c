@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Seo from "@/components/Seo";
 import { useLocation } from "react-router-dom";
 import { useFaqItems, useSiteSettings } from "@/hooks/useSupabaseData";
 import { track as pixelTrack } from "@/lib/metaPixel";
@@ -33,6 +34,10 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen pt-[68px]">
+      <Seo
+        title="Contact BundledMum — Customer Support"
+        description="Get in touch with the BundledMum team for product help, delivery questions, or partnership enquiries. We reply on WhatsApp and email."
+      />
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-5 md:px-10 py-10 md:py-[72px]">
         <div className="max-w-[680px] mx-auto text-center">
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground mb-3">Help & Contact</h1>

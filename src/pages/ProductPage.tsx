@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import Seo from "@/components/Seo";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -426,8 +427,19 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     );
   }
 
+  const seoTitle = `${product.name} | BundledMum`.slice(0, 70);
+  const seoDescription = (product.description || `Shop ${product.name} on BundledMum — curated maternity and baby essentials delivered across Nigeria.`)
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 158);
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
+      <Seo
+        title={seoTitle}
+        description={seoDescription}
+        type="product"
+        image={product.brands?.[0]?.imageUrl || undefined}
+      />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}
 
       {/* Breadcrumb */}

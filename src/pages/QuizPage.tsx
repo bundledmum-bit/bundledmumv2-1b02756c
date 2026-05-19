@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Seo from "@/components/Seo";
 import { useLocation } from "react-router-dom";
 import HomeQuiz, { type HomeQuizInitialState } from "@/components/home/HomeQuiz";
 
@@ -25,6 +26,11 @@ export default function QuizPage() {
     : undefined;
 
   return (
+    <>
+      <Seo
+        title="Hospital Bag Quiz — Find Your Perfect Bundle | BundledMum"
+        description="Answer a few quick questions and get a personalised hospital bag recommendation matched to your budget, baby, and stage."
+      />
     <section
       className="min-h-screen pt-20 md:pt-28 pb-12 md:pb-16 flex items-center relative overflow-hidden"
       style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 55%, #163D2E 100%)" }}
@@ -48,5 +54,6 @@ export default function QuizPage() {
         <HomeQuiz initialState={initialState} />
       </div>
     </section>
+    </>
   );
 }

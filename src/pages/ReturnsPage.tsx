@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Seo from "@/components/Seo";
 import { Link } from "react-router-dom";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { usePage } from "@/hooks/usePage";
@@ -16,6 +17,10 @@ export default function ReturnsPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Seo
+        title="Returns & Refunds | BundledMum"
+        description="BundledMum's returns and refunds policy — how to request a return, eligibility windows, and how refunds are processed."
+      />
       <div className="pt-20" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
         <div className="max-w-[860px] mx-auto px-4 md:px-10 py-10 md:py-16">
           <h1 className="pf text-3xl md:text-[44px] text-primary-foreground mb-2">Returns & Exchanges</h1>
