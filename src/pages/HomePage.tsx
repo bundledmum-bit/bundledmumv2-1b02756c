@@ -425,6 +425,7 @@ export default function HomePage() {
   }, []);
 
   const { data: sections, isLoading } = useHomepageSections();
+  const { data: settings } = useSiteSettings();
 
   // If the DB hasn't responded yet (or the table is empty), render the
   // minimal skeleton: Hero + ShopShortcuts. This preserves the old
