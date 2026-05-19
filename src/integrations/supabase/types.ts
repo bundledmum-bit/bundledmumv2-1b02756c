@@ -6087,40 +6087,55 @@ export type Database = {
       }
       shop_sections: {
         Row: {
+          bundles_display_order: number | null
+          bundles_is_visible: boolean
           created_at: string
           display_order: number
           filter_value: string | null
           id: string
           is_visible: boolean
           label: string
+          page_context: string
           section_key: string
           section_type: string
+          see_all_label: string | null
+          standalone_page_slug: string | null
           subtitle: string | null
           title: string
           updated_at: string
         }
         Insert: {
+          bundles_display_order?: number | null
+          bundles_is_visible?: boolean
           created_at?: string
           display_order?: number
           filter_value?: string | null
           id?: string
           is_visible?: boolean
           label: string
+          page_context?: string
           section_key: string
           section_type: string
+          see_all_label?: string | null
+          standalone_page_slug?: string | null
           subtitle?: string | null
           title: string
           updated_at?: string
         }
         Update: {
+          bundles_display_order?: number | null
+          bundles_is_visible?: boolean
           created_at?: string
           display_order?: number
           filter_value?: string | null
           id?: string
           is_visible?: boolean
           label?: string
+          page_context?: string
           section_key?: string
           section_type?: string
+          see_all_label?: string | null
+          standalone_page_slug?: string | null
           subtitle?: string | null
           title?: string
           updated_at?: string
