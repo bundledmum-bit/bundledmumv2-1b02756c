@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import Seo from "@/components/Seo";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";

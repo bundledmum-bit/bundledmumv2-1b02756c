@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Seo from "@/components/Seo";
 import BundleSections from "@/components/BundleSections";
 
 export default function BundlesPage() {

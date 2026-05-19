@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Seo from "@/components/Seo";
 import { useBlogPosts } from "@/hooks/useSupabaseData";
 
 export default function BlogPage() {

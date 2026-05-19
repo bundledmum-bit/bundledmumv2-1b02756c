@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import Seo from "@/components/Seo";
 import { useEffect } from "react";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { usePage } from "@/hooks/usePage";

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import Seo from "@/components/Seo";
 import { useLocation } from "react-router-dom";
 import HomeQuiz, { type HomeQuizInitialState } from "@/components/home/HomeQuiz";
 

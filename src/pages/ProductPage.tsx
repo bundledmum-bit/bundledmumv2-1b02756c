@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import Seo from "@/components/Seo";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";

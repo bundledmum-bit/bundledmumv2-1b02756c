@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Seo from "@/components/Seo";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";

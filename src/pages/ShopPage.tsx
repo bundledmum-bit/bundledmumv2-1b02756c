@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import Seo from "@/components/Seo";
 import { useSearchParams, Link, useLocation } from "react-router-dom";
 import CuratedSections from "@/components/CuratedSections";
 import BundleSections from "@/components/BundleSections";

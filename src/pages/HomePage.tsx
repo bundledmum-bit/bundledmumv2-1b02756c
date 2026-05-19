@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
+import Seo from "@/components/Seo";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";

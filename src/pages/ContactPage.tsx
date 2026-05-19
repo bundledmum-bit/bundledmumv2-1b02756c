@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import Seo from "@/components/Seo";
 import { useLocation } from "react-router-dom";
 import { useFaqItems, useSiteSettings } from "@/hooks/useSupabaseData";
 import { track as pixelTrack } from "@/lib/metaPixel";
