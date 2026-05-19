@@ -1015,6 +1015,9 @@ interface ShopSection {
   filter_value: string;
   display_order: number;
   is_visible: boolean;
+  is_visible_on_all: boolean;
+  is_visible_on_mum: boolean;
+  is_visible_on_baby: boolean;
 }
 
 function ShopSectionsPanel() {
@@ -1084,6 +1087,23 @@ function ShopSectionsPanel() {
     invalidateAll();
   };
 
+  // Per-shop visibility flag toggles. Each checkbox flips a single
+  // is_visible_on_{all,mum,baby} boolean on the shop_sections row;
+  // the storefront ShopSectionsRenderer reads these flags to decide
+  // whether to render the section on /shop, /shop/mum or /shop/baby.
+  const toggleShopFlag = async (
+    s: ShopSection,
+    field: "is_visible_on_all" | "is_visible_on_mum" | "is_visible_on_baby",
+    value: boolean,
+  ) => {
+    const { error } = await supabase
+      .from("shop_sections")
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq("id", s.id);
+    if (error) { toast.error("Could not update visibility"); return; }
+    invalidateAll();
+  };
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [subtitleDraft, setSubtitleDraft] = useState("");
@@ -1115,7 +1135,8 @@ function ShopSectionsPanel() {
       <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
         <p className="text-text-med text-sm max-w-2xl">
           Drag the order of every section on the shop page — bundles and product categories live in the same list.
-          Hidden sections don't render on the storefront.
+          Use the per-shop checkboxes to control which shop pages each section appears on. The eye toggle is the master
+          switch — when off, the section is invisible everywhere regardless of per-shop flags.
         </p>
         <Button
           size="sm"
@@ -1157,7 +1178,7 @@ function ShopSectionsPanel() {
                 <button
                   onClick={() => toggleVisibility(s)}
                   className={`p-1.5 rounded hover:bg-muted flex-shrink-0 mt-0.5 ${s.is_visible ? "" : "opacity-40"}`}
-                  title={s.is_visible ? "Hide section" : "Show section"}
+                  title={s.is_visible ? "Master visibility: ON (hide everywhere)" : "Master visibility: OFF (show)"}
                 >
                   {s.is_visible
                     ? <span aria-hidden>👁</span>
@@ -1197,6 +1218,42 @@ function ShopSectionsPanel() {
                       )}
                     </button>
                   )}
+                </div>
+                <div
+                  className="flex flex-col gap-0.5 flex-shrink-0 text-[11px] leading-tight"
+                  title={`Showing on: ${[
+                    s.is_visible_on_all  && "/shop",
+                    s.is_visible_on_mum  && "/shop/mum",
+                    s.is_visible_on_baby && "/shop/baby",
+                  ].filter(Boolean).join(", ") || "nowhere"}`}
+                >
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!s.is_visible_on_all}
+                      onChange={e => toggleShopFlag(s, "is_visible_on_all", e.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-text-med">/shop</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!s.is_visible_on_mum}
+                      onChange={e => toggleShopFlag(s, "is_visible_on_mum", e.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-text-med">/shop/mum</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={!!s.is_visible_on_baby}
+                      onChange={e => toggleShopFlag(s, "is_visible_on_baby", e.target.checked)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-text-med">/shop/baby</span>
+                  </label>
                 </div>
                 <span
                   className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill flex-shrink-0 ${
