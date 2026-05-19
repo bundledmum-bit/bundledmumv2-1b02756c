@@ -442,6 +442,10 @@ export default function HomePage() {
 
   return (
     <>
+      <Seo
+        title="BundledMum — Hospital Bags & Baby Bundles for Nigerian Mums"
+        description="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos within 48 hours."
+      />
       {sections.map(renderSection)}
       <StickyMobileCTA />
     </>
