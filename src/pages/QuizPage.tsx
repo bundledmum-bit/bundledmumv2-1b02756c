@@ -54,5 +54,6 @@ export default function QuizPage() {
         <HomeQuiz initialState={initialState} />
       </div>
     </section>
+    </>
   );
 }
