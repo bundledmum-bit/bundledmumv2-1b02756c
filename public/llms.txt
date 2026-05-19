@@ -1,0 +1,24 @@
+# BundledMum
+
+> Curated maternity and baby essentials for Nigerian mums — making being a mum easier with budget-friendly bundles, hospital lists, and a quiz that recommends exactly what you need.
+
+BundledMum helps expectant and new mums in Nigeria prepare for baby with curated product bundles, a personalised quiz, and honest guidance. Every product is selected for the Nigerian market — climate, budget, and preferences.
+
+## Pages
+
+- [Home](/): Shop bundles, take the quiz, and discover curated maternity essentials.
+- [About](/about): Our story and why BundledMum exists.
+- [Bundles](/bundles): Maternity lists and kits organised by budget.
+- [Shop](/shop): Browse all individual products and categories.
+- [Quiz](/quiz): Get a personalised bundle recommendation based on your budget and needs.
+- [Push Gifts](/push-gifts): Thoughtful gifts for new mums.
+- [Blog](/blog): Articles and guides for Nigerian mums.
+- [Track Order](/track-order): Check the status of an order.
+- [Contact](/contact): Get in touch with our team.
+
+## Optional
+
+- [Returns](/returns): Returns and refunds policy.
+- [Privacy](/privacy): Privacy policy.
+- [Terms](/terms): Terms of service.
+- [Cookies](/cookies): Cookie policy.
