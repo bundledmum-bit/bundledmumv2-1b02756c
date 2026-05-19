@@ -11,15 +11,19 @@ interface SeoProps {
   image?: string;
   type?: "website" | "article" | "product";
   noindex?: boolean;
+  /** JSON-LD structured data object(s). Rendered as <script type="application/ld+json"> tag(s). */
+  jsonLd?: Record<string, any> | Record<string, any>[];
 }
 
 /**
  * Per-route SEO tags. Sets a unique <title>, meta description, canonical
- * link, and Open Graph tags. Mount once near the top of each page.
+ * link, Open Graph tags, and optional JSON-LD schemas. Mount once near
+ * the top of each page.
  */
-export default function Seo({ title, description, path, image, type = "website", noindex }: SeoProps) {
+export default function Seo({ title, description, path, image, type = "website", noindex, jsonLd }: SeoProps) {
   const loc = useLocation();
   const url = `${SITE}${path ?? loc.pathname}`;
+  const schemas = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   return (
     <Helmet>
       <title>{title}</title>
@@ -34,6 +38,9 @@ export default function Seo({ title, description, path, image, type = "website",
       {image && <meta property="og:image" content={image} />}
       {image && <meta name="twitter:image" content={image} />}
       {noindex && <meta name="robots" content="noindex,nofollow" />}
+      {schemas.map((s, i) => (
+        <script key={i} type="application/ld+json">{JSON.stringify(s)}</script>
+      ))}
     </Helmet>
   );
 }

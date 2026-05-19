@@ -432,6 +432,26 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 158);
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    description: seoDescription,
+    image: (product.brands || [])
+      .map(b => b.imageUrl)
+      .filter(Boolean) as string[],
+    sku: selectedBrand?.sku || product.id,
+    brand: { "@type": "Brand", name: selectedBrand?.label || "BundledMum" },
+    offers: (product.brands || []).filter(b => b.price > 0).map(b => ({
+      "@type": "Offer",
+      url: `https://bundledmum.com/products/${product.slug || product.id}${b.sku ? `?sku=${b.sku}` : ""}`,
+      priceCurrency: "NGN",
+      price: b.price,
+      availability: b.inStock === false
+        ? "https://schema.org/OutOfStock"
+        : "https://schema.org/InStock",
+    })),
+  };
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
       <Seo
@@ -439,6 +459,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         description={seoDescription}
         type="product"
         image={product.brands?.[0]?.imageUrl || undefined}
+        jsonLd={productJsonLd}
       />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}
 

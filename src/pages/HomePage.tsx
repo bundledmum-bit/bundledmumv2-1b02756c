@@ -425,6 +425,7 @@ export default function HomePage() {
   }, []);
 
   const { data: sections, isLoading } = useHomepageSections();
+  const { data: settings } = useSiteSettings();
 
   // If the DB hasn't responded yet (or the table is empty), render the
   // minimal skeleton: Hero + ShopShortcuts. This preserves the old
@@ -440,11 +441,53 @@ export default function HomePage() {
     );
   }
 
+  // Build FAQPage JSON-LD from the How It Works steps (each step's title
+  // becomes the question, description the answer). Falls back to a static
+  // pair when settings haven't loaded yet so the homepage still ships
+  // something for rich snippets.
+  const howSteps: { title: string; desc: string }[] = Array.isArray((settings as any)?.how_it_works)
+    ? ((settings as any).how_it_works as any[]).map(s => ({ title: s.title, desc: s.desc }))
+    : [];
+
+  const jsonLd: Record<string, any>[] = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "BundledMum",
+      url: "https://bundledmum.com",
+      logo: "https://bundledmum.com/src/assets/logos/BM-ICON-GREEN.svg",
+      sameAs: ["https://www.instagram.com/bundledmum"],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "BundledMum",
+      url: "https://bundledmum.com",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: "https://bundledmum.com/shop?q={search_term_string}",
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ];
+  if (howSteps.length > 0) {
+    jsonLd.push({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: howSteps.map(s => ({
+        "@type": "Question",
+        name: s.title,
+        acceptedAnswer: { "@type": "Answer", text: s.desc },
+      })),
+    });
+  }
+
   return (
     <>
       <Seo
         title="BundledMum — Hospital Bags & Baby Bundles for Nigerian Mums"
         description="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos within 48 hours."
+        jsonLd={jsonLd}
       />
       {sections.map(renderSection)}
       <StickyMobileCTA />
