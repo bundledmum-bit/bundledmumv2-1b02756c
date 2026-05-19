@@ -469,8 +469,19 @@ export default function ShopPage() {
     setVisibleCount(ITEMS_PER_PAGE);
   };
 
+  const seoTitle = isBaby
+    ? "Baby Shop — Products for Your Newborn | BundledMum"
+    : isMum
+    ? "Mum Shop — Postpartum & Maternity Essentials | BundledMum"
+    : "Shop All Products | BundledMum";
+  const seoDescription = isBaby
+    ? "Shop newborn and baby essentials curated for Nigerian families — diapers, clothing, feeding, and more."
+    : isMum
+    ? "Shop postpartum recovery, maternity wear, and self-care essentials for Nigerian mums."
+    : "Browse every product in the BundledMum store — curated maternity and baby essentials for Nigerian mums.";
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
+      <Seo title={seoTitle} description={seoDescription} />
       {/* Hero - auto height, no min-h-screen */}
       <div className="pt-[68px]" style={{ background: isBaby ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : isMum ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : "linear-gradient(135deg, #1A1A2E 0%, #2D3A5C 100%)" }}>
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-14">

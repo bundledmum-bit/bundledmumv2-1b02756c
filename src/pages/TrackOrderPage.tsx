@@ -37,6 +37,10 @@ export default function TrackOrderPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Seo
+        title="Track Your Order | BundledMum"
+        description="Enter your order number to see the latest status of your BundledMum delivery."
+      />
       <div className="pt-20" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
         <div className="max-w-[700px] mx-auto px-4 md:px-10 py-10 md:py-16">
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground mb-2">📦 Track Your Order</h1>

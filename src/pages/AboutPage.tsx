@@ -103,6 +103,10 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-screen pt-[68px]">
+      <Seo
+        title="About BundledMum — Our Story"
+        description="BundledMum was born from a real moment of overwhelm. We curate honest, Nigerian-first maternity essentials so every mum knows exactly what she needs."
+      />
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-5 md:px-10 py-12 md:py-24">
         <div className="max-w-[780px] mx-auto text-center">
           <div className="text-5xl mb-4">{hero.emoji}</div>

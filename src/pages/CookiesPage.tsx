@@ -15,6 +15,10 @@ export default function CookiesPage() {
 
   return (
     <div className="min-h-screen pt-[68px]">
+      <Seo
+        title="Cookie Policy | BundledMum"
+        description="Learn which cookies BundledMum uses, why we use them, and how to manage your cookie preferences."
+      />
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-5 md:px-10 py-10 md:py-16">
         <div className="max-w-[780px] mx-auto text-center">
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground">Cookie Policy</h1>

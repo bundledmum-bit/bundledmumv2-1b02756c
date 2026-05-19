@@ -7,6 +7,10 @@ export default function BundlesPage() {
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-8">
+      <Seo
+        title="Maternity Bundles & Hospital Bag Lists | BundledMum"
+        description="Browse curated maternity bundles, postpartum recovery kits, and baby shower gift boxes — sorted by budget and delivered across Nigeria."
+      />
       <div
         className="pt-[68px]"
         style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1A3D2E 100%)" }}
