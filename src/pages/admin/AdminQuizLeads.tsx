@@ -21,6 +21,16 @@ const DATE_PRESETS = [
   { label: "All Time", getValue: () => ({ from: new Date(2024, 0, 1), to: new Date() }) },
 ];
 
+// Render an ISO timestamp in Africa/Lagos local time, e.g. "20 May 2026, 14:16".
+function formatLagosTimestamp(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-NG", {
+    timeZone: "Africa/Lagos",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 const SHOPPER_COLORS: Record<string, string> = {
   self: "bg-blue-100 text-blue-700 border-blue-200",
   dad: "bg-orange-100 text-orange-700 border-orange-200",
@@ -271,6 +281,7 @@ export default function AdminQuizLeads() {
                   <TableHead>Purchased</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Referral</TableHead>
+                  <TableHead>Submitted</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -310,8 +321,31 @@ export default function AdminQuizLeads() {
                     <TableCell className="text-sm">
                       {(lead as any).purchase_amount ? fmt((lead as any).purchase_amount) : "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[120px] truncate">
-                      {(lead as any).referral_source || "—"}
+                    <TableCell className="text-xs max-w-[260px] align-top">
+                      {(lead as any).referral_source ? (
+                        <a
+                          href={(lead as any).referral_source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                          title={(lead as any).referral_source}
+                        >
+                          {(lead as any).referral_source}
+                        </a>
+                      ) : (
+                        <span className="text-gray-400 italic">Direct visit</span>
+                      )}
+                      {(lead as any).page_url && (
+                        <div
+                          className="text-[11px] text-gray-500 mt-1 break-all"
+                          title={(lead as any).page_url}
+                        >
+                          Landed: {(lead as any).page_url}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top">
+                      {formatLagosTimestamp(lead.created_at)}
                     </TableCell>
                   </TableRow>
                 ))}
