@@ -226,7 +226,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
               to="/quiz"
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
             >
-              Take the 60-second quiz
+              Take the 30-second quiz
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -250,7 +250,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                   Pregnancy in Nigeria comes with a long shopping list — and even longer second-guessing. Between scrolling Instagram, asking your aunties, and worrying you've forgotten something, the prep alone drains you before baby even arrives.
                 </p>
                 <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto mt-4">
-                  We built BundledMum so you skip the chaos. Every bundle here was curated with input from real Nigerian mums, midwives, and doulas — three thoughtful tiers, the same hospital-ready essentials, fully packed and delivered to your door.
+                  We built BundledMum so you skip the chaos. Every bundle here was curated with input from real Nigerian mums & midwives, fully packed and delivered to your door.
                 </p>
               </div>
 
@@ -266,7 +266,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                     { emoji: "👶", title: "Baby's first 6 weeks",            text: "Nappies, vests, wipes, feeding, and skincare — covered from day one." },
                     { emoji: "🌿", title: "Mum-curated brands",              text: "Trusted Nigerian and international brands, vetted by mums who've been there." },
                     { emoji: "📦", title: "One delivery, fully packed",      text: "No extra shopping trips. No missing items. Everything in one box." },
-                    { emoji: "💚", title: "Hospital-ready before your due date", text: "48-hour packing. Free Lagos delivery on bundles over ₦200,000." },
+                    { emoji: "💚", title: "Hospital-ready before your due date", text: "24-hour packing. Free Lagos delivery on bundles over ₦200,000." },
                   ].map((item, i) => (
                     <div key={i} className="flex gap-4 p-5 bg-white/70 backdrop-blur rounded-xl shadow-sm hover:shadow-md transition-shadow">
                       <div className="text-3xl flex-shrink-0">{item.emoji}</div>
@@ -287,7 +287,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <div className="grid sm:grid-cols-3 gap-6">
                   {[
                     { step: "1", title: "Pick your bundle", text: "Choose the budget that fits you: ₦200k, ₦500k, or ₦1M+. Same essentials, different quantity and premium upgrades." },
-                    { step: "2", title: "We pack the box",  text: "Hand-checked, brand-verified, and prepared in 48 hours. You don't lift a finger." },
+                    { step: "2", title: "We pack the box",  text: "Hand-checked, brand-verified, and prepared in 24 hours. You don't lift a finger." },
                     { step: "3", title: "You focus on baby", text: "Free Lagos delivery on bundles over ₦200,000. Hospital-ready before your due date. Done." },
                   ].map((item, i) => (
                     <div key={i} className="text-center">
@@ -307,7 +307,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                   Still not sure which to pick?
                 </h3>
                 <p className="text-base sm:text-lg text-white/90 mb-6 max-w-xl mx-auto">
-                  Take our 60-second quiz and we'll build a list tailored to your exact budget, due date, and hospital plan.
+                  Take our 30-second quiz and we'll build a list tailored to your budget.
                 </p>
                 <Link
                   to="/quiz"
