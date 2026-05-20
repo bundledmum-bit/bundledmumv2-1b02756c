@@ -7,7 +7,7 @@ import { fmt } from "@/lib/cart";
 /**
  * Reusable "Bundles & Kits" surface for the storefront. Renders three
  * sections — Baby Shower Gift Boxes, Postpartum Recovery Kits, and a
- * Maternity Lists "Coming Soon" placeholder. Data is sourced from the
+ * Maternity + Baby Essentials "Coming Soon" placeholder. Data is sourced from the
  * standard products table (where is_gift_box = true), so the existing
  * /products/<slug> detail page handles purchasing without new routes.
  *
