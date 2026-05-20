@@ -199,7 +199,18 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
     "Maternity":                MATERNITY_SECTION_CONFIG, // new alias (DB will use this)
   };
   const isBundlesVariant = variant === "bundles";
-  const blocks = Object.entries(SECTION_DEFAULTS).map(([filter, d]) => {
+  // Alias dedupe: the maternity config is registered under two keys
+  // ("Maternity Bundle" + "Maternity") so the section keeps rendering
+  // across the shop_sections.filter_value rename. Pick whichever alias
+  // matches a current shop_sections row; if neither matches, prefer
+  // the post-rename "Maternity" key. Then drop the loser so the
+  // section appears exactly once regardless of DB state.
+  const matchedFilters = new Set((sectionsQuery.data || []).map(s => s.filter_value));
+  const activeMaternityKey: "Maternity Bundle" | "Maternity" = matchedFilters.has("Maternity Bundle")
+    ? "Maternity Bundle"
+    : "Maternity";
+  const dropMaternityKey = activeMaternityKey === "Maternity Bundle" ? "Maternity" : "Maternity Bundle";
+  const blocks = Object.entries(SECTION_DEFAULTS).filter(([key]) => key !== dropMaternityKey).map(([filter, d]) => {
     const cfg = sectionFor(filter);
     const adminOrder = isBundlesVariant
       ? cfg?.bundles_display_order ?? cfg?.display_order
