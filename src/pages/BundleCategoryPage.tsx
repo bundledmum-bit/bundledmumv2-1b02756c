@@ -163,6 +163,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
 
   const isMaternity = sectionKey === "bundle_maternity_lists";
   const isRecoveryKits = sectionKey === "bundle_recovery_kits";
+  const isGiftBoxes = sectionKey === "bundle_gift_boxes";
   const gridCols: "1-2-3" | "1-2-4" = isMaternity ? "1-2-4" : "1-2-3";
 
   return (
@@ -192,6 +193,10 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
           ) : isRecoveryKits ? (
             <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
               We pre-packed these recovery kits so healing is the only thing you focus on.
+            </p>
+          ) : isGiftBoxes ? (
+            <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
+              Skip the guessing. We packed gift boxes new mums will actually use.
             </p>
           ) : section?.subtitle ? (
             <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
@@ -432,6 +437,121 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                   className="inline-flex items-center gap-2 px-8 py-4 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-bold rounded-full shadow-lg hover:shadow-xl transition-all"
                 >
                   Build my recovery kit
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Gift-boxes-only: catch gifters who want something more personal
+            than the curated boxes. Sits below the cards so the ready-to-
+            send options get first attention. */}
+        {isGiftBoxes && (
+          <div className="mt-12 mb-16 flex flex-col items-center text-center px-4">
+            <p className="text-base sm:text-lg text-gray-700 mb-4 max-w-2xl">
+              Want to give something more personal? Tell us about the mum-to-be and we'll build a gift box she'll actually open twice.
+            </p>
+            <Link
+              to="/quiz"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+            >
+              Build a custom gift in 30 seconds
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        )}
+
+        {/* Gift-boxes-only storytelling block. Gifter-pain led: lazy gifts
+            in Lagos → what mums actually need → what we let YOU give.
+            All copy addresses the gifter (you) about the mum (her, she);
+            never the mum directly. Strictly customer-facing — zero
+            tier/budget vocabulary. */}
+        {isGiftBoxes && (
+          <section className="mt-8 py-16 px-6 sm:px-12 bg-gradient-to-br from-[#FFF8F0] to-[#F5EDE0] rounded-3xl">
+            <div className="max-w-4xl mx-auto">
+              {/* Intro story — gifter frustration → mum's real need → our solution */}
+              <div className="text-center mb-16">
+                <span className="inline-block px-4 py-1.5 bg-[#2D6A4F]/10 text-[#2D6A4F] text-sm font-semibold rounded-full mb-4">
+                  🎁 Why we built this
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-bold text-[#1A1A1A] mb-6 leading-tight">
+                  The best gift for a new mum isn't another bib.
+                </h2>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto">
+                  You've been invited to a baby shower or just heard the good news. You want to send something thoughtful. But every shop in Lagos shows you the same thing: cute outfits she'll outgrow in three weeks, generic plush toys, or a hamper of products she won't touch.
+                </p>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto mt-4">
+                  Meanwhile, the new mum quietly needs nipple cream, maternity pads, a peri bottle, and a comfort drink she can sip at 3am. The things nobody thinks to gift. The things she'd never ask for.
+                </p>
+                <p className="text-lg leading-relaxed max-w-2xl mx-auto mt-4 font-medium text-[#2D6A4F]">
+                  We built these gift boxes so you can give her what she actually needs and look like the most thoughtful person in her group chat.
+                </p>
+              </div>
+
+              {/* What's inside — gifter framed */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-3 text-center">
+                  ✨ What's inside every gift box
+                </h3>
+                <p className="text-center text-gray-600 mb-8 max-w-xl mx-auto">
+                  A blend of essentials and small comforts. Useful enough to be remembered. Lovely enough to feel like a gift.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    { emoji: "🌸", title: "The things she actually needs",   text: "Postpartum essentials she'd be too shy to ask for. Maternity pads, nipple cream, comfort wear, recovery basics." },
+                    { emoji: "👶", title: "A few baby treats too",           text: "Soft baby essentials so she doesn't feel left out of the cute stuff. But practical, not just decorative." },
+                    { emoji: "🌿", title: "Curated, never random",           text: "Hand-picked by Nigerian mums, midwives, and doulas. Every item earns its spot. Nothing filler." },
+                    { emoji: "🎀", title: "Gift-ready, beautifully packed",  text: "Premium packaging, ribbon-tied, with a card slot for your personal note. Ready to hand over." },
+                    { emoji: "📦", title: "One delivery, one box",           text: "We deliver directly to her or to you. Lagos delivery in 48 hours." },
+                    { emoji: "💛", title: "A gift she'll text you about",    text: "The kind of gift that gets a real thank-you message, not a polite emoji." },
+                  ].map((item, i) => (
+                    <div key={i} className="flex gap-4 p-5 bg-white/70 backdrop-blur rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-3xl flex-shrink-0">{item.emoji}</div>
+                      <div>
+                        <h4 className="font-semibold text-[#1A1A1A] mb-1">{item.title}</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">{item.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* How it works — no tier language */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
+                  🛍️ How it works
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-6">
+                  {[
+                    { step: "1", title: "Choose your gift box",          text: "Pick the one that matches what you want to spend. Each is thoughtfully built and gift-ready." },
+                    { step: "2", title: "Add a personal note",           text: "Write a message at checkout. We hand-write it onto a card and tuck it into the box." },
+                    { step: "3", title: "We deliver, you get the credit", text: "Send to her door or yours. Free Lagos delivery on gift boxes over ₦200,000. Ready in 48 hours." },
+                  ].map((item, i) => (
+                    <div key={i} className="text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#2D6A4F] text-white text-xl font-bold mb-4">
+                        {item.step}
+                      </div>
+                      <h4 className="font-bold text-lg text-[#1A1A1A] mb-2">{item.title}</h4>
+                      <p className="text-sm text-gray-700 leading-relaxed">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Closing CTA */}
+              <div className="text-center bg-[#2D6A4F] text-white rounded-2xl p-10">
+                <h3 className="text-2xl sm:text-3xl font-bold mb-3">
+                  Want to give something even more personal?
+                </h3>
+                <p className="text-base sm:text-lg text-white/90 mb-6 max-w-xl mx-auto">
+                  Take our 30-second quiz. Tell us a little about her and we'll build a gift box that actually fits the mum you're sending it to.
+                </p>
+                <Link
+                  to="/quiz"
+                  className="inline-flex items-center gap-2 px-8 py-4 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-bold rounded-full shadow-lg hover:shadow-xl transition-all"
+                >
+                  Build her custom gift
                   <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
