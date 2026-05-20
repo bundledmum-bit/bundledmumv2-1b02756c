@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { BundleSection } from "@/components/BundleSections";
 
@@ -183,11 +184,15 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground mb-2.5">
             {section?.title || "Bundles"}
           </h1>
-          {section?.subtitle && (
+          {isMaternity ? (
+            <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
+              We pre-packed these bundles based on different budgets, so you don't have to.
+            </p>
+          ) : section?.subtitle ? (
             <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
               {section.subtitle}
             </p>
-          )}
+          ) : null}
           <div className="mt-4">
             <Link
               to="/bundles"
@@ -200,6 +205,23 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
       </div>
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-8 md:py-12">
+        {/* Maternity-only: invite shoppers with a different budget into the
+            60-second quiz before they scroll past the curated tiers. */}
+        {isMaternity && (
+          <div className="mt-2 mb-12 flex flex-col items-center text-center">
+            <p className="text-base sm:text-lg text-gray-700 mb-3 max-w-2xl">
+              Have a different budget in mind? Let us build a custom list, just for you.
+            </p>
+            <Link
+              to="/quiz"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+            >
+              Take the 60-second quiz
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        )}
+
         <BundleSection
           heading={section?.title || ""}
           subtitle=""
@@ -208,6 +230,96 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
           variant="bundles"
           gridCols={gridCols}
         />
+
+        {/* Maternity-only premium storytelling block — sits below the
+            tiered cards so shoppers who scroll get the brand story, the
+            inventory promise, the three-step flow, and a final CTA into
+            the quiz for custom-budget shoppers. */}
+        {isMaternity && (
+          <section className="mt-24 py-16 px-6 sm:px-12 bg-gradient-to-br from-[#FFF8F0] to-[#F5EDE0] rounded-3xl">
+            <div className="max-w-4xl mx-auto">
+              {/* Intro story */}
+              <div className="text-center mb-16">
+                <span className="inline-block px-4 py-1.5 bg-[#2D6A4F]/10 text-[#2D6A4F] text-sm font-semibold rounded-full mb-4">
+                  🤍 Why we built this
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-bold text-[#1A1A1A] mb-6 leading-tight">
+                  Because no Nigerian mum should prepare alone.
+                </h2>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto">
+                  Pregnancy in Nigeria comes with a long shopping list — and even longer second-guessing. Between scrolling Instagram, asking your aunties, and worrying you've forgotten something, the prep alone drains you before baby even arrives.
+                </p>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto mt-4">
+                  We built BundledMum so you skip the chaos. Every bundle here was curated with input from real Nigerian mums, midwives, and doulas — three thoughtful tiers, the same hospital-ready essentials, fully packed and delivered to your door.
+                </p>
+              </div>
+
+              {/* What's inside */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-8 text-center">
+                  ✨ What's inside every bundle
+                </h3>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    { emoji: "🏥", title: "Hospital bag essentials",         text: "Packed and ready for labour day. Pads, gown, going-home outfit — sorted." },
+                    { emoji: "🤱", title: "Postpartum recovery kit",         text: "Supporting mum through the first weeks: pads, nipple cream, comfort wear, and more." },
+                    { emoji: "👶", title: "Baby's first 6 weeks",            text: "Nappies, vests, wipes, feeding, and skincare — covered from day one." },
+                    { emoji: "🌿", title: "Mum-curated brands",              text: "Trusted Nigerian and international brands, vetted by mums who've been there." },
+                    { emoji: "📦", title: "One delivery, fully packed",      text: "No extra shopping trips. No missing items. Everything in one box." },
+                    { emoji: "💚", title: "Hospital-ready before your due date", text: "48-hour packing. Free Lagos delivery on bundles over ₦200,000." },
+                  ].map((item, i) => (
+                    <div key={i} className="flex gap-4 p-5 bg-white/70 backdrop-blur rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-3xl flex-shrink-0">{item.emoji}</div>
+                      <div>
+                        <h4 className="font-semibold text-[#1A1A1A] mb-1">{item.title}</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">{item.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* How it works */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
+                  🛍️ How it works
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-6">
+                  {[
+                    { step: "1", title: "Pick your bundle", text: "Choose the budget that fits you: ₦200k, ₦500k, or ₦1M+. Same essentials, different quantity and premium upgrades." },
+                    { step: "2", title: "We pack the box",  text: "Hand-checked, brand-verified, and prepared in 48 hours. You don't lift a finger." },
+                    { step: "3", title: "You focus on baby", text: "Free Lagos delivery on bundles over ₦200,000. Hospital-ready before your due date. Done." },
+                  ].map((item, i) => (
+                    <div key={i} className="text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#2D6A4F] text-white text-xl font-bold mb-4">
+                        {item.step}
+                      </div>
+                      <h4 className="font-bold text-lg text-[#1A1A1A] mb-2">{item.title}</h4>
+                      <p className="text-sm text-gray-700 leading-relaxed">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Closing CTA */}
+              <div className="text-center bg-[#2D6A4F] text-white rounded-2xl p-10">
+                <h3 className="text-2xl sm:text-3xl font-bold mb-3">
+                  Still not sure which to pick?
+                </h3>
+                <p className="text-base sm:text-lg text-white/90 mb-6 max-w-xl mx-auto">
+                  Take our 60-second quiz and we'll build a list tailored to your exact budget, due date, and hospital plan.
+                </p>
+                <Link
+                  to="/quiz"
+                  className="inline-flex items-center gap-2 px-8 py-4 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-bold rounded-full shadow-lg hover:shadow-xl transition-all"
+                >
+                  Build my custom list
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
