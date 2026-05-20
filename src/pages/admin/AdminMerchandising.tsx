@@ -144,7 +144,7 @@ type BundleFamily = "gift-boxes" | "recovery-kits" | "maternity-lists";
 const BUNDLE_FAMILIES: { key: BundleFamily; label: string; nameRegex: RegExp }[] = [
   { key: "gift-boxes",      label: "Baby Shower Gift Boxes",  nameRegex: /^Baby Shower Gift Box/i },
   { key: "recovery-kits",   label: "Postpartum Recovery Kits", nameRegex: /^Postpartum Recovery Kit/i },
-  { key: "maternity-lists", label: "Maternity Lists + Baby Products", nameRegex: /^Maternity( \+ Baby Items)? Bundle/i },
+  { key: "maternity-lists", label: "Maternity + Baby Essentials", nameRegex: /^Maternity( \+ Baby Items)? Bundle/i },
 ];
 
 const SHOPS: { key: ShopVariant; label: string }[] = [
