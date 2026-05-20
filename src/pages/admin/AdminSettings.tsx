@@ -1247,18 +1247,30 @@ function QuizLeadNotificationsPanel() {
   const handleTest = async () => {
     if (!canTest) return;
     setTesting(true);
-    // Edge function now handles lead selection + dedupe-stamp reset
-    // server-side when test_mode is set; the client just invokes.
+    // Edge function (v2) handles lead selection + dedupe-stamp reset
+    // server-side when test_mode is set; the client just invokes and
+    // surfaces the diagnostic payload back to the admin.
     const { data, error } = await (supabase as any).functions.invoke("notify-quiz-lead", {
       body: { test_mode: true },
     });
     setTesting(false);
+    // CRITICAL: keep this console.log — the full response payload is the
+    // only way to debug delivery issues from outside Supabase's logs.
+    console.log("[notify-quiz-lead test response]", { data, error });
     if (error) {
-      toast.error(`Test failed: ${error.message}`);
+      toast.error(`Test failed (network): ${error.message || "unknown error"}`);
       return;
     }
-    if (!data?.sent) {
-      toast.error(`Test failed: ${data?.reason || "unknown"} (gateway status: ${data?.gateway_status || "n/a"})`);
+    if (!data) {
+      toast.error("Test failed: no response from server");
+      return;
+    }
+    if (!data.sent) {
+      const reason = data.reason || "unknown";
+      const gatewayStatus = data.gateway_status ? ` | gateway: ${data.gateway_status}` : "";
+      const gatewayMsg = data.gateway_response?.message || data.gateway_response?.error || "";
+      const extras = gatewayMsg ? ` | ${gatewayMsg}` : "";
+      toast.error(`Test failed: ${reason}${gatewayStatus}${extras}`, { duration: 8000 });
       return;
     }
     toast.success(`Test email sent to ${data.recipient}. Check your inbox.`);

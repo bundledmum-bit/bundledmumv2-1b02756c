@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
-import { Download, Calendar, Users, Phone, ShoppingCart, TrendingUp, DollarSign } from "lucide-react";
+import { Download, Calendar, Users, Phone, ShoppingCart, TrendingUp, DollarSign, ExternalLink } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,17 @@ const DATE_PRESETS = [
   { label: "This Month", getValue: () => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return { from: d, to: new Date() }; }},
   { label: "All Time", getValue: () => ({ from: new Date(2024, 0, 1), to: new Date() }) },
 ];
+
+// Extract a friendly hostname for the Referral cell — strips protocol and
+// "www." and falls back to a 30-char truncation for URLs we can't parse.
+function getHostname(url: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url.length > 30 ? url.slice(0, 30) + "…" : url;
+  }
+}
 
 // Render an ISO timestamp in Africa/Lagos local time, e.g. "20 May 2026, 14:16".
 function formatLagosTimestamp(iso: string | null): string {
@@ -280,7 +291,7 @@ export default function AdminQuizLeads() {
                   <TableHead>WhatsApp</TableHead>
                   <TableHead>Purchased</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Referral</TableHead>
+                  <TableHead style={{ width: "140px" }}>Referral</TableHead>
                   <TableHead>Submitted</TableHead>
                 </TableRow>
               </TableHeader>
@@ -321,27 +332,20 @@ export default function AdminQuizLeads() {
                     <TableCell className="text-sm">
                       {(lead as any).purchase_amount ? fmt((lead as any).purchase_amount) : "—"}
                     </TableCell>
-                    <TableCell className="text-xs max-w-[260px] align-top">
+                    <TableCell className="text-xs align-top" style={{ width: "140px" }}>
                       {(lead as any).referral_source ? (
                         <a
                           href={(lead as any).referral_source}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-sm whitespace-nowrap"
                           title={(lead as any).referral_source}
                         >
-                          {(lead as any).referral_source}
+                          {getHostname((lead as any).referral_source)}
+                          <ExternalLink className="w-3 h-3 flex-shrink-0" />
                         </a>
                       ) : (
-                        <span className="text-gray-400 italic">Direct visit</span>
-                      )}
-                      {(lead as any).page_url && (
-                        <div
-                          className="text-[11px] text-gray-500 mt-1 break-all"
-                          title={(lead as any).page_url}
-                        >
-                          Landed: {(lead as any).page_url}
-                        </div>
+                        <span className="text-gray-400 text-sm italic whitespace-nowrap">Direct</span>
                       )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap align-top">
