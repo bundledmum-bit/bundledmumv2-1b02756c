@@ -63,7 +63,7 @@ export default function AdminMaternityBundles() {
         .select("id, name, slug, bundle_discount_pct, brands ( id, sku, price, tier )")
         .eq("is_gift_box", true)
         .eq("is_active", true)
-        .ilike("name", "Maternity%Bundle%")
+        .ilike("slug", "maternity-bundle-%")
         .order("slug");
       if (error) throw error;
       return (data || []) as MatBundleRow[];
