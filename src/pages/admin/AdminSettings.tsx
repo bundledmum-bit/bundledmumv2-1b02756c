@@ -6,10 +6,11 @@ import { Save, Plus, Trash2, Lock } from "lucide-react";
 import AdminQuizExitPopupTab from "@/components/admin/AdminQuizExitPopupTab";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
-const ALL_TABS = ["General", "Revenue Targets", "Notification Recipients", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
+const ALL_TABS = ["General", "Revenue Targets", "Notification Recipients", "Quiz Lead Notifications", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
 const RESTRICTED_TABS: Record<string, { module: string; action: string }> = {
   "Quiz Exit Popup": { module: "content", action: "manage_quiz_exit_popup" },
   "Notification Recipients": { module: "settings", action: "manage_notifications" },
+  "Quiz Lead Notifications": { module: "settings", action: "manage_notifications" },
 };
 
 const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "textarea" | "number" | "toggle" | "color" | "url" | "email" }[]> = {
@@ -154,6 +155,8 @@ export default function AdminSettings() {
         canEditRevenueTargets ? <RevenueTargetsPanel /> : null
       ) : activeTab === "Notification Recipients" ? (
         can("settings", "manage_notifications") ? <NotificationRecipientsPanel /> : null
+      ) : activeTab === "Quiz Lead Notifications" ? (
+        can("settings", "manage_notifications") ? <QuizLeadNotificationsPanel /> : null
       ) : activeTab === "Quiz Exit Popup" ? (
         can("content", "manage_quiz_exit_popup") ? (
           <AdminQuizExitPopupTab />
@@ -1116,6 +1119,263 @@ function SubscribableProductsPanel({ disabled }: { disabled?: boolean }) {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Quiz Lead Notifications — admin opt-in for the notify-quiz-lead edge
+// function. Two site_settings keys back this panel:
+//   • quiz_lead_notification_enabled (jsonb boolean) — master switch
+//   • quiz_lead_notification_email   (jsonb string)  — recipient
+// The "Send test email" button finds the most recent quiz_customers row
+// with a WhatsApp number, clears its notification_sent_at so the edge
+// function's dedupe doesn't no-op the test, then invokes the function.
+// ---------------------------------------------------------------------------
+
+const QUIZ_NOTIFY_KEY_EMAIL = "quiz_lead_notification_email";
+const QUIZ_NOTIFY_KEY_ENABLED = "quiz_lead_notification_enabled";
+
+function isValidEmail(raw: string): boolean {
+  const v = raw.trim();
+  if (!v || /\s/.test(v)) return false;
+  // Minimal but practical email shape — admin-only field, real validation
+  // happens server-side when the edge function pushes mail.
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+}
+
+function QuizLeadNotificationsPanel() {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState<string>("");
+  const [savedEmail, setSavedEmail] = useState<string>("");
+  const [enabled, setEnabled] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [togglingEnabled, setTogglingEnabled] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", [QUIZ_NOTIFY_KEY_EMAIL, QUIZ_NOTIFY_KEY_ENABLED]);
+      if (cancelled) return;
+      if (error) {
+        toast.error(error.message || "Could not load notification settings");
+        setLoading(false);
+        return;
+      }
+      // value column is jsonb — strings come back as strings, booleans as
+      // booleans. Defensive coercion for both.
+      let loadedEmail = "";
+      let loadedEnabled = false;
+      (data || []).forEach((row: any) => {
+        if (row.key === QUIZ_NOTIFY_KEY_EMAIL) {
+          let v = row.value;
+          if (typeof v === "string") loadedEmail = v;
+          else if (v && typeof v === "object") loadedEmail = "";
+          else loadedEmail = String(v ?? "");
+          loadedEmail = loadedEmail.replace(/^"|"$/g, "").trim();
+        }
+        if (row.key === QUIZ_NOTIFY_KEY_ENABLED) {
+          loadedEnabled = row.value === true || row.value === "true";
+        }
+      });
+      setEmail(loadedEmail);
+      setSavedEmail(loadedEmail);
+      setEnabled(loadedEnabled);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const emailIsValid = isValidEmail(email);
+  const emailDirty = email.trim() !== savedEmail.trim();
+  const canSaveEmail = emailIsValid && emailDirty && !saving;
+  // Can't enable notifications without a saved recipient on file.
+  const canToggleEnabled = !togglingEnabled && (enabled || isValidEmail(savedEmail));
+  const canTest = !testing && isValidEmail(savedEmail);
+
+  const handleSaveEmail = async () => {
+    if (!canSaveEmail) return;
+    setSaving(true);
+    try {
+      const value = email.trim();
+      const { error } = await supabase
+        .from("site_settings")
+        .upsert({ key: QUIZ_NOTIFY_KEY_EMAIL, value }, { onConflict: "key" });
+      if (error) throw error;
+      setSavedEmail(value);
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+      toast.success("Notification email saved");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not save email");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleEnabled = async (next: boolean) => {
+    if (togglingEnabled) return;
+    // Guard: don't allow turning on without a saved recipient.
+    if (next && !isValidEmail(savedEmail)) {
+      toast.error("Save a valid notification email before enabling.");
+      return;
+    }
+    setTogglingEnabled(true);
+    const prev = enabled;
+    setEnabled(next); // optimistic
+    try {
+      const { error } = await supabase
+        .from("site_settings")
+        .upsert({ key: QUIZ_NOTIFY_KEY_ENABLED, value: next }, { onConflict: "key" });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+      toast.success(next ? "Notifications enabled" : "Notifications disabled");
+    } catch (e: any) {
+      setEnabled(prev); // rollback
+      toast.error(e?.message || "Could not update toggle");
+    } finally {
+      setTogglingEnabled(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!canTest) return;
+    setTesting(true);
+    try {
+      const { data: lead, error: leadErr } = await supabase
+        .from("quiz_customers")
+        .select("session_id, notification_sent_at")
+        .not("whatsapp_number", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (leadErr) throw leadErr;
+      if (!lead?.session_id) {
+        toast.error("No leads with WhatsApp found. Take the quiz first.");
+        return;
+      }
+      // Clear the dedupe stamp so the edge function will actually send.
+      await supabase
+        .from("quiz_customers")
+        .update({ notification_sent_at: null })
+        .eq("session_id", lead.session_id);
+      const { data, error } = await (supabase as any).functions.invoke("notify-quiz-lead", {
+        body: { session_id: lead.session_id },
+      });
+      if (error) throw error;
+      if (!data?.sent) {
+        toast.error(`Test failed: ${data?.reason || "unknown"}`);
+      } else {
+        toast.success(`Test email sent${data?.recipient ? ` to ${data.recipient}` : ""}. Check your inbox.`);
+      }
+    } catch (e: any) {
+      toast.error(`Test failed: ${e?.message || "unknown"}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-10 text-text-med">Loading…</div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-base font-bold mb-1">Quiz Lead Notifications</h2>
+        <p className="text-xs text-text-light max-w-2xl">
+          Get emailed when someone completes the quiz and shares their WhatsApp number.
+          The toggle is the master switch; the email field is who receives the notification.
+        </p>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-5 space-y-5 max-w-2xl">
+        {/* Enable toggle */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-bold mb-0.5">Enable notifications</h3>
+            <p className="text-[11px] text-text-light">
+              When on, a notification is emailed each time a new quiz lead provides a WhatsApp number.
+            </p>
+            {!isValidEmail(savedEmail) && (
+              <p className="text-[11px] text-amber-700 mt-1">
+                Save a valid notification email before enabling.
+              </p>
+            )}
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={enabled}
+              disabled={!canToggleEnabled}
+              onChange={e => handleToggleEnabled(e.target.checked)}
+            />
+            <div className="w-11 h-6 bg-muted peer-checked:bg-forest rounded-full peer-disabled:opacity-50 transition-colors relative">
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-5" : ""}`} />
+            </div>
+          </label>
+        </div>
+
+        {/* Email field */}
+        <div>
+          <label className="text-sm font-bold block mb-1">Notification email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="hello@bundledmum.ng"
+            className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${email && !emailIsValid ? "border-destructive" : "border-input"}`}
+          />
+          <p className="text-[11px] text-text-light mt-1">
+            Where the notification email is sent. Must be a valid email address.
+          </p>
+          {email && !emailIsValid && (
+            <p className="text-[11px] text-destructive mt-1">Not a valid email address.</p>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-border">
+          <button
+            onClick={handleTest}
+            disabled={!canTest}
+            className="flex items-center gap-1.5 border border-forest text-forest px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-light disabled:opacity-50"
+            title={!isValidEmail(savedEmail) ? "Save a valid notification email first" : "Send a test notification to the saved address"}
+          >
+            {testing ? (
+              <>
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-forest border-t-transparent animate-spin" />
+                Sending…
+              </>
+            ) : (
+              "Send test email"
+            )}
+          </button>
+          <button
+            onClick={handleSaveEmail}
+            disabled={!canSaveEmail}
+            className="flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save className="w-3.5 h-3.5" /> Save changes
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
