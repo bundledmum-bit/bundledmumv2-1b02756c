@@ -1247,38 +1247,21 @@ function QuizLeadNotificationsPanel() {
   const handleTest = async () => {
     if (!canTest) return;
     setTesting(true);
-    try {
-      const { data: lead, error: leadErr } = await supabase
-        .from("quiz_customers")
-        .select("session_id, notification_sent_at")
-        .not("whatsapp_number", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (leadErr) throw leadErr;
-      if (!lead?.session_id) {
-        toast.error("No leads with WhatsApp found. Take the quiz first.");
-        return;
-      }
-      // Clear the dedupe stamp so the edge function will actually send.
-      await supabase
-        .from("quiz_customers")
-        .update({ notification_sent_at: null })
-        .eq("session_id", lead.session_id);
-      const { data, error } = await (supabase as any).functions.invoke("notify-quiz-lead", {
-        body: { session_id: lead.session_id },
-      });
-      if (error) throw error;
-      if (!data?.sent) {
-        toast.error(`Test failed: ${data?.reason || "unknown"}`);
-      } else {
-        toast.success(`Test email sent${data?.recipient ? ` to ${data.recipient}` : ""}. Check your inbox.`);
-      }
-    } catch (e: any) {
-      toast.error(`Test failed: ${e?.message || "unknown"}`);
-    } finally {
-      setTesting(false);
+    // Edge function now handles lead selection + dedupe-stamp reset
+    // server-side when test_mode is set; the client just invokes.
+    const { data, error } = await (supabase as any).functions.invoke("notify-quiz-lead", {
+      body: { test_mode: true },
+    });
+    setTesting(false);
+    if (error) {
+      toast.error(`Test failed: ${error.message}`);
+      return;
     }
+    if (!data?.sent) {
+      toast.error(`Test failed: ${data?.reason || "unknown"} (gateway status: ${data?.gateway_status || "n/a"})`);
+      return;
+    }
+    toast.success(`Test email sent to ${data.recipient}. Check your inbox.`);
   };
 
   if (loading) {
