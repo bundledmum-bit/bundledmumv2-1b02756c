@@ -1291,6 +1291,15 @@ export default function HomeQuiz({
         p_session_id: sessionId,
         p_whatsapp_number: val,
       });
+      // Fire admin notification email — fire-and-forget, fail-soft.
+      // Runs after saveLead so the row is guaranteed written by the
+      // time the edge function reads it. Returns { sent, reason } but
+      // we don't inspect — admin opt-in lives server-side.
+      (supabase as any).functions
+        .invoke("notify-quiz-lead", { body: { session_id: sessionId } })
+        .catch((err: unknown) => {
+          console.warn("[QuizLeadNotify] failed:", err);
+        });
     }
     setScreen("results");
   };
