@@ -63,7 +63,7 @@ export default function AdminMaternityBundles() {
         .select("id, name, slug, bundle_discount_pct, brands ( id, sku, price, tier )")
         .eq("is_gift_box", true)
         .eq("is_active", true)
-        .ilike("name", "Maternity Bundle%")
+        .ilike("name", "Maternity%Bundle%")
         .order("slug");
       if (error) throw error;
       return (data || []) as MatBundleRow[];
@@ -206,7 +206,7 @@ function MaternityBundlePanel({ bundle, snapshot }: { bundle: MatBundleRow; snap
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <h2 className="pf text-base md:text-lg font-bold">
-              Maternity Bundle — {fmt(snapshot?.budget_amount ?? extractBudgetFromName(bundle.name))}
+              Maternity + Baby Items Bundle — {fmt(snapshot?.budget_amount ?? extractBudgetFromName(bundle.name))}
             </h2>
             {tier && (
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-pill ${tierBadge(tier)}`}>

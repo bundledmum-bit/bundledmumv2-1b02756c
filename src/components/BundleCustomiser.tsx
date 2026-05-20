@@ -75,7 +75,7 @@ interface GenderInfo {
 }
 
 export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku }: BundleCustomiserProps) {
-  const isMaternityBundle = /^Maternity Bundle/i.test(productName || "");
+  const isMaternityBundle = /^Maternity( \+ Baby Items)? Bundle/i.test(productName || "");
   const { addToCart } = useCart();
   const navigate = useNavigate();
 

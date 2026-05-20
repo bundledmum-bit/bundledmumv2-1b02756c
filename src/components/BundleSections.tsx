@@ -95,7 +95,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
     if (!products || products.length === 0) { setEnriched([]); return; }
     let cancelled = false;
     (async () => {
-      const matIds = products.filter(p => /^Maternity Bundle/i.test(p.name)).map(p => p.id);
+      const matIds = products.filter(p => /^Maternity( \+ Baby Items)? Bundle/i.test(p.name)).map(p => p.id);
       const snapshotMap: Record<string, { item_count: number; sell_price: number }> = {};
       if (matIds.length > 0) {
         try {
@@ -116,7 +116,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
       }
 
       const out = await Promise.all(products.map(async p => {
-        const isMaternity = /^Maternity Bundle/i.test(p.name);
+        const isMaternity = /^Maternity( \+ Baby Items)? Bundle/i.test(p.name);
         if (isMaternity) {
           const snap = snapshotMap[p.id];
           return {
@@ -158,7 +158,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
     (a.shop_section_order ?? 99) - (b.shop_section_order ?? 99);
   const giftBoxes = useMemo(() => (enriched || []).filter(p => /Baby Shower Gift Box/i.test(p.name)).sort(sortByOrder), [enriched]);
   const recoveryKits = useMemo(() => (enriched || []).filter(p => /Postpartum Recovery Kit/i.test(p.name)).sort(sortByOrder), [enriched]);
-  const maternityBundles = useMemo(() => (enriched || []).filter(p => /^Maternity Bundle/i.test(p.name)).sort(sortByOrder), [enriched]);
+  const maternityBundles = useMemo(() => (enriched || []).filter(p => /^Maternity( \+ Baby Items)? Bundle/i.test(p.name)).sort(sortByOrder), [enriched]);
 
   // ── Admin-driven section config (shop_sections table) ───────────────
   // Two parallel orderings live on the same shop_sections row:
@@ -191,7 +191,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
   const SECTION_DEFAULTS = {
     "Baby Shower Gift Box":     { title: "Baby Shower Gift Boxes for your Budget",  subtitle: "Thoughtfully curated gifts for the new mum",  shopOrder: 10, bundlesOrder: 10, visible: true, items: giftBoxes,        grid: "1-2-3" as const, slug: "baby-shower-gift-boxes",  seeAllLabel: "See all Baby Shower Gift Boxes" },
     "Postpartum Recovery Kit":  { title: "Postpartum Recovery Kits for your Budget", subtitle: "Everything a new mum needs to heal and thrive", shopOrder: 20, bundlesOrder: 20, visible: true, items: recoveryKits,     grid: "1-2-3" as const, slug: "postpartum-recovery-kits", seeAllLabel: "See all Postpartum Recovery Kits" },
-    "Maternity Bundle":         { title: variant === "bundles" ? "Maternity List for your Budget" : "Bundles & Kits", subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", shopOrder: 30, bundlesOrder: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const, slug: "maternity-bundles", seeAllLabel: "See all Maternity Bundles" },
+    "Maternity Bundle":         { title: variant === "bundles" ? "Maternity Lists + Baby Products" : "Bundles & Kits", subtitle: variant === "bundles" ? "Complete hospital bag and baby prep lists, curated by budget" : "Quiz-curated bundles by budget — from starter to premium", shopOrder: 30, bundlesOrder: 30, visible: true, items: maternityBundles, grid: variant === "shop" ? "1-2-4" as const : "1-2-3" as const, slug: "maternity-bundles", seeAllLabel: "See all Maternity Lists + Baby Products" },
   };
   const isBundlesVariant = variant === "bundles";
   const blocks = Object.entries(SECTION_DEFAULTS).map(([filter, d]) => {

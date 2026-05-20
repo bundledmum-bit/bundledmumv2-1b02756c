@@ -93,7 +93,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
   // pricing across both pages.
   const productsKey = (productsQuery.data || []).map(p => p.id).join(",");
   const matIds = (productsQuery.data || [])
-    .filter(p => /^Maternity Bundle/i.test(p.name))
+    .filter(p => /^Maternity( \+ Baby Items)? Bundle/i.test(p.name))
     .map(p => p.id);
 
   const matSnapshotsQuery = useQuery({
@@ -124,7 +124,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
       const products = productsQuery.data || [];
       const matMap = matSnapshotsQuery.data || {};
       const out: EnrichedBundle[] = await Promise.all(products.map(async p => {
-        const isMaternity = /^Maternity Bundle/i.test(p.name);
+        const isMaternity = /^Maternity( \+ Baby Items)? Bundle/i.test(p.name);
         if (isMaternity) {
           const snap = matMap[p.id];
           return {

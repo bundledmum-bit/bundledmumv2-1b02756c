@@ -498,7 +498,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               {/* Maternity bundles share a base image — overlay a coral
                   price tag (larger than the listing card) derived from
                   live brand price so nightly refreshes update it. */}
-              {/^Maternity Bundle/i.test(product.name) && (selectedBrand?.price ?? 0) > 0 && (
+              {/^Maternity( \+ Baby Items)? Bundle/i.test(product.name) && (selectedBrand?.price ?? 0) > 0 && (
                 <span
                   className="absolute bottom-3 left-3 z-10"
                   style={{

@@ -37,7 +37,7 @@ interface PanelData {
 }
 
 export default function BundleContents({ productId, productName }: BundleContentsProps) {
-  const isMaternityBundle = /^Maternity Bundle/i.test(productName || "");
+  const isMaternityBundle = /^Maternity( \+ Baby Items)? Bundle/i.test(productName || "");
 
   const fixedQuery = useQuery({
     queryKey: ["bundle-contents-fixed", productId],

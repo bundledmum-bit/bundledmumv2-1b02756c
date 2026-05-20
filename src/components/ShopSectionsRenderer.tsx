@@ -108,7 +108,7 @@ export default function ShopSectionsRenderer({
     staleTime: 60_000,
   });
 
-  const matIds = (bundleProducts || []).filter(p => /^Maternity Bundle/i.test(p.name)).map(p => p.id);
+  const matIds = (bundleProducts || []).filter(p => /^Maternity( \+ Baby Items)? Bundle/i.test(p.name)).map(p => p.id);
   const matKey = matIds.join(",");
   const { data: matSnapshotMap } = useQuery({
     queryKey: ["shop-maternity-snapshots", matKey],
@@ -141,7 +141,7 @@ export default function ShopSectionsRenderer({
     let cancelled = false;
     (async () => {
       const out = await Promise.all(bundleProducts.map(async p => {
-        const isMaternity = /^Maternity Bundle/i.test(p.name);
+        const isMaternity = /^Maternity( \+ Baby Items)? Bundle/i.test(p.name);
         if (isMaternity) {
           const snap = matSnapshotMap?.[p.id];
           return {
