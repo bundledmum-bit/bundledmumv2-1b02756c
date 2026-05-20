@@ -410,7 +410,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <div className="grid sm:grid-cols-3 gap-6">
                   {[
                     { step: "1", title: "Pick the kit that fits", text: "Choose the kit that matches what you need most. We make sure the essentials are covered in all of them." },
-                    { step: "2", title: "We pack it with care",   text: "Hand-checked, mum-curated, and packed within 48 hours. You don't lift anything heavier than your baby." },
+                    { step: "2", title: "We pack it with care",   text: "Hand-checked, mum-curated, and packed within 24 hours. You don't lift anything heavier than your baby." },
                     { step: "3", title: "You focus on healing",   text: "Free Lagos delivery on kits over ₦200,000. Delivered before baby arrives so it's ready when you are home." },
                   ].map((item, i) => (
                     <div key={i} className="text-center">
