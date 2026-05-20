@@ -205,11 +205,21 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
       </div>
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-8 md:py-12">
-        {/* Maternity-only: invite shoppers with a different budget into the
-            60-second quiz before they scroll past the curated tiers. */}
+        <BundleSection
+          heading={section?.title || ""}
+          subtitle=""
+          items={enrichedQuery.data || []}
+          loading={loading}
+          variant="bundles"
+          gridCols={gridCols}
+        />
+
+        {/* Maternity-only: invite shoppers whose budget falls outside the
+            three preset tiers into the 60-second quiz. Sits below the
+            cards so the curated tiers get first attention. */}
         {isMaternity && (
-          <div className="mt-2 mb-12 flex flex-col items-center text-center">
-            <p className="text-base sm:text-lg text-gray-700 mb-3 max-w-2xl">
+          <div className="mt-12 mb-16 flex flex-col items-center text-center px-4">
+            <p className="text-base sm:text-lg text-gray-700 mb-4 max-w-2xl">
               Have a different budget in mind? Let us build a custom list, just for you.
             </p>
             <Link
@@ -222,21 +232,11 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
           </div>
         )}
 
-        <BundleSection
-          heading={section?.title || ""}
-          subtitle=""
-          items={enrichedQuery.data || []}
-          loading={loading}
-          variant="bundles"
-          gridCols={gridCols}
-        />
-
-        {/* Maternity-only premium storytelling block — sits below the
-            tiered cards so shoppers who scroll get the brand story, the
+        {/* Maternity-only premium storytelling block — brand story, the
             inventory promise, the three-step flow, and a final CTA into
             the quiz for custom-budget shoppers. */}
         {isMaternity && (
-          <section className="mt-24 py-16 px-6 sm:px-12 bg-gradient-to-br from-[#FFF8F0] to-[#F5EDE0] rounded-3xl">
+          <section className="mt-8 py-16 px-6 sm:px-12 bg-gradient-to-br from-[#FFF8F0] to-[#F5EDE0] rounded-3xl">
             <div className="max-w-4xl mx-auto">
               {/* Intro story */}
               <div className="text-center mb-16">
