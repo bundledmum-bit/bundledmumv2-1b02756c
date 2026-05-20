@@ -5227,6 +5227,7 @@ export type Database = {
           hospital_type: string | null
           id: string
           multiples: string | null
+          notification_sent_at: string | null
           order_id: string | null
           page_url: string | null
           purchase_amount: number | null
@@ -5256,6 +5257,7 @@ export type Database = {
           hospital_type?: string | null
           id?: string
           multiples?: string | null
+          notification_sent_at?: string | null
           order_id?: string | null
           page_url?: string | null
           purchase_amount?: number | null
@@ -5285,6 +5287,7 @@ export type Database = {
           hospital_type?: string | null
           id?: string
           multiples?: string | null
+          notification_sent_at?: string | null
           order_id?: string | null
           page_url?: string | null
           purchase_amount?: number | null
@@ -6094,6 +6097,9 @@ export type Database = {
           filter_value: string | null
           id: string
           is_visible: boolean
+          is_visible_on_all: boolean
+          is_visible_on_baby: boolean
+          is_visible_on_mum: boolean
           label: string
           page_context: string
           section_key: string
@@ -6112,6 +6118,9 @@ export type Database = {
           filter_value?: string | null
           id?: string
           is_visible?: boolean
+          is_visible_on_all?: boolean
+          is_visible_on_baby?: boolean
+          is_visible_on_mum?: boolean
           label: string
           page_context?: string
           section_key: string
@@ -6130,6 +6139,9 @@ export type Database = {
           filter_value?: string | null
           id?: string
           is_visible?: boolean
+          is_visible_on_all?: boolean
+          is_visible_on_baby?: boolean
+          is_visible_on_mum?: boolean
           label?: string
           page_context?: string
           section_key?: string
@@ -7518,6 +7530,7 @@ export type Database = {
         Args: { p_budget_amount?: number; p_category: string }
         Returns: Json
       }
+      get_shop_page: { Args: { p_shop: string }; Returns: Json }
       get_subscription_settings: { Args: never; Returns: Json }
       get_user_permissions: {
         Args: { p_target_user_id: string }
