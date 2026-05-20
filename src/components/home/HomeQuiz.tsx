@@ -82,6 +82,36 @@ function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender)
   };
 }
 
+// Fire-and-forget quiz lead persistence. Calls the save_quiz_lead RPC,
+// which upserts the quiz_customers row keyed on p_session_id and uses
+// COALESCE so missing params preserve any value already on the row.
+// Never throws and never awaits — the quiz UX must never block on this.
+async function saveLead(payload: Record<string, any>) {
+  try {
+    const { error } = await (supabase as any).rpc("save_quiz_lead", payload);
+    if (error) console.warn("[QuizLead] save failed:", error.message);
+  } catch (err) {
+    console.warn("[QuizLead] save threw:", err);
+  }
+}
+
+// Stable per-quiz session id stored in localStorage so the lead row can
+// be progressively enriched (initial submit → WhatsApp → checkout) and
+// so CheckoutPage's existing bm_quiz_session_id lookup links orders to
+// the lead row.
+function getOrCreateQuizSessionId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const existing = localStorage.getItem("bm_quiz_session_id");
+    if (existing) return existing;
+  } catch { /* ignore */ }
+  const fresh = (typeof crypto !== "undefined" && (crypto as any).randomUUID)
+    ? (crypto as any).randomUUID()
+    : `quiz_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  try { localStorage.setItem("bm_quiz_session_id", fresh); } catch { /* ignore */ }
+  return fresh;
+}
+
 // =============================================================================
 // Screen 1 — Quiz form
 // =============================================================================
@@ -1201,7 +1231,10 @@ export default function HomeQuiz({
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [giftSubcategory, setGiftSubcategory] = useState<GiftSubcategory | null>(null);
   const navigateRoot = useNavigate();
-  const [, setWhatsapp] = useState<string | null>(null);
+  // Stable session id for this quiz run. Persisted to localStorage so
+  // the same row gets enriched across submit → WhatsApp → checkout, and
+  // so CheckoutPage's bm_quiz_session_id lookup attributes the order.
+  const [sessionId] = useState<string>(() => getOrCreateQuizSessionId());
   // Soft below-floor warning state. When the user submits with a budget
   // below ₦178,000, we hold the submit, surface the warning, and let them
   // choose: bump up to the floor, or continue at their entered amount.
@@ -1250,10 +1283,15 @@ export default function HomeQuiz({
   const whatsappQuestion = (questions || []).find(q => q.step_id === "whatsapp");
 
   const finishWhatsapp = (val?: string) => {
-    // Captured into local state only. No DB write — the spec just forwards
-    // the value alongside the other answers into the results screen.
-    setWhatsapp(val || null);
-    if (val) pixelTrack("Lead", { lead_source: "quiz_whatsapp", content_name: "Quiz WhatsApp capture" });
+    if (val) {
+      pixelTrack("Lead", { lead_source: "quiz_whatsapp", content_name: "Quiz WhatsApp capture" });
+      // Enrich the existing lead row with the WhatsApp number — RPC
+      // upserts by session_id and COALESCE preserves all other fields.
+      saveLead({
+        p_session_id: sessionId,
+        p_whatsapp_number: val,
+      });
+    }
     setScreen("results");
   };
 
@@ -1293,6 +1331,37 @@ export default function HomeQuiz({
         step_value: gender || "unknown",
       });
     } catch { /* ignore */ }
+    // Persist the quiz lead. Fire-and-forget so the UX never blocks; the
+    // RPC upserts by session_id and is later enriched by finishWhatsapp.
+    const isGift = categories.has("gift");
+    const scope = isGift ? "gift" : scopeFor(categories);
+    const stage = isGift ? "newborn" : stageFor(categories);
+    const budgetTier = budgetTierFor(budget);
+    const fullAnswers = {
+      budget,
+      budget_tier: budgetTier,
+      categories: Array.from(categories),
+      gender,
+      scope,
+      stage,
+      gift_subcategory: giftSubcategory,
+    };
+    saveLead({
+      p_session_id: sessionId,
+      p_shopper_type: isGift ? "gift" : "self",
+      p_budget_tier: budgetTier,
+      p_scope: scope,
+      p_stage: stage,
+      p_baby_gender: gender ?? null,
+      p_multiples: "1",
+      p_first_baby: false,
+      p_gift_wrap: false,
+      p_push_gift_category: isGift ? (giftSubcategory ?? null) : null,
+      p_push_gift_budget: isGift ? budgetTier : null,
+      p_full_answers: fullAnswers,
+      p_referral_source: typeof document !== "undefined" ? (document.referrer || null) : null,
+      p_page_url: typeof window !== "undefined" ? window.location.href : null,
+    });
     // Gift flow short-circuit — when the customer picked Gift + a
     // subcategory, skip the WhatsApp / regular ResultsScreen path
     // entirely and route to the dedicated gift results page.
