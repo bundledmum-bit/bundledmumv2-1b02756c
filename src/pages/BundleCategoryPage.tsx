@@ -503,7 +503,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                     { emoji: "👶", title: "A few baby treats too",           text: "Soft baby essentials so she doesn't feel left out of the cute stuff. But practical, not just decorative." },
                     { emoji: "🌿", title: "Curated, never random",           text: "Hand-picked by Nigerian mums, midwives, and doulas. Every item earns its spot. Nothing filler." },
                     { emoji: "🎀", title: "Gift-ready, beautifully packed",  text: "Premium packaging, ribbon-tied, with a card slot for your personal note. Ready to hand over." },
-                    { emoji: "📦", title: "One delivery, one box",           text: "We deliver directly to her or to you. Lagos delivery in 48 hours." },
+                    { emoji: "📦", title: "One delivery, one box",           text: "We deliver directly to her or to you. Lagos delivery in 24 hours." },
                     { emoji: "💛", title: "A gift she'll text you about",    text: "The kind of gift that gets a real thank-you message, not a polite emoji." },
                   ].map((item, i) => (
                     <div key={i} className="flex gap-4 p-5 bg-white/70 backdrop-blur rounded-xl shadow-sm hover:shadow-md transition-shadow">
@@ -526,7 +526,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                   {[
                     { step: "1", title: "Choose your gift box",          text: "Pick the one that matches what you want to spend. Each is thoughtfully built and gift-ready." },
                     { step: "2", title: "Add a personal note",           text: "Write a message at checkout. We hand-write it onto a card and tuck it into the box." },
-                    { step: "3", title: "We deliver, you get the credit", text: "Send to her door or yours. Free Lagos delivery on gift boxes over ₦200,000. Ready in 48 hours." },
+                    { step: "3", title: "We deliver, you get the credit", text: "Send to her door or yours. Free Lagos delivery on gift boxes over ₦200,000. Ready in 24 hours." },
                   ].map((item, i) => (
                     <div key={i} className="text-center">
                       <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#2D6A4F] text-white text-xl font-bold mb-4">
