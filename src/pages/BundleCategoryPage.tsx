@@ -234,7 +234,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
             </p>
             <Link
               to="/quiz"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+              className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all bg-[#2e6b50]"
             >
               Take the 30-second quiz
               <ArrowRight className="w-4 h-4" />
@@ -341,7 +341,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
             </p>
             <Link
               to="/quiz"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+              className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all bg-[#2e6b50]"
             >
               Take the 30-second quiz
               <ArrowRight className="w-4 h-4" />
@@ -454,7 +454,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
             </p>
             <Link
               to="/quiz"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+              className="inline-flex items-center gap-2 px-6 py-3 text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all bg-[#2e6b50]"
             >
               Build a custom gift in 30 seconds
               <ArrowRight className="w-4 h-4" />
