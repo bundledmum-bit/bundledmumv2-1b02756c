@@ -162,6 +162,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
     || enrichedQuery.isLoading;
 
   const isMaternity = sectionKey === "bundle_maternity_lists";
+  const isRecoveryKits = sectionKey === "bundle_recovery_kits";
   const gridCols: "1-2-3" | "1-2-4" = isMaternity ? "1-2-4" : "1-2-3";
 
   return (
@@ -187,6 +188,10 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
           {isMaternity ? (
             <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
               We pre-packed these bundles based on different budgets, so you don't have to.
+            </p>
+          ) : isRecoveryKits ? (
+            <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
+              We pre-packed these recovery kits so healing is the only thing you focus on.
             </p>
           ) : section?.subtitle ? (
             <p className="text-primary-foreground/70 text-sm md:text-base max-w-[620px] leading-relaxed">
@@ -314,6 +319,119 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                   className="inline-flex items-center gap-2 px-8 py-4 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-bold rounded-full shadow-lg hover:shadow-xl transition-all"
                 >
                   Build my custom list
+                  <ArrowRight className="w-5 h-5" />
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Recovery-kits-only: invite mums whose recovery needs don't
+            match the preset kits into the 30-second quiz. Sits below
+            the cards so the curated kits get first attention. */}
+        {isRecoveryKits && (
+          <div className="mt-12 mb-16 flex flex-col items-center text-center px-4">
+            <p className="text-base sm:text-lg text-gray-700 mb-4 max-w-2xl">
+              Your recovery is personal. Let us build a kit around your delivery type and what you actually need.
+            </p>
+            <Link
+              to="/quiz"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-semibold rounded-full shadow-md hover:shadow-lg transition-all"
+            >
+              Take the 30-second quiz
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        )}
+
+        {/* Recovery-kits-only premium storytelling block. Pain-point led:
+            mum-vs-baby attention gap → Lagos sourcing gap → our promise.
+            Strictly customer-facing copy — zero tier/budget vocabulary. */}
+        {isRecoveryKits && (
+          <section className="mt-8 py-16 px-6 sm:px-12 bg-gradient-to-br from-[#FFF8F0] to-[#F5EDE0] rounded-3xl">
+            <div className="max-w-4xl mx-auto">
+              {/* Intro story — pain → gap → promise */}
+              <div className="text-center mb-16">
+                <span className="inline-block px-4 py-1.5 bg-[#2D6A4F]/10 text-[#2D6A4F] text-sm font-semibold rounded-full mb-4">
+                  🤍 Why we built this
+                </span>
+                <h2 className="text-3xl sm:text-4xl font-bold text-[#1A1A1A] mb-6 leading-tight">
+                  You spent 9 months preparing for baby. We made sure someone was thinking about you.
+                </h2>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto">
+                  In Nigeria, all eyes go to the baby the moment you give birth. The visitors, the gifts, the well-wishes. Meanwhile, you're bleeding for weeks, your breasts hurt, your stitches sting, and nobody packed anything for you.
+                </p>
+                <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto mt-4">
+                  Hospitals discharge you with nothing. Lagos doesn't have one place that stocks everything you need. And by the time you realise what you should have bought, you're already crying through it at 2am.
+                </p>
+                <p className="text-lg leading-relaxed max-w-2xl mx-auto mt-4 font-medium text-[#2D6A4F]">
+                  We packed every kit for the version of you that comes home after the hospital. So healing is the only thing you have to do.
+                </p>
+              </div>
+
+              {/* What's inside — pain-point framed */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-3 text-center">
+                  ✨ What's inside every recovery kit
+                </h3>
+                <p className="text-center text-gray-600 mb-8 max-w-xl mx-auto">
+                  The essentials nobody warns you about. Sorted, packed, and ready before you need them.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    { emoji: "🌸", title: "Pad & flow care",         text: "Heavy-flow maternity pads, mesh underwear, and a peri bottle. Because the bleeding lasts longer than anyone tells you." },
+                    { emoji: "🤱", title: "Breastfeeding comfort",   text: "Lanolin nipple cream, breast pads, and nursing-friendly basics. For the days when latching hurts more than labour." },
+                    { emoji: "🛁", title: "Perineum & stitch care",  text: "Sitz bath salts, cooling pads, and soothing sprays. Tears and stitches deserve gentle." },
+                    { emoji: "🌿", title: "Body recovery basics",    text: "Postpartum belly support, soft loungewear, and items for the bathroom struggles nobody mentioned." },
+                    { emoji: "🌙", title: "Rest & sanity essentials", text: "Hydration support, comfort snacks, and small comforts for the 3am feeds when you forget what day it is." },
+                    { emoji: "💛", title: "Mum-vetted, every item",  text: "Curated with Nigerian mums, midwives, and doulas. Nothing fluffy. Nothing you don't need." },
+                  ].map((item, i) => (
+                    <div key={i} className="flex gap-4 p-5 bg-white/70 backdrop-blur rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                      <div className="text-3xl flex-shrink-0">{item.emoji}</div>
+                      <div>
+                        <h4 className="font-semibold text-[#1A1A1A] mb-1">{item.title}</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">{item.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* How it works — no tier language */}
+              <div className="mb-16">
+                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
+                  🛍️ How it works
+                </h3>
+                <div className="grid sm:grid-cols-3 gap-6">
+                  {[
+                    { step: "1", title: "Pick the kit that fits", text: "Choose the kit that matches what you need most. We make sure the essentials are covered in all of them." },
+                    { step: "2", title: "We pack it with care",   text: "Hand-checked, mum-curated, and packed within 48 hours. You don't lift anything heavier than your baby." },
+                    { step: "3", title: "You focus on healing",   text: "Free Lagos delivery on kits over ₦200,000. Delivered before baby arrives so it's ready when you are home." },
+                  ].map((item, i) => (
+                    <div key={i} className="text-center">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#2D6A4F] text-white text-xl font-bold mb-4">
+                        {item.step}
+                      </div>
+                      <h4 className="font-bold text-lg text-[#1A1A1A] mb-2">{item.title}</h4>
+                      <p className="text-sm text-gray-700 leading-relaxed">{item.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Closing CTA */}
+              <div className="text-center bg-[#2D6A4F] text-white rounded-2xl p-10">
+                <h3 className="text-2xl sm:text-3xl font-bold mb-3">
+                  Want a kit built around your recovery?
+                </h3>
+                <p className="text-base sm:text-lg text-white/90 mb-6 max-w-xl mx-auto">
+                  Take our 30-second quiz and we'll match you with what you actually need based on your delivery, your recovery, and your budget.
+                </p>
+                <Link
+                  to="/quiz"
+                  className="inline-flex items-center gap-2 px-8 py-4 bg-[#FF8B6B] hover:bg-[#FF7757] text-white font-bold rounded-full shadow-lg hover:shadow-xl transition-all"
+                >
+                  Build my recovery kit
                   <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
