@@ -70,7 +70,7 @@ export default function AdminBundles() {
           {section === "legacy" ? `Bundles (${displayList.length})`
             : section === "gift-boxes" ? "Gift Boxes"
             : section === "recovery-kits" ? "Recovery Kits"
-            : "Maternity Lists + Baby Products"}
+            : "Maternity + Baby Essentials"}
         </h1>
         {section === "legacy" && (
           <button onClick={() => { setEditingBundle(null); setShowForm(true); }}
@@ -88,7 +88,7 @@ export default function AdminBundles() {
             { id: "legacy" as const, label: "Bundles (Legacy)" },
             { id: "gift-boxes" as const, label: "Gift Boxes" },
             { id: "recovery-kits" as const, label: "Recovery Kits" },
-            { id: "maternity-bundles" as const, label: "Maternity Lists + Baby Products" },
+            { id: "maternity-bundles" as const, label: "Maternity + Baby Essentials" },
           ].map(t => (
             <button
               key={t.id}
