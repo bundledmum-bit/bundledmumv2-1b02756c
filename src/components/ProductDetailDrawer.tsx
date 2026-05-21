@@ -318,21 +318,15 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             </div>
           )}
 
-          {/* See Full Product Page link */}
-          {product.slug && (
-            <Link
-              to={`/products/${product.slug}`}
-              onClick={onClose}
-              className="block text-center text-forest font-semibold text-sm py-3 border border-forest/20 rounded-xl hover:bg-forest-light transition-colors mb-3"
-            >
-              See Full Product Page →
-            </Link>
-          )}
         </div>
       </div>
 
-      {/* Sticky Bottom CTA – extra bottom padding to clear MobileBottomNav */}
-      <div className="sticky bottom-0 bg-card border-t border-border p-4 pb-[calc(1rem+56px)] md:pb-4 z-10">
+      {/* Bottom CTA bar — flex-shrink-0 sibling of the scrollable area
+          rather than `sticky bottom-0`. Sticky-inside-flex is brittle
+          on iOS Safari and was the root cause of the "Add to Cart
+          missing" reports; a fixed-height flex child is always
+          visible. Extra bottom padding clears MobileBottomNav. */}
+      <div className="flex-shrink-0 bg-card border-t border-border p-4 pb-[calc(1rem+56px)] md:pb-4 z-10">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="pf text-xl font-bold text-forest">{fmt(selectedBrand.price)}</p>
@@ -357,6 +351,18 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             </button>
           )}
         </div>
+        {/* Secondary action — demoted from the in-body block button to a
+            ghost link that still gives shoppers a way through to the
+            full product page. */}
+        {product.slug && (
+          <Link
+            to={`/products/${product.slug}`}
+            onClick={onClose}
+            className="block text-center text-forest/80 hover:text-forest font-semibold text-xs mt-3 hover:underline"
+          >
+            View Full Product →
+          </Link>
+        )}
       </div>
     </>
   );
