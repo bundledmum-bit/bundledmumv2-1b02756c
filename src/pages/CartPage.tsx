@@ -92,8 +92,14 @@ export default function CartPage() {
     }
   }, [cart, subtotal]);
 
-  const serviceFeeEnabled = settings?.service_fee_enabled !== false;
-  const serviceFee = serviceFeeEnabled ? (parseInt(settings?.service_fee) || 0) : 0;
+  // service_fee_enabled lives in jsonb as either a boolean or the string
+  // "true"/"false" depending on how the row was seeded vs. saved through
+  // the admin UI. Treat both as the off signal so a disabled toggle
+  // actually disables the fee.
+  const sfEnabledRaw = settings?.service_fee_enabled;
+  const serviceFeeEnabled =
+    sfEnabledRaw !== false && sfEnabledRaw !== "false" && sfEnabledRaw !== 0 && sfEnabledRaw !== "0";
+  const serviceFee = serviceFeeEnabled ? (parseInt(String(settings?.service_fee ?? "0"), 10) || 0) : 0;
   const serviceFeeLabel = settings?.service_fee_label || "Service & Packaging";
 
   const defaultFreeThreshold = parseInt(settings?.default_free_threshold) || 0;

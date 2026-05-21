@@ -204,8 +204,12 @@ export default function CheckoutPage() {
     return () => { cancelled = true; };
   }, [authLoading, isLoggedIn, customerPrefilled]);
 
-  const serviceFeeEnabled = settings?.service_fee_enabled !== false;
-  const serviceFee = serviceFeeEnabled ? (parseInt(settings?.service_fee) || 0) : 0;
+  // Robust to either jsonb boolean or string "true"/"false" — see
+  // CartPage for the same parsing rationale.
+  const sfEnabledRaw = settings?.service_fee_enabled;
+  const serviceFeeEnabled =
+    sfEnabledRaw !== false && sfEnabledRaw !== "false" && sfEnabledRaw !== 0 && sfEnabledRaw !== "0";
+  const serviceFee = serviceFeeEnabled ? (parseInt(String(settings?.service_fee ?? "0"), 10) || 0) : 0;
   const serviceFeeLabel = settings?.service_fee_label || "Service & Packaging";
 
   const defaultDeliveryFee = parseInt(settings?.default_delivery_fee) || 0;

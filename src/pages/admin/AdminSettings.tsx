@@ -203,7 +203,13 @@ export default function AdminSettings() {
                       onChange={e => {
                         const newVal = e.target.checked ? "true" : "false";
                         setEditValues(prev => ({ ...prev, [field.key]: newVal }));
-                        if (field.key.startsWith("payment_method_")) {
+                        // Auto-save toggle keys where the change should
+                        // land instantly with no extra Save click —
+                        // payment methods + the service-fee group.
+                        if (
+                          field.key.startsWith("payment_method_") ||
+                          field.key.startsWith("service_fee_")
+                        ) {
                           saveSetting.mutate({ key: field.key, value: newVal });
                         }
                       }}
