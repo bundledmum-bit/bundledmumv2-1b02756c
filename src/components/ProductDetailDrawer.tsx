@@ -74,7 +74,13 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
     if (match && match.id !== selectedBrand.id) setSelectedBrand(match);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBrandId, product.id]);
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || "");
+  // Sizes are never pre-selected — customer must explicitly tap a chip
+  // before Add to Cart unlocks. Reset on product change so opening a
+  // new drawer doesn't carry the previous product's selection.
+  const [selectedSize, setSelectedSize] = useState<string>("");
+  useEffect(() => { setSelectedSize(""); }, [product.id]);
+  const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
+  const sizeMissing = requiresSizeChoice && !selectedSize;
   const { cart, addToCart, updateQty } = useCart();
   const { data: settings } = useSiteSettings();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -310,17 +316,22 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
           </div>
 
           {/* Size Selector */}
-          {product.sizes && product.sizes.length > 0 && (
+          {requiresSizeChoice && (
             <div className="mb-3">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Select Size</p>
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Select Size {sizeMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
+              </p>
               <div className="flex flex-wrap gap-2">
-                {product.sizes.map(s => (
+                {product.sizes!.map(s => (
                   <button key={s} onClick={() => setSelectedSize(s)}
-                    className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                    className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedSize === s ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}>
                     {s}
                   </button>
                 ))}
               </div>
+              {sizeMissing && (
+                <p className="text-[11px] text-muted-foreground mt-2">Select a size to continue.</p>
+              )}
             </div>
           )}
 
@@ -362,6 +373,13 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
                 Cart →
               </Link>
             </div>
+          ) : sizeMissing ? (
+            <button
+              disabled
+              className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
+            >
+              Select a Size
+            </button>
           ) : (
             <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
               <ShoppingBag className="h-4 w-4" /> Add to Cart

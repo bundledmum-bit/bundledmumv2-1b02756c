@@ -314,7 +314,17 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       navigate(`?${next.toString()}`, { replace: true });
     }
   };
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[0] || "");
+  // Sizes are NEVER pre-selected — the customer must explicitly tap a
+  // chip before Add to Cart unlocks. is_default rows on product_sizes
+  // are intentionally ignored client-side. Empty string == "unselected".
+  const [selectedSize, setSelectedSize] = useState<string>("");
+  // Reset the size when the route lands on a different product (the
+  // route change keeps the component mounted via the same slug param
+  // pattern; without this, switching products would carry an irrelevant
+  // size selection across).
+  useEffect(() => { setSelectedSize(""); }, [product.id]);
+  const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
+  const sizeMissing = requiresSizeChoice && !selectedSize;
   const { cart, addToCart, updateQty } = useCart();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -717,18 +727,23 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             </div>
 
-            {/* Size Selector */}
-            {product.sizes && product.sizes.length > 0 && (
+            {/* Size Selector — no auto-pick; customer must tap a chip. */}
+            {requiresSizeChoice && (
               <div className="mb-4">
-                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Select Size</p>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Select Size {sizeMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
+                </p>
                 <div className="flex flex-wrap gap-2">
-                  {product.sizes.map(s => (
+                  {product.sizes!.map(s => (
                     <button key={s} onClick={() => setSelectedSize(s)}
-                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedSize === s ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}>
                       {s}
                     </button>
                   ))}
                 </div>
+                {sizeMissing && (
+                  <p className="text-[11px] text-muted-foreground mt-2">Select a size to continue.</p>
+                )}
               </div>
             )}
 
@@ -749,6 +764,13 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
                   <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">View Cart →</Link>
                 </div>
+              ) : sizeMissing ? (
+                <button
+                  disabled
+                  className="rounded-pill bg-border px-8 py-3.5 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[48px] flex-1"
+                >
+                  Select a Size
+                </button>
               ) : (
                 <button onClick={handleAdd} className="rounded-pill px-8 py-3.5 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[48px] flex-1 justify-center" style={{ backgroundColor: "#F4845F" }}>
                   <ShoppingBag className="h-5 w-5" /> Add to Cart
@@ -920,6 +942,13 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
             <Link to="/cart" className="text-forest text-sm font-semibold">Cart →</Link>
           </div>
+        ) : sizeMissing ? (
+          <button
+            disabled
+            className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
+          >
+            Select a Size
+          </button>
         ) : (
           <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
             <ShoppingBag className="h-4 w-4" /> Add to Cart
