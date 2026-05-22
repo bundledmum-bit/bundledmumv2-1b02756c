@@ -351,8 +351,29 @@ export default function CheckoutPage() {
     ? Boolean(form.state && (selectedZone || selectedLga || form.city))
     : Boolean(form.state);
 
-  const delivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
-  const notDeliverable = deliveryReady && courierQuote != null && courierQuote.deliverable === false;
+  // ── Express Order ─────────────────────────────────────────────
+  // Customer pays for products only at checkout; delivery is quoted
+  // by the admin within 24h via WhatsApp and paid via a second
+  // Paystack link. Server-side guard at /functions/v1/place-order
+  // rejects payloads where is_express_order=true AND subtotal <
+  // 150000, AND requires express_acknowledged=true.
+  const EXPRESS_MIN_SUBTOTAL = 150000;
+  const expressEligible = subtotal >= EXPRESS_MIN_SUBTOTAL;
+  const [isExpressOrder, setIsExpressOrder] = useState(false);
+  const [expressAcknowledged, setExpressAcknowledged] = useState(false);
+  // Auto-disable + warn if the subtotal drops below the floor while
+  // express is enabled (e.g. customer trims a line item).
+  useEffect(() => {
+    if (isExpressOrder && !expressEligible) {
+      setIsExpressOrder(false);
+      setExpressAcknowledged(false);
+      toast.error(`Express Order requires ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+. Standard delivery selected.`);
+    }
+  }, [isExpressOrder, expressEligible]);
+
+  const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
+  const delivery = isExpressOrder ? 0 : computedDelivery;
+  const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
   // Spend threshold discount
   const spendPrompt = thresholds?.length ? getSpendPrompt(subtotal, thresholds) : null;
@@ -794,10 +815,18 @@ export default function CheckoutPage() {
             landing_page: attribution.landing_page,
             // Financial fields — give the finance dashboard data from
             // the moment the order is placed. Kobo → naira for partner_cost.
-            partner_cost: Math.round((courierQuote?.partnerCostKobo || 0) / 100),
-            actual_courier_partner: courierQuote?.partner || null,
+            // Express orders defer delivery to a second Paystack link, so
+            // every delivery-cost field is nulled and the server side
+            // double-enforces this.
+            partner_cost: isExpressOrder ? 0 : Math.round((courierQuote?.partnerCostKobo || 0) / 100),
+            actual_courier_partner: isExpressOrder ? null : (courierQuote?.partner || null),
+            delivery_partner: isExpressOrder ? null : undefined,
             paystack_fee: computePaystackFee(orderData.total),
             packaging_cost: 0,
+            // Express Order flags — server enforces subtotal floor and
+            // acknowledgment, but the client matches for UX.
+            is_express_order: isExpressOrder,
+            express_acknowledged: isExpressOrder ? expressAcknowledged : false,
           },
           items: orderItemsPayload,
           customer: {
@@ -1101,7 +1130,12 @@ export default function CheckoutPage() {
               })}
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
-                {deliveryReady ? (
+                {isExpressOrder ? (
+                  <div className="flex justify-between">
+                    <span className="text-text-med">Delivery</span>
+                    <span className="italic text-text-light">To be quoted within 24 hours</span>
+                  </div>
+                ) : deliveryReady ? (
                   <>
                     <div className="flex justify-between">
                       <span className="text-text-med">
@@ -1284,6 +1318,57 @@ export default function CheckoutPage() {
               </div>
             </div>
 
+            {/* Express Order — only surfaces for carts at the floor or
+                above. When enabled, the address-driven delivery quote is
+                ignored and replaced with a "to be quoted" placeholder in
+                the order summary; the server enforces both rules. */}
+            {expressEligible && (
+              <div className="bg-card rounded-card shadow-card p-4 md:p-6 border-l-4 border-amber-400">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="pf text-lg flex items-center gap-2">⚡ Express Order <span className="text-[11px] font-semibold text-text-light">(₦{EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+ orders)</span></h2>
+                    <p className="text-text-med text-xs mt-1 max-w-[520px] leading-relaxed">
+                      Get your order shipped fast. We will quote your delivery fee within 24 hours via WhatsApp after you complete payment.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                    <span className="text-xs font-semibold text-text-med">{isExpressOrder ? "ON" : "OFF"}</span>
+                    <input
+                      type="checkbox"
+                      checked={isExpressOrder}
+                      onChange={(e) => {
+                        setIsExpressOrder(e.target.checked);
+                        if (!e.target.checked) setExpressAcknowledged(false);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <span className="w-11 h-6 rounded-full bg-muted peer-checked:bg-amber-500 transition relative before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-5 before:h-5 before:rounded-full before:bg-white before:transition peer-checked:before:translate-x-5" />
+                  </label>
+                </div>
+
+                {isExpressOrder && (
+                  <div className="mt-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+                    <p className="text-sm font-bold text-amber-900 flex items-center gap-1.5">⚠️ IMPORTANT — Please read before continuing</p>
+                    <ul className="mt-2 space-y-1.5 text-[13px] text-amber-900 leading-snug">
+                      <li>• You will pay for products ONLY at checkout (no delivery)</li>
+                      <li>• Our team will send your delivery quote within 24 hours via WhatsApp</li>
+                      <li>• Delivery is paid SEPARATELY via a second Paystack link</li>
+                      <li>• Your order will NOT ship until delivery is paid</li>
+                    </ul>
+                    <label className="mt-3 flex items-start gap-2 cursor-pointer min-h-[44px]">
+                      <input
+                        type="checkbox"
+                        checked={expressAcknowledged}
+                        onChange={(e) => setExpressAcknowledged(e.target.checked)}
+                        className="mt-0.5 w-5 h-5 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="text-sm font-semibold text-amber-900">I understand and accept these terms</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Coupon Code */}
             <div className="bg-card rounded-card shadow-card p-4 md:p-8">
               <h2 className="pf text-lg mb-4">🏷️ Have a Coupon?</h2>
@@ -1403,11 +1488,18 @@ export default function CheckoutPage() {
 
             <button
               onClick={placeOrder}
-              disabled={processing || notDeliverable || quoteLoading || !deliveryReady}
+              disabled={
+                processing
+                || (isExpressOrder
+                    ? !expressAcknowledged
+                    : (notDeliverable || quoteLoading || !deliveryReady))
+              }
               className="w-full rounded-pill bg-forest py-4 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {processing
                 ? "Processing…"
+                : isExpressOrder
+                ? <>Place Express Order — {fmt(grand)} 🔒</>
                 : !deliveryReady
                 ? (stateHasZones ? "Select your delivery area to continue" : "Enter your state to continue")
                 : notDeliverable
@@ -1416,6 +1508,11 @@ export default function CheckoutPage() {
                 ? "Calculating delivery…"
                 : <>Place Order — {fmt(grand)} 🔒</>}
             </button>
+            {isExpressOrder && !expressAcknowledged && (
+              <p className="text-center text-amber-700 text-[12px] mt-2">
+                Please accept the Express Order terms above to continue.
+              </p>
+            )}
             <div className="text-center text-text-light text-[11px]">By placing your order, you agree to our <Link to="/terms" className="underline">Terms of Service</Link> and <Link to="/privacy" className="underline">Privacy Policy</Link></div>
           </div>
 
@@ -1522,11 +1619,18 @@ export default function CheckoutPage() {
           </div>
           <button
             onClick={placeOrder}
-            disabled={processing || notDeliverable || quoteLoading || !deliveryReady}
+            disabled={
+              processing
+              || (isExpressOrder
+                  ? !expressAcknowledged
+                  : (notDeliverable || quoteLoading || !deliveryReady))
+            }
             className="flex-1 rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processing
               ? "Processing…"
+              : isExpressOrder
+              ? (expressAcknowledged ? <>Place Express Order →</> : "Accept terms above")
               : !deliveryReady
               ? (stateHasZones ? "Select delivery area" : "Enter your state")
               : notDeliverable

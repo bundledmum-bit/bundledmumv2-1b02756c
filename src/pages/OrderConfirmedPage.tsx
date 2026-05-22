@@ -194,6 +194,18 @@ export default function OrderConfirmedPage() {
       </div>
 
       <div className="max-w-[860px] mx-auto px-4 md:px-10 py-8 md:py-14">
+        {/* Express Order banner — only when this order skipped checkout
+            delivery and is awaiting an admin-issued WhatsApp quote. */}
+        {order.is_express_order && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-card p-5 md:p-6 mb-5">
+            <h2 className="pf text-xl md:text-2xl text-amber-900 flex items-center gap-2 mb-2">
+              ⚡ Express Order Submitted
+            </h2>
+            <p className="text-amber-900 text-sm md:text-base leading-relaxed">
+              Thank you! Our team will calculate your delivery fee and contact you via WhatsApp within 24 hours with your quote. Your order will be processed once delivery payment is received.
+            </p>
+          </div>
+        )}
         {/* Customer Details */}
         <div className="bg-card rounded-card shadow-card p-5 md:p-8 mb-4">
           <h3 className="pf text-lg md:text-xl text-forest mb-4">📋 Your Details</h3>
