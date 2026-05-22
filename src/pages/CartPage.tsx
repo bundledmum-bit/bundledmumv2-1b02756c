@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useCart, fmt, formatColor, cartItemImage } from "@/lib/cart";
+import { useCart, fmt, formatColor, cartItemImage, cartItemKey, type CartItem } from "@/lib/cart";
 import EditCartItemModal from "@/components/EditCartItemModal";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
@@ -7,10 +7,10 @@ import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2 } from "lucide-react";
-import { downloadCartPdf, type CartShareItem } from "@/lib/cartShare";
-import { useQuery } from "@tanstack/react-query";
+import { encodeCartToUrl, decodeCartFromUrl, buildWhatsappMessage, type SharedCartItem } from "@/lib/cartShareUrl";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { MessageCircle, Copy as CopyIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
 
@@ -56,29 +56,123 @@ export default function CartPage() {
   const [zoomImage, setZoomImage] = useState<{ url: string; alt: string } | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const editingItem = editKey ? cart.find(c => c._key === editKey) : null;
-  // "Share my Cart" — confirm modal + download state.
+  // Share-cart state — modal toggle + the resolved URL once the user opens
+  // the share dialog. We compute the URL lazily so it captures whatever the
+  // cart looks like at the moment the user wants to share.
   const [shareOpen, setShareOpen] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  // Contact bits for the shared PDF footer — same keys the Quotes admin
-  // already reads, no DB writes here.
-  const { data: shareContact } = useQuery({
-    queryKey: ["cart-share-contact"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("site_settings")
-        .select("key, value")
-        .in("key", ["whatsapp_number", "bank_name", "bank_account_name", "bank_account_number"]);
-      if (error) throw error;
-      const map: Record<string, string> = {};
-      (data || []).forEach((r: any) => {
-        const v = r.value;
-        map[r.key] = typeof v === "string" ? v.replace(/^"|"$/g, "") : String(v ?? "");
-      });
-      return map;
-    },
-  });
+  const [shareUrl, setShareUrl] = useState("");
+  // Shared-cart hydration state — true while we're parsing ?items= and
+  // fetching product/brand details, so we can suppress the empty-cart flash.
+  const [hydrating, setHydrating] = useState(false);
+  // Confirmation modal that appears when a shared link is opened while the
+  // user already has items in their cart.
+  const [pendingShared, setPendingShared] = useState<{ rows: CartItem[]; skipped: number } | null>(null);
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
+
+  // ── Shared-cart auto-hydrate ──────────────────────────────────
+  // When the page is opened with ?items=<base64>, decode the payload,
+  // hydrate against the live products + brands tables to get prices /
+  // images / availability, then either drop the rows straight in (cart
+  // empty) or queue a confirmation modal so the user can choose to
+  // replace, merge, or cancel. Runs exactly once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get("items");
+    if (!encoded) return;
+    let cancelled = false;
+    setHydrating(true);
+    (async () => {
+      try {
+        const decoded = decodeCartFromUrl(encoded);
+        if (!decoded || decoded.length === 0) {
+          if (!cancelled) toast.error("Shared cart is empty or no longer available");
+          return;
+        }
+        // Look up products + brands in two queries; the cart row builder
+        // joins them in memory.
+        const productIds = Array.from(new Set(decoded.map(d => d.product_id)));
+        const brandIds = Array.from(new Set(decoded.map(d => d.brand_id).filter(Boolean) as string[]));
+        const [prodRes, brandRes] = await Promise.all([
+          supabase.from("products").select("id, name, slug, image_url, is_active").in("id", productIds),
+          brandIds.length
+            ? (supabase as any).from("brands_public").select("id, brand_name, price, image_url, in_stock, product_id").in("id", brandIds)
+            : Promise.resolve({ data: [] as any[] }),
+        ]);
+        // Build a cheapest-in-stock fallback brand lookup so rows whose
+        // brand_id is missing or stale still hydrate.
+        const fallbackRes = await (supabase as any)
+          .from("brands_public")
+          .select("id, brand_name, price, image_url, in_stock, product_id")
+          .in("product_id", productIds)
+          .eq("in_stock", true)
+          .order("price");
+        if (cancelled) return;
+        const productsById: Record<string, any> = {};
+        (prodRes.data || []).forEach((p: any) => { productsById[p.id] = p; });
+        const brandsById: Record<string, any> = {};
+        (brandRes.data || []).forEach((b: any) => { brandsById[b.id] = b; });
+        const cheapestByProduct: Record<string, any> = {};
+        (fallbackRes.data || []).forEach((b: any) => { if (!cheapestByProduct[b.product_id]) cheapestByProduct[b.product_id] = b; });
+
+        const rows: CartItem[] = [];
+        let skipped = 0;
+        for (const d of decoded) {
+          const product = productsById[d.product_id];
+          if (!product || product.is_active === false) { skipped++; continue; }
+          let brand = d.brand_id ? brandsById[d.brand_id] : null;
+          if (!brand) brand = cheapestByProduct[d.product_id] || null;
+          // If no brand can be found at all, still surface the product so
+          // the customer can resolve it manually rather than dropping it.
+          const price = Number(brand?.price ?? 0);
+          const name = brand?.brand_name && !/^generic$/i.test(brand.brand_name)
+            ? `${product.name} (${brand.brand_name})`
+            : product.name;
+          rows.push({
+            id: product.id,
+            _key: cartItemKey(product.id, brand?.id, d.size, d.color, null),
+            name,
+            price,
+            qty: d.quantity,
+            imageUrl: product.image_url || undefined,
+            selectedBrand: brand ? {
+              id: brand.id,
+              label: brand.brand_name,
+              price: Number(brand.price || 0),
+              imageUrl: brand.image_url,
+              inStock: brand.in_stock !== false,
+            } : undefined,
+            selectedSize: d.size || undefined,
+            selectedColor: d.color || undefined,
+          } as CartItem);
+        }
+        // Clean ?items= out of the URL so refresh / back-button don't re-fire
+        // the hydrate pipeline.
+        window.history.replaceState({}, "", window.location.pathname);
+        if (rows.length === 0) {
+          toast.error("Shared cart is empty or items are no longer available");
+          return;
+        }
+        if (cart.length === 0) {
+          setCart(rows);
+          toast.success(
+            skipped > 0
+              ? `Cart loaded · ${skipped} item${skipped === 1 ? "" : "s"} couldn't be loaded (no longer available)`
+              : "Cart loaded from shared link",
+          );
+        } else {
+          setPendingShared({ rows, skipped });
+        }
+      } catch (e) {
+        console.warn("[cart-share] hydrate failed:", e);
+        if (!cancelled) toast.error("Could not load shared cart");
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // GA4 funnel — checkout_step 1 (cart) fires on CartPage mount with items.
   useEffect(() => {
@@ -498,11 +592,24 @@ export default function CartPage() {
                 </Link>
               )}
               <button
-                onClick={() => setShareOpen(true)}
+                onClick={() => {
+                  // Compose the URL lazily so it captures the current cart.
+                  const url = encodeCartToUrl(
+                    cart.map((it: any): SharedCartItem => ({
+                      product_id: String(it.id),
+                      brand_id: it.selectedBrand?.id || null,
+                      size: it.selectedSize || null,
+                      color: it.selectedColor || null,
+                      quantity: it.qty || 1,
+                    })),
+                  );
+                  setShareUrl(url);
+                  setShareOpen(true);
+                }}
                 disabled={cart.length === 0}
                 className="mt-2 block w-full rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
               >
-                <Share2 className="w-4 h-4" /> Share my Cart
+                <Share2 className="w-4 h-4" /> Share Cart
               </button>
               <p className="text-center font-body text-xs text-text-light mt-3">Secured by Paystack · All cards accepted</p>
               <div className="flex justify-center gap-3 mt-2 text-xs text-text-light">
@@ -574,14 +681,14 @@ export default function CartPage() {
         <EditCartItemModal item={editingItem} onClose={() => setEditKey(null)} />
       )}
 
-      {/* Share-my-cart confirmation modal */}
+      {/* Share-cart modal — WhatsApp deep-link + clipboard copy */}
       {shareOpen && (
         <div
           className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
-          onClick={() => !sharing && setShareOpen(false)}
+          onClick={() => setShareOpen(false)}
         >
           <div
-            className="bg-card border border-border rounded-xl w-full max-w-[400px] p-5"
+            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3 mb-3">
@@ -589,57 +696,134 @@ export default function CartPage() {
                 <Share2 className="w-5 h-5 text-forest" />
               </div>
               <div>
-                <h3 className="font-bold text-base">Share my Cart</h3>
+                <h3 className="font-bold text-base">Share your cart</h3>
                 <p className="text-xs text-text-med mt-1">
-                  Download a PDF of your cart to share with anyone — your partner, family, or a sponsor.
+                  Send this list to family or friends. Anyone with the link can view it.
                 </p>
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
+
+            <div className="space-y-2 mt-4">
               <button
-                onClick={() => setShareOpen(false)}
-                disabled={sharing}
-                className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-40"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={sharing || cart.length === 0}
-                onClick={async () => {
-                  setSharing(true);
-                  try {
-                    const shareItems: CartShareItem[] = cart.map((it: any) => ({
-                      product_name: it.name,
-                      brand_name: it.selectedBrand?.label || null,
+                onClick={() => {
+                  const msg = buildWhatsappMessage(
+                    cart.map((it: any) => ({
+                      product_name: (it.name || "").replace(/\s*\([^)]*\)\s*$/, ""),
+                      brand_label: it.selectedBrand?.label || null,
                       size: it.selectedSize || null,
                       color: it.selectedColor ? formatColor(it.selectedColor) : null,
                       quantity: it.qty || 1,
                       unit_price: it.price || 0,
-                      line_total: (it.price || 0) * (it.qty || 1),
-                      image_url: (() => {
-                        const url = cartItemImage(it);
-                        return url === "/placeholder.svg" ? null : url;
-                      })(),
-                    }));
-                    await downloadCartPdf(shareItems, {
-                      whatsapp_number: shareContact?.whatsapp_number,
-                      bank_name: shareContact?.bank_name,
-                      bank_account_name: shareContact?.bank_account_name,
-                      bank_account_number: shareContact?.bank_account_number,
-                    });
-                    toast.success("Your cart has been downloaded as PDF");
-                    setShareOpen(false);
-                  } catch (e: any) {
-                    toast.error(e?.message || "Could not generate PDF");
-                  } finally {
-                    setSharing(false);
+                    })),
+                    shareUrl,
+                  );
+                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
+                  toast.success("Opening WhatsApp…");
+                  setShareOpen(false);
+                }}
+                className="w-full inline-flex items-center justify-center gap-2 bg-forest text-primary-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-forest-deep"
+              >
+                <MessageCircle className="w-4 h-4" /> Share via WhatsApp
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(shareUrl);
+                    toast.success("Link copied to clipboard");
+                  } catch {
+                    toast.error("Could not copy automatically — copy the link below");
                   }
                 }}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-40"
+                className="w-full inline-flex items-center justify-center gap-2 border border-border px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted"
               >
-                {sharing ? "Preparing…" : "Download PDF"}
+                <CopyIcon className="w-4 h-4" /> Copy link
+              </button>
+              <input
+                readOnly
+                value={shareUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full border border-input rounded-lg px-3 py-2 text-[11px] bg-muted/40 font-mono text-text-med"
+              />
+              <button
+                onClick={() => setShareOpen(false)}
+                className="w-full text-text-med hover:text-foreground text-sm font-semibold py-2"
+              >
+                Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Load shared cart confirmation — only fires when the user opens a
+          ?items= link while they already have rows in their cart. */}
+      {pendingShared && (
+        <div
+          className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
+          onClick={() => setPendingShared(null)}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-bold text-base mb-1">Load shared cart?</h3>
+            <p className="text-xs text-text-med">
+              Your current cart has {cart.length} item{cart.length === 1 ? "" : "s"}. Loading this shared cart will replace them, or you can add the shared items to your existing cart.
+              {pendingShared.skipped > 0 && (
+                <span className="block mt-1 text-coral">
+                  {pendingShared.skipped} item{pendingShared.skipped === 1 ? "" : "s"} from the share couldn't be loaded (no longer available).
+                </span>
+              )}
+            </p>
+            <div className="grid gap-2 mt-4">
+              <button
+                onClick={() => {
+                  setCart(pendingShared.rows);
+                  toast.success("Cart replaced with shared list");
+                  setPendingShared(null);
+                }}
+                className="w-full bg-forest text-primary-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-forest-deep"
+              >
+                Replace cart
+              </button>
+              <button
+                onClick={() => {
+                  // Merge: for every shared row, fold it into the existing
+                  // cart by variant key — duplicate keys get quantity-summed.
+                  setCart(prev => {
+                    const byKey: Record<string, CartItem> = {};
+                    prev.forEach(r => { byKey[r._key] = { ...r }; });
+                    pendingShared.rows.forEach(r => {
+                      if (byKey[r._key]) byKey[r._key].qty = (byKey[r._key].qty || 0) + (r.qty || 0);
+                      else byKey[r._key] = r;
+                    });
+                    return Object.values(byKey);
+                  });
+                  toast.success("Shared items added to your cart");
+                  setPendingShared(null);
+                }}
+                className="w-full border border-border px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted"
+              >
+                Add to existing cart
+              </button>
+              <button
+                onClick={() => setPendingShared(null)}
+                className="w-full text-text-med hover:text-foreground text-sm font-semibold py-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hydration loading scrim — suppresses the empty-cart flash while
+          ?items= is being resolved. */}
+      {hydrating && cart.length === 0 && (
+        <div className="fixed inset-0 bg-background/80 z-[140] flex items-center justify-center">
+          <div className="flex items-center gap-3 text-text-med text-sm">
+            <span className="inline-block w-4 h-4 border-2 border-forest border-r-transparent rounded-full animate-spin" />
+            Loading shared cart…
           </div>
         </div>
       )}
