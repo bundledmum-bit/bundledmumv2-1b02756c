@@ -75,6 +75,10 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
 .pending-badge { display: inline-flex; align-items: center; gap: 4px; background: var(--coral-light); color: var(--coral-dark); border-radius: 100px; padding: 3px 9px; font-size: 8px; font-weight: 800; white-space: nowrap; flex-shrink: 0; }
 .gift-box { background: var(--coral-light); border-radius: 7px; padding: 9px 13px; border-left: 3px solid var(--coral); }
 .gift-label { font-size: 7px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--coral); margin-bottom: 4px; }
+.delivery-note-box { background: #FFF7E0; border: 1px solid #E2B25A; border-left: 3px solid #C77A14; border-radius: 7px; padding: 9px 13px; margin-top: 8px; }
+.delivery-note-label { font-size: 7px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #5C3A0A; margin-bottom: 4px; }
+.delivery-note-text { font-size: 9px; line-height: 1.55; color: #1A1A1A; white-space: pre-wrap; }
+@media print { .delivery-note-box { background: #f5f5f5 !important; border-color: #777 !important; border-left-color: #333 !important; } .delivery-note-label { color: #000 !important; } }
 .gift-msg { font-size: 9px; color: var(--black); font-style: italic; line-height: 1.65; }
 .love-strip { padding: 9px 22px; text-align: center; border-top: 1px dashed var(--divider); flex-shrink: 0; }
 .love-main { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 8.5px; color: var(--coral); }
@@ -120,6 +124,10 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
       <div class="address-block">
         <div class="address-name" id="custName"></div>
         <div class="address-detail" id="custAddress"></div>
+      </div>
+      <div class="delivery-note-box" id="deliveryNoteBox" style="display:none">
+        <div class="delivery-note-label">Customer Delivery Note</div>
+        <div class="delivery-note-text" id="deliveryNoteText"></div>
       </div>
     </div>
     <div class="section-divider"></div>
@@ -193,6 +201,7 @@ function populate(data){
   document.getElementById('payRefLabel').textContent=data.paystack_reference||data.payment_reference||'N/A';
   if(data.payment_status!=='paid'){var b=document.getElementById('payBadge');b.className='pending-badge';b.textContent='⏳ Payment Pending';}
   if(data.gift_message){document.getElementById('giftBox').style.display='block';document.getElementById('giftMsg').textContent=data.gift_message;}
+  if(data.delivery_notes && String(data.delivery_notes).trim()){document.getElementById('deliveryNoteBox').style.display='block';document.getElementById('deliveryNoteText').textContent=String(data.delivery_notes).trim();}
   document.getElementById('invoice-contact-email').textContent=data.contact_email||'hello@bundledmum.ng';
 }
 if(window.invoiceData){populate(window.invoiceData);}
@@ -242,6 +251,7 @@ export async function openBrandedInvoice(order: any, adminUserId?: string) {
       coupon_code: order.coupon_code || null,
       total: order.total,
       gift_message: order.gift_message,
+      delivery_notes: order.delivery_notes,
       line_items: (order.order_items || []).map((item: any) => ({
         product_name: item.product_name,
         brand_name: item.brand_name,
