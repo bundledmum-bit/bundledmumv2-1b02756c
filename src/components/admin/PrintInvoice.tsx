@@ -183,6 +183,12 @@ function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('en-NG'
 function cap(s){return(s||'').replace(/_/g,' ').replace(/\\b\\w/g,l=>l.toUpperCase());}
 function populate(data){
   if(!data)return;
+  // Override the popup's document.title so the browser's "Save as PDF"
+  // default filename becomes "BundledMum - Order Invoice - <order_number>"
+  // instead of the static "BundledMum — Order Invoice" header. Falls
+  // back to today's date when order_number isn't available.
+  var fnameSuffix = data.order_number || new Date().toISOString().slice(0,10);
+  document.title = 'BundledMum - Order Invoice - ' + fnameSuffix;
   document.getElementById('orderNum').textContent='Order: '+(data.order_number||'');
   document.getElementById('orderDate').textContent=fmtDate(data.invoice_date||new Date());
   document.getElementById('custName').textContent=data.customer_name||'';
