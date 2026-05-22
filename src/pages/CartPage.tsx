@@ -6,7 +6,11 @@ import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
-import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil } from "lucide-react";
+import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2 } from "lucide-react";
+import { downloadCartPdf, type CartShareItem } from "@/lib/cartShare";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
 
@@ -52,6 +56,27 @@ export default function CartPage() {
   const [zoomImage, setZoomImage] = useState<{ url: string; alt: string } | null>(null);
   const [editKey, setEditKey] = useState<string | null>(null);
   const editingItem = editKey ? cart.find(c => c._key === editKey) : null;
+  // "Share my Cart" — confirm modal + download state.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  // Contact bits for the shared PDF footer — same keys the Quotes admin
+  // already reads, no DB writes here.
+  const { data: shareContact } = useQuery({
+    queryKey: ["cart-share-contact"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["whatsapp_number", "bank_name", "bank_account_name", "bank_account_number"]);
+      if (error) throw error;
+      const map: Record<string, string> = {};
+      (data || []).forEach((r: any) => {
+        const v = r.value;
+        map[r.key] = typeof v === "string" ? v.replace(/^"|"$/g, "") : String(v ?? "");
+      });
+      return map;
+    },
+  });
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
 
@@ -472,6 +497,13 @@ export default function CartPage() {
                   Proceed to Checkout 🔒
                 </Link>
               )}
+              <button
+                onClick={() => setShareOpen(true)}
+                disabled={cart.length === 0}
+                className="mt-2 block w-full rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+              >
+                <Share2 className="w-4 h-4" /> Share my Cart
+              </button>
               <p className="text-center font-body text-xs text-text-light mt-3">Secured by Paystack · All cards accepted</p>
               <div className="flex justify-center gap-3 mt-2 text-xs text-text-light">
                 <span>💳 Visa</span><span>💳 Mastercard</span><span>🏦 USSD</span><span>📱 Transfer</span>
@@ -540,6 +572,76 @@ export default function CartPage() {
       {/* Edit variant modal */}
       {editingItem && (
         <EditCartItemModal item={editingItem} onClose={() => setEditKey(null)} />
+      )}
+
+      {/* Share-my-cart confirmation modal */}
+      {shareOpen && (
+        <div
+          className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
+          onClick={() => !sharing && setShareOpen(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-xl w-full max-w-[400px] p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-forest-light flex items-center justify-center flex-shrink-0">
+                <Share2 className="w-5 h-5 text-forest" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Share my Cart</h3>
+                <p className="text-xs text-text-med mt-1">
+                  Download a PDF of your cart to share with anyone — your partner, family, or a sponsor.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setShareOpen(false)}
+                disabled={sharing}
+                className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={sharing || cart.length === 0}
+                onClick={async () => {
+                  setSharing(true);
+                  try {
+                    const shareItems: CartShareItem[] = cart.map((it: any) => ({
+                      product_name: it.name,
+                      brand_name: it.selectedBrand?.label || null,
+                      size: it.selectedSize || null,
+                      color: it.selectedColor ? formatColor(it.selectedColor) : null,
+                      quantity: it.qty || 1,
+                      unit_price: it.price || 0,
+                      line_total: (it.price || 0) * (it.qty || 1),
+                      image_url: (() => {
+                        const url = cartItemImage(it);
+                        return url === "/placeholder.svg" ? null : url;
+                      })(),
+                    }));
+                    await downloadCartPdf(shareItems, {
+                      whatsapp_number: shareContact?.whatsapp_number,
+                      bank_name: shareContact?.bank_name,
+                      bank_account_name: shareContact?.bank_account_name,
+                      bank_account_number: shareContact?.bank_account_number,
+                    });
+                    toast.success("Your cart has been downloaded as PDF");
+                    setShareOpen(false);
+                  } catch (e: any) {
+                    toast.error(e?.message || "Could not generate PDF");
+                  } finally {
+                    setSharing(false);
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-40"
+              >
+                {sharing ? "Preparing…" : "Download PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
