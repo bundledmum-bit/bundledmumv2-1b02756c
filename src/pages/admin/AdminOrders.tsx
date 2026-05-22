@@ -58,6 +58,10 @@ export default function AdminOrders() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [methodFilter, setMethodFilter] = useState("all");
   const [courierFilter, setCourierFilter] = useState("all");
+  // Express Order filters — orderType narrows the table to standard / express
+  // rows, expressStatusFilter narrows by express lifecycle step.
+  const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "standard" | "express">("all");
+  const [expressStatusFilter, setExpressStatusFilter] = useState<"all" | "pending_quote" | "quoted" | "accepted" | "declined" | "expired">("all");
   const [datePreset, setDatePreset] = useState("This Month");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
@@ -139,17 +143,24 @@ export default function AdminOrders() {
           return false;
         }
       }
+      if (orderTypeFilter === "express" && !o.is_express_order) return false;
+      if (orderTypeFilter === "standard" && o.is_express_order) return false;
+      if (expressStatusFilter !== "all" && o.express_status !== expressStatusFilter) return false;
       return true;
     });
-    // Always show most recent orders first regardless of which tab/filter is
-    // active. Defensive sort — the RPC's ordering is not relied upon.
+    // Most-recent-first by default, but express orders awaiting a quote
+    // bubble to the very top of the list since they're the most time-
+    // sensitive surface for the fulfilment team (24h SLA).
     rows.sort((a: any, b: any) => {
+      const aUrgent = a.is_express_order && a.express_status === "pending_quote" ? 1 : 0;
+      const bUrgent = b.is_express_order && b.express_status === "pending_quote" ? 1 : 0;
+      if (aUrgent !== bUrgent) return bUrgent - aUrgent;
       const ad = a.created_at ? new Date(a.created_at).getTime() : 0;
       const bd = b.created_at ? new Date(b.created_at).getTime() : 0;
       return bd - ad;
     });
     return rows;
-  }, [orders, methodFilter, dateFrom, courierFilter, subsOnly]);
+  }, [orders, methodFilter, dateFrom, courierFilter, subsOnly, orderTypeFilter, expressStatusFilter]);
 
   const stats = useMemo(() => {
     const f = filtered;
@@ -369,6 +380,21 @@ export default function AdminOrders() {
           <option value="all">All methods</option>
           {PAYMENT_METHODS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <select value={orderTypeFilter} onChange={e => setOrderTypeFilter(e.target.value as any)} className="border border-input rounded-lg px-3 py-2 text-xs bg-background">
+          <option value="all">All order types</option>
+          <option value="standard">Standard only</option>
+          <option value="express">⚡ Express only</option>
+        </select>
+        {orderTypeFilter !== "standard" && (
+          <select value={expressStatusFilter} onChange={e => setExpressStatusFilter(e.target.value as any)} className="border border-input rounded-lg px-3 py-2 text-xs bg-background">
+            <option value="all">All express statuses</option>
+            <option value="pending_quote">Pending Quote</option>
+            <option value="quoted">Quoted</option>
+            <option value="accepted">Accepted</option>
+            <option value="declined">Declined</option>
+            <option value="expired">Expired</option>
+          </select>
+        )}
         <div className="relative inline-flex items-center">
           <Truck className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <select value={courierFilter} onChange={e => setCourierFilter(e.target.value)}
@@ -449,7 +475,17 @@ export default function AdminOrders() {
                   className={`border-b border-border hover:bg-muted/30 cursor-pointer transition-colors duration-1000 ${selected.has(o.id) ? "bg-emerald-50/60" : ""} ${highlightOrderId === o.id ? "bg-yellow-100" : ""}`}
                   onClick={() => setDetailOrder(o.id)}>
                   <td className="p-2" onClick={e => e.stopPropagation()}><Checkbox checked={selected.has(o.id)} onCheckedChange={() => toggleSelect(o.id)} /></td>
-                  <td className="p-2 font-semibold">{o.order_number || "—"}</td>
+                  <td className="p-2 font-semibold">
+                    {o.is_express_order && (
+                      <span
+                        title={`Express Order — ${o.express_status || "pending_quote"}`}
+                        className="inline-block mr-1 text-amber-600"
+                      >
+                        ⚡
+                      </span>
+                    )}
+                    {o.order_number || "—"}
+                  </td>
                   {can("orders", "view_customer") && <td className="p-2">{o.customer_name}</td>}
                   {can("orders", "view_customer") && <td className="p-2 text-muted-foreground">{o.customer_phone}</td>}
                   {showFinance && <td className="p-2 text-right font-semibold">{fmt(o.total || 0)}</td>}
@@ -658,6 +694,13 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         </div>
       </div>
 
+      {/* Express Order — surfaces lifecycle actions only when the order
+          was placed as express. Renders above subscription / courier
+          blocks so the fulfilment team can't miss it. */}
+      {o.is_express_order && (
+        <ExpressOrderCard order={o} adminUser={adminUser} can={can} />
+      )}
+
       {/* Subscription info — only for orders produced by process-subscriptions */}
       {o.is_subscription_order && <SubscriptionInfoSection order={o} />}
 
@@ -761,10 +804,32 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
               </select>
               <input value={statusNote} onChange={e => setStatusNote(e.target.value)} placeholder={newStatus === "cancelled" || newStatus === "returned" ? "Reason (required)" : "Note (optional)"}
                 className="w-full border border-input rounded-lg px-3 py-2 text-xs bg-background" />
-              <button onClick={updateStatus} disabled={newStatus === o.order_status}
-                className="w-full px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">
-                Update Status
-              </button>
+              {(() => {
+                // Block forward-fulfilment transitions on an Express Order
+                // until the customer has paid the delivery fee. Cancel /
+                // return paths are still allowed because admin may need
+                // them mid-quote.
+                const isForwardFulfilment = ["packed", "shipped", "delivered"].includes(newStatus);
+                const expressBlocks = !!o.is_express_order
+                  && o.express_status !== "accepted"
+                  && isForwardFulfilment;
+                return (
+                  <>
+                    <button
+                      onClick={updateStatus}
+                      disabled={newStatus === o.order_status || expressBlocks}
+                      className="w-full px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Update Status
+                    </button>
+                    {expressBlocks && (
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        Order cannot be fulfilled until express delivery is paid.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -1747,4 +1812,337 @@ async function buildSubscriptionInvoiceHtml(order: any): Promise<string> {
   </div>
 </div>
 </body></html>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Express Order management card — surfaces lifecycle actions when an
+// order was placed with is_express_order=true. Drives the
+// pending_quote → quoted → accepted/declined/expired transitions.
+// ─────────────────────────────────────────────────────────────────────
+function ExpressOrderCard({
+  order: o,
+  adminUser,
+  can,
+}: {
+  order: any;
+  adminUser: any;
+  can: (m: string, a: string) => boolean;
+}) {
+  const queryClient = useQueryClient();
+  const canEdit = can("orders", "edit_status") || can("orders", "edit");
+  const status = (o.express_status || "pending_quote") as
+    | "pending_quote" | "quoted" | "accepted" | "declined" | "expired";
+
+  const [quoteInput, setQuoteInput] = useState<string>("");
+  const [refInput, setRefInput] = useState<string>("");
+  const [pending, setPending] = useState(false);
+  const [showWaTemplate, setShowWaTemplate] = useState(false);
+
+  // SLA — hours since the relevant timestamp for the current status.
+  const slaAnchor = status === "quoted" && o.express_quoted_at
+    ? new Date(o.express_quoted_at).getTime()
+    : o.created_at ? new Date(o.created_at).getTime() : Date.now();
+  const hours = Math.max(0, Math.floor((Date.now() - slaAnchor) / 3_600_000));
+  const slaTone: "normal" | "warn" | "breach" =
+    status !== "pending_quote" && status !== "quoted"
+      ? "normal"
+      : hours >= 24 ? "breach" : hours >= 12 ? "warn" : "normal";
+
+  const statusBadgeClass: Record<string, string> = {
+    pending_quote: "bg-amber-100 text-amber-800 border border-amber-300",
+    quoted: "bg-blue-100 text-blue-800 border border-blue-300",
+    accepted: "bg-green-100 text-green-800 border border-green-300",
+    declined: "bg-gray-100 text-gray-700 border border-gray-300",
+    expired: "bg-red-100 text-red-800 border border-red-300",
+  };
+  const statusLabel: Record<string, string> = {
+    pending_quote: "Pending Quote",
+    quoted: "Quoted",
+    accepted: "Accepted",
+    declined: "Declined",
+    expired: "Expired",
+  };
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
+    // The parent OrderDetailPage receives `o` from the parent list query,
+    // so invalidating admin-orders is enough — but force a refetch of the
+    // status_history feed too so the audit row appears immediately.
+  };
+
+  const writeStatusHistory = async (newStatus: string, note: string) => {
+    await supabase.from("order_status_history").insert({
+      order_id: o.id,
+      old_status: status,
+      new_status: `express:${newStatus}`,
+      changed_by: adminUser?.id || null,
+      note,
+    });
+  };
+
+  const saveQuote = async () => {
+    const amount = parseInt(quoteInput, 10);
+    if (!amount || amount <= 0) { toast.error("Enter a quote amount"); return; }
+    if (!confirm(`Send quote of ₦${amount.toLocaleString()} to ${o.customer_name || "this customer"}? You must contact them via WhatsApp after this.`)) return;
+    setPending(true);
+    const { error } = await supabase.from("orders").update({
+      express_status: "quoted",
+      express_delivery_quote: amount,
+      express_quoted_at: new Date().toISOString(),
+    }).eq("id", o.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await writeStatusHistory("quoted", `Delivery quote ₦${amount.toLocaleString()}`);
+    toast.success("Quote saved. Now contact customer via WhatsApp.");
+    setShowWaTemplate(true);
+    invalidate();
+    setPending(false);
+  };
+
+  const markAccepted = async () => {
+    const ref = refInput.trim();
+    if (!ref) { toast.error("Enter the Paystack reference"); return; }
+    if (!confirm("Mark this Express Order as accepted? The order can then move to fulfilment.")) return;
+    setPending(true);
+    const { error } = await supabase.from("orders").update({
+      express_status: "accepted",
+      express_payment_reference: ref,
+    }).eq("id", o.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await writeStatusHistory("accepted", `Paystack ref: ${ref}`);
+    toast.success("Express Order accepted. Order can now be fulfilled.");
+    invalidate();
+    setPending(false);
+  };
+
+  const markDeclined = async () => {
+    if (!confirm("Customer declined the delivery quote?")) return;
+    setPending(true);
+    const { error } = await supabase.from("orders").update({ express_status: "declined" }).eq("id", o.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await writeStatusHistory("declined", "Customer declined quote");
+    toast.success("Marked declined. Consider refunding the product payment if applicable.");
+    invalidate();
+    setPending(false);
+  };
+
+  const markExpired = async () => {
+    if (!confirm("Mark this Express Order as expired? This means 24h passed without a response.")) return;
+    setPending(true);
+    const { error } = await supabase.from("orders").update({ express_status: "expired" }).eq("id", o.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await writeStatusHistory("expired", "24h SLA elapsed without response");
+    toast.success("Marked expired");
+    invalidate();
+    setPending(false);
+  };
+
+  const resumeQuote = async () => {
+    if (!confirm("Reset to pending quote? This will allow you to send a new delivery quote.")) return;
+    setPending(true);
+    const { error } = await supabase.from("orders").update({
+      express_status: "pending_quote",
+      express_delivery_quote: null,
+      express_quoted_at: null,
+      express_payment_reference: null,
+    }).eq("id", o.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await writeStatusHistory("pending_quote", "Reset to pending quote");
+    toast.success("Reset to pending quote");
+    invalidate();
+    setPending(false);
+  };
+
+  const waTemplate = (() => {
+    const first = (o.customer_name || "there").split(" ")[0];
+    const amount = o.express_delivery_quote || parseInt(quoteInput, 10) || 0;
+    return [
+      `Hi ${first}, your BundledMum Express Order ${o.order_number || ""} is ready! Your delivery fee is ₦${amount.toLocaleString()}.`,
+      ``,
+      `To complete your order, please pay the delivery fee here:`,
+      `[PAYSTACK LINK]`,
+      ``,
+      `Once paid, we will ship your order within 24-48 hours.`,
+      ``,
+      `Thank you!`,
+      `The BundledMum Team`,
+    ].join("\n");
+  })();
+
+  const copyWa = async () => {
+    try {
+      await navigator.clipboard.writeText(waTemplate);
+      toast.success("WhatsApp template copied");
+    } catch {
+      toast.error("Couldn't copy — select the text manually");
+    }
+  };
+
+  const slaLine = (() => {
+    if (status !== "pending_quote" && status !== "quoted") return null;
+    const verb = status === "quoted" ? "Quoted" : "Submitted";
+    if (slaTone === "breach") {
+      return <p className="text-sm font-bold text-red-700">🔴 {hours}h ago — SLA BREACHED</p>;
+    }
+    if (slaTone === "warn") {
+      return <p className="text-sm font-semibold text-amber-700">⚠️ {hours}h ago — quote due soon</p>;
+    }
+    return <p className="text-sm text-text-med">{verb} {hours} hour{hours === 1 ? "" : "s"} ago</p>;
+  })();
+
+  return (
+    <div className="rounded-xl border-2 border-amber-400 bg-amber-50/40 p-4 md:p-5 mb-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <h2 className="text-base font-bold text-amber-900 flex items-center gap-2">
+          ⚡ EXPRESS ORDER
+        </h2>
+        <span className={`px-3 py-1 rounded-full text-[11px] font-bold capitalize ${statusBadgeClass[status] || statusBadgeClass.pending_quote}`}>
+          {statusLabel[status] || status}
+        </span>
+      </div>
+
+      {slaLine}
+      <p className="text-xs text-amber-900/80 mt-1">
+        Customer paid for products only. Delivery quote required.
+      </p>
+
+      {/* Pending quote — gather amount, send + show WhatsApp template */}
+      {status === "pending_quote" && canEdit && (
+        <div className="mt-4 bg-card border border-amber-200 rounded-lg p-3">
+          <h3 className="text-sm font-bold mb-1">Enter Delivery Quote</h3>
+          <p className="text-[12px] text-text-med mb-2">
+            Use the courier admin tools to calculate the delivery cost, add your markup, then enter the final customer-facing amount.
+          </p>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-text-med text-sm">₦</span>
+            <input
+              type="number" min={0}
+              value={quoteInput}
+              onChange={(e) => setQuoteInput(e.target.value)}
+              placeholder="e.g. 15000"
+              className="flex-1 border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={saveQuote}
+              disabled={pending || !quoteInput || parseInt(quoteInput, 10) <= 0}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50"
+            >
+              Mark as Quoted
+            </button>
+            <button
+              onClick={markExpired}
+              disabled={pending}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 border border-border px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              Mark as Expired
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quoted — capture Paystack ref, accept / decline / expire */}
+      {status === "quoted" && (
+        <div className="mt-4 bg-card border border-amber-200 rounded-lg p-3">
+          <p className="text-sm">
+            Quoted <span className="font-bold">₦{Number(o.express_delivery_quote || 0).toLocaleString()}</span>
+            {o.express_quoted_at && <> on {new Date(o.express_quoted_at).toLocaleString()}</>}
+          </p>
+          <p className="text-[12px] text-text-med mt-1">
+            Waiting for customer to pay delivery fee separately via Paystack.
+          </p>
+
+          {/* WhatsApp template — visible after Mark as Quoted, and also
+              reopenable while still in the quoted phase. */}
+          {(showWaTemplate || true) && canEdit && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">📋 WhatsApp template</p>
+                <button onClick={copyWa} className="text-[11px] font-semibold text-amber-900 hover:underline">Copy</button>
+              </div>
+              <pre className="text-[11px] text-amber-900 whitespace-pre-wrap font-body cursor-text" onClick={copyWa}>
+                {waTemplate}
+              </pre>
+            </div>
+          )}
+
+          {canEdit && (
+            <div className="mt-3 grid gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-text-med text-xs whitespace-nowrap">Paystack Reference:</span>
+                <input
+                  value={refInput}
+                  onChange={(e) => setRefInput(e.target.value)}
+                  placeholder="e.g. T1234567890ABC"
+                  className="flex-1 border border-input rounded-lg px-3 py-1.5 text-xs bg-background"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  onClick={markAccepted}
+                  disabled={pending || !refInput.trim()}
+                  className="inline-flex items-center justify-center bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50"
+                >
+                  Mark as Accepted
+                </button>
+                <button
+                  onClick={markDeclined}
+                  disabled={pending}
+                  className="inline-flex items-center justify-center border border-border px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                >
+                  Mark as Declined
+                </button>
+                <button
+                  onClick={markExpired}
+                  disabled={pending}
+                  className="inline-flex items-center justify-center border border-red-300 text-red-700 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-red-50 disabled:opacity-50"
+                >
+                  Mark as Expired
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {status === "accepted" && (
+        <div className="mt-3 bg-green-50 border border-green-300 rounded-lg p-3">
+          <p className="font-bold text-green-800 text-sm">✅ Express Order Accepted</p>
+          <p className="text-xs text-green-800 mt-1">
+            Delivery quote: <span className="font-bold">₦{Number(o.express_delivery_quote || 0).toLocaleString()}</span>
+            {o.express_quoted_at && <> · Quoted at {new Date(o.express_quoted_at).toLocaleString()}</>}
+          </p>
+          {o.express_payment_reference && (
+            <p className="text-xs text-green-800">Paystack reference: <span className="font-mono">{o.express_payment_reference}</span></p>
+          )}
+          <p className="text-[12px] text-green-900 mt-2">
+            → Order can now be fulfilled normally (use the standard <em>Mark as Packed</em> / <em>Mark as Shipped</em> controls below).
+          </p>
+        </div>
+      )}
+
+      {(status === "declined" || status === "expired") && (
+        <div className={`mt-3 border rounded-lg p-3 ${status === "expired" ? "bg-red-50 border-red-300" : "bg-gray-50 border-gray-300"}`}>
+          <p className={`font-bold text-sm ${status === "expired" ? "text-red-800" : "text-gray-800"}`}>
+            {status === "expired" ? "🔴 Express Order Expired" : "Customer Declined"}
+          </p>
+          <p className="text-xs text-text-med mt-1">
+            {status === "expired"
+              ? "24 hours elapsed without the customer paying the delivery fee. Order cannot proceed to shipping."
+              : "Customer declined the delivery quote. Consider refunding the product payment if applicable."}
+          </p>
+          {canEdit && (
+            <button
+              onClick={resumeQuote}
+              disabled={pending}
+              className="mt-3 inline-flex items-center justify-center border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              Resume Quote
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
