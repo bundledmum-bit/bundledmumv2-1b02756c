@@ -1,18 +1,21 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Seamless YouTube ambient background.
  *
- * Why not just use ?loop=1&playlist=ID ?
- *   YouTube's native loop reloads the player at the end of every cycle,
- *   which briefly shows the loading spinner / related-videos UI. To avoid
- *   that flash we drive the player with the IFrame API and manually seek
- *   back to the start ~0.4s before the end — the viewer never sees the
- *   end-of-video chrome.
+ * Strategy to hide ALL YouTube chrome (title, play button, channel name,
+ * "Watch on YouTube"):
+ *  1. Scale the iframe ~135% and let the parent's overflow-hidden crop
+ *     the title bar (top) and watermark/channel (bottom) outside view.
+ *  2. Keep the iframe at opacity-0 until the player reports PLAYING,
+ *     so the initial play-button / poster flash never renders.
+ *  3. Loop ~1s before the end so the end-screen never appears.
+ *  4. A pointer-events shield blocks hover/tap that would summon chrome.
  */
 export default function HeroVideoBackground({ videoId }: { videoId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,21 +67,22 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
               e.target.mute();
               e.target.playVideo();
             } catch { /* ignore */ }
-            // Poll the current time and seek back before the end so the
-            // end-screen / spinner never has a chance to render.
             pollId = window.setInterval(() => {
               const p = playerRef.current;
               if (!p || typeof p.getDuration !== "function") return;
               const dur = p.getDuration();
               const cur = p.getCurrentTime();
-              if (dur > 0 && cur >= dur - 0.4) {
+              if (dur > 0 && cur >= dur - 1.0) {
                 p.seekTo(0, true);
                 p.playVideo();
               }
             }, 250);
           },
           onStateChange: (e: any) => {
-            // Defensive: if the player ever ends, immediately restart.
+            if (e.data === 1) {
+              // PLAYING — safe to reveal
+              setVisible(true);
+            }
             if (e.data === 0) {
               try {
                 e.target.seekTo(0, true);
@@ -99,7 +103,7 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
 
   return (
     <div
-      className="absolute inset-0 overflow-hidden pointer-events-none select-none"
+      className="absolute inset-0 overflow-hidden pointer-events-none select-none bg-black"
       // @ts-expect-error inert is a valid HTML attribute
       inert=""
       aria-hidden="true"
@@ -107,11 +111,10 @@ export default function HeroVideoBackground({ videoId }: { videoId: string }) {
       <div
         ref={containerRef}
         tabIndex={-1}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full pointer-events-none [&_iframe]:pointer-events-none [&_iframe]:select-none"
-        style={{ pointerEvents: "none" }}
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[177.77vh] h-[56.25vw] min-w-full min-h-full pointer-events-none transition-opacity duration-700 [&_iframe]:pointer-events-none [&_iframe]:select-none ${visible ? "opacity-100" : "opacity-0"}`}
+        style={{ pointerEvents: "none", transform: "translate(-50%, -50%) scale(1.35)" }}
       />
-      {/* Shield blocks all hover/click/focus interactions with the YouTube iframe,
-          which is what triggers the title bar, pause button, and channel name. */}
+      {/* Shield blocks all hover/click/focus interactions with the YouTube iframe. */}
       <div
         className="absolute inset-0 z-10 pointer-events-auto cursor-default"
         aria-hidden="true"
