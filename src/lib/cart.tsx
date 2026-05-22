@@ -42,6 +42,36 @@ export interface CartItem {
   removedDefaultCount?: number;
 }
 
+/**
+ * Compose the stable cart-line key for a (product, brand, size, color, variant)
+ * tuple. Each unique combination is its own cart row so a customer can keep
+ * Mamia + Pampers + Huggies of the same product as separate line items.
+ * Exported because ProductPage / ProductDetailDrawer need to look up the
+ * currently-selected variant without duplicating the key formula.
+ */
+export function cartItemKey(
+  productId: string | number,
+  brandId?: string | null,
+  size?: string | null,
+  color?: string | null,
+  variant?: string | null,
+): string {
+  return [
+    String(productId),
+    brandId || "no-brand",
+    size || "",
+    color || "",
+    variant || "",
+  ].join("|");
+}
+
+interface VariantSelector {
+  brandId?: string | null;
+  size?: string | null;
+  color?: string | null;
+  variant?: string | null;
+}
+
 interface CartContextType {
   cart: CartItem[];
   addToCart: (item: any) => void;
@@ -49,7 +79,12 @@ interface CartContextType {
   clearCart: () => void;
   updateQty: (key: string, newQty: number) => void;
   removeFromCart: (key: string) => void;
-  getCartItem: (productId: string | number) => CartItem | undefined;
+  /**
+   * Look up a cart row. When `selector` is omitted, falls back to the legacy
+   * "any line item of this product" match so consumer sites that don't track
+   * variants (quiz result cards, etc.) keep working.
+   */
+  getCartItem: (productId: string | number, selector?: VariantSelector) => CartItem | undefined;
   totalItems: number;
   subtotal: number;
   justAdded: boolean;
@@ -108,7 +143,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const key = `bundle-${product.bundleId || product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         return [...prev, { ...product, _key: key, qty: 1 }];
       }
-      const key = `${product.id}-${product.selectedBrand?.id || "default"}-${product.selectedSize || ""}`;
+      // Variant-aware merge key — same product with a different brand,
+      // size, color, or variant axis is a NEW cart row, not a qty bump.
+      const key = cartItemKey(
+        product.id,
+        product.selectedBrand?.id,
+        product.selectedSize,
+        product.selectedColor,
+        product.selectedVariant,
+      );
       const existing = prev.find(i => i._key === key);
       if (existing) return prev.map(i => i._key === key ? { ...i, qty: i.qty + 1 } : i);
       return [...prev, { ...product, _key: key, qty: 1 }];
@@ -185,9 +228,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const getCartItem = useCallback((productId: string | number) => {
-    return cart.find(i => i.id === productId);
-  }, [cart]);
+  const getCartItem = useCallback(
+    (productId: string | number, selector?: VariantSelector) => {
+      // No selector → preserve the original "any row for this product"
+      // behaviour for callers like quiz result cards that don't track
+      // brand/size selection.
+      if (!selector) return cart.find(i => i.id === productId);
+      const wantKey = cartItemKey(
+        productId,
+        selector.brandId,
+        selector.size,
+        selector.color,
+        selector.variant,
+      );
+      return cart.find(i => i._key === wantKey);
+    },
+    [cart],
+  );
 
   const saveForLater = useCallback((key: string) => {
     setCart(prev => {

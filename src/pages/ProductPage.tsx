@@ -4,7 +4,7 @@ import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Brand } from "@/lib/supabaseAdapters";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/analytics";
@@ -319,7 +319,19 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
-  const cartItem = cart.find(c => c.id === product.id);
+  // Variant-aware: button state must reflect the CURRENTLY SELECTED brand /
+  // size / color / variant combo, not "any line item of this product". The
+  // key formula mirrors what addToCart() computes — see lib/cart.tsx
+  // cartItemKey(). Computed inline so it re-runs every render the selection
+  // changes.
+  const currentVariantKey = cartItemKey(
+    product.id,
+    selectedBrand?.id,
+    selectedSize || (hasVariants ? selectedVariant : selectedBrand?.sizeVariant) || null,
+    selectedGender || null,
+    hasVariants ? selectedVariant : null,
+  );
+  const cartItem = cart.find(c => c._key === currentVariantKey);
   const isInCart = !!cartItem;
   const deliveryText = settings?.delivery_text || "Delivery: 1–3 business days";
 

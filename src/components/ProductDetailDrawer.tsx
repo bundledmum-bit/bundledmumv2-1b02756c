@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Star, ShoppingBag, X, ZoomIn } from "lucide-react";
 import QtyControl from "@/components/QtyControl";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import type { Product } from "@/lib/supabaseAdapters";
@@ -71,7 +71,17 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
   const { cart, addToCart, updateQty } = useCart();
   const { data: settings } = useSiteSettings();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
-  const cartItem = cart.find(c => c.id === product.id);
+  // Variant-aware: the button must track the CURRENTLY SELECTED brand +
+  // size combo, not just whether any variant of the product is in cart.
+  // Mirrors the key formula used by addToCart() — see lib/cart.tsx.
+  const currentVariantKey = cartItemKey(
+    product.id,
+    selectedBrand?.id,
+    selectedSize || null,
+    null,
+    null,
+  );
+  const cartItem = cart.find(c => c._key === currentVariantKey);
   const isInCart = !!cartItem;
 
   const deliveryText = settings?.delivery_text || "Delivery: 1–3 business days";
