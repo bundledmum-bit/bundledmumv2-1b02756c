@@ -23,8 +23,15 @@ interface Props {
 export default function ProductDetailDrawer({ product, defaultBudget = "standard", selectedBrandId, onClose }: Props) {
   if (!product) return null;
 
+  // shouldScaleBackground=false prevents vaul from applying inline
+  // transform / overflow styles to <body>. The "View Full Product"
+  // link inside the drawer closes the drawer and navigates in the
+  // same tick — vaul never animates closed and can't strip those body
+  // styles, which leaves /products/[slug] mounting inside a transformed
+  // body that breaks the mobile layout. Disabling the scale-card effect
+  // removes the entire class of bug for this drawer.
   return (
-    <Drawer open={!!product} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Drawer open={!!product} onOpenChange={(open) => { if (!open) onClose(); }} shouldScaleBackground={false}>
       <DrawerContent className="max-h-[92svh] flex flex-col outline-none">
         <DrawerInner product={product} defaultBudget={defaultBudget} selectedBrandId={selectedBrandId} onClose={onClose} />
       </DrawerContent>
