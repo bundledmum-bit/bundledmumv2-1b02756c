@@ -64,33 +64,59 @@ function todayFileDate(): string {
 }
 
 /**
- * Best-effort fetch of an image URL → base64 PNG data URL. Returns null when
- * the image can't be fetched (CORS, 404, network) so the caller can skip
- * the image cell without aborting the whole PDF.
+ * Route any external image URL through images.weserv.nl so it comes back
+ * with CORS-friendly headers. Without this proxy, canvas.toDataURL throws
+ * a SecurityError on tainted canvases for jumia.is / i.ibb.co / amazon
+ * etc and the image is silently dropped from the PDF. The proxy also
+ * resizes to ~80px so embeds are small.
  */
-async function fetchImageDataUrl(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
-  if (!url || !/^https?:\/\//i.test(url)) return null;
-  try {
-    const res = await fetch(url, { mode: "cors" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const dataUrl: string = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result || ""));
-      r.onerror = () => reject(new Error("read"));
-      r.readAsDataURL(blob);
-    });
-    // Probe dimensions via Image() so we can letterbox the cell.
-    const dims: { w: number; h: number } = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
-      img.onerror = () => reject(new Error("decode"));
-      img.src = dataUrl;
-    });
-    return { dataUrl, ...dims };
-  } catch {
-    return null;
-  }
+export function proxyImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.includes("images.weserv.nl") || url.startsWith("/")) return url;
+  if (!/^https?:\/\//i.test(url)) return null;
+  const stripped = url.replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(stripped)}&w=80&h=80&fit=cover&output=jpg`;
+}
+
+/**
+ * Best-effort image → JPEG data URL via a CORS-anonymous <img> drawn to a
+ * canvas. Times out after 5s so a single slow host can't stall the whole
+ * PDF build. Returns null on any failure mode (timeout, decode error,
+ * tainted canvas) so the cell can render blank instead of breaking the
+ * row layout.
+ */
+async function fetchImageAsBase64(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  if (!url) return null;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const timer = setTimeout(() => {
+      console.warn("[cartShare] image fetch timeout:", url);
+      resolve(null);
+    }, 5000);
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const w = img.naturalWidth || img.width || 1;
+        const h = img.naturalHeight || img.height || 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.85), w, h });
+      } catch (e) {
+        console.warn("[cartShare] canvas taint:", url, e);
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      console.warn("[cartShare] image load failed:", url);
+      resolve(null);
+    };
+    img.src = url;
+  });
 }
 
 export async function downloadCartPdf(items: CartShareItem[], contact: CartShareContact = {}) {
@@ -134,14 +160,13 @@ export async function downloadCartPdf(items: CartShareItem[], contact: CartShare
   doc.line(margin, y, pageW - margin, y);
   y += 6;
 
-  // ── Pre-fetch thumbnails in parallel (best-effort) ─────────────
+  // ── Pre-fetch thumbnails through the CORS-friendly proxy ───────
   const thumbs = await Promise.all(
-    items.map((it) => (it.image_url ? fetchImageDataUrl(it.image_url) : Promise.resolve(null))),
+    items.map((it) => fetchImageAsBase64(proxyImageUrl(it.image_url) || "")),
   );
 
   // ── Items table ────────────────────────────────────────────────
-  const rowH = 14;
-  const thumbBox = 10; // mm
+  const thumbBox = 18; // mm
   const itemRows = items.map((it, i) => [
     String(i + 1),
     "", // image cell — drawn manually via didDrawCell
@@ -157,30 +182,29 @@ export async function downloadCartPdf(items: CartShareItem[], contact: CartShare
     head: [["#", "Image", "Item", "Brand", "Qty", "Unit Price", "Total"]],
     body: itemRows.length > 0 ? itemRows : [["—", "", "Your cart is empty.", "", "", "", ""]],
     margin: { left: margin, right: margin },
-    styles: { fontSize: 9, cellPadding: 2, textColor: BODY, lineColor: [230, 230, 230], minCellHeight: rowH },
-    headStyles: { fillColor: FOREST, textColor: [255, 255, 255], fontStyle: "bold" },
-    alternateRowStyles: { fillColor: [250, 247, 241] },
+    styles: { fontSize: 9, cellPadding: 3, valign: "middle", overflow: "linebreak", textColor: BODY, lineColor: [230, 230, 230], minCellHeight: 22 },
+    headStyles: { fillColor: [45, 106, 79], textColor: 255, halign: "center", fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [248, 246, 240] },
     columnStyles: {
-      0: { cellWidth: 8, halign: "center", valign: "middle" },
-      1: { cellWidth: 14, halign: "center", valign: "middle" },
-      2: { valign: "middle" },
-      3: { valign: "middle" },
-      4: { cellWidth: 12, halign: "center", valign: "middle" },
-      5: { cellWidth: 24, halign: "right", valign: "middle" },
-      6: { cellWidth: 26, halign: "right", fontStyle: "bold", valign: "middle" },
+      0: { halign: "center", cellWidth: 10 },                     // #
+      1: { halign: "center", cellWidth: 22 },                     // image
+      2: { halign: "left",   cellWidth: "auto" },                 // item — flex
+      3: { halign: "left",   cellWidth: 35 },                     // brand
+      4: { halign: "center", cellWidth: 12 },                     // qty
+      5: { halign: "right",  cellWidth: 28 },                     // unit price
+      6: { halign: "right",  cellWidth: 30, fontStyle: "bold" },  // total
     },
     didDrawCell: (data) => {
       if (data.section !== "body" || data.column.index !== 1) return;
       const thumb = thumbs[data.row.index];
       if (!thumb) return;
-      // Letterbox a 10×10 mm box centred in the cell.
-      const cx = data.cell.x + data.cell.width / 2;
-      const cy = data.cell.y + data.cell.height / 2;
       const aspect = thumb.w / thumb.h;
       let w = thumbBox, h = thumbBox;
       if (aspect > 1) h = thumbBox / aspect; else w = thumbBox * aspect;
+      const cx = data.cell.x + data.cell.width / 2;
+      const cy = data.cell.y + data.cell.height / 2;
       try {
-        doc.addImage(thumb.dataUrl, "PNG", cx - w / 2, cy - h / 2, w, h, undefined, "FAST");
+        doc.addImage(thumb.dataUrl, "JPEG", cx - w / 2, cy - h / 2, w, h, undefined, "FAST");
       } catch {
         /* malformed image — skip */
       }
