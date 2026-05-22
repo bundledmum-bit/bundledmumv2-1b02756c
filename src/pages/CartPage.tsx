@@ -8,6 +8,7 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2 } from "lucide-react";
 import { encodeCartToUrl, decodeCartFromUrl, buildWhatsappMessage, type SharedCartItem } from "@/lib/cartShareUrl";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { MessageCircle, Copy as CopyIcon } from "lucide-react";
@@ -61,6 +62,17 @@ export default function CartPage() {
   // cart looks like at the moment the user wants to share.
   const [shareOpen, setShareOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
+  // When both clipboard tiers fail (very rare — restrictive iframe + old
+  // browser), reveal a highlighted, auto-selected input so the user can
+  // tap-and-hold to copy manually.
+  const [showManualCopy, setShowManualCopy] = useState(false);
+  const manualCopyRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (showManualCopy && manualCopyRef.current) {
+      manualCopyRef.current.focus();
+      manualCopyRef.current.select();
+    }
+  }, [showManualCopy]);
   // Shared-cart hydration state — true while we're parsing ?items= and
   // fetching product/brand details, so we can suppress the empty-cart flash.
   const [hydrating, setHydrating] = useState(false);
@@ -685,7 +697,7 @@ export default function CartPage() {
       {shareOpen && (
         <div
           className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
-          onClick={() => setShareOpen(false)}
+          onClick={() => { setShareOpen(false); setShowManualCopy(false); }}
         >
           <div
             className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
@@ -727,25 +739,41 @@ export default function CartPage() {
               </button>
               <button
                 onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(shareUrl);
+                  const ok = await copyToClipboard(shareUrl);
+                  if (ok) {
                     toast.success("Link copied to clipboard");
-                  } catch {
-                    toast.error("Could not copy automatically — copy the link below");
+                    setTimeout(() => { setShareOpen(false); setShowManualCopy(false); }, 800);
+                  } else {
+                    setShowManualCopy(true);
                   }
                 }}
                 className="w-full inline-flex items-center justify-center gap-2 border border-border px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted"
               >
                 <CopyIcon className="w-4 h-4" /> Copy link
               </button>
-              <input
-                readOnly
-                value={shareUrl}
-                onFocus={(e) => e.currentTarget.select()}
-                className="w-full border border-input rounded-lg px-3 py-2 text-[11px] bg-muted/40 font-mono text-text-med"
-              />
+              {showManualCopy ? (
+                <div className="rounded-lg border-2 border-coral bg-coral/5 p-2">
+                  <p className="text-[11px] font-semibold text-coral mb-1.5">
+                    Tap and hold to select, then copy
+                  </p>
+                  <input
+                    ref={manualCopyRef}
+                    readOnly
+                    value={shareUrl}
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full border border-coral/40 rounded-md px-3 py-2 text-[11px] bg-card font-mono text-foreground"
+                  />
+                </div>
+              ) : (
+                <input
+                  readOnly
+                  value={shareUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="w-full border border-input rounded-lg px-3 py-2 text-[11px] bg-muted/40 font-mono text-text-med"
+                />
+              )}
               <button
-                onClick={() => setShareOpen(false)}
+                onClick={() => { setShareOpen(false); setShowManualCopy(false); }}
                 className="w-full text-text-med hover:text-foreground text-sm font-semibold py-2"
               >
                 Cancel
