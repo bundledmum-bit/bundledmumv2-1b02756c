@@ -72,6 +72,22 @@ interface VariantSelector {
   variant?: string | null;
 }
 
+/**
+ * Best-image URL for a cart row. Priority:
+ *   1. The currently-selected brand's imageUrl (variant-specific shot)
+ *   2. The product-level imageUrl spread onto the cart item at add time
+ *   3. item.img when it's already a URL (legacy cart rows)
+ *   4. The /placeholder.svg static asset
+ */
+export function cartItemImage(item: any): string {
+  const brandImg = item?.selectedBrand?.imageUrl || item?.selectedBrand?.image_url;
+  if (typeof brandImg === "string" && /^https?:\/\//.test(brandImg)) return brandImg;
+  const productImg = item?.imageUrl || item?.image_url;
+  if (typeof productImg === "string" && /^https?:\/\//.test(productImg)) return productImg;
+  if (typeof item?.img === "string" && /^https?:\/\//.test(item.img)) return item.img;
+  return "/placeholder.svg";
+}
+
 interface CartContextType {
   cart: CartItem[];
   addToCart: (item: any) => void;
@@ -85,6 +101,24 @@ interface CartContextType {
    * variants (quiz result cards, etc.) keep working.
    */
   getCartItem: (productId: string | number, selector?: VariantSelector) => CartItem | undefined;
+  /**
+   * Mutate an existing cart row to a different (brand, size, color) variant
+   * and/or quantity. If the new variant key already matches another row in
+   * the cart, the two rows are merged (quantities summed) and the original
+   * row is removed. Returns the resulting cart-item key.
+   */
+  updateVariant: (
+    oldKey: string,
+    next: {
+      selectedBrand?: any;
+      selectedSize?: string | null;
+      selectedColor?: string | null;
+      selectedVariant?: string | null;
+      qty?: number;
+      price?: number;
+      name?: string;
+    },
+  ) => string | null;
   totalItems: number;
   subtotal: number;
   justAdded: boolean;
@@ -246,6 +280,61 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [cart],
   );
 
+  const updateVariant = useCallback(
+    (
+      oldKey: string,
+      next: {
+        selectedBrand?: any;
+        selectedSize?: string | null;
+        selectedColor?: string | null;
+        selectedVariant?: string | null;
+        qty?: number;
+        price?: number;
+        name?: string;
+      },
+    ): string | null => {
+      let resultKey: string | null = null;
+      setCart(prev => {
+        const idx = prev.findIndex(i => i._key === oldKey);
+        if (idx < 0) return prev;
+        const old = prev[idx];
+        const merged: any = {
+          ...old,
+          selectedBrand: next.selectedBrand !== undefined ? next.selectedBrand : old.selectedBrand,
+          selectedSize: next.selectedSize !== undefined ? next.selectedSize : old.selectedSize,
+          selectedColor: next.selectedColor !== undefined ? next.selectedColor : old.selectedColor,
+          selectedVariant: next.selectedVariant !== undefined ? next.selectedVariant : (old as any).selectedVariant,
+          price: next.price ?? old.price,
+          name: next.name ?? old.name,
+          qty: Math.max(1, next.qty ?? old.qty),
+        };
+        const newKey = cartItemKey(
+          merged.id,
+          merged.selectedBrand?.id,
+          merged.selectedSize,
+          merged.selectedColor,
+          merged.selectedVariant,
+        );
+        merged._key = newKey;
+        resultKey = newKey;
+        // If another row already has the new key, merge quantities into it
+        // and drop the original. Otherwise just replace in place.
+        const dupIdx = prev.findIndex((i, j) => j !== idx && i._key === newKey);
+        if (dupIdx >= 0) {
+          const next = prev.slice();
+          next[dupIdx] = { ...next[dupIdx], qty: (next[dupIdx].qty || 0) + (merged.qty || 0) };
+          next.splice(idx, 1);
+          return next;
+        }
+        const out = prev.slice();
+        out[idx] = merged as CartItem;
+        return out;
+      });
+      return resultKey;
+    },
+    [],
+  );
+
   const saveForLater = useCallback((key: string) => {
     setCart(prev => {
       const item = prev.find(i => i._key === key);
@@ -273,7 +362,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const subtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, totalItems, subtotal, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
+    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
       {children}
     </CartContext.Provider>
   );

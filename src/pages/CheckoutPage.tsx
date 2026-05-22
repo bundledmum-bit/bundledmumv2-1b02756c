@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useCart, fmt } from "@/lib/cart";
+import { useCart, fmt, cartItemImage } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { toast } from "sonner";
@@ -1083,7 +1083,15 @@ export default function CheckoutPage() {
                 return (
                   <div key={item._key} className={`flex items-center justify-between gap-2 text-xs ${flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {(item.img && item.img.startsWith("http")) ? <img src={item.img} alt={item.name} className="w-6 h-6 rounded object-cover flex-shrink-0" /> : <span className="text-lg">{item.img || "📦"}</span>}
+                      {(() => {
+                        const url = cartItemImage(item);
+                        if (url !== "/placeholder.svg") {
+                          return <img src={url} alt={item.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />;
+                        }
+                        return (item.img && item.img.startsWith("http"))
+                          ? <img src={item.img} alt={item.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" />
+                          : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{item.img || "📦"}</span>;
+                      })()}
                       <span className="truncate">{item.bundleName ? `[${item.bundleName}] ` : ""}{item.name} ×{item.qty}</span>
                       {flagged && <span className="text-[9px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                     </div>
@@ -1418,7 +1426,17 @@ export default function CheckoutPage() {
               <div className="max-h-[260px] overflow-y-auto mb-4 space-y-3">
                 {cart.map(item => (
                   <div key={item._key} className="flex items-center gap-3 pb-3 border-b border-border/50">
-                    <div className="w-11 h-11 bg-warm-cream rounded-lg flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">{(item.img && item.img.startsWith("http")) ? <img src={item.img} alt={item.name} className="w-full h-full object-cover" /> : (item.img || "📦")}</div>
+                    <div className="w-12 h-12 bg-warm-cream rounded-md flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border border-border">
+                      {(() => {
+                        const url = cartItemImage(item);
+                        if (url !== "/placeholder.svg") {
+                          return <img src={url} alt={item.name} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />;
+                        }
+                        return (item.img && item.img.startsWith("http"))
+                          ? <img src={item.img} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
+                          : (item.img || "📦");
+                      })()}
+                    </div>
                     <div className="flex-1 min-w-0">
                       {item.bundleName && <div className="text-[9px] font-bold text-coral mb-0.5 truncate">📦 {item.bundleName}</div>}
                       <div className="text-xs font-semibold leading-tight truncate">{item.name}</div>

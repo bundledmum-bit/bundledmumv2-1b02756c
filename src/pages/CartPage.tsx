@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
-import { useCart, fmt, formatColor } from "@/lib/cart";
+import { useCart, fmt, formatColor, cartItemImage } from "@/lib/cart";
+import EditCartItemModal from "@/components/EditCartItemModal";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
-import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin } from "lucide-react";
+import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
 
@@ -46,6 +47,11 @@ export default function CartPage() {
   const { cart, setCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
+  // Image zoom + Edit modal local state. Both are page-scoped because the
+  // line-item map iterator below can't carry React state of its own.
+  const [zoomImage, setZoomImage] = useState<{ url: string; alt: string } | null>(null);
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const editingItem = editKey ? cart.find(c => c._key === editKey) : null;
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
 
@@ -282,7 +288,38 @@ export default function CartPage() {
                   </div>
                 )}
                 <div className="flex items-start gap-3">
-                  <ProductImage imageUrl={resolveImgUrl(item.img)} emoji={resolveEmojiFallback(item.img) || resolveEmojiFallback(item.baseImg)} alt={item.name} className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg bg-warm-cream" emojiClassName="text-xl sm:text-2xl" />
+                  {(() => {
+                    const imgUrl = cartItemImage(item);
+                    // For bundle rows the brand/product image lookup misses;
+                    // fall through to the legacy emoji/ProductImage path.
+                    if (item.type === "bundle" || imgUrl === "/placeholder.svg") {
+                      return (
+                        <ProductImage
+                          imageUrl={resolveImgUrl(item.img)}
+                          emoji={resolveEmojiFallback(item.img) || resolveEmojiFallback(item.baseImg)}
+                          alt={item.name}
+                          className="w-16 h-16 sm:w-20 sm:h-20 rounded-md bg-warm-cream border border-border"
+                          emojiClassName="text-2xl sm:text-3xl"
+                        />
+                      );
+                    }
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setZoomImage({ url: imgUrl, alt: item.name })}
+                        className="flex-shrink-0 rounded-md overflow-hidden border border-border bg-warm-cream"
+                        aria-label={`Zoom ${item.name}`}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={item.name}
+                          loading="lazy"
+                          className="w-16 h-16 sm:w-20 sm:h-20 object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+                        />
+                      </button>
+                    );
+                  })()}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-body font-semibold text-[13px] sm:text-sm leading-tight line-clamp-2">{item.name}</h3>
                     <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
@@ -338,6 +375,12 @@ export default function CartPage() {
                     <span className="font-body font-bold text-sm w-6 text-center">{item.qty}</span>
                     <button onClick={() => updateQty(item._key, item.qty + 1)} className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-warm-cream flex items-center justify-center interactive">
                       <Plus className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => setEditKey(item._key)}
+                      className="ml-1 inline-flex items-center gap-1 rounded-pill border border-border text-text-med hover:text-forest hover:border-forest/60 px-2.5 py-1 text-[11px] font-semibold"
+                    >
+                      <Pencil className="h-3 w-3" /> Edit
                     </button>
                   </div>
                   <p className="font-body font-bold text-sm">{fmt(item.price * item.qty)}</p>
@@ -467,6 +510,36 @@ export default function CartPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Image lightbox — full-screen with 80% black overlay, dismiss on
+          outside-click or the close button. Native <img loading="lazy"> so
+          we never need an image library. */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setZoomImage(null)}
+        >
+          <button
+            onClick={() => setZoomImage(null)}
+            className="absolute top-4 right-4 z-[210] bg-card rounded-full p-2 shadow-lg hover:bg-muted"
+            aria-label="Close zoom"
+          >
+            <X className="h-5 w-5 text-foreground" />
+          </button>
+          <img
+            src={zoomImage.url}
+            alt={zoomImage.alt}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+          />
+        </div>
+      )}
+
+      {/* Edit variant modal */}
+      {editingItem && (
+        <EditCartItemModal item={editingItem} onClose={() => setEditKey(null)} />
       )}
     </div>
   );
