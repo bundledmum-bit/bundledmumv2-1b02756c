@@ -23,7 +23,7 @@ export default function TrackOrderPage() {
     try {
       const { data, error: err } = await supabase
         .from("orders")
-        .select("order_number, customer_name, order_status, payment_status, total, subtotal, delivery_fee, service_fee, estimated_delivery_start, estimated_delivery_end, created_at, order_items(product_name, brand_name, quantity, line_total, size)")
+        .select("order_number, customer_name, order_status, payment_status, total, subtotal, delivery_fee, service_fee, is_express_order, estimated_delivery_start, estimated_delivery_end, created_at, order_items(product_name, brand_name, quantity, line_total, size)")
         .eq("order_number", id)
         .single();
       if (err || !data) { setError("Order not found. Please check your order number and try again."); return; }
@@ -109,7 +109,14 @@ export default function TrackOrderPage() {
             </div>
             <div className="border-t border-border pt-2 space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(order.subtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-text-med">Delivery</span><span>{order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee)}</span></div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-text-med">Delivery</span>
+                {(order as any).is_express_order ? (
+                  <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
+                ) : (
+                  <span>{order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee)}</span>
+                )}
+              </div>
               <div className="flex justify-between"><span className="text-text-med">Service Fee</span><span>{fmt(order.service_fee)}</span></div>
               <div className="flex justify-between font-bold pt-1 border-t border-border"><span>Total</span><span className="text-forest">{fmt(order.total)}</span></div>
             </div>

@@ -136,7 +136,7 @@ export default function OrderConfirmedPage() {
       `Address: ${order.delivery_address}, ${order.delivery_city}, ${order.delivery_state}`, ``,
       `Items:`,
       ...items.map((i: any) => `  ${i.bundle_name ? `[${i.bundle_name}] ` : ""}${i.product_name} × ${i.quantity} — ${fmt(i.line_total)}${i.brand_name ? ` (${i.brand_name})` : ""}${i.size ? ` Size: ${i.size}` : ""}`),
-      ``, `Subtotal: ${fmt(order.subtotal)}`, `Delivery: ${order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee)}`,
+      ``, `Subtotal: ${fmt(order.subtotal)}`, `Delivery: ${order.is_express_order ? "Will be communicated" : (order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee))}`,
       `Service & Packaging: ${fmt(order.service_fee)}`, `Total: ${fmt(order.total)}`, ``, `Payment: ${payLabels[order.payment_method] || ""}`,
     ].filter(Boolean);
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
@@ -196,16 +196,27 @@ export default function OrderConfirmedPage() {
       <div className="max-w-[860px] mx-auto px-4 md:px-10 py-8 md:py-14">
         {/* Express Order banner — only when this order skipped checkout
             delivery and is awaiting an admin-issued WhatsApp quote. */}
-        {order.is_express_order && (
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-card p-5 md:p-6 mb-5">
-            <h2 className="pf text-xl md:text-2xl text-amber-900 flex items-center gap-2 mb-2">
-              ⚡ Express Order Submitted
-            </h2>
-            <p className="text-amber-900 text-sm md:text-base leading-relaxed">
-              Thank you! Our team will calculate your delivery fee and contact you via WhatsApp within 24 hours with your quote. Your order will be processed once delivery payment is received.
-            </p>
-          </div>
-        )}
+        {order.is_express_order && (() => {
+          // Pull the admin-controlled display name + SLA so this banner
+          // matches whatever the customer saw on checkout.
+          const displayName = typeof settings?.express_order_display_name === "string" && settings.express_order_display_name.trim()
+            ? settings.express_order_display_name
+            : "Express Order";
+          const slaHours = Number.isFinite(Number(settings?.express_order_sla_hours))
+            ? Math.trunc(Number(settings.express_order_sla_hours))
+            : 24;
+          const slaLabel = `within ${slaHours} hour${slaHours === 1 ? "" : "s"}`;
+          return (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-card p-5 md:p-6 mb-5">
+              <h2 className="pf text-xl md:text-2xl text-amber-900 flex items-center gap-2 mb-2">
+                ⚡ {displayName} Submitted
+              </h2>
+              <p className="text-amber-900 text-sm md:text-base leading-relaxed">
+                Thank you! Our team will calculate your delivery fee and contact you via WhatsApp {slaLabel} with your quote. Your order will be processed once delivery payment is received.
+              </p>
+            </div>
+          );
+        })()}
         {/* Customer Details */}
         <div className="bg-card rounded-card shadow-card p-5 md:p-8 mb-4">
           <h3 className="pf text-lg md:text-xl text-forest mb-4">📋 Your Details</h3>
@@ -244,7 +255,14 @@ export default function OrderConfirmedPage() {
             </div>
             <div className="space-y-1.5 text-sm font-body border-t border-border pt-3">
               <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(order.subtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-text-med">Delivery</span><span className={order.delivery_fee === 0 ? "text-forest" : ""}>{order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee)}</span></div>
+              <div className="flex justify-between items-baseline">
+                <span className="text-text-med">Delivery</span>
+                {order.is_express_order ? (
+                  <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
+                ) : (
+                  <span className={order.delivery_fee === 0 ? "text-forest" : ""}>{order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee)}</span>
+                )}
+              </div>
               <div className="flex justify-between"><span className="text-text-med">Service & Packaging</span><span>{fmt(order.service_fee)}</span></div>
               <div className="flex justify-between pt-2 border-t border-border font-bold text-base"><span>Total</span><span className="text-forest">{fmt(order.total)}</span></div>
             </div>

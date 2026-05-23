@@ -206,6 +206,26 @@ export default function CheckoutPage() {
 
   // Robust to either jsonb boolean or string "true"/"false" — see
   // CartPage for the same parsing rationale.
+  // ── Settings coercers — site_settings.value is jsonb that may arrive
+  // as native types or quoted strings depending on how the row was
+  // seeded. Tolerate both, default on miss.
+  const asBool = (v: unknown, def = false): boolean =>
+    v === true || v === "true" ? true : v === false || v === "false" ? false : def;
+  const asInt = (v: unknown, def: number): number =>
+    typeof v === "number" ? Math.trunc(v) : Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : def;
+  const asString = (v: unknown, def: string): string =>
+    typeof v === "string" && v.trim().length > 0 ? v : def;
+
+  // The six admin-controlled Express Order settings.
+  const expressEnabled     = asBool(settings?.express_order_enabled, false);
+  const expressMinSubtotal = asInt(settings?.express_order_min_subtotal_naira, 150000);
+  const minEnforced        = asBool(settings?.express_order_min_subtotal_enforced, true);
+  const expressSlaHours    = asInt(settings?.express_order_sla_hours, 24);
+  const expressDisplayName = asString(settings?.express_order_display_name, "Express Order");
+  const expressAckText     = asString(settings?.express_order_acknowledgment_text, "");
+  const slaLabel = `within ${expressSlaHours} hour${expressSlaHours === 1 ? "" : "s"}`;
+  const whatsappNumber = String(settings?.whatsapp_number || "").replace(/^"|"$/g, "").replace(/\D/g, "");
+
   const sfEnabledRaw = settings?.service_fee_enabled;
   const serviceFeeEnabled =
     sfEnabledRaw !== false && sfEnabledRaw !== "false" && sfEnabledRaw !== 0 && sfEnabledRaw !== "0";
@@ -352,22 +372,21 @@ export default function CheckoutPage() {
     : Boolean(form.state);
 
   // ── Express Order ─────────────────────────────────────────────
-  // Customer pays for products only at checkout; delivery is quoted
-  // by the admin within 24h via WhatsApp and paid via a second
-  // Paystack link. Server-side guard at /functions/v1/place-order
-  // rejects payloads where is_express_order=true AND subtotal <
-  // 150000, AND requires express_acknowledged=true.
-  const EXPRESS_MIN_SUBTOTAL = 150000;
-  // Admin can disable the floor for bulk-order promos via the
-  // express_order_min_subtotal_enforced site_setting (default TRUE).
-  // Robust to either jsonb boolean or string "false" forms.
-  const minEnforcedRaw = settings?.express_order_min_subtotal_enforced;
-  const minEnforced = minEnforcedRaw !== false && minEnforcedRaw !== "false";
-  const cartMeetsMinimum = !minEnforced || subtotal >= EXPRESS_MIN_SUBTOTAL;
+  // Customer pays for products only at checkout; delivery is quoted by
+  // the admin within the SLA hours via WhatsApp and paid via a second
+  // Paystack link. The six admin-controlled keys above gate this:
+  //   - expressEnabled       — master switch (default false)
+  //   - expressMinSubtotal   — cart floor (default 150000)
+  //   - minEnforced          — should the floor be applied? (default true)
+  //   - expressSlaHours      — quote SLA shown to customer (default 24)
+  //   - expressDisplayName   — label shown on every Express-related UI
+  //   - expressAckText       — checkbox copy
+  // Server-side place-order v35 enforces the first three.
+  const cartMeetsMinimum = !minEnforced || subtotal >= expressMinSubtotal;
   // Express-Only states (e.g. Cross River) waive the floor: standard
   // couriers don't reach them, so any cart size has to go through Express.
   const stateRequiresExpress = activeState?.is_express_only === true;
-  const expressEligible = stateRequiresExpress || cartMeetsMinimum;
+  const expressEligible = expressEnabled && (stateRequiresExpress || cartMeetsMinimum);
   const [isExpressOrder, setIsExpressOrder] = useState(false);
   const [expressAcknowledged, setExpressAcknowledged] = useState(false);
   // When a customer picks an Express-Only state, force the toggle ON so
@@ -386,7 +405,7 @@ export default function CheckoutPage() {
     if (isExpressOrder && !expressEligible && !stateRequiresExpress && minEnforced) {
       setIsExpressOrder(false);
       setExpressAcknowledged(false);
-      toast.error(`Express Order requires ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+. Standard delivery selected.`);
+      toast.error(`${expressDisplayName} requires ₦${expressMinSubtotal.toLocaleString("en-NG")}+. Standard delivery selected.`);
     }
   }, [isExpressOrder, expressEligible, stateRequiresExpress, minEnforced]);
 
@@ -1368,28 +1387,53 @@ export default function CheckoutPage() {
                 above. When enabled, the address-driven delivery quote is
                 ignored and replaced with a "to be quoted" placeholder in
                 the order summary; the server enforces both rules. */}
+            {/* Master OFF + Express-Only state — the customer's state
+                requires Express, but admin has disabled the feature. No
+                standard couriers either; block submit and surface the
+                WhatsApp CTA. */}
+            {!expressEnabled && stateRequiresExpress && (
+              <div className="bg-red-50 border border-red-300 rounded-card p-4 md:p-5">
+                <p className="text-base font-bold text-red-900">
+                  Delivery to {activeState?.name} is currently unavailable
+                </p>
+                <p className="text-sm text-red-800 mt-1.5">
+                  We're not accepting {expressDisplayName} orders right now. Please contact us on WhatsApp to discuss your order.
+                </p>
+                {whatsappNumber && (
+                  <a
+                    href={`https://wa.me/${whatsappNumber}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 bg-[#25D366] text-white text-sm font-bold px-6 py-2.5 rounded-full hover:opacity-90"
+                  >
+                    Chat on WhatsApp
+                  </a>
+                )}
+              </div>
+            )}
+
             {expressEligible && (
               <div className="bg-card rounded-card shadow-card p-4 md:p-6 border-l-4 border-amber-400">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <h2 className="pf text-lg flex items-center gap-2">
-                      ⚡ Express Order
+                      ⚡ {expressDisplayName}
                       {!stateRequiresExpress && minEnforced && (
-                        <span className="text-[11px] font-semibold text-text-light">(₦{EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+ orders)</span>
+                        <span className="text-[11px] font-semibold text-text-light">(₦{expressMinSubtotal.toLocaleString("en-NG")}+ orders)</span>
                       )}
                     </h2>
                     <p className="text-text-med text-xs mt-1 max-w-[520px] leading-relaxed">
-                      Get your order shipped fast. We will quote your delivery fee within 24 hours via WhatsApp after you complete payment.
+                      Get your order shipped fast. We will quote your delivery fee {slaLabel} via WhatsApp after you complete payment.
                     </p>
                     {/* Eligibility helper line — adapts to whether the
                         floor is enforced and whether the state forces
                         Express. */}
                     <p className="text-[11px] font-semibold mt-2 text-text-light">
                       {stateRequiresExpress
-                        ? `Express Delivery is required for delivery to ${form.state}.`
+                        ? `${expressDisplayName} is required for delivery to ${form.state}.`
                         : minEnforced
-                        ? `Minimum cart size of ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")} required for Express Delivery.`
-                        : "Express Delivery available for any order size."}
+                        ? `Minimum cart size of ₦${expressMinSubtotal.toLocaleString("en-NG")} required for ${expressDisplayName}.`
+                        : `${expressDisplayName} available for any order size.`}
                     </p>
                   </div>
                   <label className={`inline-flex items-center gap-2 select-none ${stateRequiresExpress ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}>
@@ -1410,9 +1454,9 @@ export default function CheckoutPage() {
 
                 {stateRequiresExpress && (
                   <div className="mt-4 rounded-xl border border-blue-300 bg-blue-50 p-3 text-blue-900 text-[13px] leading-relaxed">
-                    <p className="font-semibold flex items-center gap-1.5">ℹ️ Delivery to {form.state} is available via Express Delivery only.</p>
+                    <p className="font-semibold flex items-center gap-1.5">ℹ️ Delivery to {form.state} is available via {expressDisplayName} only.</p>
                     <p className="mt-1">
-                      Standard couriers don't deliver to this area. Our team will send your delivery quote within 24 hours via WhatsApp after you complete payment.
+                      Standard couriers don't deliver to this area. Our team will send your delivery quote {slaLabel} via WhatsApp after you complete payment.
                     </p>
                   </div>
                 )}
@@ -1420,12 +1464,14 @@ export default function CheckoutPage() {
                 {isExpressOrder && (
                   <div className="mt-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
                     <p className="text-sm font-bold text-amber-900 flex items-center gap-1.5">⚠️ IMPORTANT — Please read before continuing</p>
-                    <ul className="mt-2 space-y-1.5 text-[13px] text-amber-900 leading-snug">
-                      <li>• You will pay for products ONLY at checkout (no delivery)</li>
-                      <li>• Our team will send your delivery quote within 24 hours via WhatsApp</li>
-                      <li>• Delivery is paid SEPARATELY via a second Paystack link</li>
-                      <li>• Your order will NOT ship until delivery is paid</li>
-                    </ul>
+                    {expressAckText && (
+                      <div
+                        className="mt-2 text-[13px] text-amber-900 leading-relaxed"
+                        style={{ whiteSpace: "pre-line" }}
+                      >
+                        {expressAckText}
+                      </div>
+                    )}
                     <label className="mt-3 flex items-start gap-2 cursor-pointer min-h-[44px]">
                       <input
                         type="checkbox"
@@ -1561,6 +1607,7 @@ export default function CheckoutPage() {
               onClick={placeOrder}
               disabled={
                 processing
+                || (!expressEnabled && stateRequiresExpress)
                 || (isExpressOrder
                     ? !expressAcknowledged
                     : (notDeliverable || quoteLoading || !deliveryReady))
@@ -1570,7 +1617,7 @@ export default function CheckoutPage() {
               {processing
                 ? "Processing…"
                 : isExpressOrder
-                ? <>Place Express Order — {fmt(grand)} 🔒</>
+                ? <>Place {expressDisplayName} — {fmt(grand)} 🔒</>
                 : !deliveryReady
                 ? (stateHasZones ? "Select your delivery area to continue" : "Enter your state to continue")
                 : notDeliverable
@@ -1581,7 +1628,7 @@ export default function CheckoutPage() {
             </button>
             {isExpressOrder && !expressAcknowledged && (
               <p className="text-center text-amber-700 text-[12px] mt-2">
-                Please accept the Express Order terms above to continue.
+                Please accept the {expressDisplayName} terms above to continue.
               </p>
             )}
             <div className="text-center text-text-light text-[11px]">By placing your order, you agree to our <Link to="/terms" className="underline">Terms of Service</Link> and <Link to="/privacy" className="underline">Privacy Policy</Link></div>
@@ -1616,7 +1663,12 @@ export default function CheckoutPage() {
               </div>
               <div className="space-y-2 font-body text-[13px]">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal ({totalItems} items)</span><span>{fmt(subtotal)}</span></div>
-                {deliveryReady ? (
+                {isExpressOrder ? (
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-text-med">Delivery</span>
+                    <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
+                  </div>
+                ) : deliveryReady ? (
                   <>
                     <div className="flex justify-between">
                       <span className="text-text-med">
@@ -1692,6 +1744,7 @@ export default function CheckoutPage() {
             onClick={placeOrder}
             disabled={
               processing
+              || (!expressEnabled && stateRequiresExpress)
               || (isExpressOrder
                   ? !expressAcknowledged
                   : (notDeliverable || quoteLoading || !deliveryReady))
@@ -1701,7 +1754,7 @@ export default function CheckoutPage() {
             {processing
               ? "Processing…"
               : isExpressOrder
-              ? (expressAcknowledged ? <>Place Express Order →</> : "Accept terms above")
+              ? (expressAcknowledged ? <>Place {expressDisplayName} →</> : "Accept terms above")
               : !deliveryReady
               ? (stateHasZones ? "Select delivery area" : "Enter your state")
               : notDeliverable

@@ -303,7 +303,7 @@ export default function AdminDeliverableStates() {
         <Modal onClose={() => setExpressConfirm(null)}>
           <h3 className="font-bold text-base mb-1">Mark {expressConfirm.name} as Express Only?</h3>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Customers in this state will ONLY see Express Delivery at checkout (no standard courier options). The ₦150,000 minimum is also waived for Express-Only states.
+            Customers in this state will ONLY see Express Delivery at checkout (no standard courier options). The minimum cart size is also waived for Express-Only states.
           </p>
           <div className="flex gap-2 mt-4">
             <button
