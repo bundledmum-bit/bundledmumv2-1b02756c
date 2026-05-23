@@ -223,6 +223,13 @@ export default function CheckoutPage() {
   const expressSlaHours    = asInt(settings?.express_order_sla_hours, 24);
   const expressDisplayName = asString(settings?.express_order_display_name, "Express Order");
   const expressAckText     = asString(settings?.express_order_acknowledgment_text, "");
+  // Free Nationwide Delivery — admin-controlled threshold that waives the
+  // courier-quote and reads custom marketing copy. Express still wins.
+  const nationwideEnabled   = asBool(settings?.free_delivery_nationwide_enabled, true);
+  const nationwideThreshold = asInt(settings?.free_delivery_nationwide_threshold_naira, 500000);
+  const nationwideLabel     = asString(settings?.free_delivery_nationwide_label, "FREE Nationwide Delivery 🎉");
+  const nationwideHelper    = asString(settings?.free_delivery_nationwide_helper_text, "");
+  const nationwideMarketing = asString(settings?.free_delivery_nationwide_marketing_copy, "");
   const slaLabel = `within ${expressSlaHours} hour${expressSlaHours === 1 ? "" : "s"}`;
   const whatsappNumber = String(settings?.whatsapp_number || "").replace(/^"|"$/g, "").replace(/\D/g, "");
 
@@ -419,7 +426,10 @@ export default function CheckoutPage() {
   }, [isExpressOrder]);
 
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
-  const delivery = isExpressOrder ? 0 : computedDelivery;
+  // Free nationwide delivery beats the courier-quote when the cart is at
+  // or above the admin-set threshold. Express still beats that.
+  const qualifiesForNationwideFree = nationwideEnabled && subtotal >= nationwideThreshold;
+  const delivery = isExpressOrder ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery;
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
   // Spend threshold discount
@@ -1200,6 +1210,16 @@ export default function CheckoutPage() {
                     <span className="text-text-med">Delivery</span>
                     <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
                   </div>
+                ) : qualifiesForNationwideFree ? (
+                  <div className="flex justify-between items-start">
+                    <span className="text-text-med">
+                      Delivery
+                      {nationwideHelper && (
+                        <span className="block text-[10px] text-forest mt-0.5 font-medium">{nationwideHelper}</span>
+                      )}
+                    </span>
+                    <span className="text-forest font-semibold whitespace-nowrap">{nationwideLabel}</span>
+                  </div>
                 ) : deliveryReady ? (
                   <>
                     <div className="flex justify-between">
@@ -1253,6 +1273,17 @@ export default function CheckoutPage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
           <div className="space-y-4">
+            {/* Free nationwide nudge — only when the shopper is in the
+                70–100% window and the master switch is on. */}
+            {nationwideEnabled && nationwideMarketing && subtotal < nationwideThreshold && subtotal >= nationwideThreshold * 0.7 && (
+              <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+                <p className="text-emerald-900 text-sm font-medium">{nationwideMarketing}</p>
+                <p className="text-emerald-700 text-xs mt-1">
+                  Add ₦{(nationwideThreshold - subtotal).toLocaleString("en-NG")} more to qualify!
+                </p>
+              </div>
+            )}
+
             {/* Delivery Details */}
             <div className="bg-card rounded-card shadow-card p-4 md:p-8">
               <h2 className="pf text-lg mb-4">📍 Delivery Details</h2>
@@ -1667,6 +1698,16 @@ export default function CheckoutPage() {
                   <div className="flex justify-between items-baseline">
                     <span className="text-text-med">Delivery</span>
                     <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
+                  </div>
+                ) : qualifiesForNationwideFree ? (
+                  <div className="flex justify-between items-start">
+                    <span className="text-text-med">
+                      Delivery
+                      {nationwideHelper && (
+                        <span className="block text-[10px] text-forest mt-0.5 font-medium">{nationwideHelper}</span>
+                      )}
+                    </span>
+                    <span className="text-forest font-semibold whitespace-nowrap">{nationwideLabel}</span>
                   </div>
                 ) : deliveryReady ? (
                   <>

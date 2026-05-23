@@ -36,6 +36,10 @@ export default function AdminDelivery() {
           the admin can manage the manual-quote flow without SQL. */}
       <ExpressOrderSettingsCard />
 
+      {/* Free Nationwide Delivery Settings — five site_settings keys
+          controlling the cart-floor override + customer-facing copy. */}
+      <FreeNationwideDeliveryCard />
+
       <h1 className="pf text-2xl font-bold mb-6">Delivery Zones</h1>
       {isLoading ? (
         <div className="text-center py-10 text-text-med">Loading...</div>
@@ -401,6 +405,242 @@ function FieldRow({
       </label>
       {children}
       <p className={`text-[12px] mt-1 max-w-[640px] ${error ? "text-destructive" : "text-text-med"}`}>{error || helper}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Free Nationwide Delivery Settings — five site_settings keys mirrored
+// from the Express card pattern. Master switch + threshold + three
+// pieces of customer-facing copy.
+// ─────────────────────────────────────────────────────────────────────
+
+const FREE_NW_KEYS = [
+  "free_delivery_nationwide_enabled",
+  "free_delivery_nationwide_threshold_naira",
+  "free_delivery_nationwide_label",
+  "free_delivery_nationwide_helper_text",
+  "free_delivery_nationwide_marketing_copy",
+] as const;
+
+type FreeNwKey = typeof FREE_NW_KEYS[number];
+
+interface FreeNwSettings {
+  free_delivery_nationwide_enabled: boolean;
+  free_delivery_nationwide_threshold_naira: number;
+  free_delivery_nationwide_label: string;
+  free_delivery_nationwide_helper_text: string;
+  free_delivery_nationwide_marketing_copy: string;
+}
+
+const FREE_NW_DEFAULTS: FreeNwSettings = {
+  free_delivery_nationwide_enabled: true,
+  free_delivery_nationwide_threshold_naira: 500000,
+  free_delivery_nationwide_label: "FREE Nationwide Delivery 🎉",
+  free_delivery_nationwide_helper_text: "",
+  free_delivery_nationwide_marketing_copy: "",
+};
+
+function FreeNationwideDeliveryCard() {
+  const { can } = usePermissions();
+  const canEdit = can("delivery", "edit");
+  const queryClient = useQueryClient();
+
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["admin-free-nationwide-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", FREE_NW_KEYS as readonly string[]);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const [form, setForm] = useState<FreeNwSettings>(FREE_NW_DEFAULTS);
+  const [justSaved, setJustSaved] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    if (!rows) return;
+    const map: Record<string, any> = {};
+    rows.forEach((r: any) => { map[r.key] = r.value; });
+    setForm({
+      free_delivery_nationwide_enabled: asBool(map.free_delivery_nationwide_enabled, FREE_NW_DEFAULTS.free_delivery_nationwide_enabled),
+      free_delivery_nationwide_threshold_naira: asInt(map.free_delivery_nationwide_threshold_naira, FREE_NW_DEFAULTS.free_delivery_nationwide_threshold_naira),
+      free_delivery_nationwide_label: asString(map.free_delivery_nationwide_label, FREE_NW_DEFAULTS.free_delivery_nationwide_label),
+      free_delivery_nationwide_helper_text: asString(map.free_delivery_nationwide_helper_text, FREE_NW_DEFAULTS.free_delivery_nationwide_helper_text),
+      free_delivery_nationwide_marketing_copy: asString(map.free_delivery_nationwide_marketing_copy, FREE_NW_DEFAULTS.free_delivery_nationwide_marketing_copy),
+    });
+  }, [rows]);
+
+  const validators: Record<FreeNwKey, (v: any) => string | null> = {
+    free_delivery_nationwide_enabled: () => null,
+    free_delivery_nationwide_threshold_naira: (v) => {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0 || n > 10_000_000) return "Must be an integer between 0 and 10,000,000";
+      return null;
+    },
+    free_delivery_nationwide_label: (v) => {
+      const s = String(v || "").trim();
+      if (s.length < 1 || s.length > 60) return "Must be 1–60 characters";
+      return null;
+    },
+    free_delivery_nationwide_helper_text: (v) => {
+      const s = String(v || "");
+      if (s.length > 120) return "Max 120 characters";
+      return null;
+    },
+    free_delivery_nationwide_marketing_copy: (v) => {
+      const s = String(v || "");
+      if (s.length > 200) return "Max 200 characters";
+      return null;
+    },
+  };
+
+  const persist = async (key: FreeNwKey, value: any) => {
+    const errMsg = validators[key](value);
+    setErrors((p) => ({ ...p, [key]: errMsg }));
+    if (errMsg) return;
+    const { error } = await (supabase as any)
+      .from("site_settings")
+      .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+    if (error) { toast.error(error.message); return; }
+    queryClient.invalidateQueries({ queryKey: ["admin-free-nationwide-settings"] });
+    queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+    setJustSaved((p) => ({ ...p, [key]: true }));
+    setTimeout(() => setJustSaved((p) => ({ ...p, [key]: false })), 1500);
+  };
+
+  const toggleSwitch = (key: FreeNwKey, label: string, nextValue: boolean) => {
+    setForm((p) => ({ ...p, [key]: nextValue }));
+    void persist(key, nextValue).then(() => {
+      toast.success(`${label}: ${nextValue ? "enabled" : "disabled"}`);
+    });
+  };
+
+  // Sub-rows 2-5 grey out when the master switch is off so the admin sees
+  // at a glance that the values don't apply. They're still editable for
+  // staging copy ahead of a launch.
+  const disabledByMaster = !form.free_delivery_nationwide_enabled;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 md:p-6 mb-6">
+      <div className="mb-3">
+        <h2 className="text-lg font-bold flex items-center gap-2">
+          <Zap className="w-5 h-5 text-emerald-500" /> Free Nationwide Delivery Settings
+        </h2>
+        <p className="text-text-med text-xs mt-1 max-w-[640px]">
+          Control when customers get free delivery anywhere in Nigeria, and the customer-facing copy for it.
+        </p>
+      </div>
+
+      {!canEdit && (
+        <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-text-med">
+          You need 'Delivery' edit permission to change these settings.
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="text-center py-6 text-text-med text-sm">Loading settings…</div>
+      ) : (
+        <div className="space-y-5">
+          {/* Row 1 — Master toggle */}
+          <SwitchRow
+            label="Enable free nationwide delivery"
+            helper="When OFF, customers pay normal delivery regardless of cart size. Lagos free-delivery threshold still applies separately."
+            checked={form.free_delivery_nationwide_enabled}
+            saved={justSaved.free_delivery_nationwide_enabled}
+            disabled={!canEdit}
+            onChange={(v) => toggleSwitch("free_delivery_nationwide_enabled", "Free nationwide delivery", v)}
+          />
+
+          <div className={disabledByMaster ? "opacity-60 pointer-events-none" : ""}>
+            {disabledByMaster && (
+              <p className="text-[11px] italic text-text-light mb-3">(currently disabled — these values won't apply until the switch above is on)</p>
+            )}
+
+            <div className="space-y-5">
+              {/* Row 2 — Threshold */}
+              <FieldRow
+                label="Minimum cart size for free nationwide delivery (₦)"
+                helper="Customers with cart subtotals at or above this amount get FREE delivery anywhere in Nigeria."
+                error={errors.free_delivery_nationwide_threshold_naira}
+                saved={justSaved.free_delivery_nationwide_threshold_naira}
+              >
+                <div className="relative max-w-[220px]">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-med text-sm pointer-events-none">₦</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10_000_000}
+                    value={form.free_delivery_nationwide_threshold_naira}
+                    onChange={(e) => setForm((p) => ({ ...p, free_delivery_nationwide_threshold_naira: parseInt(e.target.value, 10) || 0 }))}
+                    onBlur={(e) => persist("free_delivery_nationwide_threshold_naira", parseInt(e.target.value, 10))}
+                    disabled={!canEdit}
+                    className={`pl-7 ${inputClass(!!errors.free_delivery_nationwide_threshold_naira)}`}
+                  />
+                </div>
+              </FieldRow>
+
+              {/* Row 3 — Delivery line label */}
+              <FieldRow
+                label="Label shown on the delivery line at checkout"
+                helper="What customers see in the order summary delivery row when they qualify."
+                error={errors.free_delivery_nationwide_label}
+                saved={justSaved.free_delivery_nationwide_label}
+              >
+                <input
+                  type="text"
+                  value={form.free_delivery_nationwide_label}
+                  maxLength={60}
+                  onChange={(e) => setForm((p) => ({ ...p, free_delivery_nationwide_label: e.target.value }))}
+                  onBlur={(e) => persist("free_delivery_nationwide_label", e.target.value)}
+                  disabled={!canEdit}
+                  className={inputClass(!!errors.free_delivery_nationwide_label)}
+                />
+              </FieldRow>
+
+              {/* Row 4 — Helper text */}
+              <FieldRow
+                label="Small text shown under the delivery line"
+                helper="Brief explanation under the delivery line."
+                error={errors.free_delivery_nationwide_helper_text}
+                saved={justSaved.free_delivery_nationwide_helper_text}
+              >
+                <input
+                  type="text"
+                  value={form.free_delivery_nationwide_helper_text}
+                  maxLength={120}
+                  onChange={(e) => setForm((p) => ({ ...p, free_delivery_nationwide_helper_text: e.target.value }))}
+                  onBlur={(e) => persist("free_delivery_nationwide_helper_text", e.target.value)}
+                  disabled={!canEdit}
+                  className={inputClass(!!errors.free_delivery_nationwide_helper_text)}
+                />
+              </FieldRow>
+
+              {/* Row 5 — Marketing copy */}
+              <FieldRow
+                label="Marketing copy for banners and homepage"
+                helper="Used on the checkout 'close to qualifying' banner and homepage hero. Mention the threshold amount manually so you can change it here to match if you change the threshold above."
+                error={errors.free_delivery_nationwide_marketing_copy}
+                saved={justSaved.free_delivery_nationwide_marketing_copy}
+              >
+                <textarea
+                  rows={2}
+                  maxLength={200}
+                  value={form.free_delivery_nationwide_marketing_copy}
+                  onChange={(e) => setForm((p) => ({ ...p, free_delivery_nationwide_marketing_copy: e.target.value }))}
+                  onBlur={(e) => persist("free_delivery_nationwide_marketing_copy", e.target.value)}
+                  disabled={!canEdit}
+                  className={inputClass(!!errors.free_delivery_nationwide_marketing_copy)}
+                />
+              </FieldRow>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
