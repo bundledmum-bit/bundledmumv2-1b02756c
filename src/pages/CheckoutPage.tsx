@@ -599,7 +599,25 @@ export default function CheckoutPage() {
         {
           email: form.email.toLowerCase().trim(),
           phone: form.phone || null,
-          cart_items: cart.map(i => ({ name: i.name, qty: i.qty, price: i.price })),
+          // Richer per-item payload so the send-abandoned-cart edge
+          // function can surface product images + deep-link to the
+          // product page. The edge function falls back to name+qty
+          // +price for legacy thin rows, so we don't need a schema
+          // migration to roll this forward.
+          cart_items: cart.map((i: any) => {
+            const img = cartItemImage(i);
+            return {
+              product_id: i.id != null ? String(i.id) : null,
+              brand_id: i.selectedBrand?.id || null,
+              name: i.name,
+              qty: i.qty,
+              price: i.price,
+              slug: i.slug || null,
+              image_url: img && img !== "/placeholder.svg" ? img : null,
+              size: i.selectedSize || null,
+              color: i.selectedColor || null,
+            };
+          }),
           cart_total: subtotal,
           recovered: false,
         },
