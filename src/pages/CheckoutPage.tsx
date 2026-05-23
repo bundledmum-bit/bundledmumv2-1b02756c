@@ -425,10 +425,32 @@ export default function CheckoutPage() {
     setExpressAcknowledged(isExpressOrder);
   }, [isExpressOrder]);
 
+  // If the cart crosses into a free-delivery tier mid-checkout while
+  // Express was previously toggled ON, snap it back off — keeping it on
+  // would silently waive the free delivery the customer just earned.
+  // Skipped when the state itself forces Express (mandatory anyway).
+  useEffect(() => {
+    if (isExpressOrder && alreadyHasFreeDelivery && !stateRequiresExpress) {
+      setIsExpressOrder(false);
+      setExpressAcknowledged(false);
+      toast.success("You now qualify for free delivery — Express Order turned off.");
+    }
+  }, [isExpressOrder, alreadyHasFreeDelivery, stateRequiresExpress]);
+
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
   // Free nationwide delivery beats the courier-quote when the cart is at
   // or above the admin-set threshold. Express still beats that.
   const qualifiesForNationwideFree = nationwideEnabled && subtotal >= nationwideThreshold;
+  // Lagos / zone-level free delivery — surfaced by get_courier_assignment.
+  // Using the RPC's flag (not a hardcoded ₦200k) so any threshold change
+  // propagates automatically.
+  const qualifiesForFreeLagos = courierQuote?.isFreeDelivery === true;
+  const alreadyHasFreeDelivery = qualifiesForFreeLagos || qualifiesForNationwideFree;
+  // Express card is hidden when the customer already has free delivery —
+  // toggling Express would void the free shipping with no benefit.
+  // Express-only states still force the card on regardless (mandatory).
+  const showExpressCard = stateRequiresExpress
+    || (expressEligible && !alreadyHasFreeDelivery);
   const delivery = isExpressOrder ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery;
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
@@ -1275,7 +1297,7 @@ export default function CheckoutPage() {
           <div className="space-y-4">
             {/* Free nationwide nudge — only when the shopper is in the
                 70–100% window and the master switch is on. */}
-            {nationwideEnabled && nationwideMarketing && subtotal < nationwideThreshold && subtotal >= nationwideThreshold * 0.7 && (
+            {nationwideEnabled && !stateRequiresExpress && nationwideMarketing && subtotal < nationwideThreshold && subtotal >= nationwideThreshold * 0.7 && (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
                 <p className="text-emerald-900 text-sm font-medium">{nationwideMarketing}</p>
                 <p className="text-emerald-700 text-xs mt-1">
@@ -1443,7 +1465,7 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {expressEligible && (
+            {showExpressCard && (
               <div className="bg-card rounded-card shadow-card p-4 md:p-6 border-l-4 border-amber-400">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
