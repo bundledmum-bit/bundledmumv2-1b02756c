@@ -133,7 +133,7 @@ function CardMedia({ src, alt, Illustration }: { src: string; alt: string; Illus
 export default function ShopShortcuts() {
   const cards = [
     {
-      to: "/shop?tab=baby",
+      to: "/shop/baby",
       eyebrow: "Baby",
       title: "Baby Shop",
       sub: "Find all baby products here, 0 to 5 years.",
@@ -142,7 +142,7 @@ export default function ShopShortcuts() {
       alt: "Shopping cart filled with baby essentials — diapers, wipes, and bottles — in a Nigerian mall",
     },
     {
-      to: "/shop?tab=mum",
+      to: "/shop/mum",
       eyebrow: "Mum",
       title: "Mum Shop",
       sub: "Find all products here from pregnancy to postpartum.",
@@ -160,7 +160,7 @@ export default function ShopShortcuts() {
       alt: "Smiling Nigerian man holding a stack of wrapped gift boxes",
     },
     {
-      to: "/bundles",
+      to: "https://bundledmum.com/bundles/maternity-bundles",
       eyebrow: "Ready-Packed",
       title: "Hospital Lists",
       sub: "Find our pre-packed hospital lists here.",
@@ -179,27 +179,36 @@ export default function ShopShortcuts() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
-          {cards.map(c => (
-            <Link
-              key={c.title}
-              to={c.to}
-              className="group bg-card rounded-[18px] md:rounded-[20px] overflow-hidden shadow-card hover:shadow-card-hover transition-all border border-border flex flex-col"
-            >
-              <div className="aspect-[4/3] overflow-hidden relative">
-                <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.04]">
-                  <CardMedia src={c.img} alt={c.alt} Illustration={c.Illustration} />
+          {cards.map(c => {
+            const isExternal = c.to.startsWith("http");
+            const cardClass = "group bg-card rounded-[18px] md:rounded-[20px] overflow-hidden shadow-card hover:shadow-card-hover transition-all border border-border flex flex-col";
+            const cardContent = (
+              <>
+                <div className="aspect-[4/3] overflow-hidden relative">
+                  <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.04]">
+                    <CardMedia src={c.img} alt={c.alt} Illustration={c.Illustration} />
+                  </div>
                 </div>
-              </div>
-              <div className="p-4 md:p-5 flex-1 flex flex-col">
-                <span className="text-coral text-[10px] font-semibold uppercase tracking-widest">{c.eyebrow}</span>
-                <h3 className="pf font-bold text-[16px] md:text-[18px] text-foreground mt-1 mb-1.5 leading-tight">{c.title}</h3>
-                <p className="text-text-med text-[12px] md:text-[13px] leading-relaxed flex-1">{c.sub}</p>
-                <span className="text-forest font-semibold text-[12px] mt-3 inline-flex items-center gap-1">
-                  Explore <span aria-hidden>→</span>
-                </span>
-              </div>
-            </Link>
-          ))}
+                <div className="p-4 md:p-5 flex-1 flex flex-col">
+                  <span className="text-coral text-[10px] font-semibold uppercase tracking-widest">{c.eyebrow}</span>
+                  <h3 className="pf font-bold text-[16px] md:text-[18px] text-foreground mt-1 mb-1.5 leading-tight">{c.title}</h3>
+                  <p className="text-text-med text-[12px] md:text-[13px] leading-relaxed flex-1">{c.sub}</p>
+                  <span className="text-forest font-semibold text-[12px] mt-3 inline-flex items-center gap-1">
+                    Explore <span aria-hidden>→</span>
+                  </span>
+                </div>
+              </>
+            );
+            return isExternal ? (
+              <a key={c.title} href={c.to} target="_blank" rel="noopener noreferrer" className={cardClass}>
+                {cardContent}
+              </a>
+            ) : (
+              <Link key={c.title} to={c.to} className={cardClass}>
+                {cardContent}
+              </Link>
+            );
+          })}
         </div>
 
         <div className="text-center mt-8 md:mt-12">

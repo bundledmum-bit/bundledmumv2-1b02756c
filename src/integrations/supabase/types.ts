@@ -1666,6 +1666,7 @@ export type Database = {
           has_zones: boolean | null
           id: string
           is_active: boolean | null
+          is_express_only: boolean
           name: string
           note: string | null
           updated_at: string | null
@@ -1676,6 +1677,7 @@ export type Database = {
           has_zones?: boolean | null
           id?: string
           is_active?: boolean | null
+          is_express_only?: boolean
           name: string
           note?: string | null
           updated_at?: string | null
@@ -1686,6 +1688,7 @@ export type Database = {
           has_zones?: boolean | null
           id?: string
           is_active?: boolean | null
+          is_express_only?: boolean
           name?: string
           note?: string | null
           updated_at?: string | null
@@ -4423,6 +4426,11 @@ export type Database = {
           estimated_delivery_end: string | null
           estimated_delivery_start: string | null
           estimated_weight_kg: number | null
+          express_acknowledged: boolean
+          express_delivery_quote: number | null
+          express_payment_reference: string | null
+          express_quoted_at: string | null
+          express_status: string | null
           fulfillment_notes: string | null
           gift_message: string | null
           gift_wrap_fee: number | null
@@ -4430,9 +4438,13 @@ export type Database = {
           gross_profit: number | null
           id: string
           is_bundle_order: boolean | null
+          is_express_order: boolean
           is_quiz_order: boolean | null
           is_subscription_order: boolean
           landing_page: string | null
+          last_edit_notified_at: string | null
+          last_edited_at: string | null
+          last_edited_by: string | null
           order_number: string | null
           order_status: string | null
           packaging_cost: number | null
@@ -4494,6 +4506,11 @@ export type Database = {
           estimated_delivery_end?: string | null
           estimated_delivery_start?: string | null
           estimated_weight_kg?: number | null
+          express_acknowledged?: boolean
+          express_delivery_quote?: number | null
+          express_payment_reference?: string | null
+          express_quoted_at?: string | null
+          express_status?: string | null
           fulfillment_notes?: string | null
           gift_message?: string | null
           gift_wrap_fee?: number | null
@@ -4501,9 +4518,13 @@ export type Database = {
           gross_profit?: number | null
           id?: string
           is_bundle_order?: boolean | null
+          is_express_order?: boolean
           is_quiz_order?: boolean | null
           is_subscription_order?: boolean
           landing_page?: string | null
+          last_edit_notified_at?: string | null
+          last_edited_at?: string | null
+          last_edited_by?: string | null
           order_number?: string | null
           order_status?: string | null
           packaging_cost?: number | null
@@ -4565,6 +4586,11 @@ export type Database = {
           estimated_delivery_end?: string | null
           estimated_delivery_start?: string | null
           estimated_weight_kg?: number | null
+          express_acknowledged?: boolean
+          express_delivery_quote?: number | null
+          express_payment_reference?: string | null
+          express_quoted_at?: string | null
+          express_status?: string | null
           fulfillment_notes?: string | null
           gift_message?: string | null
           gift_wrap_fee?: number | null
@@ -4572,9 +4598,13 @@ export type Database = {
           gross_profit?: number | null
           id?: string
           is_bundle_order?: boolean | null
+          is_express_order?: boolean
           is_quiz_order?: boolean | null
           is_subscription_order?: boolean
           landing_page?: string | null
+          last_edit_notified_at?: string | null
+          last_edited_at?: string | null
+          last_edited_by?: string | null
           order_number?: string | null
           order_status?: string | null
           packaging_cost?: number | null
@@ -5576,6 +5606,146 @@ export type Database = {
           priority_order?: string[] | null
           target_count?: number
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      quote_items: {
+        Row: {
+          brand_id: string | null
+          brand_name: string | null
+          color: string | null
+          created_at: string
+          display_order: number
+          id: string
+          line_total: number
+          product_id: string | null
+          product_name: string
+          quantity: number
+          quote_id: string
+          size: string | null
+          unit_price: number
+        }
+        Insert: {
+          brand_id?: string | null
+          brand_name?: string | null
+          color?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          line_total: number
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          quote_id: string
+          size?: string | null
+          unit_price: number
+        }
+        Update: {
+          brand_id?: string | null
+          brand_name?: string | null
+          color?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          line_total?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          quote_id?: string
+          size?: string | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quotes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_email: string | null
+          customer_name: string
+          customer_notes: string | null
+          customer_phone: string | null
+          delivery_address: string | null
+          delivery_city: string | null
+          delivery_state: string | null
+          estimated_delivery_fee: number
+          id: string
+          internal_notes: string | null
+          quote_number: string
+          service_fee: number
+          status: string
+          subtotal: number
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_email?: string | null
+          customer_name: string
+          customer_notes?: string | null
+          customer_phone?: string | null
+          delivery_address?: string | null
+          delivery_city?: string | null
+          delivery_state?: string | null
+          estimated_delivery_fee?: number
+          id?: string
+          internal_notes?: string | null
+          quote_number: string
+          service_fee?: number
+          status?: string
+          subtotal?: number
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_email?: string | null
+          customer_name?: string
+          customer_notes?: string | null
+          customer_phone?: string | null
+          delivery_address?: string | null
+          delivery_city?: string | null
+          delivery_state?: string | null
+          estimated_delivery_fee?: number
+          id?: string
+          internal_notes?: string | null
+          quote_number?: string
+          service_fee?: number
+          status?: string
+          subtotal?: number
+          total?: number
+          updated_at?: string
         }
         Relationships: []
       }
