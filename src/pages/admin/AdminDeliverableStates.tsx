@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Save, MapPin, Plus, Trash2, X, Zap } from "lucide-react";
+import { Save, MapPin, Plus, Trash2, X, Zap, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   useDeliverableStates,
@@ -24,6 +24,8 @@ export default function AdminDeliverableStates() {
   const [expressConfirm, setExpressConfirm] = useState<DeliverableState | null>(null);
   // Add State modal toggle.
   const [showAdd, setShowAdd] = useState(false);
+  // Edit modal target row; null = closed.
+  const [editing, setEditing] = useState<DeliverableState | null>(null);
   // Per-row dirty display_order draft so blur-to-save doesn't fire on every keystroke.
   const [orderDrafts, setOrderDrafts] = useState<Record<string, string>>({});
 
@@ -113,7 +115,7 @@ export default function AdminDeliverableStates() {
             <MapPin className="w-6 h-6" /> Deliverable States
           </h1>
           <p className="text-text-med text-sm mt-1 max-w-[720px]">
-            Toggle which states you deliver to. States with zones (like Lagos) use zone-based delivery fees; all others use the default delivery fee from Settings. Mark a state as <strong>Express Only</strong> when standard couriers don't reach it — customers will be funnelled to Express Delivery at checkout regardless of cart size.
+            Manage which Nigerian states you deliver to and whether each one requires Express Delivery.
           </p>
         </div>
         {canEdit && (
@@ -128,7 +130,25 @@ export default function AdminDeliverableStates() {
 
       {!canEdit && (
         <div className="mb-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-text-med">
-          You don't have permission to edit delivery — controls are read-only.
+          You need 'Delivery' edit permission — controls are read-only.
+        </div>
+      )}
+
+      {/* Summary card — at-a-glance counts that re-render with the table. */}
+      {!isLoading && states && states.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="bg-card border border-border rounded-xl px-4 py-3">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Total active states</p>
+            <p className="text-2xl font-bold mt-1">{states.filter((s) => s.is_active).length}</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl px-4 py-3">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Express-only states</p>
+            <p className="text-2xl font-bold mt-1 text-amber-600">{states.filter((s) => s.is_express_only).length}</p>
+          </div>
+          <div className="bg-card border border-border rounded-xl px-4 py-3">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Total states</p>
+            <p className="text-2xl font-bold mt-1">{states.length}</p>
+          </div>
         </div>
       )}
 
@@ -161,7 +181,16 @@ export default function AdminDeliverableStates() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${s.is_active ? "bg-green-500" : "bg-border"}`} />
-                          <span className="font-semibold">{s.name}</span>
+                          {canEdit ? (
+                            <button
+                              onClick={() => setEditing(s)}
+                              className="font-semibold hover:underline text-left"
+                            >
+                              {s.name}
+                            </button>
+                          ) : (
+                            <span className="font-semibold">{s.name}</span>
+                          )}
                           {s.is_express_only && (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill bg-amber-100 text-amber-800 text-[10px] font-semibold">
                               <Zap className="w-3 h-3" /> Express
@@ -218,6 +247,15 @@ export default function AdminDeliverableStates() {
                           </button>
                           {canEdit && (
                             <button
+                              onClick={() => setEditing(s)}
+                              className="inline-flex items-center justify-center p-1.5 rounded-lg hover:bg-muted text-text-med"
+                              title={`Edit ${s.name}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
                               onClick={() => handleDelete(s)}
                               className="inline-flex items-center justify-center p-1.5 rounded-lg hover:bg-destructive/10 text-destructive"
                               title={`Delete ${s.name}`}
@@ -235,6 +273,30 @@ export default function AdminDeliverableStates() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* Info banner — only renders when at least one state is express-only,
+          mirroring the customer-side enforcement on checkout. */}
+      {!isLoading && states && states.some((s) => s.is_express_only) && (
+        <div className="mt-4 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-[12px] text-blue-900 leading-relaxed">
+          <p className="font-semibold mb-0.5">ℹ️ About Express Only states</p>
+          <p>
+            States marked Express Only show ONLY Express Delivery on checkout. Standard couriers are hidden. Minimum cart size is waived for these states.
+          </p>
+        </div>
+      )}
+
+      {editing && (
+        <EditStateModal
+          state={editing}
+          onClose={() => setEditing(null)}
+          existingNames={(states || []).filter((s) => s.id !== editing.id).map((s) => s.name.toLowerCase())}
+          onSave={async (next) => {
+            await update.mutateAsync({ id: editing.id, ...next });
+            toast.success(`${next.name || editing.name} updated`);
+            setEditing(null);
+          }}
+        />
       )}
 
       {expressConfirm && (
@@ -404,6 +466,115 @@ function AddStateModal({
           className="flex-1 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40"
         >
           {submitting ? "Adding…" : "Add State"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Edit modal — same field set as Add, prefilled. Name is editable;
+// uniqueness is checked against every other row (case-insensitive).
+// ────────────────────────────────────────────────────────────────
+function EditStateModal({
+  state, onClose, onSave, existingNames,
+}: {
+  state: DeliverableState;
+  onClose: () => void;
+  onSave: (input: { name: string; is_active: boolean; is_express_only: boolean; note: string | null; display_order: number }) => Promise<void>;
+  existingNames: string[];
+}) {
+  const [name, setName] = useState(state.name);
+  const [isActive, setIsActive] = useState(state.is_active);
+  const [isExpressOnly, setIsExpressOnly] = useState(!!state.is_express_only);
+  const [note, setNote] = useState(state.note || "");
+  const [displayOrder, setDisplayOrder] = useState(String(state.display_order ?? 99));
+  const [submitting, setSubmitting] = useState(false);
+
+  const trimmed = name.trim();
+  const duplicate = trimmed && existingNames.includes(trimmed.toLowerCase());
+  const tooLong = trimmed.length > 80;
+  const noteTooLong = note.length > 200;
+  const invalid = !trimmed || duplicate || tooLong || noteTooLong;
+
+  const submit = async () => {
+    if (invalid) return;
+    setSubmitting(true);
+    try {
+      await onSave({
+        name: trimmed,
+        is_active: isActive,
+        is_express_only: isExpressOnly,
+        note: note.trim() || null,
+        display_order: parseInt(displayOrder, 10) || 99,
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save state");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-base">Edit {state.name}</h3>
+        <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X className="w-4 h-4" /></button>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">State Name *</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            maxLength={80}
+          />
+          {duplicate && <p className="text-[11px] text-destructive mt-1">Another state already uses this name.</p>}
+          {tooLong && <p className="text-[11px] text-destructive mt-1">Max 80 characters.</p>}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <ToggleSwitch checked={isActive} onChange={() => setIsActive((v) => !v)} />
+            <span>Active</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <ToggleSwitch checked={isExpressOnly} onChange={() => setIsExpressOnly((v) => !v)} accent="amber" />
+            <span>Express Only</span>
+          </label>
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Note (optional)</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Coming soon, pilot area"
+            rows={3}
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            maxLength={200}
+          />
+          {noteTooLong && <p className="text-[11px] text-destructive mt-1">Max 200 characters.</p>}
+        </div>
+        <div>
+          <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Display Order</label>
+          <input
+            type="number"
+            value={displayOrder}
+            onChange={(e) => setDisplayOrder(e.target.value)}
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2 mt-5">
+        <button onClick={onClose} disabled={submitting} className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40">
+          Cancel
+        </button>
+        <button
+          onClick={submit}
+          disabled={invalid || submitting}
+          className="flex-1 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40"
+        >
+          {submitting ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </Modal>
