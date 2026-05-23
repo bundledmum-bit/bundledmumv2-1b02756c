@@ -425,18 +425,6 @@ export default function CheckoutPage() {
     setExpressAcknowledged(isExpressOrder);
   }, [isExpressOrder]);
 
-  // If the cart crosses into a free-delivery tier mid-checkout while
-  // Express was previously toggled ON, snap it back off — keeping it on
-  // would silently waive the free delivery the customer just earned.
-  // Skipped when the state itself forces Express (mandatory anyway).
-  useEffect(() => {
-    if (isExpressOrder && alreadyHasFreeDelivery && !stateRequiresExpress) {
-      setIsExpressOrder(false);
-      setExpressAcknowledged(false);
-      toast.success("You now qualify for free delivery — Express Order turned off.");
-    }
-  }, [isExpressOrder, alreadyHasFreeDelivery, stateRequiresExpress]);
-
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
   // Free nationwide delivery beats the courier-quote when the cart is at
   // or above the admin-set threshold. Express still beats that.
@@ -451,6 +439,22 @@ export default function CheckoutPage() {
   // Express-only states still force the card on regardless (mandatory).
   const showExpressCard = stateRequiresExpress
     || (expressEligible && !alreadyHasFreeDelivery);
+
+  // If the cart crosses into a free-delivery tier mid-checkout while
+  // Express was previously toggled ON, snap it back off — keeping it on
+  // would silently waive the free delivery the customer just earned.
+  // Skipped when the state itself forces Express (mandatory anyway).
+  // Must live AFTER alreadyHasFreeDelivery's const declaration above —
+  // React evaluates the deps array inline during render, and referencing
+  // a const before its declaration in the same function scope throws a
+  // TDZ ReferenceError (that bug blanked /checkout on b9c74b0).
+  useEffect(() => {
+    if (isExpressOrder && alreadyHasFreeDelivery && !stateRequiresExpress) {
+      setIsExpressOrder(false);
+      setExpressAcknowledged(false);
+      toast.success("You now qualify for free delivery — Express Order turned off.");
+    }
+  }, [isExpressOrder, alreadyHasFreeDelivery, stateRequiresExpress]);
   const delivery = isExpressOrder ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery;
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
