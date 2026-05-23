@@ -397,12 +397,9 @@ export default function CheckoutPage() {
   const [isExpressOrder, setIsExpressOrder] = useState(false);
   const [expressAcknowledged, setExpressAcknowledged] = useState(false);
   // When a customer picks an Express-Only state, force the toggle ON so
-  // the rest of the page treats them as an express buyer. When they
-  // switch away, release control back to the user.
-  useEffect(() => {
-    if (stateRequiresExpress && !isExpressOrder) setIsExpressOrder(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stateRequiresExpress]);
+  // Force-on effect for express-only states has moved below the
+  // qualifiesForNationwideFree declaration so it can gate on the Free
+  // Nationwide override without hitting a TDZ on render.
   // Auto-disable + warn if the subtotal drops below the floor while
   // express is enabled (e.g. customer trims a line item). Skip when the
   // state itself requires express — floor is waived.
@@ -437,24 +434,39 @@ export default function CheckoutPage() {
   // Express card is hidden when the customer already has free delivery —
   // toggling Express would void the free shipping with no benefit.
   // Express-only states still force the card on regardless (mandatory).
-  const showExpressCard = stateRequiresExpress
+  // Express card visibility — express-only states force the card on,
+  // BUT a cart that already qualifies for Free Nationwide overrides
+  // that and reverts to the regular free-delivery flow (place-order
+  // v36 has the matching server-side override).
+  const showExpressCard = (stateRequiresExpress && !qualifiesForNationwideFree)
     || (expressEligible && !alreadyHasFreeDelivery);
+
+  // Force the toggle ON when the customer's state requires Express AND
+  // they don't qualify for the Free Nationwide override. Lives here
+  // (after qualifiesForNationwideFree is declared) so the deps array
+  // doesn't trip the TDZ rule that blanked /checkout on b9c74b0.
+  useEffect(() => {
+    if (stateRequiresExpress && !qualifiesForNationwideFree && !isExpressOrder) {
+      setIsExpressOrder(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateRequiresExpress, qualifiesForNationwideFree]);
 
   // If the cart crosses into a free-delivery tier mid-checkout while
   // Express was previously toggled ON, snap it back off — keeping it on
   // would silently waive the free delivery the customer just earned.
-  // Skipped when the state itself forces Express (mandatory anyway).
+  // Also covers the new Free-Nationwide-beats-express-only-state case.
   // Must live AFTER alreadyHasFreeDelivery's const declaration above —
   // React evaluates the deps array inline during render, and referencing
   // a const before its declaration in the same function scope throws a
   // TDZ ReferenceError (that bug blanked /checkout on b9c74b0).
   useEffect(() => {
-    if (isExpressOrder && alreadyHasFreeDelivery && !stateRequiresExpress) {
+    if (isExpressOrder && alreadyHasFreeDelivery) {
       setIsExpressOrder(false);
       setExpressAcknowledged(false);
       toast.success("You now qualify for free delivery — Express Order turned off.");
     }
-  }, [isExpressOrder, alreadyHasFreeDelivery, stateRequiresExpress]);
+  }, [isExpressOrder, alreadyHasFreeDelivery]);
   const delivery = isExpressOrder ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery;
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
