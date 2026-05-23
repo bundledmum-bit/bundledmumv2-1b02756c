@@ -133,7 +133,7 @@ function CardMedia({ src, alt, Illustration }: { src: string; alt: string; Illus
 export default function ShopShortcuts() {
   const cards = [
     {
-      to: "/shop?tab=baby",
+      to: "/shop/baby",
       eyebrow: "Baby",
       title: "Baby Shop",
       sub: "Find all baby products here, 0 to 5 years.",
@@ -142,7 +142,7 @@ export default function ShopShortcuts() {
       alt: "Shopping cart filled with baby essentials — diapers, wipes, and bottles — in a Nigerian mall",
     },
     {
-      to: "/shop?tab=mum",
+      to: "/shop/mum",
       eyebrow: "Mum",
       title: "Mum Shop",
       sub: "Find all products here from pregnancy to postpartum.",
@@ -160,7 +160,7 @@ export default function ShopShortcuts() {
       alt: "Smiling Nigerian man holding a stack of wrapped gift boxes",
     },
     {
-      to: "/bundles",
+      to: "https://bundledmum.com/bundles/maternity-bundles",
       eyebrow: "Ready-Packed",
       title: "Hospital Lists",
       sub: "Find our pre-packed hospital lists here.",
