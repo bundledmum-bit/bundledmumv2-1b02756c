@@ -774,6 +774,10 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         )}
       </div>
 
+      {/* Edit Order — additive add/remove/qty controls, locked once the
+          order is shipped/delivered/cancelled. */}
+      <EditOrderCard order={o} adminUser={adminUser} can={can} />
+
       <div className="grid md:grid-cols-2 gap-4 mb-4">
         {/* Delivery Info */}
         {showAddress && (
@@ -2143,6 +2147,533 @@ function ExpressOrderCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Edit Order — additive controls for adding / removing items on a paid
+// order. Notify and refund flows are manual (admin must trigger the
+// Paystack refund themselves after clicking "Items Removed").
+// ─────────────────────────────────────────────────────────────────────
+function EditOrderCard({
+  order: o,
+  adminUser,
+  can,
+}: {
+  order: any;
+  adminUser: any;
+  can: (m: string, a: string) => boolean;
+}) {
+  const queryClient = useQueryClient();
+  const canEdit = can("orders", "edit");
+  const lockedStatuses = ["shipped", "delivered", "cancelled"];
+  const isLocked = lockedStatuses.includes(o.order_status);
+
+  const items: any[] = useMemo(
+    () => (Array.isArray(o.order_items) ? o.order_items : []).slice().sort(
+      (a: any, b: any) => (a.created_at || "").localeCompare(b.created_at || ""),
+    ),
+    [o.order_items],
+  );
+
+  const [pending, setPending] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showItemsUpdatedConfirm, setShowItemsUpdatedConfirm] = useState(false);
+  const [showItemsRemovedConfirm, setShowItemsRemovedConfirm] = useState(false);
+
+  const refreshOrder = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+  };
+
+  // After any items change, recompute the order's subtotal/total so the
+  // header summary stays in sync. The order_items trigger doesn't
+  // propagate up to orders, so we recompute client-side.
+  const recomputeTotals = async () => {
+    const { data: latest, error } = await supabase
+      .from("order_items").select("line_total").eq("order_id", o.id);
+    if (error) { toast.error(error.message); return; }
+    const subtotal = (latest || []).reduce((s: number, r: any) => s + Number(r.line_total || 0), 0);
+    const discount = Number(o.discount_amount || 0) + Number(o.spend_discount_amount || 0);
+    const total = subtotal + Number(o.delivery_fee || 0) + Number(o.service_fee || 0) - discount;
+    const { error: upErr } = await supabase
+      .from("orders")
+      .update({
+        subtotal,
+        total,
+        last_edited_at: new Date().toISOString(),
+        last_edited_by: adminUser?.email || null,
+      })
+      .eq("id", o.id);
+    if (upErr) { toast.error(upErr.message); return; }
+  };
+
+  const handleQtyChange = async (item: any, nextQty: number) => {
+    if (!canEdit) return;
+    if (!Number.isFinite(nextQty) || nextQty < 1) {
+      toast.error("Use the remove button to take an item off the order.");
+      return;
+    }
+    if (nextQty > 99) nextQty = 99;
+    if (nextQty === item.quantity) return;
+    setPending(true);
+    const newLineTotal = Number(item.unit_price || 0) * nextQty;
+    const { error } = await supabase.from("order_items").update({
+      quantity: nextQty, line_total: newLineTotal,
+    }).eq("id", item.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await recomputeTotals();
+    refreshOrder();
+    toast.success("Quantity updated");
+    setPending(false);
+  };
+
+  const handleRemove = async (item: any) => {
+    if (!canEdit) return;
+    if (items.length <= 1) {
+      toast.error("Order must have at least one item. Cancel the order instead.");
+      return;
+    }
+    if (!confirm(`Remove ${item.product_name} from this order?`)) return;
+    setPending(true);
+    const { error } = await supabase.from("order_items").delete().eq("id", item.id);
+    if (error) { toast.error(error.message); setPending(false); return; }
+    await recomputeTotals();
+    refreshOrder();
+    toast.success("Item removed");
+    setPending(false);
+  };
+
+  const sendNotification = async (refundPending: boolean) => {
+    setPending(true);
+    try {
+      const { data: customerRes, error: customerErr } = await (supabase as any)
+        .functions.invoke("send-transactional-email", {
+          body: { email_type: "order_updated", order_id: o.id, refund_pending: refundPending },
+        });
+      if (customerErr || (customerRes && customerRes.success === false)) {
+        throw new Error(customerErr?.message || customerRes?.error || "Customer email failed");
+      }
+      const { data: internalRes, error: internalErr } = await (supabase as any)
+        .functions.invoke("send-transactional-email", {
+          body: {
+            email_type: "internal_order_edited",
+            order_id: o.id,
+            refund_pending: refundPending,
+            edited_by: adminUser?.email || null,
+            notification_type: refundPending ? "Items removed — refund pending" : "Items updated",
+          },
+        });
+      if (internalErr) console.warn("[EditOrder] internal email failed:", internalErr);
+      void internalRes;
+      await supabase.from("orders").update({ last_edit_notified_at: new Date().toISOString() }).eq("id", o.id);
+      refreshOrder();
+      if (refundPending) {
+        toast.success("Customer notified about refund. Now process the refund in Paystack.");
+        setTimeout(() => { window.open("https://dashboard.paystack.com/#/transactions", "_blank", "noopener"); }, 1000);
+      } else {
+        toast.success("Customer notified. Admin audit email sent.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Notification failed");
+    } finally {
+      setPending(false);
+      setShowItemsUpdatedConfirm(false);
+      setShowItemsRemovedConfirm(false);
+    }
+  };
+
+  if (isLocked) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5 mb-4 opacity-70">
+        <h3 className="text-sm font-bold mb-1">Edit Order</h3>
+        <p className="text-xs text-muted-foreground">
+          Order cannot be edited — already {o.order_status}.
+        </p>
+      </div>
+    );
+  }
+
+  if (!canEdit) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5 mb-4">
+        <h3 className="text-sm font-bold mb-1">Edit Order</h3>
+        <p className="text-xs text-muted-foreground">
+          You need 'Orders' edit permission to modify this order.
+        </p>
+      </div>
+    );
+  }
+
+  const lastEditedLine = (() => {
+    if (!o.last_edited_at) return null;
+    const ts = new Date(o.last_edited_at);
+    return `Last edited ${ts.toLocaleString()}${o.last_edited_by ? ` by ${o.last_edited_by}` : ""}`;
+  })();
+
+  const lastNotifiedLine = (() => {
+    if (!o.last_edit_notified_at) return "Never";
+    const diffMin = Math.max(0, Math.floor((Date.now() - new Date(o.last_edit_notified_at).getTime()) / 60000));
+    if (diffMin < 60) return `Last notified ${diffMin} min ago`;
+    const h = Math.floor(diffMin / 60);
+    if (h < 24) return `Last notified ${h}h ago`;
+    return `Last notified ${new Date(o.last_edit_notified_at).toLocaleString()}`;
+  })();
+
+  const notifyDisabled = pending || !o.last_edited_at;
+
+  return (
+    <>
+      <div className="bg-card border border-border rounded-xl p-5 mb-4">
+        <div className="mb-3">
+          <h3 className="text-sm font-bold">Edit Order</h3>
+          <p className="text-xs text-muted-foreground">
+            Add or remove items. Customer notification is separate from save.
+          </p>
+          {lastEditedLine && (
+            <p className="text-[11px] text-text-light mt-1">{lastEditedLine}</p>
+          )}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[520px]">
+            <thead className="bg-muted/40 text-text-med">
+              <tr>
+                <th className="text-left px-2 py-2 text-xs font-semibold">Product</th>
+                <th className="text-center px-2 py-2 text-xs font-semibold w-20">Qty</th>
+                <th className="text-right px-2 py-2 text-xs font-semibold w-28">Unit ₦</th>
+                <th className="text-right px-2 py-2 text-xs font-semibold w-28">Line Total</th>
+                <th className="px-2 py-2 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center text-xs text-muted-foreground py-4">
+                    No items on this order.
+                  </td>
+                </tr>
+              ) : items.map((item: any) => (
+                <tr key={item.id} className="border-t border-border">
+                  <td className="px-2 py-2">
+                    {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
+                    <div className="font-semibold">{item.product_name}</div>
+                    <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
+                      {item.brand_name && <span>Brand: {item.brand_name}</span>}
+                      {item.size && <span>Size: {item.size}</span>}
+                      {item.color && <span>Colour: {formatColor(item.color)}</span>}
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      type="number" min={1} max={99}
+                      defaultValue={item.quantity}
+                      onBlur={(e) => handleQtyChange(item, parseInt(e.target.value, 10))}
+                      className="w-full border border-input rounded px-2 py-1 text-sm bg-background text-center"
+                      disabled={pending}
+                    />
+                  </td>
+                  <td className="px-2 py-2 text-right">{fmt(item.unit_price || 0)}</td>
+                  <td className="px-2 py-2 text-right font-semibold">{fmt(item.line_total || 0)}</td>
+                  <td className="px-2 py-2 text-right">
+                    <button
+                      onClick={() => handleRemove(item)}
+                      disabled={pending}
+                      className="p-1 rounded hover:bg-destructive/10 text-destructive disabled:opacity-40"
+                      title="Remove from order"
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-3">
+          <button
+            onClick={() => setShowAdd(true)}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-50"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Item
+          </button>
+        </div>
+
+        <div className="border-t border-border mt-5 pt-4">
+          <h4 className="text-sm font-bold mb-1">Notify Customer</h4>
+          <p className="text-[11px] text-text-light mb-3 leading-relaxed">
+            Sends the customer an email with the updated order summary. Use <strong>Refund Pending</strong> when items were removed — the customer is told their refund arrives within 30 min – 1 hour. You MUST then process the refund in Paystack.
+          </p>
+          <p className="text-[11px] text-text-light mb-2">{lastNotifiedLine}</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => setShowItemsUpdatedConfirm(true)}
+              disabled={notifyDisabled}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50"
+            >
+              Items Updated
+            </button>
+            <button
+              onClick={() => setShowItemsRemovedConfirm(true)}
+              disabled={notifyDisabled}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-amber-600 disabled:opacity-50"
+            >
+              Items Removed (Refund Pending)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showAdd && (
+        <AddItemDialog
+          order={o}
+          onClose={() => setShowAdd(false)}
+          onAdded={async () => {
+            await recomputeTotals();
+            refreshOrder();
+            setShowAdd(false);
+            toast.success("Item added");
+          }}
+        />
+      )}
+
+      {showItemsUpdatedConfirm && (
+        <NotifyConfirmModal
+          variant="updated"
+          pending={pending}
+          onClose={() => setShowItemsUpdatedConfirm(false)}
+          onConfirm={() => sendNotification(false)}
+        />
+      )}
+      {showItemsRemovedConfirm && (
+        <NotifyConfirmModal
+          variant="removed"
+          pending={pending}
+          onClose={() => setShowItemsRemovedConfirm(false)}
+          onConfirm={() => sendNotification(true)}
+        />
+      )}
+    </>
+  );
+}
+
+function NotifyConfirmModal({
+  variant, pending, onClose, onConfirm,
+}: { variant: "updated" | "removed"; pending: boolean; onClose: () => void; onConfirm: () => void }) {
+  const isRemoved = variant === "removed";
+  return (
+    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4" onClick={() => !pending && onClose()}>
+      <div className="bg-card border border-border rounded-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-base mb-2">
+          {isRemoved ? "Notify customer about refund?" : "Notify customer about updated order?"}
+        </h3>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          {isRemoved
+            ? "Send the customer an updated order email WITH refund notice (30 min – 1 hour)? After sending, you MUST process the refund in the Paystack dashboard."
+            : "Send the customer an updated order email? They will see the new item list with no refund note."}
+        </p>
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} disabled={pending} className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40">
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={pending}
+            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-40 ${isRemoved ? "bg-amber-500 hover:bg-amber-600" : "bg-forest hover:bg-forest-deep"}`}
+          >
+            {pending ? "Sending…" : isRemoved ? "Send & Open Paystack" : "Send notification"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddItemDialog({
+  order, onClose, onAdded,
+}: { order: any; onClose: () => void; onAdded: () => void }) {
+  const [query, setQuery] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [selectedBrand, setSelectedBrand] = useState<any | null>(null);
+  const [qty, setQty] = useState<number>(1);
+  const [adding, setAdding] = useState(false);
+
+  const { data: searchResults = [] } = useQuery({
+    queryKey: ["admin-edit-order-product-search", query.trim()],
+    enabled: query.trim().length >= 2 && !selectedProduct,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, slug")
+        .eq("is_active", true)
+        .ilike("name", `%${query.trim()}%`)
+        .order("name")
+        .limit(20);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: brands = [] } = useQuery({
+    queryKey: ["admin-edit-order-brands", selectedProduct?.id],
+    enabled: !!selectedProduct,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("brands_public")
+        .select("id, brand_name, price, in_stock, stock_quantity")
+        .eq("product_id", selectedProduct!.id)
+        .eq("in_stock", true)
+        .gt("price", 0)
+        .order("price");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const linePreview = selectedBrand ? Number(selectedBrand.price || 0) * qty : 0;
+
+  const handleAdd = async () => {
+    if (!selectedProduct || !selectedBrand) return;
+    if (!qty || qty < 1) { toast.error("Enter a quantity of at least 1"); return; }
+    setAdding(true);
+    const unitPrice = Number(selectedBrand.price || 0);
+    const { error } = await supabase.from("order_items").insert({
+      order_id: order.id,
+      product_id: selectedProduct.id,
+      brand_id: selectedBrand.id,
+      product_name: selectedProduct.name,
+      brand_name: selectedBrand.brand_name,
+      quantity: qty,
+      unit_price: unitPrice,
+      line_total: unitPrice * qty,
+      size: null, color: null, bundle_name: null,
+    });
+    setAdding(false);
+    if (error) { toast.error(error.message); return; }
+    onAdded();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4" onClick={() => !adding && onClose()}>
+      <div className="bg-card border border-border rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-base">Add Item to Order</h3>
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded"><XIcon className="w-4 h-4" /></button>
+        </div>
+
+        {/* Step 1 — product search */}
+        {!selectedProduct && (
+          <>
+            <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Search Product</label>
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Start typing a product name…"
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            {query.trim().length >= 2 && (
+              <div className="mt-2 max-h-64 overflow-y-auto border border-border rounded-lg divide-y divide-border">
+                {(searchResults as any[]).length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-3 text-center">No products match "{query.trim()}"</p>
+                ) : (
+                  (searchResults as any[]).map((p: any) => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setSelectedProduct(p); setSelectedBrand(null); }}
+                      className="w-full text-left px-3 py-2 hover:bg-muted/50 text-sm"
+                    >
+                      {p.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Step 2 — brand picker */}
+        {selectedProduct && !selectedBrand && (
+          <>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Selected</p>
+                <p className="text-sm font-semibold">{selectedProduct.name}</p>
+              </div>
+              <button onClick={() => { setSelectedProduct(null); setQuery(""); }} className="text-[11px] text-forest font-semibold hover:underline">
+                ← Change product
+              </button>
+            </div>
+            <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Choose Brand</label>
+            <div className="space-y-1">
+              {(brands as any[]).length === 0 ? (
+                <p className="text-xs text-muted-foreground p-3 text-center border border-dashed border-border rounded-lg">
+                  No in-stock brands for this product.
+                </p>
+              ) : (brands as any[]).map((b: any) => {
+                const lowStock = b.stock_quantity != null && b.stock_quantity > 0 && b.stock_quantity <= 5;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => setSelectedBrand(b)}
+                    className="w-full flex items-center justify-between border border-border rounded-lg px-3 py-2 text-sm hover:border-forest hover:bg-forest-light/40"
+                  >
+                    <span className="font-semibold">
+                      {b.brand_name}
+                      {lowStock && <span className="ml-2 text-[10px] text-amber-700 font-bold">⚠ {b.stock_quantity} left</span>}
+                    </span>
+                    <span className="font-semibold text-forest">{fmt(b.price)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* Step 3 — qty + preview */}
+        {selectedProduct && selectedBrand && (
+          <>
+            <div className="mb-3">
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Selected</p>
+              <p className="text-sm font-semibold">{selectedProduct.name}</p>
+              <p className="text-xs text-text-med">{selectedBrand.brand_name} · {fmt(selectedBrand.price)}</p>
+              <button
+                onClick={() => setSelectedBrand(null)}
+                className="text-[11px] text-forest font-semibold hover:underline mt-1 inline-block"
+              >
+                ← Change brand
+              </button>
+            </div>
+            <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Quantity</label>
+            <input
+              type="number" min={1} max={99}
+              value={qty}
+              onChange={(e) => setQty(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            <div className="mt-3 rounded-lg bg-muted/40 border border-border px-3 py-2 text-sm">
+              Adding: <span className="font-semibold">{selectedBrand.brand_name} × {qty}</span> = <span className="font-bold text-forest">{fmt(linePreview)}</span>
+            </div>
+          </>
+        )}
+
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} disabled={adding} className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40">
+            Cancel
+          </button>
+          <button
+            onClick={handleAdd}
+            disabled={!selectedProduct || !selectedBrand || adding}
+            className="flex-1 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40"
+          >
+            {adding ? "Adding…" : "Add to Order"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
