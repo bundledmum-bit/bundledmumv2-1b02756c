@@ -358,18 +358,29 @@ export default function CheckoutPage() {
   // rejects payloads where is_express_order=true AND subtotal <
   // 150000, AND requires express_acknowledged=true.
   const EXPRESS_MIN_SUBTOTAL = 150000;
-  const expressEligible = subtotal >= EXPRESS_MIN_SUBTOTAL;
+  // Express-Only states (e.g. Cross River) waive the ₦150k floor: standard
+  // couriers don't reach them, so any cart size has to go through Express.
+  const stateRequiresExpress = activeState?.is_express_only === true;
+  const expressEligible = stateRequiresExpress || subtotal >= EXPRESS_MIN_SUBTOTAL;
   const [isExpressOrder, setIsExpressOrder] = useState(false);
   const [expressAcknowledged, setExpressAcknowledged] = useState(false);
-  // Auto-disable + warn if the subtotal drops below the floor while
-  // express is enabled (e.g. customer trims a line item).
+  // When a customer picks an Express-Only state, force the toggle ON so
+  // the rest of the page treats them as an express buyer. When they
+  // switch away, release control back to the user.
   useEffect(() => {
-    if (isExpressOrder && !expressEligible) {
+    if (stateRequiresExpress && !isExpressOrder) setIsExpressOrder(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateRequiresExpress]);
+  // Auto-disable + warn if the subtotal drops below the floor while
+  // express is enabled (e.g. customer trims a line item). Skip when the
+  // state itself requires express — floor is waived.
+  useEffect(() => {
+    if (isExpressOrder && !expressEligible && !stateRequiresExpress) {
       setIsExpressOrder(false);
       setExpressAcknowledged(false);
       toast.error(`Express Order requires ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+. Standard delivery selected.`);
     }
-  }, [isExpressOrder, expressEligible]);
+  }, [isExpressOrder, expressEligible, stateRequiresExpress]);
 
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
   const delivery = isExpressOrder ? 0 : computedDelivery;
@@ -1344,25 +1355,40 @@ export default function CheckoutPage() {
               <div className="bg-card rounded-card shadow-card p-4 md:p-6 border-l-4 border-amber-400">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <h2 className="pf text-lg flex items-center gap-2">⚡ Express Order <span className="text-[11px] font-semibold text-text-light">(₦{EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+ orders)</span></h2>
+                    <h2 className="pf text-lg flex items-center gap-2">
+                      ⚡ Express Order
+                      {!stateRequiresExpress && (
+                        <span className="text-[11px] font-semibold text-text-light">(₦{EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+ orders)</span>
+                      )}
+                    </h2>
                     <p className="text-text-med text-xs mt-1 max-w-[520px] leading-relaxed">
                       Get your order shipped fast. We will quote your delivery fee within 24 hours via WhatsApp after you complete payment.
                     </p>
                   </div>
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <label className={`inline-flex items-center gap-2 select-none ${stateRequiresExpress ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}>
                     <span className="text-xs font-semibold text-text-med">{isExpressOrder ? "ON" : "OFF"}</span>
                     <input
                       type="checkbox"
                       checked={isExpressOrder}
+                      disabled={stateRequiresExpress}
                       onChange={(e) => {
                         setIsExpressOrder(e.target.checked);
                         if (!e.target.checked) setExpressAcknowledged(false);
                       }}
                       className="sr-only peer"
                     />
-                    <span className="w-11 h-6 rounded-full bg-muted peer-checked:bg-amber-500 transition relative before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-5 before:h-5 before:rounded-full before:bg-white before:transition peer-checked:before:translate-x-5" />
+                    <span className="w-11 h-6 rounded-full bg-muted peer-checked:bg-amber-500 peer-disabled:opacity-80 transition relative before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-5 before:h-5 before:rounded-full before:bg-white before:transition peer-checked:before:translate-x-5" />
                   </label>
                 </div>
+
+                {stateRequiresExpress && (
+                  <div className="mt-4 rounded-xl border border-blue-300 bg-blue-50 p-3 text-blue-900 text-[13px] leading-relaxed">
+                    <p className="font-semibold flex items-center gap-1.5">ℹ️ Delivery to {form.state} is available via Express Delivery only.</p>
+                    <p className="mt-1">
+                      Standard couriers don't deliver to this area. Our team will send your delivery quote within 24 hours via WhatsApp after you complete payment.
+                    </p>
+                  </div>
+                )}
 
                 {isExpressOrder && (
                   <div className="mt-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
