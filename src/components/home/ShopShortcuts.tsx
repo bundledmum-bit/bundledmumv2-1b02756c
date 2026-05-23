@@ -181,16 +181,9 @@ export default function ShopShortcuts() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
           {cards.map(c => {
             const isExternal = c.to.startsWith("http");
-            const CardWrapper = isExternal ? "a" : Link;
-            const linkProps = isExternal
-              ? { href: c.to, target: "_blank", rel: "noopener noreferrer" }
-              : { to: c.to };
-            return (
-              <CardWrapper
-                key={c.title}
-                {...linkProps}
-                className="group bg-card rounded-[18px] md:rounded-[20px] overflow-hidden shadow-card hover:shadow-card-hover transition-all border border-border flex flex-col"
-              >
+            const cardClass = "group bg-card rounded-[18px] md:rounded-[20px] overflow-hidden shadow-card hover:shadow-card-hover transition-all border border-border flex flex-col";
+            const cardContent = (
+              <>
                 <div className="aspect-[4/3] overflow-hidden relative">
                   <div className="absolute inset-0 transition-transform duration-500 group-hover:scale-[1.04]">
                     <CardMedia src={c.img} alt={c.alt} Illustration={c.Illustration} />
@@ -204,7 +197,16 @@ export default function ShopShortcuts() {
                     Explore <span aria-hidden>→</span>
                   </span>
                 </div>
-              </CardWrapper>
+              </>
+            );
+            return isExternal ? (
+              <a key={c.title} href={c.to} target="_blank" rel="noopener noreferrer" className={cardClass}>
+                {cardContent}
+              </a>
+            ) : (
+              <Link key={c.title} to={c.to} className={cardClass}>
+                {cardContent}
+              </Link>
             );
           })}
         </div>
