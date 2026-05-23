@@ -358,10 +358,16 @@ export default function CheckoutPage() {
   // rejects payloads where is_express_order=true AND subtotal <
   // 150000, AND requires express_acknowledged=true.
   const EXPRESS_MIN_SUBTOTAL = 150000;
-  // Express-Only states (e.g. Cross River) waive the ₦150k floor: standard
+  // Admin can disable the floor for bulk-order promos via the
+  // express_order_min_subtotal_enforced site_setting (default TRUE).
+  // Robust to either jsonb boolean or string "false" forms.
+  const minEnforcedRaw = settings?.express_order_min_subtotal_enforced;
+  const minEnforced = minEnforcedRaw !== false && minEnforcedRaw !== "false";
+  const cartMeetsMinimum = !minEnforced || subtotal >= EXPRESS_MIN_SUBTOTAL;
+  // Express-Only states (e.g. Cross River) waive the floor: standard
   // couriers don't reach them, so any cart size has to go through Express.
   const stateRequiresExpress = activeState?.is_express_only === true;
-  const expressEligible = stateRequiresExpress || subtotal >= EXPRESS_MIN_SUBTOTAL;
+  const expressEligible = stateRequiresExpress || cartMeetsMinimum;
   const [isExpressOrder, setIsExpressOrder] = useState(false);
   const [expressAcknowledged, setExpressAcknowledged] = useState(false);
   // When a customer picks an Express-Only state, force the toggle ON so
@@ -375,12 +381,14 @@ export default function CheckoutPage() {
   // express is enabled (e.g. customer trims a line item). Skip when the
   // state itself requires express — floor is waived.
   useEffect(() => {
-    if (isExpressOrder && !expressEligible && !stateRequiresExpress) {
+    // Only auto-disable when the floor is actually being enforced AND the
+    // current state isn't on the Express-Only allowlist.
+    if (isExpressOrder && !expressEligible && !stateRequiresExpress && minEnforced) {
       setIsExpressOrder(false);
       setExpressAcknowledged(false);
       toast.error(`Express Order requires ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+. Standard delivery selected.`);
     }
-  }, [isExpressOrder, expressEligible, stateRequiresExpress]);
+  }, [isExpressOrder, expressEligible, stateRequiresExpress, minEnforced]);
 
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
   const delivery = isExpressOrder ? 0 : computedDelivery;
@@ -1357,12 +1365,22 @@ export default function CheckoutPage() {
                   <div className="flex-1 min-w-0">
                     <h2 className="pf text-lg flex items-center gap-2">
                       ⚡ Express Order
-                      {!stateRequiresExpress && (
+                      {!stateRequiresExpress && minEnforced && (
                         <span className="text-[11px] font-semibold text-text-light">(₦{EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")}+ orders)</span>
                       )}
                     </h2>
                     <p className="text-text-med text-xs mt-1 max-w-[520px] leading-relaxed">
                       Get your order shipped fast. We will quote your delivery fee within 24 hours via WhatsApp after you complete payment.
+                    </p>
+                    {/* Eligibility helper line — adapts to whether the
+                        floor is enforced and whether the state forces
+                        Express. */}
+                    <p className="text-[11px] font-semibold mt-2 text-text-light">
+                      {stateRequiresExpress
+                        ? `Express Delivery is required for delivery to ${form.state}.`
+                        : minEnforced
+                        ? `Minimum cart size of ₦${EXPRESS_MIN_SUBTOTAL.toLocaleString("en-NG")} required for Express Delivery.`
+                        : "Express Delivery available for any order size."}
                     </p>
                   </div>
                   <label className={`inline-flex items-center gap-2 select-none ${stateRequiresExpress ? "cursor-not-allowed opacity-90" : "cursor-pointer"}`}>
