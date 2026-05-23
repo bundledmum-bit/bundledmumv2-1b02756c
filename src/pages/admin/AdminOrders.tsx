@@ -3,7 +3,7 @@ import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw } from "lucide-react";
+import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus } from "lucide-react";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import { openBrandedInvoice } from "@/components/admin/PrintInvoice";
 import { Checkbox } from "@/components/ui/checkbox";
