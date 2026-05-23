@@ -390,6 +390,15 @@ export default function CheckoutPage() {
     }
   }, [isExpressOrder, expressEligible, stateRequiresExpress, minEnforced]);
 
+  // Auto-check / auto-uncheck the acknowledgment to match the current
+  // Express Order state. Customer can still untick manually to block
+  // submit (existing validation), but the friction of finding the
+  // checkbox is gone when they've already opted in via the toggle or
+  // landed in an express-only state.
+  useEffect(() => {
+    setExpressAcknowledged(isExpressOrder);
+  }, [isExpressOrder]);
+
   const computedDelivery = !deliveryReady ? 0 : (hasQuote ? Math.round((courierQuote!.customerRateKobo) / 100) : zoneCalc.fee);
   const delivery = isExpressOrder ? 0 : computedDelivery;
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
@@ -1168,9 +1177,9 @@ export default function CheckoutPage() {
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
                 {isExpressOrder ? (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-baseline">
                     <span className="text-text-med">Delivery</span>
-                    <span className="italic text-text-light">To be quoted within 24 hours</span>
+                    <span className="italic text-text-light text-[13px]">Will be communicated to you</span>
                   </div>
                 ) : deliveryReady ? (
                   <>
