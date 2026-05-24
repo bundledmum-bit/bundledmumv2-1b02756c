@@ -7,7 +7,7 @@ import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
-import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2 } from "lucide-react";
+import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText } from "lucide-react";
 import { encodeCartToUrl, decodeCartFromUrl, buildWhatsappMessage, type SharedCartItem } from "@/lib/cartShareUrl";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
@@ -63,6 +63,10 @@ export default function CartPage() {
   // cart looks like at the moment the user wants to share.
   const [shareOpen, setShareOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
+  // PDF generation runs through @react-pdf/renderer which is lazy-loaded
+  // on first click; keep a flag so the button can show a spinner state
+  // while the chunk fetches + the PDF renders.
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   // When both clipboard tiers fail (very rare — restrictive iframe + old
   // browser), reveal a highlighted, auto-selected input so the user can
   // tap-and-hold to copy manually.
@@ -602,26 +606,94 @@ export default function CartPage() {
                   Proceed to Checkout 🔒
                 </Link>
               )}
-              <button
-                onClick={() => {
-                  // Compose the URL lazily so it captures the current cart.
-                  const url = encodeCartToUrl(
-                    cart.map((it: any): SharedCartItem => ({
-                      product_id: String(it.id),
-                      brand_id: it.selectedBrand?.id || null,
-                      size: it.selectedSize || null,
-                      color: it.selectedColor || null,
-                      quantity: it.qty || 1,
-                    })),
-                  );
-                  setShareUrl(url);
-                  setShareOpen(true);
-                }}
-                disabled={cart.length === 0}
-                className="mt-2 block w-full rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
-              >
-                <Share2 className="w-4 h-4" /> Share Cart
-              </button>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    // Compose the URL lazily so it captures the current cart.
+                    const url = encodeCartToUrl(
+                      cart.map((it: any): SharedCartItem => ({
+                        product_id: String(it.id),
+                        brand_id: it.selectedBrand?.id || null,
+                        size: it.selectedSize || null,
+                        color: it.selectedColor || null,
+                        quantity: it.qty || 1,
+                      })),
+                    );
+                    setShareUrl(url);
+                    setShareOpen(true);
+                  }}
+                  disabled={cart.length === 0}
+                  className="rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+                >
+                  <Share2 className="w-4 h-4" /> Share Cart
+                </button>
+                <button
+                  onClick={async () => {
+                    if (cart.length === 0 || generatingPdf) return;
+                    setGeneratingPdf(true);
+                    try {
+                      // Lazy-load both the renderer and the document
+                      // template so the ~150 KB chunk stays out of the
+                      // initial cart-page bundle.
+                      const [{ pdf }, { CartPdfDocument }] = await Promise.all([
+                        import("@react-pdf/renderer"),
+                        import("@/components/cart/CartPdfDocument"),
+                      ]);
+                      const origin = typeof window !== "undefined" ? window.location.origin : "";
+                      const pdfItems = cart.map((item: any) => {
+                        // Resolve slug via the live-products lookup the
+                        // page already does — cart rows don't carry slug
+                        // directly. Fall back to /cart when we can't
+                        // resolve so the link still goes somewhere
+                        // sensible.
+                        const live = ALL_PRODUCTS.find((p: any) => p.id === item.id);
+                        const slug = live?.slug;
+                        const url = item.imageUrl;
+                        const usableImage = typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+                        return {
+                          name: item.name,
+                          brand: item.selectedBrand?.label || null,
+                          qty: item.qty || 1,
+                          unitPrice: Number(item.price || 0),
+                          lineTotal: Number(item.price || 0) * (item.qty || 1),
+                          imageUrl: usableImage,
+                          productUrl: slug ? `${origin}/products/${slug}` : `${origin}/cart`,
+                          size: item.selectedSize || null,
+                          color: item.selectedColor || null,
+                        };
+                      });
+                      const subtotalForPdf = pdfItems.reduce((s, i) => s + i.lineTotal, 0);
+                      const blob = await pdf(
+                        <CartPdfDocument
+                          items={pdfItems}
+                          subtotal={subtotalForPdf}
+                          whatsappNumber={settings?.whatsapp_number ? String(settings.whatsapp_number).replace(/^"|"$/g, "") : undefined}
+                          generatedAt={new Date()}
+                        />,
+                      ).toBlob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      const dateStamp = new Date().toISOString().split("T")[0];
+                      a.download = `BundledMum-Cart-${dateStamp}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      toast.success("PDF downloaded");
+                    } catch (e: any) {
+                      console.warn("[cart-pdf] generation failed:", e);
+                      toast.error("Couldn't generate PDF. Please try again or contact support.");
+                    } finally {
+                      setGeneratingPdf(false);
+                    }
+                  }}
+                  disabled={cart.length === 0 || generatingPdf}
+                  className="rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+                >
+                  <FileText className="w-4 h-4" /> {generatingPdf ? "Generating PDF…" : "Share as PDF"}
+                </button>
+              </div>
               <p className="text-center font-body text-xs text-text-light mt-3">Secured by Paystack · All cards accepted</p>
               <div className="flex justify-center gap-3 mt-2 text-xs text-text-light">
                 <span>💳 Visa</span><span>💳 Mastercard</span><span>🏦 USSD</span><span>📱 Transfer</span>
