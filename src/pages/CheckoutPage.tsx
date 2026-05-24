@@ -10,6 +10,8 @@ import { useShippingZones, calculateDeliveryFee, type ShippingZone } from "@/hoo
 import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import { useSiteSettings, useAllProducts } from "@/hooks/useSupabaseData";
 import WhatsAppRecoveryModal, { type RecoveryContext } from "@/components/checkout/WhatsAppRecoveryModal";
+import { useFreeDeliveryThresholds } from "@/hooks/useFreeDeliveryThresholds";
+import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import { trackEvent, getSessionId, getAttribution, markSessionConverted } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
@@ -252,11 +254,19 @@ export default function CheckoutPage() {
   const expressAckText     = asString(settings?.express_order_acknowledgment_text, "");
   // Free Nationwide Delivery — admin-controlled threshold that waives the
   // courier-quote and reads custom marketing copy. Express still wins.
-  const nationwideEnabled   = asBool(settings?.free_delivery_nationwide_enabled, true);
-  const nationwideThreshold = asInt(settings?.free_delivery_nationwide_threshold_naira, 500000);
-  const nationwideLabel     = asString(settings?.free_delivery_nationwide_label, "FREE Nationwide Delivery 🎉");
-  const nationwideHelper    = asString(settings?.free_delivery_nationwide_helper_text, "");
-  const nationwideMarketing = asString(settings?.free_delivery_nationwide_marketing_copy, "");
+  // Free Nationwide delivery now reads from the admin-managed
+  // free_delivery_thresholds table. Keep the local variable names
+  // (nationwideEnabled / nationwideThreshold / nationwideLabel /
+  // nationwideHelper) so downstream code — qualifiesForNationwideFree,
+  // the Express-hide gate, the delivery summary cells — is unchanged.
+  // The "spend more" nudge banner is now its own component fed by the
+  // shared hook, so we no longer need nationwideMarketing here.
+  const { data: deliveryThresholds } = useFreeDeliveryThresholds();
+  const nationwideRule = deliveryThresholds?.find((t) => t.scope === "nationwide");
+  const nationwideEnabled   = !!nationwideRule;
+  const nationwideThreshold = nationwideRule?.threshold_amount ?? 500000;
+  const nationwideLabel     = nationwideRule?.delivery_label   ?? "FREE Nationwide Delivery 🎉";
+  const nationwideHelper    = nationwideRule?.helper_text      ?? "";
   const slaLabel = `within ${expressSlaHours} hour${expressSlaHours === 1 ? "" : "s"}`;
   const whatsappNumber = String(settings?.whatsapp_number || "").replace(/^"|"$/g, "").replace(/\D/g, "");
 
@@ -1363,13 +1373,8 @@ export default function CheckoutPage() {
           <div className="space-y-4">
             {/* Free nationwide nudge — only when the shopper is in the
                 70–100% window and the master switch is on. */}
-            {nationwideEnabled && !stateRequiresExpress && nationwideMarketing && subtotal < nationwideThreshold && subtotal >= nationwideThreshold * 0.7 && (
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3">
-                <p className="text-emerald-900 text-sm font-medium">{nationwideMarketing}</p>
-                <p className="text-emerald-700 text-xs mt-1">
-                  Add ₦{(nationwideThreshold - subtotal).toLocaleString("en-NG")} more to qualify!
-                </p>
-              </div>
+            {!stateRequiresExpress && (
+              <FreeDeliveryNudgeBanner cartSubtotal={subtotal} deliveryState={form.state || null} className="mb-3" />
             )}
 
             {/* Delivery Details */}

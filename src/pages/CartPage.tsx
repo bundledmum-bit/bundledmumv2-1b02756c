@@ -5,6 +5,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
+import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2 } from "lucide-react";
 import { encodeCartToUrl, decodeCartFromUrl, buildWhatsappMessage, type SharedCartItem } from "@/lib/cartShareUrl";
@@ -392,6 +393,7 @@ export default function CartPage() {
 
         <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
           <div className="space-y-3">
+            <FreeDeliveryNudgeBanner cartSubtotal={subtotal} className="mb-1" />
             <SpendMoreBanner variant="cart" />
             {cart.map(item => {
               // Cross-reference the live ALL_PRODUCTS feed (already filtered
