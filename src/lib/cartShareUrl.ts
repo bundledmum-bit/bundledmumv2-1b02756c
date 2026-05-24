@@ -8,7 +8,9 @@
  * Validation:
  *   - product/brand ids must look like UUIDs
  *   - quantity is clamped to 1..99
- *   - max 50 items per shared link
+ *   - no hard item cap — the full cart is encoded. A soft console.warn fires
+ *     above 100 items so unusually large shares are noticeable in logs, but
+ *     nothing is truncated.
  *   - empty / malformed → decode returns null so callers can show a graceful
  *     "shared cart no longer available" toast.
  */
@@ -24,9 +26,13 @@ export interface SharedCartItem {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function encodeCartToUrl(items: SharedCartItem[], origin?: string): string {
-  const payload = items
-    .filter(i => !!i.product_id)
-    .slice(0, 50)
+  const filtered = items.filter(i => !!i.product_id);
+  if (filtered.length > 100) {
+    // Soft warning only — never truncate. Large shares are unusual but
+    // legitimate (bulk gifts / registry-style carts).
+    console.warn(`[cart-share] encoding large cart (${filtered.length} items)`);
+  }
+  const payload = filtered
     .map(i => ({
       p: i.product_id,
       b: i.brand_id ?? null,
@@ -83,7 +89,7 @@ export function decodeCartFromUrl(b64: string): SharedCartItem[] | null {
     const json = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
     const arr = JSON.parse(json);
     if (!Array.isArray(arr)) return null;
-    if (arr.length === 0 || arr.length > 50) return arr.length === 0 ? [] : null;
+    if (arr.length === 0) return [];
     const out: SharedCartItem[] = [];
     for (const x of arr) {
       if (!x || typeof x !== "object") continue;
