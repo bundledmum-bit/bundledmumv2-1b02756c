@@ -156,11 +156,26 @@ export default function QuotePage() {
     <div className="min-h-screen bg-background py-8 px-4 print:py-2 print:bg-white">
       <style>{`
         @media print {
-          .quote-print-hide { display: none !important; }
-          body { background: #fff !important; }
-          .quote-card { box-shadow: none !important; border-color: #d4d4d4 !important; }
           @page { size: A4; margin: 16mm; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          html, body {
+            background: #fff !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+          body, body * { visibility: visible !important; }
+          .quote-print-hide { display: none !important; }
+          .quote-card {
+            box-shadow: none !important;
+            border-color: #d4d4d4 !important;
+            background: #fff !important;
+          }
+          /* Forest-green grand total + emerald accents render in colour
+             instead of plain black on most printers. */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
         }
       `}</style>
 

@@ -227,7 +227,13 @@ function ComingSoonGate({ children }: { children: React.ReactNode }) {
 function StorefrontShell() {
   const { height: legacyBarHeight, dismissed, setDismissed } = useAnnouncementHeight();
   const engineBarHeight = useAnnouncementEngineBarHeight();
-  const totalBarHeight = legacyBarHeight + engineBarHeight;
+  // /quote/:shareToken is a self-contained receipt-style surface — it
+  // brings its own header and shouldn't carry the storefront chrome
+  // that would (a) overlap the page's own heading via the fixed nav
+  // and (b) blank the printout via an overflow-hidden parent.
+  const { pathname } = useLocation();
+  const isBareRoute = pathname.startsWith("/quote/");
+  const totalBarHeight = isBareRoute ? 0 : legacyBarHeight + engineBarHeight;
 
   // The announcement bars resolve their height after the initial render,
   // and the spacer below transitions from 0 → totalBarHeight over 300ms.
@@ -246,9 +252,13 @@ function StorefrontShell() {
   return (
     <>
       <SkipNav />
-      <AnnouncementBar dismissed={dismissed} onDismiss={() => setDismissed(true)} />
-      <AnnouncementEngine topOffset={legacyBarHeight} />
-      <Navbar topOffset={totalBarHeight} />
+      {!isBareRoute && (
+        <>
+          <AnnouncementBar dismissed={dismissed} onDismiss={() => setDismissed(true)} />
+          <AnnouncementEngine topOffset={legacyBarHeight} />
+          <Navbar topOffset={totalBarHeight} />
+        </>
+      )}
       <main id="main-content">
         {totalBarHeight > 0 && <div style={{ height: totalBarHeight }} className="transition-all duration-300" />}
         <Routes>
@@ -298,8 +308,12 @@ function StorefrontShell() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
-      <Footer />
-      <MobileBottomNav />
+      {!isBareRoute && (
+        <>
+          <Footer />
+          <MobileBottomNav />
+        </>
+      )}
     </>
   );
 }
