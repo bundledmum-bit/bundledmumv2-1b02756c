@@ -10,6 +10,7 @@ import { useShippingZones, calculateDeliveryFee, type ShippingZone } from "@/hoo
 import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import { useSiteSettings, useAllProducts } from "@/hooks/useSupabaseData";
 import WhatsAppRecoveryModal, { type RecoveryContext } from "@/components/checkout/WhatsAppRecoveryModal";
+import { linkOrderToQuote, PENDING_QUOTE_TOKEN_KEY } from "@/hooks/useQuoteShare";
 import { useFreeDeliveryThresholds } from "@/hooks/useFreeDeliveryThresholds";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
@@ -62,6 +63,27 @@ export default function CheckoutPage() {
   const [processing, setProcessing] = useState(false);
   const [stockIssues, setStockIssues] = useState<StockIssue[]>([]);
   const [errors, setErrors] = useState<Partial<FormData>>({});
+  // If the customer came here from a /quote/:shareToken page, the
+  // QuotePage stashed the token in sessionStorage before navigating.
+  // We pick it up on mount and call linkOrderToQuote after the order
+  // saves so the admin's quote → order link gets stamped on the DB.
+  const [pendingQuoteToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return sessionStorage.getItem(PENDING_QUOTE_TOKEN_KEY); } catch { return null; }
+  });
+  // Helper used by every place-order success branch — best-effort,
+  // never blocks the redirect.
+  const linkQuoteIfPending = async (orderId: string | null | undefined) => {
+    if (!pendingQuoteToken || !orderId) return;
+    try {
+      const res = await linkOrderToQuote(pendingQuoteToken, orderId);
+      if (!res?.success) console.warn("[checkout] linkOrderToQuote returned not success:", res);
+    } catch (e) {
+      console.warn("[checkout] linkOrderToQuote failed (non-fatal):", e);
+    } finally {
+      try { sessionStorage.removeItem(PENDING_QUOTE_TOKEN_KEY); } catch { /* ignore */ }
+    }
+  };
   // Friendly WhatsApp recovery modal for TECHNICAL checkout failures
   // (5xx, network drop, Paystack init failure, unexpected exception).
   // Validation errors keep their inline toast UI and never trigger this.
@@ -1155,6 +1177,7 @@ export default function CheckoutPage() {
         orderNumber: savedOrder.orderNumber,
         fallbackData: orderData,
       });
+      await linkQuoteIfPending(savedOrder.id);
       clearCart();
       navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
       return;
@@ -1204,6 +1227,7 @@ export default function CheckoutPage() {
             orderNumber: savedOrder.orderNumber,
             fallbackData: orderData,
           });
+          await linkQuoteIfPending(savedOrder.id);
           clearCart();
           navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
         },
@@ -1227,6 +1251,7 @@ export default function CheckoutPage() {
           orderNumber: savedOrder.orderNumber,
           fallbackData: orderData,
         });
+        await linkQuoteIfPending(savedOrder.id);
         clearCart();
         navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
         return;
