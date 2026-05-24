@@ -77,9 +77,6 @@ export default function CartPage() {
   // Shared-cart hydration state — true while we're parsing ?items= and
   // fetching product/brand details, so we can suppress the empty-cart flash.
   const [hydrating, setHydrating] = useState(false);
-  // Confirmation modal that appears when a shared link is opened while the
-  // user already has items in their cart.
-  const [pendingShared, setPendingShared] = useState<{ rows: CartItem[]; skipped: number } | null>(null);
 
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
 
@@ -166,16 +163,16 @@ export default function CartPage() {
           toast.error("Shared cart is empty or items are no longer available");
           return;
         }
-        if (cart.length === 0) {
-          setCart(rows);
-          toast.success(
-            skipped > 0
-              ? `Cart loaded · ${skipped} item${skipped === 1 ? "" : "s"} couldn't be loaded (no longer available)`
-              : "Cart loaded from shared link",
-          );
-        } else {
-          setPendingShared({ rows, skipped });
-        }
+        // Always replace silently — share links are explicit snapshots
+        // and the recipient asked for THIS list, not a merge with
+        // whatever happened to be in their cart already. URL was
+        // already cleaned above, so a refresh won't re-fire this.
+        setCart(rows);
+        toast.success(
+          skipped > 0
+            ? `Cart loaded · ${skipped} item${skipped === 1 ? "" : "s"} couldn't be loaded (no longer available)`
+            : "Cart loaded from shared link",
+        );
       } catch (e) {
         console.warn("[cart-share] hydrate failed:", e);
         if (!cancelled) toast.error("Could not load shared cart");
@@ -776,68 +773,6 @@ export default function CartPage() {
               )}
               <button
                 onClick={() => { setShareOpen(false); setShowManualCopy(false); }}
-                className="w-full text-text-med hover:text-foreground text-sm font-semibold py-2"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Load shared cart confirmation — only fires when the user opens a
-          ?items= link while they already have rows in their cart. */}
-      {pendingShared && (
-        <div
-          className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
-          onClick={() => setPendingShared(null)}
-        >
-          <div
-            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="font-bold text-base mb-1">Load shared cart?</h3>
-            <p className="text-xs text-text-med">
-              Your current cart has {cart.length} item{cart.length === 1 ? "" : "s"}. Loading this shared cart will replace them, or you can add the shared items to your existing cart.
-              {pendingShared.skipped > 0 && (
-                <span className="block mt-1 text-coral">
-                  {pendingShared.skipped} item{pendingShared.skipped === 1 ? "" : "s"} from the share couldn't be loaded (no longer available).
-                </span>
-              )}
-            </p>
-            <div className="grid gap-2 mt-4">
-              <button
-                onClick={() => {
-                  setCart(pendingShared.rows);
-                  toast.success("Cart replaced with shared list");
-                  setPendingShared(null);
-                }}
-                className="w-full bg-forest text-primary-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-forest-deep"
-              >
-                Replace cart
-              </button>
-              <button
-                onClick={() => {
-                  // Merge: for every shared row, fold it into the existing
-                  // cart by variant key — duplicate keys get quantity-summed.
-                  setCart(prev => {
-                    const byKey: Record<string, CartItem> = {};
-                    prev.forEach(r => { byKey[r._key] = { ...r }; });
-                    pendingShared.rows.forEach(r => {
-                      if (byKey[r._key]) byKey[r._key].qty = (byKey[r._key].qty || 0) + (r.qty || 0);
-                      else byKey[r._key] = r;
-                    });
-                    return Object.values(byKey);
-                  });
-                  toast.success("Shared items added to your cart");
-                  setPendingShared(null);
-                }}
-                className="w-full border border-border px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted"
-              >
-                Add to existing cart
-              </button>
-              <button
-                onClick={() => setPendingShared(null)}
                 className="w-full text-text-med hover:text-foreground text-sm font-semibold py-2"
               >
                 Cancel
