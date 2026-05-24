@@ -201,10 +201,47 @@ export function ImportButton() {
         }));
 
         if (brandRows.length) {
-          await supabase.from("brands").delete().eq("product_id", productId);
-          await supabase.from("brands").insert(brandRows);
+          // Reconcile by (product_id, brand_name) instead of the old
+          // delete-then-insert pattern, which silently doubled rows
+          // every time the DELETE failed (RLS, FK touch, etc.). The
+          // same bug took out Baby Wipes with 27 phantom brand rows
+          // — see b4f64ab for the matching fix on AdminProductForm.
+          const { data: existing, error: fetchErr } = await supabase
+            .from("brands")
+            .select("id, brand_name")
+            .eq("product_id", productId);
+          if (fetchErr) throw fetchErr;
+          const byName: Record<string, string> = {};
+          ((existing as any[]) || []).forEach((r) => {
+            byName[String(r.brand_name || "").toLowerCase().trim()] = r.id;
+          });
+
+          const incomingNames = new Set(
+            brandRows.map((b) => String(b.brand_name || "").toLowerCase().trim()),
+          );
+          // Drop any brand that the import dropped.
+          const removedIds = (existing as any[] || [])
+            .filter((r) => !incomingNames.has(String(r.brand_name || "").toLowerCase().trim()))
+            .map((r) => r.id);
+          if (removedIds.length > 0) {
+            const { error: delErr } = await supabase.from("brands").delete().in("id", removedIds);
+            if (delErr) throw delErr;
+          }
+          // Per-row UPDATE for existing brand names, INSERT for new ones.
+          for (const row of brandRows) {
+            const key = String(row.brand_name || "").toLowerCase().trim();
+            const existingId = byName[key];
+            if (existingId) {
+              const { error: upErr } = await (supabase.from("brands") as any).update(row).eq("id", existingId);
+              if (upErr) throw upErr;
+            } else {
+              const { error: insErr } = await (supabase.from("brands") as any).insert(row);
+              if (insErr) throw insErr;
+            }
+          }
         }
       } catch (err) {
+        console.error("[excel-import] product save failed:", err);
         errors++;
       }
     }
