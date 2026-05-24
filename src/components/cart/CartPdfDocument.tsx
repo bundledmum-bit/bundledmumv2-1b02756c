@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
   footerText: { fontSize: 8, color: "#7A7A7A" },
 });
 
-const fmt = (n: number) => "₦" + (Math.round(n || 0)).toLocaleString("en-NG");
+const fmt = (n: number) => "NGN " + (Math.round(n || 0)).toLocaleString("en-NG");
 
 export function CartPdfDocument({ items, subtotal, whatsappNumber, generatedAt }: Props) {
   const dateStr = generatedAt.toLocaleDateString("en-NG", {
