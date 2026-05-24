@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
-  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle,
+  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock,
 } from "lucide-react";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
@@ -592,7 +592,7 @@ function QuoteEditor({
   const upsertQuote = useMutation({
     mutationFn: async (next: QuoteForm) => {
       const payload: any = {
-        customer_name: next.customer_name.trim(),
+        customer_name: next.customer_name.trim() || null,
         customer_phone: next.customer_phone.trim() || null,
         customer_email: next.customer_email.trim() || null,
         delivery_address: next.delivery_address.trim() || null,
@@ -680,7 +680,7 @@ function QuoteEditor({
 
   const handleSelectProduct = async (row: any) => {
     if (!currentId) {
-      toast.error("Save the quote's customer details first, then add items.");
+      toast.error("Save the quote first, then add items.");
       return;
     }
     // Check if the product has sizes — if so, open the size picker before adding.
@@ -721,22 +721,16 @@ function QuoteEditor({
 
   const update = (patch: Partial<QuoteForm>) => setForm((p) => ({ ...p, ...patch }));
 
-  const validateForSave = (): string | null => {
-    if (!form.customer_name.trim()) return "Customer name is required.";
-    return null;
-  };
-
+  // Customer fields are intentionally optional at the draft/save stage.
+  // The Send and Convert modals enforce their own field requirements at
+  // the point where the data is actually used (email send / order place).
   const handleSaveDraft = async () => {
-    const err = validateForSave();
-    if (err) { toast.error(err); return; }
     const row = await upsertQuote.mutateAsync(form);
     toast.success(`Quote saved · ${row.quote_number}`);
     onClose();
   };
 
   const handleSaveAndDownload = async () => {
-    const err = validateForSave();
-    if (err) { toast.error(err); return; }
     const row = await upsertQuote.mutateAsync(form);
     // Refetch to get the latest items + computed totals after the update trigger.
     const { data, error } = await (supabase as any)
@@ -822,10 +816,14 @@ function QuoteEditor({
         <div className="lg:col-span-2 space-y-4">
           {/* Section A — Customer Details */}
           <section className="bg-card border border-border rounded-xl p-4">
-            <h2 className="text-sm font-bold mb-3">Customer Details</h2>
+            <h2 className="text-sm font-bold mb-1">Customer Details</h2>
+            <p className="text-[11px] text-text-med mb-3 italic">
+              Optional at this stage. Required when sending the quote email
+              or placing the order on the customer's behalf.
+            </p>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
-                <label className={labelCls}>Customer Name *</label>
+                <label className={labelCls}>Customer Name</label>
                 <input value={form.customer_name} onChange={(e) => update({ customer_name: e.target.value })} className={inputCls} disabled={!canEdit} />
               </div>
               <div>
@@ -859,7 +857,7 @@ function QuoteEditor({
             <h2 className="text-sm font-bold mb-3">Line Items</h2>
             {!currentId && (
               <p className="text-xs text-muted-foreground mb-2 italic">
-                Save the customer details first to start adding products.
+                Save the quote first to start adding products.
               </p>
             )}
             <div className="relative">
@@ -924,16 +922,33 @@ function QuoteEditor({
                           />
                         </td>
                         <td className="px-2 py-2">
-                          <input
-                            type="number" min={0}
-                            defaultValue={it.unit_price}
-                            onBlur={(e) => {
-                              const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                              if (v !== it.unit_price) updateItem.mutate({ id: it.id, patch: { unit_price: v } });
-                            }}
-                            className="w-full border border-input rounded px-2 py-1 text-sm bg-background text-right"
-                            disabled={!canEdit}
-                          />
+                          {it.product_id ? (
+                            // Catalogue items inherit price from the brand
+                            // record. To reduce a customer's total, use the
+                            // Discount field in Fees & Totals — that keeps
+                            // the unit price as an auditable baseline and
+                            // surfaces the discount as its own line.
+                            <div
+                              className="w-full inline-flex items-center justify-end gap-1.5 border border-input/60 rounded px-2 py-1 text-sm bg-muted/40 text-text-med cursor-not-allowed"
+                              title="Locked — use the Discount field to adjust pricing"
+                            >
+                              <Lock className="w-3 h-3 opacity-60" aria-hidden="true" />
+                              <span className="font-semibold text-foreground">{fmtN(it.unit_price)}</span>
+                            </div>
+                          ) : (
+                            // Manual items (no product_id) — admin set the
+                            // price by hand, so the input stays editable.
+                            <input
+                              type="number" min={0}
+                              defaultValue={it.unit_price}
+                              onBlur={(e) => {
+                                const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                if (v !== it.unit_price) updateItem.mutate({ id: it.id, patch: { unit_price: v } });
+                              }}
+                              className="w-full border border-input rounded px-2 py-1 text-sm bg-background text-right"
+                              disabled={!canEdit}
+                            />
+                          )}
                         </td>
                         <td className="px-2 py-2 text-right font-semibold">{fmtN(it.line_total)}</td>
                         <td className="px-2 py-2 text-right">
