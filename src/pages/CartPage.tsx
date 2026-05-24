@@ -8,7 +8,8 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText } from "lucide-react";
-import { encodeCartToUrl, decodeCartFromUrl, buildWhatsappMessage, type SharedCartItem } from "@/lib/cartShareUrl";
+import { decodeCartFromUrl, buildWhatsappMessage } from "@/lib/cartShareUrl";
+import { generateSharedCartUrl, fetchSharedCart, type SharedCartItem as RpcSharedCartItem } from "@/lib/sharedCart";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -67,6 +68,9 @@ export default function CartPage() {
   // on first click; keep a flag so the button can show a spinner state
   // while the chunk fetches + the PDF renders.
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  // Async loading flag for the Share Cart button while the
+  // create_shared_cart RPC round-trips (200-500ms typical).
+  const [generatingShare, setGeneratingShare] = useState(false);
   // When both clipboard tiers fail (very rare — restrictive iframe + old
   // browser), reveal a highlighted, auto-selected input so the user can
   // tap-and-hold to copy manually.
@@ -85,20 +89,54 @@ export default function CartPage() {
   useEffect(() => { document.title = `Your Cart (${totalItems}) | BundledMum`; }, [totalItems]);
 
   // ── Shared-cart auto-hydrate ──────────────────────────────────
-  // When the page is opened with ?items=<base64>, decode the payload,
-  // hydrate against the live products + brands tables to get prices /
-  // images / availability, then either drop the rows straight in (cart
-  // empty) or queue a confirmation modal so the user can choose to
-  // replace, merge, or cancel. Runs exactly once on mount.
+  // Two entry shapes are supported:
+  //   1. ?share=<token>      — new path, payload stored server-side via
+  //                            `get_shared_cart` RPC (short URL ~55 chars).
+  //   2. ?items=<base64>     — legacy path, full payload encoded inline.
+  //                            Kept for backwards compatibility with URLs
+  //                            already shared in WhatsApp threads/emails.
+  // Either way we end up with a list of `{product_id, brand_id, size,
+  // color, quantity}` rows and the rest of the pipeline below (product
+  // lookup, brand resolution, cart replace) is shared.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const shareToken = params.get("share");
     const encoded = params.get("items");
-    if (!encoded) return;
+    if (!shareToken && !encoded) return;
     let cancelled = false;
     setHydrating(true);
     (async () => {
       try {
-        const decoded = decodeCartFromUrl(encoded);
+        // Resolve the payload from whichever entry point fired.
+        let decoded: Array<{
+          product_id: string;
+          brand_id: string | null;
+          size: string | null;
+          color: string | null;
+          quantity: number;
+        }> | null = null;
+
+        if (shareToken) {
+          const items = await fetchSharedCart(shareToken);
+          if (!items) {
+            if (!cancelled) {
+              toast.error("This shared cart link has expired or is invalid.");
+              // Clean ?share= out so refresh / back-button don't retry.
+              window.history.replaceState({}, "", window.location.pathname);
+            }
+            return;
+          }
+          decoded = items.map(i => ({
+            product_id: i.p,
+            brand_id: i.b || null,
+            size: i.s || null,
+            color: i.c || null,
+            quantity: Math.max(1, Math.min(99, Number(i.q) || 1)),
+          }));
+        } else if (encoded) {
+          decoded = decodeCartFromUrl(encoded);
+        }
+
         if (!decoded || decoded.length === 0) {
           if (!cancelled) toast.error("Shared cart is empty or no longer available");
           return;
@@ -608,24 +646,36 @@ export default function CartPage() {
               )}
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
-                  onClick={() => {
-                    // Compose the URL lazily so it captures the current cart.
-                    const url = encodeCartToUrl(
-                      cart.map((it: any): SharedCartItem => ({
-                        product_id: String(it.id),
-                        brand_id: it.selectedBrand?.id || null,
-                        size: it.selectedSize || null,
-                        color: it.selectedColor || null,
-                        quantity: it.qty || 1,
-                      })),
-                    );
-                    setShareUrl(url);
-                    setShareOpen(true);
+                  onClick={async () => {
+                    if (cart.length === 0 || generatingShare) return;
+                    setGeneratingShare(true);
+                    try {
+                      // Persist the cart server-side via create_shared_cart
+                      // RPC and get back a short token URL. This replaces
+                      // the old base64-in-URL approach so links stay short
+                      // regardless of cart size.
+                      const url = await generateSharedCartUrl(
+                        cart.map((it: any): RpcSharedCartItem => ({
+                          p: String(it.id),
+                          b: it.selectedBrand?.id || null,
+                          s: it.selectedSize || null,
+                          c: it.selectedColor || null,
+                          q: it.qty || 1,
+                        })),
+                      );
+                      setShareUrl(url);
+                      setShareOpen(true);
+                    } catch (err) {
+                      console.error("[cart-share] generate failed:", err);
+                      toast.error("Could not generate share link. Please try again.");
+                    } finally {
+                      setGeneratingShare(false);
+                    }
                   }}
-                  disabled={cart.length === 0}
+                  disabled={cart.length === 0 || generatingShare}
                   className="rounded-pill border-[1.5px] border-forest py-2.5 text-center font-body font-semibold text-forest text-sm hover:bg-forest-light disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
                 >
-                  <Share2 className="w-4 h-4" /> Share Cart
+                  <Share2 className="w-4 h-4" /> {generatingShare ? "Generating link…" : "Share Cart"}
                 </button>
                 <button
                   onClick={async () => {
