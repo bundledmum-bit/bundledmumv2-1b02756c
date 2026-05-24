@@ -158,35 +158,60 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         productId = data.id;
       }
 
-      // Upsert brands
-      if (isEdit) await supabase.from("brands").delete().eq("product_id", productId);
-      if (brands.length > 0) {
-        const brandRows = brands.map((b, i) => {
-          // Keep images[0] in sync with image_url when one is empty —
-          // lets admins keep filling in the single image_url and still
-          // have the gallery array populated.
-          const existing: string[] = Array.isArray(b.images) ? b.images.filter(Boolean) : [];
-          const images = existing.length > 0 ? existing : (b.image_url ? [b.image_url] : []);
-          return {
-            product_id: productId, brand_name: b.brand_name, price: b.price, tier: b.tier,
-            is_default_for_tier: b.is_default_for_tier || false, size_variant: b.size_variant || null,
-            display_order: i,
-            image_url: b.image_url || images[0] || null,
-            logo_url: b.logo_url || null,
-            thumbnail_url: b.thumbnail_url || null, compare_at_price: b.compare_at_price || null,
-            stock_quantity: b.stock_quantity, in_stock: b.in_stock ?? true,
-            cost_price: b.cost_price || 0,
-            // Diaper / pack-based attributes (per-brand-variant).
-            weight_range_kg: b.weight_range_kg?.trim?.() || b.weight_range_kg || null,
-            pack_count: b.pack_count != null && b.pack_count !== "" ? Number(b.pack_count) : null,
-            diaper_type: b.diaper_type || null,
-            sku: b.sku?.trim?.() || b.sku || null,
-            // Shipping weight per single unit/pack as sold — required.
-            weight_kg: Number(b.weight_kg),
-          };
-        });
-        const { error } = await (supabase.from("brands") as any).insert(brandRows);
-        if (error) throw error;
+      // Reconcile brands by id instead of the old delete-then-insert
+      // pattern. The destructive pattern would silently duplicate rows
+      // whenever the DELETE failed (RLS denial, FK touch from
+      // dependent tables, etc.) — that's how a single product
+      // accumulated 27 phantom brand rows after repeated in_stock
+      // toggles. Existing rows are now UPDATEd in place by id, new
+      // rows (no id) are INSERTed, removed rows are DELETEd by id.
+      const buildBrandPayload = (b: any, i: number) => {
+        const existing: string[] = Array.isArray(b.images) ? b.images.filter(Boolean) : [];
+        const images = existing.length > 0 ? existing : (b.image_url ? [b.image_url] : []);
+        return {
+          product_id: productId,
+          brand_name: b.brand_name,
+          price: b.price,
+          tier: b.tier,
+          is_default_for_tier: b.is_default_for_tier || false,
+          size_variant: b.size_variant || null,
+          display_order: i,
+          image_url: b.image_url || images[0] || null,
+          logo_url: b.logo_url || null,
+          thumbnail_url: b.thumbnail_url || null,
+          compare_at_price: b.compare_at_price || null,
+          stock_quantity: b.stock_quantity,
+          in_stock: b.in_stock ?? true,
+          cost_price: b.cost_price || 0,
+          weight_range_kg: b.weight_range_kg?.trim?.() || b.weight_range_kg || null,
+          pack_count: b.pack_count != null && b.pack_count !== "" ? Number(b.pack_count) : null,
+          diaper_type: b.diaper_type || null,
+          sku: b.sku?.trim?.() || b.sku || null,
+          weight_kg: Number(b.weight_kg),
+        };
+      };
+      const incomingIds = brands.map((b: any) => b.id).filter(Boolean);
+      // Delete brands the admin removed from the form (only when
+      // editing — fresh inserts have nothing on disk yet).
+      if (isEdit) {
+        const originalIds: string[] = ((product?.brands as any[]) || []).map((b: any) => b.id).filter(Boolean);
+        const removed = originalIds.filter((id) => !incomingIds.includes(id));
+        if (removed.length > 0) {
+          const { error: delErr } = await supabase.from("brands").delete().in("id", removed);
+          if (delErr) throw delErr;
+        }
+      }
+      // Per-row UPDATE for kept rows, INSERT for newly-added rows.
+      for (let i = 0; i < brands.length; i++) {
+        const b = brands[i];
+        const payload = buildBrandPayload(b, i);
+        if (b.id) {
+          const { error: upErr } = await (supabase.from("brands") as any).update(payload).eq("id", b.id);
+          if (upErr) throw upErr;
+        } else {
+          const { error: insErr } = await (supabase.from("brands") as any).insert(payload);
+          if (insErr) throw insErr;
+        }
       }
 
       // Upsert sizes
