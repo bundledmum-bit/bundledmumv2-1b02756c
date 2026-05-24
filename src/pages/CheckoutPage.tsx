@@ -9,6 +9,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useShippingZones, calculateDeliveryFee, type ShippingZone } from "@/hooks/useShippingZones";
 import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import { useSiteSettings, useAllProducts } from "@/hooks/useSupabaseData";
+import WhatsAppRecoveryModal, { type RecoveryContext } from "@/components/checkout/WhatsAppRecoveryModal";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import { trackEvent, getSessionId, getAttribution, markSessionConverted } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
@@ -59,6 +60,32 @@ export default function CheckoutPage() {
   const [processing, setProcessing] = useState(false);
   const [stockIssues, setStockIssues] = useState<StockIssue[]>([]);
   const [errors, setErrors] = useState<Partial<FormData>>({});
+  // Friendly WhatsApp recovery modal for TECHNICAL checkout failures
+  // (5xx, network drop, Paystack init failure, unexpected exception).
+  // Validation errors keep their inline toast UI and never trigger this.
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [recoveryContext, setRecoveryContext] = useState<RecoveryContext>({});
+  // Triggers the modal AND assembles the wa.me prefill from the
+  // current form + cart state. Always logs the raw error to console
+  // for dev visibility.
+  const triggerRecoveryModal = (tag: string, err: unknown) => {
+    console.error(`[checkout] technical failure (${tag}):`, err);
+    setRecoveryContext({
+      customer: {
+        name: `${form.firstName || ""} ${form.lastName || ""}`.trim() || undefined,
+        phone: form.phone || undefined,
+        state: form.state || undefined,
+        city: form.city || undefined,
+      },
+      items: cart.map((it: any) => ({
+        name: it.name,
+        qty: it.qty,
+        price: Number(it.selectedBrand?.price ?? it.price ?? 0),
+      })),
+      order: { total: grand },
+    });
+    setShowWhatsAppModal(true);
+  };
   const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
 
   // Coupon state
@@ -987,7 +1014,21 @@ export default function CheckoutPage() {
         } catch (e) {
           console.warn("[checkout] unable to parse stock-error body", e);
         }
-        toast.error(`Order failed: ${fnError?.message || result?.error || "Unknown error"}`);
+        // Classify the failure: 5xx, network-level, or no specific message
+        // → modal. Anything else (400-class validation with a clear
+        // message) → keep the original inline toast so the customer
+        // can act on it.
+        const ctxStatus: number | undefined = (fnError as any)?.context?.status;
+        const errMsg = String(fnError?.message || result?.error || "").trim();
+        const looksTechnical =
+          !ctxStatus
+          || ctxStatus >= 500
+          || /internal server error|timeout|network|failed to fetch|service unavailable/i.test(errMsg);
+        if (looksTechnical) {
+          triggerRecoveryModal("place-order", fnError || result);
+          return null;
+        }
+        toast.error(`Order failed: ${errMsg || "Unknown error"}`);
         return null;
       }
 
@@ -1144,7 +1185,7 @@ export default function CheckoutPage() {
 
           if (verifyError || !verification?.verified) {
             setProcessing(false);
-            toast.error("Payment verification failed. Please contact support.");
+            triggerRecoveryModal("process-payment", verifyError || verification);
             return;
           }
 
@@ -1158,21 +1199,30 @@ export default function CheckoutPage() {
         },
         onCancel: () => { setProcessing(false); toast.error("Payment cancelled"); },
       });
-    } catch {
-      const orderData = buildOrderData(cartSnapshot, "DEMO-" + Date.now(), "success");
-      const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
-      if (!savedOrder) {
-        setProcessing(false);
-        toast.error("We couldn't place your order. Please try again.");
+    } catch (err) {
+      // Paystack init threw — SDK missing, ad-blocker, network drop, etc.
+      // On production, surface the WhatsApp recovery modal instead of
+      // the legacy "DEMO-" auto-complete path which was a dev shortcut
+      // that silently created phantom paid orders.
+      if (import.meta.env.DEV) {
+        const orderData = buildOrderData(cartSnapshot, "DEMO-" + Date.now(), "success");
+        const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
+        if (!savedOrder) {
+          setProcessing(false);
+          triggerRecoveryModal("dev-demo-save", "DEMO save failed");
+          return;
+        }
+        await syncOrderToSheets({
+          orderId: savedOrder.id,
+          orderNumber: savedOrder.orderNumber,
+          fallbackData: orderData,
+        });
+        clearCart();
+        navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
         return;
       }
-      await syncOrderToSheets({
-        orderId: savedOrder.id,
-        orderNumber: savedOrder.orderNumber,
-        fallbackData: orderData,
-      });
-      clearCart();
-      navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
+      setProcessing(false);
+      triggerRecoveryModal("paystack-init", err);
     }
   };
 
@@ -1844,6 +1894,15 @@ export default function CheckoutPage() {
           </button>
         </div>
       </div>
+
+      {/* Recovery dialog for TECHNICAL failures only — opened by
+          triggerRecoveryModal at every 5xx / network / Paystack-init
+          error path. Validation errors keep their inline toasts. */}
+      <WhatsAppRecoveryModal
+        isOpen={showWhatsAppModal}
+        onClose={() => setShowWhatsAppModal(false)}
+        context={recoveryContext}
+      />
     </div>
   );
 }
