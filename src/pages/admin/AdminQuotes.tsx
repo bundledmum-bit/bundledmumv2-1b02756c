@@ -4,7 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
+  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle,
 } from "lucide-react";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
 
@@ -20,9 +22,23 @@ const NG_STATES = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700 border-gray-200",
-  sent: "bg-blue-100 text-blue-700 border-blue-200",
-  archived: "bg-muted text-muted-foreground border-border",
+  draft:     "bg-gray-100 text-gray-700 border-gray-200",
+  sent:      "bg-blue-100 text-blue-700 border-blue-200",
+  viewed:    "bg-indigo-100 text-indigo-700 border-indigo-200",
+  accepted:  "bg-amber-100 text-amber-800 border-amber-200",
+  converted: "bg-green-100 text-green-700 border-green-200",
+  declined:  "bg-red-100 text-red-700 border-red-200",
+  expired:   "bg-orange-100 text-orange-700 border-orange-200",
+  archived:  "bg-muted text-muted-foreground border-border",
+};
+
+type QuoteStatus = "all" | "draft" | "sent" | "viewed" | "accepted" | "converted" | "declined" | "expired" | "archived";
+const STATUS_TABS: QuoteStatus[] = ["all", "draft", "sent", "viewed", "accepted", "converted", "declined", "expired", "archived"];
+
+const shareUrlFor = (token: string | null | undefined): string => {
+  if (!token) return "";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://bundledmum.com";
+  return `${origin}/quote/${token}`;
 };
 
 const fmtN = (n: number | null | undefined) =>
@@ -55,14 +71,21 @@ export default function AdminQuotes() {
   const [view, setView] = useState<"list" | "editor">("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "sent" | "archived">("all");
+  const [statusFilter, setStatusFilter] = useState<QuoteStatus>("all");
+  // Modal toggles for the per-row workflow actions.
+  const [sendingFor, setSendingFor] = useState<string | null>(null);
+  const [convertingFor, setConvertingFor] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
+  // Pulls from the admin_quotes_summary view so the table cells get
+  // item_count, is_expired_pending and converted_order_number without
+  // a per-row roundtrip. View also re-exposes the underlying columns
+  // we need for the action menu (share_token, status, etc.).
   const { data: quotes = [], isLoading } = useQuery({
     queryKey: ["admin-quotes"],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
-        .from("quotes")
+        .from("admin_quotes_summary")
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -205,7 +228,7 @@ export default function AdminQuotes() {
           />
         </div>
         <div className="flex gap-1 flex-wrap">
-          {(["all", "draft", "sent", "archived"] as const).map((s) => (
+          {STATUS_TABS.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -238,59 +261,136 @@ export default function AdminQuotes() {
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-text-med">Quote #</th>
                   <th className="text-left px-4 py-3 font-semibold text-text-med">Customer</th>
-                  <th className="text-left px-4 py-3 font-semibold text-text-med">Email</th>
+                  <th className="text-center px-4 py-3 font-semibold text-text-med w-16">Items</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-med">Total</th>
                   <th className="text-left px-4 py-3 font-semibold text-text-med">Status</th>
                   <th className="text-left px-4 py-3 font-semibold text-text-med whitespace-nowrap">Created</th>
+                  <th className="text-left px-4 py-3 font-semibold text-text-med whitespace-nowrap">Expires</th>
                   <th className="text-right px-4 py-3 font-semibold text-text-med">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((q: any) => (
-                  <tr key={q.id} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-3 font-mono text-xs">{q.quote_number}</td>
-                    <td className="px-4 py-3 font-semibold">{q.customer_name}</td>
-                    <td className="px-4 py-3 text-text-med text-xs">{q.customer_email || "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold">{fmtN(q.total)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border capitalize ${STATUS_COLORS[q.status] || STATUS_COLORS.draft}`}>
-                        {q.status || "draft"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-text-med whitespace-nowrap">{fmtDate(q.created_at)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => handleDownload(q.id)}
-                          className="p-1.5 rounded hover:bg-muted"
-                          title="Download PDF"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
+                {pageRows.map((q: any) => {
+                  const expired = q.is_expired_pending === true;
+                  const isFinal = q.status === "converted" || q.status === "declined";
+                  const canDecline = canEdit && !isFinal;
+                  const onCopyShare = async () => {
+                    const url = shareUrlFor(q.share_token);
+                    if (!url) { toast.error("No share URL yet — save the quote first."); return; }
+                    const ok = await copyToClipboard(url);
+                    toast[ok ? "success" : "error"](ok ? "Share URL copied" : "Couldn't copy — open the quote to copy manually");
+                  };
+                  return (
+                    <tr key={q.id} className="border-t border-border hover:bg-muted/30">
+                      <td className="px-4 py-3 font-mono text-xs">
                         <button
                           onClick={() => { setEditingId(q.id); setView("editor"); }}
-                          className="p-1.5 rounded hover:bg-muted"
-                          title={canEdit ? "Edit" : "View"}
+                          className="hover:underline text-left"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          {q.quote_number}
                         </button>
-                        {canDelete && (
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete quote ${q.quote_number}? This cannot be undone.`)) {
-                                deleteQuote.mutate(q.id);
-                              }
-                            }}
-                            className="p-1.5 rounded hover:bg-destructive/10 text-destructive"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {q.converted_order_number && (
+                          <div className="text-[10px] text-green-700 font-semibold mt-0.5">→ {q.converted_order_number}</div>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-sm">{q.customer_name || "—"}</div>
+                        {q.customer_email && <div className="text-[11px] text-text-med">{q.customer_email}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-center text-text-med text-xs">{q.item_count ?? 0}</td>
+                      <td className="px-4 py-3 text-right font-semibold">{fmtN(q.total)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border capitalize ${STATUS_COLORS[q.status] || STATUS_COLORS.draft}`}>
+                          {q.status || "draft"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-text-med whitespace-nowrap">{fmtDate(q.created_at)}</td>
+                      <td className={`px-4 py-3 text-xs whitespace-nowrap ${expired ? "text-destructive font-semibold" : "text-text-med"}`}>
+                        {q.expires_at ? fmtDate(q.expires_at) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-0.5 flex-wrap">
+                          <button onClick={onCopyShare} className="p-1.5 rounded hover:bg-muted" title="Copy share URL">
+                            <CopyIcon className="w-3.5 h-3.5" />
+                          </button>
+                          {q.share_token && (
+                            <a
+                              href={shareUrlFor(q.share_token)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded hover:bg-muted inline-flex"
+                              title="Open customer view (Cmd/Ctrl+P to save PDF)"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleDownload(q.id)}
+                            className="p-1.5 rounded hover:bg-muted"
+                            title="Download PDF (admin template)"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          {canEdit && q.customer_email && !isFinal && (
+                            <button
+                              onClick={() => setSendingFor(q.id)}
+                              className="p-1.5 rounded hover:bg-muted text-blue-600"
+                              title="Send to customer"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canEdit && !isFinal && (
+                            <button
+                              onClick={() => setConvertingFor(q.id)}
+                              className="p-1.5 rounded hover:bg-muted text-green-700"
+                              title="Place order for customer"
+                            >
+                              <ShoppingCart className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canDecline && (
+                            <button
+                              onClick={() => {
+                                if (!confirm(`Mark quote ${q.quote_number} as declined?`)) return;
+                                (supabase as any).from("quotes").update({ status: "declined" }).eq("id", q.id)
+                                  .then(({ error }: { error: any }) => {
+                                    if (error) { toast.error(error.message); return; }
+                                    queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+                                    toast.success("Quote declined");
+                                  });
+                              }}
+                              className="p-1.5 rounded hover:bg-muted text-orange-700"
+                              title="Mark as declined"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { setEditingId(q.id); setView("editor"); }}
+                            className="p-1.5 rounded hover:bg-muted"
+                            title={canEdit ? "Edit" : "View"}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          {canDelete && q.status === "draft" && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete quote ${q.quote_number}? This cannot be undone.`)) {
+                                  deleteQuote.mutate(q.id);
+                                }
+                              }}
+                              className="p-1.5 rounded hover:bg-destructive/10 text-destructive"
+                              title="Delete (drafts only)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -317,6 +417,29 @@ export default function AdminQuotes() {
           )}
         </div>
       )}
+
+      {/* Workflow modals — Send to Customer + Place Order for Customer.
+          Both call edge functions; success invalidates the list query
+          so the row's new status (sent / converted) appears immediately. */}
+      {sendingFor && (
+        <SendQuoteDialog
+          quoteId={sendingFor}
+          defaultEmail={(quotes as any[]).find((q) => q.id === sendingFor)?.customer_email || ""}
+          onClose={() => setSendingFor(null)}
+          onSent={() => {
+            queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+          }}
+        />
+      )}
+      {convertingFor && (
+        <ConvertQuoteDialog
+          quote={(quotes as any[]).find((q) => q.id === convertingFor)}
+          onClose={() => setConvertingFor(null)}
+          onConverted={() => {
+            queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -333,9 +456,15 @@ interface QuoteForm {
   delivery_state: string;
   service_fee: string;
   estimated_delivery_fee: string;
+  delivery_fee_override: string;
+  discount_amount: string;
+  discount_reason: string;
+  bypass_spend_threshold: boolean;
+  bypass_delivery_threshold: boolean;
+  expires_at: string;
   internal_notes: string;
   customer_notes: string;
-  status: "draft" | "sent" | "archived";
+  status: "draft" | "sent" | "viewed" | "accepted" | "converted" | "declined" | "expired" | "archived";
 }
 
 const BLANK_FORM: QuoteForm = {
@@ -347,6 +476,12 @@ const BLANK_FORM: QuoteForm = {
   delivery_state: "",
   service_fee: "500",
   estimated_delivery_fee: "0",
+  delivery_fee_override: "",
+  discount_amount: "0",
+  discount_reason: "",
+  bypass_spend_threshold: false,
+  bypass_delivery_threshold: false,
+  expires_at: "",
   internal_notes: "",
   customer_notes: "",
   status: "draft",
@@ -397,6 +532,12 @@ function QuoteEditor({
       delivery_state: quoteData.delivery_state || "",
       service_fee: String(quoteData.service_fee ?? 500),
       estimated_delivery_fee: String(quoteData.estimated_delivery_fee ?? 0),
+      delivery_fee_override: quoteData.delivery_fee_override != null ? String(quoteData.delivery_fee_override) : "",
+      discount_amount: String(quoteData.discount_amount ?? 0),
+      discount_reason: quoteData.discount_reason || "",
+      bypass_spend_threshold: !!quoteData.bypass_spend_threshold,
+      bypass_delivery_threshold: !!quoteData.bypass_delivery_threshold,
+      expires_at: quoteData.expires_at ? new Date(quoteData.expires_at).toISOString().slice(0, 10) : "",
       internal_notes: quoteData.internal_notes || "",
       customer_notes: quoteData.customer_notes || "",
       status: (quoteData.status as any) || "draft",
@@ -410,8 +551,12 @@ function QuoteEditor({
 
   const liveSubtotal = items.reduce((s, it) => s + (it.line_total || 0), 0);
   const serviceFeeNum = parseInt(form.service_fee, 10) || 0;
-  const deliveryFeeNum = parseInt(form.estimated_delivery_fee, 10) || 0;
-  const liveTotal = liveSubtotal + serviceFeeNum + deliveryFeeNum;
+  const overrideFee = form.delivery_fee_override.trim() === "" ? null : parseInt(form.delivery_fee_override, 10);
+  const deliveryFeeNum = overrideFee != null && Number.isFinite(overrideFee)
+    ? overrideFee
+    : (parseInt(form.estimated_delivery_fee, 10) || 0);
+  const discountNum = parseInt(form.discount_amount, 10) || 0;
+  const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum - discountNum);
 
   // ── Product search ─────────────────────────────────────────────
   const trimmedSearch = productSearch.trim();
@@ -446,7 +591,7 @@ function QuoteEditor({
   // ── Mutations ──────────────────────────────────────────────────
   const upsertQuote = useMutation({
     mutationFn: async (next: QuoteForm) => {
-      const payload = {
+      const payload: any = {
         customer_name: next.customer_name.trim(),
         customer_phone: next.customer_phone.trim() || null,
         customer_email: next.customer_email.trim() || null,
@@ -455,6 +600,12 @@ function QuoteEditor({
         delivery_state: next.delivery_state || null,
         service_fee: parseInt(next.service_fee, 10) || 0,
         estimated_delivery_fee: parseInt(next.estimated_delivery_fee, 10) || 0,
+        delivery_fee_override: next.delivery_fee_override.trim() === "" ? null : (parseInt(next.delivery_fee_override, 10) || null),
+        discount_amount: parseInt(next.discount_amount, 10) || 0,
+        discount_reason: next.discount_reason.trim() || null,
+        bypass_spend_threshold: !!next.bypass_spend_threshold,
+        bypass_delivery_threshold: !!next.bypass_delivery_threshold,
+        expires_at: next.expires_at ? new Date(next.expires_at + "T23:59:59").toISOString() : null,
         internal_notes: next.internal_notes.trim() || null,
         customer_notes: next.customer_notes.trim() || null,
         status: next.status,
@@ -626,12 +777,17 @@ function QuoteEditor({
     onClose();
   };
 
-  const handleStatus = async (next: "draft" | "sent" | "archived") => {
+  const handleStatus = async (next: QuoteForm["status"]) => {
     update({ status: next });
     const saved = await upsertQuote.mutateAsync({ ...form, status: next });
     toast.success(`Marked as ${next}`);
     void saved;
   };
+
+  // In-editor send + convert modal toggles — let admin trigger
+  // workflow without bouncing back to the list view.
+  const [editorSend, setEditorSend] = useState(false);
+  const [editorConvert, setEditorConvert] = useState(false);
 
   const handleDelete = async () => {
     if (!currentId) { onClose(); return; }
@@ -836,12 +992,93 @@ function QuoteEditor({
                 <label className={labelCls}>Estimated Delivery (₦)</label>
                 <input type="number" min={0} value={form.estimated_delivery_fee} onChange={(e) => update({ estimated_delivery_fee: e.target.value })} className={inputCls} disabled={!canEdit} />
               </div>
+              <div>
+                <label className={labelCls}>Delivery Fee Override (₦) <span className="text-text-light font-normal">optional</span></label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.delivery_fee_override}
+                  onChange={(e) => update({ delivery_fee_override: e.target.value })}
+                  placeholder="Leave empty to use estimated"
+                  className={inputCls}
+                  disabled={!canEdit}
+                />
+                <p className="text-[10px] text-text-light mt-1">Wins over the estimate when set. Leave empty for auto.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                <div>
+                  <label className={labelCls}>Discount (₦)</label>
+                  <input type="number" min={0} value={form.discount_amount} onChange={(e) => update({ discount_amount: e.target.value })} className={inputCls} disabled={!canEdit} />
+                </div>
+                <div>
+                  <label className={labelCls}>Discount Reason</label>
+                  <input type="text" value={form.discount_reason} onChange={(e) => update({ discount_reason: e.target.value })} placeholder="e.g. Loyalty" className={inputCls} disabled={!canEdit} maxLength={120} />
+                </div>
+              </div>
+              <div className="space-y-1 pt-1">
+                <label className="flex items-start gap-2 text-[12px] text-text-med cursor-pointer">
+                  <input type="checkbox" checked={form.bypass_spend_threshold} onChange={(e) => update({ bypass_spend_threshold: e.target.checked })} disabled={!canEdit} />
+                  <span>Bypass automatic spend-threshold discount</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] text-text-med cursor-pointer">
+                  <input type="checkbox" checked={form.bypass_delivery_threshold} onChange={(e) => update({ bypass_delivery_threshold: e.target.checked })} disabled={!canEdit} />
+                  <span>Bypass free-delivery threshold</span>
+                </label>
+              </div>
+              <div>
+                <label className={labelCls}>Expires On</label>
+                <input type="date" value={form.expires_at} onChange={(e) => update({ expires_at: e.target.value })} className={inputCls} disabled={!canEdit} />
+                <p className="text-[10px] text-text-light mt-1">Quote auto-expires after this date.</p>
+              </div>
               <div className="border-t border-border pt-3 flex justify-between items-baseline">
                 <span className="font-bold text-forest">GRAND TOTAL</span>
                 <span className="text-xl font-bold text-forest">{fmtN(liveTotal)}</span>
               </div>
             </div>
           </section>
+
+          {/* Share URL + preview — only shows after the quote is saved. */}
+          {currentId && quoteData?.share_token && (
+            <section className="bg-card border border-border rounded-xl p-4">
+              <h2 className="text-sm font-bold mb-2">Customer Share Link</h2>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={shareUrlFor(quoteData.share_token)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="flex-1 border border-input rounded-lg px-3 py-2 text-[11px] bg-muted/40 font-mono"
+                />
+                <button
+                  onClick={async () => {
+                    const ok = await copyToClipboard(shareUrlFor(quoteData.share_token));
+                    toast[ok ? "success" : "error"](ok ? "Share URL copied" : "Could not copy");
+                  }}
+                  className="inline-flex items-center gap-1.5 border border-border px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted"
+                  title="Copy"
+                >
+                  <CopyIcon className="w-3.5 h-3.5" />
+                </button>
+                <a
+                  href={shareUrlFor(quoteData.share_token)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 border border-border px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted"
+                  title="Open customer preview in new tab"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-3 text-[11px] text-text-med">
+                <div>Views: <span className="font-semibold text-foreground">{quoteData.view_count ?? 0}</span></div>
+                {quoteData.last_viewed_at && (
+                  <div>Last viewed: <span className="font-semibold text-foreground">{new Date(quoteData.last_viewed_at).toLocaleString()}</span></div>
+                )}
+                {quoteData.converted_order_id && (
+                  <div className="col-span-2 text-green-700">Converted into order #{quoteData.converted_order_id}</div>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* Actions */}
           <section className="bg-card border border-border rounded-xl p-4 space-y-2">
@@ -868,23 +1105,41 @@ function QuoteEditor({
 
             {currentId && canEdit && (
               <div className="border-t border-border pt-3 space-y-1.5">
-                <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Status</p>
-                {form.status !== "sent" && (
-                  <button onClick={() => handleStatus("sent")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted">
-                    <Send className="w-3.5 h-3.5" /> Mark as Sent
+                <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Workflow</p>
+                {form.status !== "converted" && form.status !== "declined" && form.customer_email && (
+                  <button onClick={() => setEditorSend(true)} className="w-full inline-flex items-center justify-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700">
+                    <Send className="w-3.5 h-3.5" /> Send to Customer
                   </button>
                 )}
-                {form.status !== "archived" && (
-                  <button onClick={() => handleStatus("archived")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted">
-                    <Archive className="w-3.5 h-3.5" /> Archive
+                {form.status !== "converted" && form.status !== "declined" && (
+                  <button onClick={() => setEditorConvert(true)} className="w-full inline-flex items-center justify-center gap-1.5 bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-green-800">
+                    <ShoppingCart className="w-3.5 h-3.5" /> Place Order for Customer
                   </button>
                 )}
-                {form.status !== "draft" && (
-                  <button onClick={() => handleStatus("draft")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted">
-                    Reset to Draft
+                {form.status !== "declined" && form.status !== "converted" && (
+                  <button onClick={() => handleStatus("declined")} className="w-full inline-flex items-center justify-center gap-1.5 border border-orange-300 text-orange-800 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-orange-50">
+                    <XCircle className="w-3.5 h-3.5" /> Mark as Declined
                   </button>
                 )}
-                {canDelete && (
+                <div className="border-t border-border pt-2 mt-2">
+                  <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Status overrides</p>
+                  {form.status !== "sent" && (
+                    <button onClick={() => handleStatus("sent")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted mb-1.5">
+                      <Send className="w-3.5 h-3.5" /> Mark as Sent
+                    </button>
+                  )}
+                  {form.status !== "archived" && (
+                    <button onClick={() => handleStatus("archived")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted mb-1.5">
+                      <Archive className="w-3.5 h-3.5" /> Archive
+                    </button>
+                  )}
+                  {form.status !== "draft" && form.status !== "converted" && (
+                    <button onClick={() => handleStatus("draft")} className="w-full inline-flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted">
+                      Reset to Draft
+                    </button>
+                  )}
+                </div>
+                {canDelete && form.status === "draft" && (
                   <button onClick={handleDelete} className="w-full inline-flex items-center justify-center gap-1.5 border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-destructive/10 mt-2">
                     <Trash2 className="w-3.5 h-3.5" /> Delete Quote
                   </button>
@@ -920,6 +1175,238 @@ function QuoteEditor({
           </div>
         </div>
       )}
+
+      {editorSend && currentId && (
+        <SendQuoteDialog
+          quoteId={currentId}
+          defaultEmail={form.customer_email || ""}
+          onClose={() => setEditorSend(false)}
+          onSent={() => { refetchQuote(); queryClient.invalidateQueries({ queryKey: ["admin-quotes"] }); }}
+        />
+      )}
+      {editorConvert && currentId && (
+        <ConvertQuoteDialog
+          quote={{
+            id: currentId,
+            quote_number: quoteData?.quote_number,
+            customer_name: form.customer_name,
+            customer_phone: form.customer_phone,
+            customer_email: form.customer_email,
+            delivery_address: form.delivery_address,
+            delivery_city: form.delivery_city,
+            delivery_state: form.delivery_state,
+          }}
+          onClose={() => setEditorConvert(false)}
+          onConverted={() => {
+            refetchQuote();
+            queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Workflow dialogs — Send to Customer + Place Order for Customer.
+// ───────────────────────────────────────────────────────────────────
+function SendQuoteDialog({
+  quoteId, defaultEmail, onClose, onSent,
+}: { quoteId: string; defaultEmail: string; onClose: () => void; onSent: () => void }) {
+  const [email, setEmail] = useState(defaultEmail);
+  const [testMode, setTestMode] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    const target = email.trim();
+    if (!target || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(target)) {
+      toast.error("Enter a valid email address");
+      return;
+    }
+    setSending(true);
+    try {
+      const body: any = { quote_id: quoteId };
+      if (testMode) body.test_email = target;
+      const { data, error } = await (supabase as any).functions.invoke("send-quote-email", { body });
+      if (error || (data && data.success === false)) {
+        const msg = error?.message || data?.error || "Failed to send";
+        throw new Error(msg);
+      }
+      toast.success(`Quote sent to ${target}`);
+      onSent();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to send quote");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4" onClick={() => !sending && onClose()}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold">Send Quote</h3>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className={labelCls}>Send to *</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="customer@example.com"
+              className={inputCls}
+              autoFocus
+            />
+          </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
+            <span>Test mode — send to the email above with a [TEST] prefix and don't mark the quote as sent.</span>
+          </label>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} disabled={sending} className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40">Cancel</button>
+          <button
+            onClick={handleSend}
+            disabled={sending}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-blue-700 disabled:opacity-40"
+          >
+            <Send className="w-3.5 h-3.5" /> {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConvertQuoteDialog({
+  quote, onClose, onConverted,
+}: {
+  quote: any;
+  onClose: () => void;
+  onConverted: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: quote?.customer_name || "",
+    phone: quote?.customer_phone || "",
+    email: quote?.customer_email || "",
+    address: quote?.delivery_address || "",
+    city: quote?.delivery_city || "",
+    state: quote?.delivery_state || "",
+  });
+  const [placing, setPlacing] = useState(false);
+
+  const update = (patch: Partial<typeof form>) => setForm((p) => ({ ...p, ...patch }));
+
+  const handlePlace = async () => {
+    if (!form.name.trim()) { toast.error("Customer name is required"); return; }
+    if (!form.email.trim() || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) {
+      toast.error("Customer email is required"); return;
+    }
+    if (!form.address.trim()) { toast.error("Delivery address is required"); return; }
+    if (!form.state.trim()) { toast.error("Delivery state is required"); return; }
+    setPlacing(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("convert-quote-to-order", {
+        body: {
+          quote_id: quote.id,
+          customer_details: {
+            name: form.name.trim(),
+            phone: form.phone.trim() || null,
+            email: form.email.trim(),
+            address: form.address.trim(),
+            city: form.city.trim() || null,
+            state: form.state.trim(),
+          },
+          payment_method: "bank_transfer",
+        },
+      });
+      if (error || (data && data.success === false)) {
+        throw new Error(error?.message || data?.error || "Conversion failed");
+      }
+      const orderNo = data?.order_number || data?.order?.order_number;
+      toast.success(orderNo ? `Order ${orderNo} created` : "Order created");
+      onConverted();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not place order");
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4" onClick={() => !placing && onClose()}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold">Place Order for {quote?.customer_name || "this quote"}</h3>
+          <button onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-xs text-text-med mb-3">
+          Customer will receive an order confirmation email with bank-transfer instructions. The order stays <strong>pending</strong> until you confirm payment in /admin/orders.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Name *</label>
+            <input value={form.name} onChange={(e) => update({ name: e.target.value })} className={inputCls} autoFocus />
+          </div>
+          <div>
+            <label className={labelCls}>Phone</label>
+            <input value={form.phone} onChange={(e) => update({ phone: e.target.value })} placeholder="+234 8…" className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Email *</label>
+            <input type="email" value={form.email} onChange={(e) => update({ email: e.target.value })} className={inputCls} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>Delivery Address *</label>
+            <textarea value={form.address} onChange={(e) => update({ address: e.target.value })} rows={2} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>City</label>
+            <input value={form.city} onChange={(e) => update({ city: e.target.value })} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>State *</label>
+            <select value={form.state} onChange={(e) => update({ state: e.target.value })} className={inputCls}>
+              <option value="">—</option>
+              {NG_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 border border-border rounded-lg p-3 space-y-2">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Payment Method</p>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="radio" checked readOnly />
+            <span>
+              <span className="font-semibold">Pending Bank Transfer</span>
+              <span className="block text-[11px] text-text-med">Customer receives bank details by email. Confirm payment manually after receipt.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm opacity-50 cursor-not-allowed">
+            <input type="radio" disabled />
+            <span>Paystack Link <span className="text-[11px]">(Coming soon)</span></span>
+          </label>
+          <label className="flex items-start gap-2 text-sm opacity-50 cursor-not-allowed">
+            <input type="radio" disabled />
+            <span>Mark as Paid <span className="text-[11px]">(Coming soon)</span></span>
+          </label>
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} disabled={placing} className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40">Cancel</button>
+          <button
+            onClick={handlePlace}
+            disabled={placing}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-green-800 disabled:opacity-40"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" /> {placing ? "Placing…" : "Place Order"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
