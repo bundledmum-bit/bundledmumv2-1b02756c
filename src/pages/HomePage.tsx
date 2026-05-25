@@ -62,10 +62,20 @@ function HeroSection() {
   const trustStats: string[][] = Array.isArray(settings?.trust_stats) ? settings.trust_stats : [];
 
   // Hero-level toggles from homepage_sections.settings (JSONB).
-  // Defaults to show_search=true so we don't accidentally hide the
-  // bar when the row hasn't been seeded with the key yet.
-  const heroSettings = ((sections || []).find(s => s.section_key === "hero")?.settings || {}) as Record<string, any>;
-  const showSearch = heroSettings.show_search !== false;
+  //
+  // Two things to keep apart:
+  //   1. "We don't have data yet" — sections is still undefined. We must
+  //      render the bar hidden, otherwise it pops in and then pops out
+  //      as soon as the DB row arrives with show_search:false (FOUC).
+  //   2. "Data loaded but the row never set the key" — the row exists,
+  //      show_search is undefined. Treat that as visible (the original
+  //      intent of the "default true" comment).
+  const heroRow = sections ? sections.find(s => s.section_key === "hero") : undefined;
+  const heroSettings = (heroRow?.settings || {}) as Record<string, any>;
+  // Only true once sections have actually loaded AND the row hasn't
+  // explicitly disabled the bar. While `sections` is undefined we
+  // render nothing, so the bar can't flash.
+  const showSearch = sections != null && heroSettings.show_search !== false;
 
   return (
     <section className="md:h-screen md:min-h-[720px] md:max-h-[1000px] flex items-center relative overflow-hidden" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 55%, #163D2E 100%)" }}>
