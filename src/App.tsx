@@ -101,6 +101,7 @@ import AdminQuizEngine from "@/pages/admin/AdminQuizEngine";
 import AdminEmailTemplates from "@/pages/admin/AdminEmailTemplates";
 import AdminComingSoon from "@/pages/admin/AdminComingSoon";
 import AdminFinance from "@/pages/admin/AdminFinance";
+import AdminProfitPerOrder from "@/pages/admin/AdminProfitPerOrder";
 import AdminHomepage from "@/pages/admin/AdminHomepage";
 import AdminTestimonials from "@/pages/admin/AdminTestimonials";
 import AdminTrustSignals from "@/pages/admin/AdminTrustSignals";
@@ -367,6 +368,7 @@ const App = () => (
                 <Route path="email-templates" element={<PermissionGate module="content" action="edit_settings"><AdminEmailTemplates /></PermissionGate>} />
                 <Route path="coming-soon" element={<PermissionGate module="settings" action="manage_coming_soon"><AdminComingSoon /></PermissionGate>} />
                 <Route path="finance/*" element={<PermissionGate module="analytics" action="view"><AdminFinance /></PermissionGate>} />
+                <Route path="profit-per-order" element={<PermissionGate module="finance" action="view"><AdminProfitPerOrder /></PermissionGate>} />
                 <Route path="storefront/homepage" element={<PermissionGate module="content" action="edit"><AdminHomepage /></PermissionGate>} />
                 <Route path="storefront/testimonials" element={<PermissionGate module="content" action="edit"><AdminTestimonials /></PermissionGate>} />
                 <Route path="storefront/trust" element={<PermissionGate module="content" action="edit"><AdminTrustSignals /></PermissionGate>} />
