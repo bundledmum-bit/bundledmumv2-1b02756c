@@ -992,7 +992,7 @@ function QuoteEditor({
         {/* Right column — fees & totals + actions */}
         <div className="space-y-4">
           {/* Section C — Fees + Totals */}
-          <section className="bg-card border border-border rounded-xl p-4 lg:sticky lg:top-4">
+          <section className="bg-card border border-border rounded-xl p-4">
             <h2 className="text-sm font-bold mb-3">Fees & Totals</h2>
             <div className="space-y-3">
               <div className="flex justify-between text-sm">
