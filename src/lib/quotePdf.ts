@@ -12,8 +12,11 @@ const BODY = "#1A1A1A";
 const MUTED = "#6B6B6B";
 const BG_TINT = "#F5EDE0";
 
+// NGN prefix (instead of the ₦ glyph) because Helvetica in jsPDF does
+// not embed the naira sign reliably and several PDF viewers render it
+// as a missing-glyph box.
 const fmtN = (n: number | null | undefined) =>
-  typeof n === "number" && isFinite(n) ? `₦${Math.round(n).toLocaleString()}` : "₦0";
+  typeof n === "number" && isFinite(n) ? `NGN ${Math.round(n).toLocaleString()}` : "NGN 0";
 
 const slugify = (s: string) =>
   (s || "")
@@ -158,7 +161,7 @@ export function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock): jsP
     headStyles: { fillColor: FOREST, textColor: [255, 255, 255], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [250, 247, 241] },
     columnStyles: {
-      0: { cellWidth: 8, halign: "center" },
+      0: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
       4: { cellWidth: 28, halign: "right" },
       5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
@@ -236,7 +239,7 @@ export function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock): jsP
     doc.text(`WhatsApp: ${contact.whatsapp_number}`, margin, y);
     y += 4.5;
   }
-  doc.text("Email: hello@bundledmum.com", margin, y);
+  doc.text("Email: hello@bundledmum.ng", margin, y);
   y += 4.5;
   doc.text("Web: bundledmum.com", margin, y);
   y += 6;
