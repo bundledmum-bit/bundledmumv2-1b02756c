@@ -1399,7 +1399,13 @@ export default function CheckoutPage() {
             {/* Free nationwide nudge — only when the shopper is in the
                 70–100% window and the master switch is on. */}
             {!stateRequiresExpress && (
-              <FreeDeliveryNudgeBanner cartSubtotal={subtotal} deliveryState={form.state || null} className="mb-3" />
+              <FreeDeliveryNudgeBanner
+                cartSubtotal={subtotal}
+                deliveryState={form.state || null}
+                deliveryCity={form.city || null}
+                deliveryZoneName={selectedZone?.name || null}
+                className="mb-3"
+              />
             )}
 
             {/* Delivery Details */}

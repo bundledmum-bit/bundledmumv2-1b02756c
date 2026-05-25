@@ -301,10 +301,15 @@ interface FreeDeliveryThreshold {
   display_order: number;
 }
 
+// Lagos zone thresholds now live on shipping_zones (one row per zone
+// with its own free_delivery_threshold). This page only manages the
+// nationwide promotional row going forward. `lagos` and
+// `specific_states` are kept in the type so legacy rows still render,
+// but the scope picker below restricts new rows to `nationwide`.
 const SCOPE_OPTIONS: { value: FreeDeliveryThreshold["scope"]; label: string; tone: string }[] = [
-  { value: "lagos", label: "Lagos", tone: "bg-green-100 text-green-800" },
   { value: "nationwide", label: "Nationwide", tone: "bg-blue-100 text-blue-800" },
-  { value: "specific_states", label: "Specific States", tone: "bg-orange-100 text-orange-800" },
+  { value: "lagos", label: "Lagos (legacy)", tone: "bg-gray-100 text-gray-700" },
+  { value: "specific_states", label: "Specific States (legacy)", tone: "bg-orange-100 text-orange-800" },
 ];
 
 interface FdForm {
@@ -484,16 +489,17 @@ function FreeDeliveryThresholdsTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <p className="text-text-med text-sm max-w-[640px]">
-          Free or discounted delivery rules that trigger when a cart hits a threshold. Replaces the legacy "Free Nationwide Delivery" site_settings card.
+          Manages the promotional <strong>nationwide</strong> free-delivery threshold (non-Lagos states).
+          Lagos zone thresholds are managed in <a href="/admin/shipping-zones" className="text-forest underline">/admin/shipping-zones</a> — one row per Lagos zone with its own free-delivery amount.
         </p>
         {canEdit && !showForm && (
           <button
             onClick={startCreate}
             className="flex items-center gap-2 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep"
           >
-            <Plus className="w-4 h-4" /> Add New Threshold
+            <Plus className="w-4 h-4" /> Add Nationwide Threshold
           </button>
         )}
       </div>
@@ -537,10 +543,19 @@ function FreeDeliveryThresholdsTab() {
               <select
                 value={form.scope}
                 onChange={(e) => setForm((f) => ({ ...f, scope: e.target.value as FreeDeliveryThreshold["scope"] }))}
-                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={!editing}
+                title={!editing ? "New thresholds are nationwide-only — Lagos zones are managed in shipping-zones." : undefined}
               >
-                {SCOPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {SCOPE_OPTIONS.filter((o) => editing || o.value === "nationwide").map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
+              {!editing && (
+                <p className="text-[11px] text-text-med mt-1">
+                  Only <strong>nationwide</strong> rows can be created here. Lagos zone thresholds live in shipping-zones.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Customer pays fee (₦)</label>
