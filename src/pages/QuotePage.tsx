@@ -11,6 +11,8 @@ import {
 } from "@/hooks/useQuoteShare";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import Zoom from "react-medium-image-zoom";
+import "react-medium-image-zoom/dist/styles.css";
 
 /** Public customer-facing quote viewer at /quote/:shareToken. */
 export default function QuotePage() {
@@ -176,6 +178,13 @@ export default function QuotePage() {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          /* Hide react-medium-image-zoom overlay / modal markup so a
+             half-opened zoom never bleeds into the printed PDF. */
+          [data-rmiz-modal-overlay],
+          [data-rmiz-modal-content],
+          [data-rmiz-portal] {
+            display: none !important;
+          }
         }
       `}</style>
 
@@ -260,7 +269,17 @@ export default function QuotePage() {
                 <div key={it.id} className="px-5 py-3 flex items-center gap-3">
                   <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
                     {it.current_image_url ? (
-                      <img src={it.current_image_url} alt={it.product_name} className="w-full h-full object-cover" />
+                      // Wrap in react-medium-image-zoom so customers can tap
+                      // the thumbnail to inspect what they're getting at
+                      // full size. Defaults: dark backdrop, Escape closes,
+                      // tap outside closes, native pinch-to-zoom on mobile.
+                      <Zoom zoomMargin={32} wrapElement="div">
+                        <img
+                          src={it.current_image_url}
+                          alt={it.product_name}
+                          className="w-full h-full object-cover cursor-zoom-in"
+                        />
+                      </Zoom>
                     ) : (
                       <div className="w-full h-full grid place-items-center text-text-light">
                         <ShoppingBag className="w-5 h-5" />
