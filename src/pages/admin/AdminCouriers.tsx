@@ -1453,6 +1453,10 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
   const [weight, setWeight] = useState<number>(9.2);
   const [zoneId, setZoneId] = useState<string>("");
   const [dailyOrders, setDailyOrders] = useState<number>(1);
+  // Order subtotal in naira — feeds p_order_subtotal so the simulator
+  // exercises the free-delivery threshold branch of the RPC. 0 = no
+  // free-delivery eligibility, matching the historical behaviour.
+  const [orderSubtotal, setOrderSubtotal] = useState<number>(0);
   const [debouncedWeight, setDebouncedWeight] = useState<number>(9.2);
   const [quote, setQuote] = useState<any>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -1517,6 +1521,7 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
           p_order_day: new Date().toLocaleDateString("en-US", { weekday: "long" }),
           p_daily_order_count: dailyOrders,
           p_order_weight_kg: debouncedWeight,
+          p_order_subtotal: orderSubtotal,
         });
         if (!cancelled) setQuote(data || null);
       } catch {
@@ -1526,7 +1531,7 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
       }
     })();
     return () => { cancelled = true; };
-  }, [zone?.id, debouncedWeight, dailyOrders, zone]);
+  }, [zone?.id, debouncedWeight, dailyOrders, orderSubtotal, zone]);
 
   // Crossover points for this zone — scan 1→30 kg and note where the
   // winner flips. Useful for the admin to eyeball who wins where.
@@ -1565,7 +1570,7 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
         <h3 className="font-bold text-sm">Courier Cost Simulator</h3>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-3">
+      <div className="grid md:grid-cols-4 gap-3">
         <div>
           <label className={labelCls}>Order Weight (kg)</label>
           <input type="number" min="0.1" step="0.1" className={inputCls} value={weight} onChange={e => setWeight(Number(e.target.value) || 0)} />
@@ -1579,6 +1584,18 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
         <div>
           <label className={labelCls}>Daily Orders</label>
           <input type="number" min="1" className={inputCls} value={dailyOrders} onChange={e => setDailyOrders(Number(e.target.value) || 1)} />
+        </div>
+        <div>
+          <label className={labelCls}>Order Subtotal (₦)</label>
+          <input
+            type="number"
+            min="0"
+            step="1000"
+            className={inputCls}
+            value={orderSubtotal}
+            onChange={e => setOrderSubtotal(Number(e.target.value) || 0)}
+            title="Used to evaluate the zone's free-delivery threshold"
+          />
         </div>
       </div>
 
