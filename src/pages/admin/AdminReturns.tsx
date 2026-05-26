@@ -9,8 +9,15 @@ import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 // Types
 // ---------------------------------------------------------------------------
 
+// Matches the columns exposed by admin_returns_view. NOTE: the view
+// surfaces the status / id columns under their *underlying* names
+// (`status`, `id`) — not aliased as return_status / return_id. The
+// previous interface used the aliases and every read site silently
+// resolved to `undefined`, which is why the action buttons on the
+// detail drawer never rendered and the status badges in the listing
+// fell back to an empty label.
 interface ReturnRow {
-  return_id: string;
+  id: string;
   order_id: string;
   order_number: string | null;
   customer_name: string | null;
@@ -18,7 +25,7 @@ interface ReturnRow {
   customer_email: string | null;
   order_total: number | null;
   payment_method: string | null;
-  return_status: string;
+  status: string;
   return_type: string | null;
   return_reason: string | null;
   return_reason_notes: string | null;
@@ -109,16 +116,16 @@ export default function AdminReturns() {
   const filtered = useMemo(() => {
     const all = rows || [];
     if (filter === "all") return all;
-    if (filter === "active") return all.filter(r => ACTIVE_STATUSES.has(r.return_status));
-    return all.filter(r => r.return_status === filter);
+    if (filter === "active") return all.filter(r => ACTIVE_STATUSES.has(r.status));
+    return all.filter(r => r.status === filter);
   }, [rows, filter]);
 
   // Stats (this month)
   const stats = useMemo(() => {
     const startOfMonth = (() => { const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0); return d; })();
     const thisMonth = (rows || []).filter(r => new Date(r.created_at) >= startOfMonth);
-    const pending = (rows || []).filter(r => r.return_status === "requested").length;
-    const refundedThisMonth = thisMonth.filter(r => r.return_status === "refund_issued" || r.return_status === "completed");
+    const pending = (rows || []).filter(r => r.status === "requested").length;
+    const refundedThisMonth = thisMonth.filter(r => r.status === "refund_issued" || r.status === "completed");
     const refundsAmount = refundedThisMonth.reduce((s, r) => s + (Number(r.refund_amount) || 0), 0);
     const stockRestored = thisMonth.filter(r => r.stock_restored === true).length;
     return {
@@ -145,7 +152,7 @@ export default function AdminReturns() {
     onError: (e: any) => toast.error(e?.message || "Update failed"),
   });
 
-  const selected = (rows || []).find(r => r.return_id === selectedId) || null;
+  const selected = (rows || []).find(r => r.id === selectedId) || null;
 
   return (
     <div className="space-y-4">
@@ -174,9 +181,9 @@ export default function AdminReturns() {
           >
             {f.label}
             {f.key === "active" ? (
-              <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => ACTIVE_STATUSES.has(r.return_status)).length})</span>
+              <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => ACTIVE_STATUSES.has(r.status)).length})</span>
             ) : f.key !== "all" ? (
-              <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => r.return_status === f.key).length})</span>
+              <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => r.status === f.key).length})</span>
             ) : null}
           </button>
         ))}
@@ -206,10 +213,10 @@ export default function AdminReturns() {
                 <tr><td colSpan={8} className="px-3 py-8 text-center text-text-light">No returns match this filter.</td></tr>
               )}
               {filtered.map(r => {
-                const meta = STATUS_META[r.return_status] || { label: r.return_status, cls: "bg-muted text-text-med" };
+                const meta = STATUS_META[r.status] || { label: r.status, cls: "bg-muted text-text-med" };
                 const itemCount = Array.isArray(r.items_returned) ? r.items_returned.length : 0;
                 return (
-                  <tr key={r.return_id} className="border-t border-border hover:bg-muted/30">
+                  <tr key={r.id} className="border-t border-border hover:bg-muted/30">
                     <td className="px-3 py-2 font-semibold">{r.order_number || "—"}</td>
                     <td className="px-3 py-2">{r.customer_name || "—"}</td>
                     <td className="px-3 py-2 text-text-light">{new Date(r.created_at).toLocaleDateString("en-NG", { month: "short", day: "numeric" })}</td>
@@ -220,7 +227,7 @@ export default function AdminReturns() {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-pill text-[10px] font-semibold ${meta.cls}`}>{meta.label}</span>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button onClick={() => setSelectedId(r.return_id)} className="text-xs text-forest font-semibold hover:underline">View</button>
+                      <button onClick={() => setSelectedId(r.id)} className="text-xs text-forest font-semibold hover:underline">View</button>
                     </td>
                   </tr>
                 );
@@ -234,8 +241,9 @@ export default function AdminReturns() {
         <ReturnDetailSheet
           row={selected}
           onClose={() => setSelectedId(null)}
-          onUpdate={(patch) => updateMutation.mutateAsync({ id: selected.return_id, patch })}
+          onUpdate={(patch) => updateMutation.mutateAsync({ id: selected.id, patch })}
           adminUserId={adminUser?.id || null}
+          adminUser={adminUser}
           busy={updateMutation.isPending}
           canEdit={canEdit}
         />
@@ -264,12 +272,13 @@ function StatCard({ icon, label, value, highlight }: { icon: React.ReactNode; la
 // ---------------------------------------------------------------------------
 
 function ReturnDetailSheet({
-  row, onClose, onUpdate, adminUserId, busy, canEdit,
+  row, onClose, onUpdate, adminUserId, adminUser, busy, canEdit,
 }: {
   row: ReturnRow;
   onClose: () => void;
   onUpdate: (patch: Record<string, any>) => Promise<any>;
   adminUserId: string | null;
+  adminUser: any | null;
   busy: boolean;
   canEdit: boolean;
 }) {
@@ -284,7 +293,7 @@ function ReturnDetailSheet({
   const [rejectReason, setRejectReason] = useState("");
   const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
 
-  const status = row.return_status;
+  const status = row.status;
   const items = Array.isArray(row.items_returned) ? row.items_returned : [];
 
   const saveNotes = () => {
@@ -362,6 +371,7 @@ function ReturnDetailSheet({
             <dl className="text-xs space-y-1">
               <Row k="Reason" v={REASON_LABEL[row.return_reason || ""] || row.return_reason || "—"} />
               <Row k="Type" v={TYPE_LABEL[row.return_type || ""] || row.return_type || "—"} />
+              <Row k="Refund amount" v={Number(row.refund_amount) > 0 ? fmt(row.refund_amount) : "—"} />
               {!isRefundOnly && <Row k="Stock restored" v={row.stock_restored ? "Yes" : "No"} />}
               {isRefundOnly && <Row k="Stock restored" v="N/A (item never delivered)" />}
               {row.rejection_reason && <Row k="Rejection" v={row.rejection_reason} />}
@@ -416,7 +426,51 @@ function ReturnDetailSheet({
             />
           </section>
 
-          {/* Actions per status */}
+          {/* Actions per status. Pre-compute branch eligibility so the
+              section can fall back to a "no actions" placeholder rather
+              than rendering an empty heading. */}
+          {(() => {
+            const anyAction =
+              status === "requested" ||
+              status === "approved" ||
+              status === "stock_restored" ||
+              status === "refund_issued";
+            // Diagnostic — surfaces the state the component sees so a
+            // super_admin staring at an empty Actions block can paste
+            // the log line into the bug report.
+            console.log("[AdminReturns Debug]", {
+              returnId: row.id,
+              status: row.status,
+              return_type: row.return_type,
+              refund_amount: row.refund_amount,
+              isRefundOnly,
+              canEdit,
+              anyAction,
+              adminUser: {
+                id: adminUser?.id,
+                role: adminUser?.role,
+                is_active: adminUser?.is_active,
+              },
+            });
+            if (!anyAction) {
+              return (
+                <section className="space-y-2">
+                  <h3 className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Actions</h3>
+                  <p className="text-xs text-text-light italic">
+                    No actions available for this return at status:{" "}
+                    <code className="font-mono">{status || "(unknown)"}</code>.
+                    {!canEdit && " You may need orders.edit permission."}
+                  </p>
+                </section>
+              );
+            }
+            return null;
+          })()}
+
+          {(status === "requested" ||
+            status === "approved" ||
+            status === "stock_restored" ||
+            status === "refund_issued") && (
           <section className="space-y-2">
             <h3 className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Actions</h3>
 
@@ -481,6 +535,7 @@ function ReturnDetailSheet({
               </button>
             )}
           </section>
+          )}
         </div>
       </aside>
 
