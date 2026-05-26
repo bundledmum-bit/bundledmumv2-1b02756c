@@ -4,8 +4,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
-  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock,
+  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
 } from "lucide-react";
+import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
@@ -506,6 +507,9 @@ function QuoteEditor({
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
   const [pendingSizeProduct, setPendingSizeProduct] = useState<any | null>(null);
+  const [itemSearchRaw, setItemSearchRaw] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   // Load the quote (and items) when editing.
   const { data: quoteData, refetch: refetchQuote } = useQuery({
@@ -558,6 +562,106 @@ function QuoteEditor({
     : (parseInt(form.estimated_delivery_fee, 10) || 0);
   const discountNum = parseInt(form.discount_amount, 10) || 0;
   const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum - discountNum);
+
+  // Debounce the item-search input (~150 ms) — purely client-side filter.
+  useEffect(() => {
+    const t = setTimeout(() => setItemSearch(itemSearchRaw), 150);
+    return () => clearTimeout(t);
+  }, [itemSearchRaw]);
+
+  // ── Batch variant data for all items currently in the quote ─────
+  const productIds = useMemo(
+    () => [...new Set((items as any[]).map((it: any) => it.product_id).filter(Boolean))] as string[],
+    [items],
+  );
+
+  const variantQueryKey = productIds.slice().sort().join(",");
+
+  const { data: variantBrands = [] } = useQuery({
+    queryKey: ["quote-variant-brands", variantQueryKey],
+    enabled: productIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("brands")
+        .select("id, brand_name, product_id, image_url, images, price, sku, in_stock")
+        .in("product_id", productIds)
+        .order("brand_name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: variantSizes = [] } = useQuery({
+    queryKey: ["quote-variant-sizes", variantQueryKey],
+    enabled: productIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_sizes")
+        .select("id, product_id, size_label, in_stock")
+        .in("product_id", productIds)
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: variantColors = [] } = useQuery({
+    queryKey: ["quote-variant-colors", variantQueryKey],
+    enabled: productIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_colors")
+        .select("id, product_id, color_name, color_hex, in_stock")
+        .in("product_id", productIds)
+        .order("display_order");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const brandsByProduct = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (variantBrands as any[]).forEach((b: any) => {
+      if (!map.has(b.product_id)) map.set(b.product_id, []);
+      map.get(b.product_id)!.push(b);
+    });
+    return map;
+  }, [variantBrands]);
+
+  const sizesByProduct = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (variantSizes as any[]).forEach((s: any) => {
+      if (!map.has(s.product_id)) map.set(s.product_id, []);
+      map.get(s.product_id)!.push(s);
+    });
+    return map;
+  }, [variantSizes]);
+
+  const colorsByProduct = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (variantColors as any[]).forEach((c: any) => {
+      if (!map.has(c.product_id)) map.set(c.product_id, []);
+      map.get(c.product_id)!.push(c);
+    });
+    return map;
+  }, [variantColors]);
+
+  const filteredItems = useMemo(() => {
+    if (!itemSearch.trim()) return items;
+    const q = itemSearch.trim().toLowerCase();
+    return (items as any[]).filter((it: any) => {
+      if (it.product_name?.toLowerCase().includes(q)) return true;
+      if (it.brand_name?.toLowerCase().includes(q)) return true;
+      if (it.size?.toLowerCase().includes(q)) return true;
+      if (it.color?.toLowerCase().includes(q)) return true;
+      const currentBrand = (brandsByProduct.get(it.product_id) || []).find((b: any) => b.id === it.brand_id);
+      if (currentBrand?.sku?.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [items, itemSearch, brandsByProduct]);
 
   // ── Product search ─────────────────────────────────────────────
   const trimmedSearch = productSearch.trim();
@@ -662,7 +766,17 @@ function QuoteEditor({
   });
 
   const updateItem = useMutation({
-    mutationFn: async ({ id, patch }: { id: string; patch: { quantity?: number; unit_price?: number } }) => {
+    mutationFn: async ({ id, patch }: {
+      id: string;
+      patch: {
+        quantity?: number;
+        unit_price?: number;
+        brand_id?: string | null;
+        brand_name?: string | null;
+        size?: string | null;
+        color?: string | null;
+      };
+    }) => {
       const { error } = await (supabase as any).from("quote_items").update(patch).eq("id", id);
       if (error) throw error;
     },
@@ -887,89 +1001,73 @@ function QuoteEditor({
               )}
             </div>
 
+            {/* Search/filter within existing items */}
+            {items.length > 0 && (
+              <div className="mt-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <input
+                    value={itemSearchRaw}
+                    onChange={(e) => setItemSearchRaw(e.target.value)}
+                    placeholder="Search items in this quote…"
+                    className="w-full border border-input rounded-lg pl-9 pr-8 py-2 text-sm bg-background"
+                  />
+                  {itemSearchRaw && (
+                    <button
+                      type="button"
+                      onClick={() => { setItemSearchRaw(""); setItemSearch(""); }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {itemSearchRaw && (
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Showing {filteredItems.length} of {items.length} items
+                  </p>
+                )}
+              </div>
+            )}
+
             {items.length === 0 ? (
               <p className="text-center py-6 text-xs text-muted-foreground">No items yet.</p>
+            ) : filteredItems.length === 0 ? (
+              <div className="mt-4 py-6 text-center text-xs text-muted-foreground">
+                No items match &ldquo;{itemSearchRaw}&rdquo;.{" "}
+                <button
+                  type="button"
+                  onClick={() => { setItemSearchRaw(""); setItemSearch(""); }}
+                  className="text-forest underline hover:no-underline"
+                >
+                  Clear search
+                </button>
+              </div>
             ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="text-left px-2 py-2 text-xs font-semibold text-text-med">Product</th>
-                      <th className="text-left px-2 py-2 text-xs font-semibold text-text-med">Size</th>
-                      <th className="text-center px-2 py-2 text-xs font-semibold text-text-med w-20">Qty</th>
-                      <th className="text-right px-2 py-2 text-xs font-semibold text-text-med w-28">Unit ₦</th>
-                      <th className="text-right px-2 py-2 text-xs font-semibold text-text-med w-28">Line Total</th>
-                      <th className="px-2 py-2 w-8"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((it) => (
-                      <tr key={it.id} className="border-t border-border">
-                        <td className="px-2 py-2">
-                          <div className="font-semibold">{it.product_name}</div>
-                          {it.brand_name && <div className="text-[11px] text-muted-foreground">{it.brand_name}</div>}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-text-med">{it.size || "—"}</td>
-                        <td className="px-2 py-2">
-                          <input
-                            type="number" min={1}
-                            defaultValue={it.quantity}
-                            onBlur={(e) => {
-                              const v = Math.max(1, parseInt(e.target.value, 10) || 1);
-                              if (v !== it.quantity) updateItem.mutate({ id: it.id, patch: { quantity: v } });
-                            }}
-                            className="w-full border border-input rounded px-2 py-1 text-sm bg-background text-center"
-                            disabled={!canEdit}
-                          />
-                        </td>
-                        <td className="px-2 py-2">
-                          {it.product_id ? (
-                            // Catalogue items inherit price from the brand
-                            // record. To reduce a customer's total, use the
-                            // Discount field in Fees & Totals — that keeps
-                            // the unit price as an auditable baseline and
-                            // surfaces the discount as its own line.
-                            <div
-                              className="w-full inline-flex items-center justify-end gap-1.5 border border-input/60 rounded px-2 py-1 text-sm bg-muted/40 text-text-med cursor-not-allowed"
-                              title="Locked — use the Discount field to adjust pricing"
-                            >
-                              <Lock className="w-3 h-3 opacity-60" aria-hidden="true" />
-                              <span className="font-semibold text-foreground">{fmtN(it.unit_price)}</span>
-                            </div>
-                          ) : (
-                            // Manual items (no product_id) — admin set the
-                            // price by hand, so the input stays editable.
-                            <input
-                              type="number" min={0}
-                              defaultValue={it.unit_price}
-                              onBlur={(e) => {
-                                const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                if (v !== it.unit_price) updateItem.mutate({ id: it.id, patch: { unit_price: v } });
-                              }}
-                              className="w-full border border-input rounded px-2 py-1 text-sm bg-background text-right"
-                              disabled={!canEdit}
-                            />
-                          )}
-                        </td>
-                        <td className="px-2 py-2 text-right font-semibold">{fmtN(it.line_total)}</td>
-                        <td className="px-2 py-2 text-right">
-                          {canEdit && (
-                            <button onClick={() => removeItem.mutate(it.id)} className="p-1 rounded hover:bg-destructive/10 text-destructive">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t border-border bg-muted/30">
-                      <td colSpan={4} className="px-2 py-2 text-right text-xs font-semibold text-text-med">Subtotal</td>
-                      <td className="px-2 py-2 text-right font-bold">{fmtN(liveSubtotal)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                </table>
+              <div className="mt-4 space-y-3">
+                {filteredItems.map((it: any) => (
+                  <QuoteLineItemCard
+                    key={it.id}
+                    it={it}
+                    canEdit={canEdit}
+                    brands={brandsByProduct.get(it.product_id) || []}
+                    sizes={sizesByProduct.get(it.product_id) || []}
+                    colors={colorsByProduct.get(it.product_id) || []}
+                    isPending={updateItem.isPending || removeItem.isPending}
+                    onUpdate={(patch) => updateItem.mutate({ id: it.id, patch })}
+                    onRemove={() => removeItem.mutate(it.id)}
+                    onZoom={setZoomSrc}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Subtotal always reflects ALL items, not the filtered set */}
+            {items.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-border flex justify-end gap-4 text-sm">
+                <span className="text-text-med font-semibold">Subtotal</span>
+                <span className="font-bold">{fmtN(liveSubtotal)}</span>
               </div>
             )}
           </section>
@@ -1166,6 +1264,9 @@ function QuoteEditor({
         </div>
       </div>
 
+      {/* Image zoom modal */}
+      <ImageZoomModal src={zoomSrc} onClose={() => setZoomSrc(null)} />
+
       {/* Size picker modal */}
       {pendingSizeProduct && (
         <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4" onClick={() => setPendingSizeProduct(null)}>
@@ -1218,6 +1319,202 @@ function QuoteEditor({
             queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
           }}
         />
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// Per-item card with inline brand/size/color editing
+// ───────────────────────────────────────────────────────────────────
+interface LineItemCardProps {
+  it: any;
+  canEdit: boolean;
+  brands: any[];
+  sizes: any[];
+  colors: any[];
+  isPending: boolean;
+  onUpdate: (patch: Record<string, any>) => void;
+  onRemove: () => void;
+  onZoom: (src: string) => void;
+}
+
+function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
+  const currentBrand = brands.find((b: any) => b.id === it.brand_id) ?? null;
+  const imgSrc: string | null =
+    currentBrand?.image_url ||
+    (Array.isArray(currentBrand?.images) && currentBrand.images.length > 0 ? currentBrand.images[0] : null) ||
+    null;
+  const isOos = currentBrand != null && currentBrand.in_stock === false;
+
+  return (
+    <div className={`border border-border rounded-lg p-3 relative transition-opacity ${isPending ? "opacity-60 pointer-events-none" : ""}`}>
+      <div className="flex gap-3">
+        {/* Thumbnail — click to zoom */}
+        <div className="shrink-0">
+          {imgSrc ? (
+            <button
+              type="button"
+              onClick={() => onZoom(imgSrc)}
+              className="w-24 h-24 rounded-lg overflow-hidden border border-border block hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+              title="Click to zoom"
+            >
+              <img src={imgSrc} alt={it.product_name} className="w-full h-full object-cover" />
+            </button>
+          ) : (
+            <div className="w-24 h-24 rounded-lg bg-muted/40 border border-border flex items-center justify-center text-muted-foreground">
+              <Package className="w-8 h-8 opacity-30" />
+            </div>
+          )}
+        </div>
+
+        {/* Right side */}
+        <div className="flex-1 min-w-0 space-y-2">
+          {/* Product name + SKU */}
+          <div>
+            <div className="font-semibold text-sm leading-tight">{it.product_name}</div>
+            {currentBrand?.sku && (
+              <div className="text-[11px] text-muted-foreground mt-0.5">SKU: {currentBrand.sku}</div>
+            )}
+          </div>
+
+          {/* Brand selector */}
+          {it.product_id && brands.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Brand</span>
+              {brands.length === 1 ? (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-muted border border-border">
+                  {it.brand_name || brands[0]?.brand_name}
+                  <span className="text-muted-foreground ml-1">(only option)</span>
+                </span>
+              ) : (
+                <select
+                  disabled={!canEdit}
+                  value={it.brand_id || ""}
+                  onChange={(e) => {
+                    const nb = brands.find((b: any) => b.id === e.target.value);
+                    if (!nb) return;
+                    onUpdate({ brand_id: nb.id, brand_name: nb.brand_name, unit_price: nb.price });
+                  }}
+                  className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[140px] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {brands.map((b: any) => (
+                    <option key={b.id} value={b.id}>
+                      {b.brand_name} · {fmtN(b.price)}{b.in_stock === false ? " (Out of stock)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Size selector */}
+          {sizes.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Size</span>
+              <select
+                disabled={!canEdit}
+                value={it.size || ""}
+                onChange={(e) => onUpdate({ size: e.target.value || null })}
+                className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">— No size —</option>
+                {sizes.map((s: any) => (
+                  <option key={s.id} value={s.size_label}>
+                    {s.size_label}{s.in_stock === false ? " (OOS)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Color selector */}
+          {colors.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Color</span>
+              <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
+                {it.color && colors.find((c: any) => c.color_name === it.color)?.color_hex && (
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-border shrink-0"
+                    style={{ backgroundColor: colors.find((c: any) => c.color_name === it.color)?.color_hex }}
+                  />
+                )}
+                <select
+                  disabled={!canEdit}
+                  value={it.color || ""}
+                  onChange={(e) => onUpdate({ color: e.target.value || null })}
+                  className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">— No color —</option>
+                  {colors.map((c: any) => (
+                    <option key={c.id} value={c.color_name}>
+                      {c.color_name}{c.in_stock === false ? " (OOS)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* Qty +/- · unit price · line total */}
+          <div className="flex items-center gap-3 flex-wrap pt-1">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={!canEdit || it.quantity <= 1}
+                onClick={() => onUpdate({ quantity: Math.max(1, it.quantity - 1) })}
+                className="w-7 h-7 rounded border border-border flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >−</button>
+              <span className="w-8 text-center text-sm font-semibold">{it.quantity}</span>
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => onUpdate({ quantity: it.quantity + 1 })}
+                className="w-7 h-7 rounded border border-border flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >+</button>
+            </div>
+            <div className="text-xs text-text-med">
+              Unit:{" "}
+              {it.product_id ? (
+                <span className="font-semibold text-foreground inline-flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5 opacity-50" />
+                  {fmtN(it.unit_price)}
+                </span>
+              ) : (
+                <span className="font-semibold text-foreground">{fmtN(it.unit_price)}</span>
+              )}
+            </div>
+            <div className="ml-auto text-sm font-bold text-forest">{fmtN(it.line_total)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Out-of-stock warning */}
+      {isOos && (
+        <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+          <span aria-hidden="true">⚠️</span>
+          <span>This brand is currently out of stock. Confirm availability before sending the quote.</span>
+        </div>
+      )}
+
+      {/* Remove */}
+      {canEdit && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-destructive hover:underline"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {/* Pending spinner */}
+      {isPending && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/30">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
       )}
     </div>
   );
