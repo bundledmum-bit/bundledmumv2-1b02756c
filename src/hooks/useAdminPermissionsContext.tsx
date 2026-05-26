@@ -106,10 +106,28 @@ export function AdminPermissionsProvider({ children }: { children: ReactNode }) 
   useEffect(() => { fetchPermissions(); }, [fetchPermissions]);
 
   const can = useCallback((module: string, action: string): boolean => {
-    if (!adminUser || !adminUser.is_active) return false;
-    if (adminUser.role === "super_admin" || adminUser.role === "admin") return true;
+    // While the admin_users row is still being fetched, optimistically
+    // allow actions. The DB enforces RLS independently, so a click made
+    // during this brief window by a non-privileged user will be
+    // rejected server-side; the alternative (disabling every action
+    // for ~300 ms after every page mount) made super_admins think the
+    // page was broken.
+    if (loading && !adminUser) return true;
+    if (!adminUser) return false;
+    if (adminUser.is_active === false) {
+      // Surface a self-diagnosis hint — a deactivated admin will
+      // otherwise just see every button greyed out with no clue why.
+      if (typeof console !== "undefined") {
+        console.warn("[permissions] adminUser.is_active is false — all actions denied.");
+      }
+      return false;
+    }
+    // Normalise stored role values so a stray space or unexpected case
+    // ("Super_Admin", " super_admin ") still grants the bypass.
+    const role = String(adminUser.role || "").trim().toLowerCase();
+    if (role === "super_admin" || role === "admin") return true;
     return permissions[module]?.[action] === true;
-  }, [permissions, adminUser]);
+  }, [permissions, adminUser, loading]);
 
   const isSuperAdmin = adminUser?.role === "super_admin";
 
