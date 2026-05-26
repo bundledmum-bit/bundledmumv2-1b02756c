@@ -501,6 +501,7 @@ function QuoteEditor({
   contactSettings: Record<string, string>;
 }) {
   const queryClient = useQueryClient();
+  const { adminUser } = usePermissions();
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
@@ -622,7 +623,7 @@ function QuoteEditor({
       } else {
         const { data, error } = await (supabase as any)
           .from("quotes")
-          .insert(payload)
+          .insert({ ...payload, created_by: adminUser?.id || null })
           .select()
           .single();
         if (error) throw error;
