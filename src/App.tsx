@@ -111,7 +111,8 @@ import AdminReturns from "@/pages/admin/AdminReturns";
 import AdminSubscriptions from "@/pages/admin/AdminSubscriptions";
 import AdminMerchandising from "@/pages/admin/AdminMerchandising";
 import AdminVendors from "@/pages/admin/AdminVendors";
-import AdminPicking from "@/pages/admin/AdminPicking";
+import AdminPickingQueue from "@/pages/admin/AdminPickingQueue";
+import AdminPickerOrderDetail from "@/pages/admin/AdminPickerOrderDetail";
 import AdminPickingHistory from "@/pages/admin/AdminPickingHistory";
 import MarginsPage from "@/pages/admin/products/MarginsPage";
 import AdminHRLayout from "@/pages/admin/hr/AdminHRLayout";
@@ -379,8 +380,9 @@ const App = () => (
                 <Route path="subscriptions" element={<PermissionGate module="orders" action="view"><AdminSubscriptions /></PermissionGate>} />
                 <Route path="merchandising" element={<PermissionGate module="content" action="edit"><AdminMerchandising /></PermissionGate>} />
                 <Route path="vendors" element={<PermissionGate module="products" action="view"><AdminVendors /></PermissionGate>} />
-                <Route path="picking" element={<PermissionGate module="orders" action="view"><AdminPicking /></PermissionGate>} />
+                <Route path="picking" element={<PermissionGate module="picking" action="view"><AdminPickingQueue /></PermissionGate>} />
                 <Route path="picking/history" element={<PermissionGate module="orders" action="view"><AdminPickingHistory /></PermissionGate>} />
+                <Route path="picking/:orderId" element={<PermissionGate module="picking" action="view"><AdminPickerOrderDetail /></PermissionGate>} />
 
                 {/* HR section (nested tabs share AdminHRLayout) */}
                 <Route path="hr" element={<PermissionGate module="hr" action="view"><AdminHRLayout /></PermissionGate>}>

@@ -558,6 +558,11 @@ const RECIPIENT_FIELDS: RecipientField[] = [
     title: "Daily Sales Summary",
     description: "Sent at 7am Lagos time every morning. Contains yesterday's orders, revenue, GMV vs target, and current ops state.",
   },
+  {
+    key: "picker_notification_emails",
+    title: "Picker Notification Recipients",
+    description: "Sent when a paid order is ready to pick. Recipients can claim the order by clicking the email button.",
+  },
 ];
 
 function NotificationRecipientsPanel() {

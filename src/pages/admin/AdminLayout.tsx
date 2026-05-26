@@ -230,8 +230,16 @@ function AdminLayoutInner() {
   }, []);
 
   useEffect(() => {
-    if (!loading && !isAdmin) navigate("/admin/login");
-  }, [loading, isAdmin, navigate]);
+    if (!loading && !isAdmin) {
+      const here = location.pathname + location.search;
+      // Avoid an infinite loop if the user is already heading to login.
+      if (!location.pathname.startsWith("/admin/login")) {
+        navigate(`/admin/login?next=${encodeURIComponent(here)}`);
+      } else {
+        navigate("/admin/login");
+      }
+    }
+  }, [loading, isAdmin, navigate, location.pathname, location.search]);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 

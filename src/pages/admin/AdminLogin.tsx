@@ -1,27 +1,49 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAdmin } from "@/hooks/useAdmin";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import logoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import iconCoral from "@/assets/logos/BM-ICON-CORAL.svg";
 
 export default function AdminLogin() {
   const { signIn } = useAdmin();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const resolveTarget = async (): Promise<string> => {
+    const next = params.get("next");
+    if (next && next.startsWith("/admin/")) return next;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) return "/admin";
+      const { data } = await (supabase.from("admin_users") as any)
+        .select("role")
+        .eq("auth_user_id", uid)
+        .maybeSingle();
+      const role = String(data?.role || "").trim().toLowerCase();
+      return role === "picker" ? "/admin/picking" : "/admin";
+    } catch {
+      return "/admin";
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     const { error } = await signIn(email, password);
-    setLoading(false);
     if (error) {
+      setLoading(false);
       toast.error(error.message);
-    } else {
-      navigate("/admin");
+      return;
     }
+    const target = await resolveTarget();
+    setLoading(false);
+    navigate(target);
   };
 
   return (
