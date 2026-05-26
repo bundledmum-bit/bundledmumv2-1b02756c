@@ -23,12 +23,18 @@ const AdminPermissionsContext = createContext<AdminPermissionsContextType>({
 });
 
 export function AdminPermissionsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAdmin();
+  const { user, loading: authLoading } = useAdmin();
   const [permissions, setPermissions] = useState<PermissionsMap>({});
   const [adminUser, setAdminUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchPermissions = useCallback(async () => {
+    // While the Supabase auth session is still being restored from
+    // localStorage, useAdmin() reports user=null with loading=true.
+    // Returning here without flipping the context loading flag keeps
+    // PermissionGate in its placeholder state instead of triggering an
+    // immediate Navigate-to-/admin redirect during hard refreshes.
+    if (authLoading) return;
     if (!user) { setLoading(false); return; }
 
     try {
@@ -101,7 +107,7 @@ export function AdminPermissionsProvider({ children }: { children: ReactNode }) 
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   useEffect(() => { fetchPermissions(); }, [fetchPermissions]);
 

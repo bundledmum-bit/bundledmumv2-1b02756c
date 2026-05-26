@@ -28,6 +28,10 @@ export function usePagePermission(section: string, action: string) {
     staleTime: 60000,
   });
 
+  // While the permissions context is still loading the admin_users
+  // row (or auth itself is still restoring the session), defer the
+  // gate decision so PermissionGate stays in its placeholder state
+  // instead of redirecting to /admin during the load window.
   if (permLoading) return { loading: true, allowed: false };
   if (!adminUser) return { loading: false, allowed: false };
   if (isBypass) return { loading: false, allowed: true };
