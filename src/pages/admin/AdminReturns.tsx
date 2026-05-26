@@ -51,16 +51,34 @@ const TYPE_LABEL: Record<string, string> = {
   exchange:      "Exchange",
   store_credit:  "Store Credit",
   return_only:   "Return Only",
+  refund_only:   "Refund Only (item never delivered)",
 };
 
+const REASON_LABEL: Record<string, string> = {
+  wrong_item:       "Wrong item received",
+  damaged:          "Item was damaged",
+  changed_mind:     "Customer changed mind",
+  not_as_described: "Item not as described",
+  quality_issue:    "Quality issue",
+  not_packed:       "Item was not delivered (we did not pack it)",
+  other:            "Other",
+};
+
+// "active" is a synthetic filter (requested + approved + stock_restored)
+// matched in the filter() below — anything that still needs admin
+// attention. Default chip on page load.
 const FILTERS: Array<{ key: string; label: string }> = [
+  { key: "active",         label: "Active" },
   { key: "all",            label: "All" },
   { key: "requested",      label: "Requested" },
   { key: "approved",       label: "Approved" },
+  { key: "stock_restored", label: "Stock Restored" },
   { key: "refund_issued",  label: "Refund Issued" },
   { key: "completed",      label: "Completed" },
   { key: "rejected",       label: "Rejected" },
 ];
+
+const ACTIVE_STATUSES = new Set(["requested", "approved", "stock_restored"]);
 
 // ---------------------------------------------------------------------------
 // Page
@@ -68,8 +86,12 @@ const FILTERS: Array<{ key: string; label: string }> = [
 
 export default function AdminReturns() {
   const qc = useQueryClient();
-  const { adminUser } = usePermissions();
-  const [filter, setFilter] = useState("all");
+  const { adminUser, can } = usePermissions();
+  // Actions (approve / reject / restore / refund / complete) all need
+  // orders.edit. Without it the user can still view the list + detail
+  // but every action button is disabled with a tooltip.
+  const canEdit = can("orders", "edit");
+  const [filter, setFilter] = useState("active");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: rows, isLoading } = useQuery({
@@ -85,8 +107,10 @@ export default function AdminReturns() {
   });
 
   const filtered = useMemo(() => {
-    if (filter === "all") return rows || [];
-    return (rows || []).filter(r => r.return_status === filter);
+    const all = rows || [];
+    if (filter === "all") return all;
+    if (filter === "active") return all.filter(r => ACTIVE_STATUSES.has(r.return_status));
+    return all.filter(r => r.return_status === filter);
   }, [rows, filter]);
 
   // Stats (this month)
@@ -149,9 +173,11 @@ export default function AdminReturns() {
             className={`px-3 py-2 text-xs font-semibold border-b-2 -mb-px transition-colors ${filter === f.key ? "border-forest text-forest" : "border-transparent text-text-med hover:text-forest"}`}
           >
             {f.label}
-            {f.key !== "all" && (
+            {f.key === "active" ? (
+              <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => ACTIVE_STATUSES.has(r.return_status)).length})</span>
+            ) : f.key !== "all" ? (
               <span className="ml-1 text-[10px] text-text-light">({(rows || []).filter(r => r.return_status === f.key).length})</span>
-            )}
+            ) : null}
           </button>
         ))}
       </div>
@@ -211,6 +237,7 @@ export default function AdminReturns() {
           onUpdate={(patch) => updateMutation.mutateAsync({ id: selected.return_id, patch })}
           adminUserId={adminUser?.id || null}
           busy={updateMutation.isPending}
+          canEdit={canEdit}
         />
       )}
     </div>
@@ -237,14 +264,20 @@ function StatCard({ icon, label, value, highlight }: { icon: React.ReactNode; la
 // ---------------------------------------------------------------------------
 
 function ReturnDetailSheet({
-  row, onClose, onUpdate, adminUserId, busy,
+  row, onClose, onUpdate, adminUserId, busy, canEdit,
 }: {
   row: ReturnRow;
   onClose: () => void;
   onUpdate: (patch: Record<string, any>) => Promise<any>;
   adminUserId: string | null;
   busy: boolean;
+  canEdit: boolean;
 }) {
+  // refund_only flow short-circuits the stock-restored leg of the
+  // state machine. The button row, timeline, and "issue refund" gate
+  // all branch on this.
+  const isRefundOnly = row.return_type === "refund_only";
+  const lockTooltip = canEdit ? undefined : "Requires orders.edit permission";
   const [adminNotes, setAdminNotes] = useState(row.admin_notes || "");
   const [refundAmount, setRefundAmount] = useState<number>(Number(row.refund_amount) || 0);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -277,12 +310,19 @@ function ReturnDetailSheet({
     onUpdate({ stock_restored: false }).then(() => toast.success("Stock restoration skipped"));
 
   const confirmRefund = () =>
+    // The DB trigger handle_refund_processed_notification fires on this
+    // status change and queues the customer email automatically. We do
+    // NOT call send-transactional-email from here — that would
+    // double-send.
     onUpdate({
       status: "refund_issued",
       refund_amount: refundAmount,
       refund_issued: true,
       refunded_at: new Date().toISOString(),
-    }).then(() => { toast.success("Refund issued"); setRefundConfirmOpen(false); });
+    }).then(() => {
+      toast.success("Refund issued — customer email sent automatically");
+      setRefundConfirmOpen(false);
+    });
 
   const complete = () =>
     onUpdate({ status: "completed", completed_at: new Date().toISOString() })
@@ -320,11 +360,17 @@ function ReturnDetailSheet({
           <section>
             <h3 className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-2">Return details</h3>
             <dl className="text-xs space-y-1">
-              <Row k="Reason" v={row.return_reason || "—"} />
+              <Row k="Reason" v={REASON_LABEL[row.return_reason || ""] || row.return_reason || "—"} />
               <Row k="Type" v={TYPE_LABEL[row.return_type || ""] || row.return_type || "—"} />
-              <Row k="Stock restored" v={row.stock_restored ? "Yes" : "No"} />
+              {!isRefundOnly && <Row k="Stock restored" v={row.stock_restored ? "Yes" : "No"} />}
+              {isRefundOnly && <Row k="Stock restored" v="N/A (item never delivered)" />}
               {row.rejection_reason && <Row k="Rejection" v={row.rejection_reason} />}
             </dl>
+            {row.return_reason_notes && (
+              <div className="mt-2 rounded-lg border border-border bg-muted/40 px-2 py-1.5 text-xs text-text-med whitespace-pre-wrap">
+                {row.return_reason_notes}
+              </div>
+            )}
             {items.length > 0 && (
               <div className="mt-2">
                 <div className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">Items returned</div>
@@ -346,7 +392,12 @@ function ReturnDetailSheet({
             <ol className="border-l-2 border-border pl-4 space-y-2 text-xs">
               <TL active label="Requested" when={row.created_at} />
               <TL active={!!row.approved_at || ["approved","stock_restored","refund_issued","completed"].includes(status)} label="Approved" when={row.approved_at} />
-              <TL active={!!row.stock_restored} label="Stock restored" when={row.stock_restored ? (row.approved_at || null) : null} />
+              {/* refund_only returns skip the stock-restored leg entirely
+                  — the item was never delivered so there's nothing to
+                  restock. Hide the line so the timeline reads correctly. */}
+              {!isRefundOnly && (
+                <TL active={!!row.stock_restored} label="Stock restored" when={row.stock_restored ? (row.approved_at || null) : null} />
+              )}
               <TL active={!!row.refunded_at || ["refund_issued","completed"].includes(status)} label="Refund issued" when={row.refunded_at} />
               <TL active={!!row.completed_at || status === "completed"} label="Completed" when={row.completed_at} />
             </ol>
@@ -371,30 +422,36 @@ function ReturnDetailSheet({
 
             {status === "requested" && (
               <div className="flex flex-wrap gap-2">
-                <button onClick={approve} disabled={busy}
-                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">
+                <button onClick={approve} disabled={busy || !canEdit} title={lockTooltip}
+                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                 </button>
-                <button onClick={() => setRejectOpen(true)} disabled={busy}
-                  className="inline-flex items-center gap-1.5 border border-destructive text-destructive px-3 py-2 rounded-lg text-xs font-semibold hover:bg-destructive/10 disabled:opacity-40">
+                <button onClick={() => setRejectOpen(true)} disabled={busy || !canEdit} title={lockTooltip}
+                  className="inline-flex items-center gap-1.5 border border-destructive text-destructive px-3 py-2 rounded-lg text-xs font-semibold hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed">
                   <Ban className="w-3.5 h-3.5" /> Reject
                 </button>
               </div>
             )}
 
-            {status === "approved" && (
+            {status === "approved" && !isRefundOnly && (
               <div className="flex flex-wrap gap-2">
-                <button onClick={restoreStock} disabled={busy}
-                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">
-                  <PackageCheck className="w-3.5 h-3.5" /> Restore stock
+                <button onClick={restoreStock} disabled={busy || !canEdit} title={lockTooltip}
+                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed">
+                  <PackageCheck className="w-3.5 h-3.5" /> Mark stock restored
                 </button>
-                <button onClick={skipStock} disabled={busy}
-                  className="inline-flex items-center gap-1.5 border border-border text-text-med px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted">
-                  Skip stock restoration
+                <button onClick={skipStock} disabled={busy || !canEdit} title={lockTooltip}
+                  className="inline-flex items-center gap-1.5 border border-border text-text-med px-3 py-2 rounded-lg text-xs font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+                  Skip to refund (no restock)
                 </button>
               </div>
             )}
 
+            {/* Issue Refund card.
+                – For refund_only returns, this becomes available the moment
+                  the return is approved (stock_restored leg is skipped).
+                – For all other return types it remains gated on
+                  status='approved' (after the admin clicked "Skip to refund")
+                  or status='stock_restored'.                                */}
             {(status === "approved" || status === "stock_restored") && (
               <div className="bg-muted/30 border border-border rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
@@ -405,16 +462,21 @@ function ReturnDetailSheet({
                       className="w-32 border border-input rounded-lg px-2 py-1.5 text-xs bg-background" />
                   </div>
                 </div>
-                <button onClick={() => setRefundConfirmOpen(true)} disabled={busy || refundAmount <= 0}
-                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">
-                  <Wallet className="w-3.5 h-3.5" /> Issue refund
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                  Confirm bank transfer is complete? The customer will receive an automated email
+                  saying their refund of <b>{fmt(refundAmount)}</b> is arriving within 30 minutes.
+                  Only click this <b>after</b> you've sent the transfer.
+                </p>
+                <button onClick={() => setRefundConfirmOpen(true)} disabled={busy || refundAmount <= 0 || !canEdit} title={lockTooltip}
+                  className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Wallet className="w-3.5 h-3.5" /> Mark refund issued
                 </button>
               </div>
             )}
 
             {status === "refund_issued" && (
-              <button onClick={complete} disabled={busy}
-                className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">
+              <button onClick={complete} disabled={busy || !canEdit} title={lockTooltip}
+                className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Mark completed
               </button>
             )}
@@ -448,19 +510,28 @@ function ReturnDetailSheet({
       {/* Refund confirm modal */}
       {refundConfirmOpen && (
         <div className="fixed inset-0 z-[60] bg-foreground/50 flex items-center justify-center p-4" onClick={() => setRefundConfirmOpen(false)}>
-          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-sm mb-2">Issue refund</h3>
+          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-sm mb-2">Mark refund issued</h3>
             <p className="text-xs text-text-med mb-3">
-              Issue a refund of <b>{fmt(refundAmount)}</b> to <b>{row.customer_name || "customer"}</b>?
+              Recording a refund of <b>{fmt(refundAmount)}</b> to <b>{row.customer_name || "customer"}</b>.
             </p>
-            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">
-              Paystack refunds must be processed manually in your Paystack dashboard. This action records the refund on the order.
+            <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3 space-y-1.5">
+              <p>
+                BundledMum issues refunds by <b>manual bank transfer</b>. This button is an
+                attestation that you've <b>already sent the transfer offline</b>.
+              </p>
+              <p>
+                The customer will immediately receive an automated email saying their refund is
+                arriving within 30 minutes. The order will also be marked <code>returned</code> /{" "}
+                <code>refunded</code> automatically.
+              </p>
+              <p className="font-semibold">Only click this AFTER you've made the bank transfer.</p>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setRefundConfirmOpen(false)} className="text-xs text-text-med hover:text-foreground">Cancel</button>
-              <button onClick={confirmRefund} disabled={busy}
-                className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40">
-                Confirm refund
+              <button onClick={confirmRefund} disabled={busy || !canEdit} title={lockTooltip}
+                className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed">
+                I've sent the transfer — mark refund issued
               </button>
             </div>
           </div>

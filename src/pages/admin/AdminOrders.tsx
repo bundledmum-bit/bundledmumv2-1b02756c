@@ -1461,13 +1461,22 @@ async function openDeliveryLabels(orders: any[]): Promise<void> {
 // refund), and submits — the return lands on /admin/returns for review.
 
 const RETURN_TYPES: Array<{ key: string; label: string }> = [
-  { key: "return_refund", label: "Return + Refund" },
-  { key: "exchange",      label: "Exchange" },
-  { key: "store_credit",  label: "Store Credit" },
-  { key: "return_only",   label: "Return Only" },
+  { key: "return_refund", label: "Return + Refund (customer returns item, we refund)" },
+  { key: "exchange",      label: "Exchange (customer returns item for a different one)" },
+  { key: "store_credit",  label: "Store Credit (customer returns item for credit)" },
+  { key: "return_only",   label: "Return Only (customer returns item, no refund)" },
+  { key: "refund_only",   label: "Refund Only (no physical return — we never delivered the item)" },
 ];
 
-const INITIATE_REASONS = ["wrong_item", "damaged", "changed_mind", "not_as_described", "quality_issue", "other"];
+const INITIATE_REASONS: Array<{ key: string; label: string }> = [
+  { key: "wrong_item",       label: "Wrong item received" },
+  { key: "damaged",          label: "Item was damaged" },
+  { key: "changed_mind",     label: "Customer changed mind" },
+  { key: "not_as_described", label: "Item not as described" },
+  { key: "quality_issue",    label: "Quality issue" },
+  { key: "not_packed",       label: "Item was not delivered (we did not pack it)" },
+  { key: "other",            label: "Other" },
+];
 
 function InitiateReturnModal({ order: o, onClose, onSubmitted }: {
   order: any;
@@ -1476,7 +1485,15 @@ function InitiateReturnModal({ order: o, onClose, onSubmitted }: {
 }) {
   const orderItems: any[] = Array.isArray(o.order_items) ? o.order_items : (Array.isArray(o.items) ? o.items : []);
   const [returnType, setReturnType] = useState("return_refund");
-  const [reason, setReason] = useState(INITIATE_REASONS[0]);
+  const [reason, setReason] = useState(INITIATE_REASONS[0].key);
+  // Reason="not_packed" implies a pure refund flow — the physical item
+  // never left our hands so the customer can't return anything. Force
+  // return_type=refund_only and lock it so an inconsistent pairing
+  // (e.g. not_packed + exchange) can't be saved.
+  const notPacked = reason === "not_packed";
+  useEffect(() => {
+    if (notPacked && returnType !== "refund_only") setReturnType("refund_only");
+  }, [notPacked, returnType]);
   const [adminNotes, setAdminNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Per-item selection state — keyed by item.id. Each holds
@@ -1542,17 +1559,30 @@ function InitiateReturnModal({ order: o, onClose, onSubmitted }: {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground block mb-1">Return type</label>
-              <select value={returnType} onChange={e => setReturnType(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background">
+              <select
+                value={returnType}
+                onChange={e => setReturnType(e.target.value)}
+                disabled={notPacked}
+                title={notPacked ? "Auto-set to Refund Only because the item was never delivered." : undefined}
+                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background disabled:opacity-60 disabled:cursor-not-allowed"
+              >
                 {RETURN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground block mb-1">Reason (required)</label>
-              <select value={reason} onChange={e => setReason(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background capitalize">
-                {INITIATE_REASONS.map(r => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}
+              <select value={reason} onChange={e => setReason(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background">
+                {INITIATE_REASONS.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
               </select>
             </div>
           </div>
+
+          {notPacked && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+              This will skip the stock restoration step. After approval, you only need to transfer
+              the refund via bank and mark it issued.
+            </div>
+          )}
 
           <div>
             <div className="flex items-center justify-between mb-1">
