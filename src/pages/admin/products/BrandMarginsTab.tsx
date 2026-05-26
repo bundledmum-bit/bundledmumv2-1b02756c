@@ -20,7 +20,7 @@ import { BulkApplyModal, type BulkApplyScope } from "./BulkApplyModal";
 
 const ALL = "__all__";
 
-type SortKey = "productName" | "brandName" | "category" | "subcategory" | "costPrice" | "retailPrice" | "marginNaira" | "marginPct";
+type SortKey = "productName" | "brandName" | "category" | "subcategory" | "costPrice" | "retailPrice" | "marginNaira" | "marginPct" | "markupNaira" | "markupPct";
 
 function tierColor(tier: BundleTier): string {
   if (tier === "starter") return "bg-muted text-foreground border-border";
@@ -28,12 +28,26 @@ function tierColor(tier: BundleTier): string {
   return "bg-purple-100 text-purple-900 border-purple-200";
 }
 
+// Margin in naira is just price − cost. Numerically identical to the
+// markup-in-naira, but exposed under both labels so the table is
+// unambiguous about what each percentage column derives from.
 function computeMarginNaira(retail: number, cost: number | null): number | null {
   if (cost == null) return null;
   return retail - cost;
 }
 
+// True GROSS MARGIN as a percentage of selling price:
+//   margin_pct = ((price - cost) / price) * 100
+// Returns null when the price is zero or cost is missing.
 function computeMarginPct(retail: number, cost: number | null): number | null {
+  if (cost == null || retail <= 0) return null;
+  return ((retail - cost) / retail) * 100;
+}
+
+// MARKUP as a percentage of cost:
+//   markup_pct = ((price - cost) / cost) * 100
+// Returns null when cost is missing or zero.
+function computeMarkupPct(retail: number, cost: number | null): number | null {
   if (cost == null || cost <= 0) return null;
   return ((retail - cost) / cost) * 100;
 }
@@ -87,7 +101,10 @@ export default function BrandMarginsTab() {
   const sorted = useMemo(() => {
     const arr = filtered.slice();
     const sortVal = (r: BrandMarginRow): number | string => {
-      const costDependent = sortKey === "marginPct" || sortKey === "marginNaira" || sortKey === "costPrice";
+      const costDependent =
+        sortKey === "marginPct" || sortKey === "marginNaira" ||
+        sortKey === "markupPct" || sortKey === "markupNaira" ||
+        sortKey === "costPrice";
       if (costDependent && r.costPrice == null) return Number.POSITIVE_INFINITY;
       switch (sortKey) {
         case "productName": return r.productName.toLowerCase();
@@ -98,13 +115,18 @@ export default function BrandMarginsTab() {
         case "retailPrice": return r.retailPrice;
         case "marginNaira": return computeMarginNaira(r.retailPrice, r.costPrice) ?? Number.POSITIVE_INFINITY;
         case "marginPct": return computeMarginPct(r.retailPrice, r.costPrice) ?? Number.POSITIVE_INFINITY;
+        case "markupNaira": return computeMarginNaira(r.retailPrice, r.costPrice) ?? Number.POSITIVE_INFINITY;
+        case "markupPct": return computeMarkupPct(r.retailPrice, r.costPrice) ?? Number.POSITIVE_INFINITY;
       }
     };
     arr.sort((a, b) => {
       // Always pin null-cost rows to bottom for cost-dependent sorts.
       const aNullCost = a.costPrice == null;
       const bNullCost = b.costPrice == null;
-      const costDependent = sortKey === "marginPct" || sortKey === "marginNaira" || sortKey === "costPrice";
+      const costDependent =
+        sortKey === "marginPct" || sortKey === "marginNaira" ||
+        sortKey === "markupPct" || sortKey === "markupNaira" ||
+        sortKey === "costPrice";
       if (costDependent) {
         if (aNullCost && !bNullCost) return 1;
         if (!aNullCost && bNullCost) return -1;
@@ -267,14 +289,16 @@ export default function BrandMarginsTab() {
               <TableHead><SortHeader k="retailPrice">Retail</SortHeader></TableHead>
               <TableHead><SortHeader k="marginNaira">Margin ₦</SortHeader></TableHead>
               <TableHead><SortHeader k="marginPct">Margin %</SortHeader></TableHead>
+              <TableHead><SortHeader k="markupNaira">Markup ₦</SortHeader></TableHead>
+              <TableHead><SortHeader k="markupPct">Markup %</SortHeader></TableHead>
               <TableHead>Bundles</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {allRowsQuery.isLoading ? (
-              <TableRow><TableCell colSpan={12} className="text-center text-sm text-muted-foreground py-8">Loading…</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center text-sm text-muted-foreground py-8">Loading…</TableCell></TableRow>
             ) : sorted.length === 0 ? (
-              <TableRow><TableCell colSpan={12} className="text-center text-sm text-muted-foreground py-8">No brands match these filters.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center text-sm text-muted-foreground py-8">No brands match these filters.</TableCell></TableRow>
             ) : (
               sorted.map(row => (
                 <BrandRow
@@ -352,11 +376,23 @@ function BrandRow({
     );
   };
 
+  // Margin % is gross margin against the SELLING price:
+  //   margin_pct = (price - cost) / price * 100
+  // Inverting to recompute price from a typed margin:
+  //   price = cost / (1 - margin/100)
+  // Guarded so margins ≥ 100 % (which would divide by zero or flip
+  // sign) silently no-op rather than producing garbage prices.
   const commitPct = () => {
     if (cost == null || cost <= 0) return;
     const pct = Number(pctDraft);
     if (!Number.isFinite(pct)) return;
-    const newRetail = Math.trunc(cost * (1 + pct / 100));
+    if (pct >= 100) {
+      toast.error("Margin must be below 100 %");
+      const current = computeMarginPct(row.retailPrice, cost);
+      setPctDraft(current == null ? "" : current.toFixed(1));
+      return;
+    }
+    const newRetail = Math.trunc(cost / (1 - pct / 100));
     if (newRetail === row.retailPrice) return;
     update.mutate(
       { brandId: row.id, newPrice: newRetail },
@@ -391,6 +427,11 @@ function BrandRow({
 
   const marginNaira = computeMarginNaira(row.retailPrice, cost);
   const marginPct = computeMarginPct(row.retailPrice, cost);
+  const markupPct = computeMarkupPct(row.retailPrice, cost);
+  // Negative margin = retail is below cost, i.e. we'd ship at a loss.
+  // Same naira value flagged red in both Margin and Markup columns.
+  const negative = marginNaira != null && marginNaira < 0;
+  const negativeCls = negative ? "text-red-600 font-semibold" : "";
 
   return (
     <TableRow className={noCost ? "bg-red-50/50" : undefined}>
@@ -436,7 +477,7 @@ function BrandRow({
           disabled={noCost}
           className="h-8 w-24 text-sm"
         />
-        <div className="text-[10px] text-muted-foreground mt-0.5">
+        <div className={`text-[10px] mt-0.5 ${negative ? "text-red-600" : "text-muted-foreground"}`}>
           {marginNaira == null ? "—" : fmt(marginNaira)}
         </div>
       </TableCell>
@@ -451,9 +492,20 @@ function BrandRow({
           disabled={noCost}
           className="h-8 w-20 text-sm"
         />
-        <div className="text-[10px] text-muted-foreground mt-0.5">
+        <div className={`text-[10px] mt-0.5 ${negative ? "text-red-600" : "text-muted-foreground"}`}>
           {marginPct == null ? "—" : `${marginPct.toFixed(1)}%`}
         </div>
+      </TableCell>
+      {/* Markup ₦ — numerically identical to Margin ₦ (price − cost) but
+          surfaced under its own label so the table is unambiguous about
+          which percentage column derives from which baseline.            */}
+      <TableCell className={`text-sm ${negativeCls}`}>
+        {marginNaira == null ? "—" : fmt(marginNaira)}
+      </TableCell>
+      {/* Markup % — (price − cost) / cost × 100. Read-only mirror of the
+          editable margin field, so admins can sanity-check both views.   */}
+      <TableCell className={`text-sm ${negativeCls}`}>
+        {markupPct == null ? "—" : `${markupPct.toFixed(1)}%`}
       </TableCell>
       <TableCell>
         {row.bundleTiers.length === 0 ? (
