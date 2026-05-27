@@ -270,10 +270,20 @@ function AdminLayoutInner() {
 
   return (
     <div className="min-h-screen flex bg-muted/30">
+      <Helmet>
+        <link rel="manifest" href="/admin-manifest.webmanifest" />
+        <meta name="theme-color" content="#2D6A4F" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="BM Admin" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </Helmet>
       {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />}
 
       <aside className={`fixed h-full z-50 flex flex-col transition-transform lg:translate-x-0 w-60 flex-shrink-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
         style={{ background: "linear-gradient(180deg, #2D6A4F 0%, #1A4A33 100%)" }}>
+        
         
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <Link to="/admin" className="flex items-center gap-2.5">
