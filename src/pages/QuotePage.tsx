@@ -13,6 +13,12 @@ import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import Zoom from "react-medium-image-zoom";
 import "react-medium-image-zoom/dist/styles.css";
+// Coral logo — matches the local-import convention used on every other
+// public/customer-facing surface (PaymentReceivedPage, AccountLoginPage,
+// SubscribeLanding, NotFound, etc.). The hosted PNG referenced in the
+// email exists, but importing the bundled SVG avoids a cross-origin
+// hop and stays in step with the rest of the codebase.
+import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
 
 /** Public customer-facing quote viewer at /quote/:shareToken. */
 export default function QuotePage() {
@@ -187,6 +193,23 @@ export default function QuotePage() {
           }
         }
       `}</style>
+
+      {/* Brand bar — bridges the visual handoff from the quote email
+          (coral logo on a cream/white surface). Hidden in print so the
+          PDF output stays clean. */}
+      <header className="bg-white border-b border-border px-4 py-3 md:py-4 mb-6 -mx-4 -mt-8 print:hidden quote-print-hide">
+        <a
+          href="https://bundledmum.com"
+          aria-label="BundledMum"
+          className="block max-w-[820px] mx-auto text-center focus:outline-none focus-visible:ring-2 focus-visible:ring-forest rounded"
+        >
+          <img
+            src={bmLogoCoral}
+            alt="BundledMum"
+            className="inline-block w-[140px] md:w-[180px] h-auto"
+          />
+        </a>
+      </header>
 
       <div className="max-w-[820px] mx-auto">
         {/* Header */}
