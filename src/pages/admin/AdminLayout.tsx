@@ -451,10 +451,12 @@ function AdminLayoutInner() {
           </div>
         )}
 
-        <div className="p-6 max-w-[1200px]">
+        <div className="p-4 sm:p-6 max-w-[1200px] pb-24 lg:pb-6">
           <Outlet />
         </div>
       </main>
+
+      <AdminMobileBottomNav onOpenMenu={() => setMobileOpen(true)} />
     </div>
   );
 }
