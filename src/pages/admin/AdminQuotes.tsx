@@ -588,21 +588,42 @@ function QuoteEditor({
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   // Load the quote (and items) when editing.
-  // Embedded creator join uses the quotes.created_by FK → admin_users.id.
-  // If RLS denies the read (non-super-admin viewing another admin's row),
-  // the embed comes back as null and the UI falls back to "—". We do not
-  // surface this field on any customer surface (public quote page, PDF,
-  // or email) — those read from separate code paths.
   const { data: quoteData, refetch: refetchQuote } = useQuery({
     queryKey: ["admin-quote", currentId],
     enabled: !!currentId,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("quotes")
-        .select("*, quote_items(*), creator:admin_users!created_by(display_name, email)")
+        .select("*, quote_items(*)")
         .eq("id", currentId)
         .single();
       if (error) throw error;
+      return data;
+    },
+  });
+
+  // Creator is fetched as a separate query rather than via a PostgREST
+  // embed (`creator:admin_users!created_by(...)`) because the FK doesn't
+  // surface in PostgREST's relationship cache for this project — the
+  // embed errors with a schema-cache miss and tanks the whole quote
+  // query, blanking out items + the share-link button along with it.
+  // Two queries is cheap; one broken page is not.
+  const { data: creator } = useQuery({
+    queryKey: ["admin-quote-creator", quoteData?.created_by],
+    enabled: !!quoteData?.created_by,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("admin_users")
+        .select("display_name, email")
+        .eq("id", quoteData.created_by)
+        .maybeSingle();
+      // RLS denying the read returns data=null with no error; the UI
+      // falls through to "—" which is the right behaviour either way.
+      if (error) {
+        console.warn("[admin-quote] could not load creator", error);
+        return null;
+      }
       return data;
     },
   });
@@ -1098,7 +1119,7 @@ function QuoteEditor({
             <p className="text-[11px] text-text-med mt-1 ml-8">
               Created by{" "}
               <span className="font-semibold text-foreground">
-                {quoteData?.creator?.display_name || quoteData?.creator?.email || "—"}
+                {creator?.display_name || creator?.email || "—"}
               </span>
               <span className="ml-1.5 text-[9px] uppercase tracking-wider text-text-light">internal</span>
             </p>
