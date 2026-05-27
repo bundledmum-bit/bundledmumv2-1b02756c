@@ -530,13 +530,18 @@ function QuoteEditor({
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   // Load the quote (and items) when editing.
+  // Embedded creator join uses the quotes.created_by FK → admin_users.id.
+  // If RLS denies the read (non-super-admin viewing another admin's row),
+  // the embed comes back as null and the UI falls back to "—". We do not
+  // surface this field on any customer surface (public quote page, PDF,
+  // or email) — those read from separate code paths.
   const { data: quoteData, refetch: refetchQuote } = useQuery({
     queryKey: ["admin-quote", currentId],
     enabled: !!currentId,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("quotes")
-        .select("*, quote_items(*)")
+        .select("*, quote_items(*), creator:admin_users!created_by(display_name, email)")
         .eq("id", currentId)
         .single();
       if (error) throw error;
@@ -997,6 +1002,21 @@ function QuoteEditor({
           <h1 className="pf text-2xl font-bold flex items-center gap-2">
             <FileText className="w-6 h-6" /> {currentId ? `Edit Quote${quoteData?.quote_number ? ` · ${quoteData.quote_number}` : ""}` : "New Quote"}
           </h1>
+          {/* Internal audit line — only rendered inside the admin
+              editor. The PDF, the customer email, and the public
+              /quote/:share_token page all read from separate code
+              paths, so they never see this field. Historical quotes
+              created before created_by was captured (commit d922253)
+              show "—" rather than guessing a creator. */}
+          {currentId && (
+            <p className="text-[11px] text-text-med mt-1 ml-8">
+              Created by{" "}
+              <span className="font-semibold text-foreground">
+                {quoteData?.creator?.display_name || quoteData?.creator?.email || "—"}
+              </span>
+              <span className="ml-1.5 text-[9px] uppercase tracking-wider text-text-light">internal</span>
+            </p>
+          )}
         </div>
         {currentId && (
           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border capitalize self-start mt-2 ${STATUS_COLORS[form.status] || STATUS_COLORS.draft}`}>
