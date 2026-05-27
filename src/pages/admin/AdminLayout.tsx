@@ -388,10 +388,15 @@ function AdminLayoutInner() {
               <div className="text-[10px] text-white/40 truncate capitalize">{adminUser?.role?.replace("_", " ") || "admin"}</div>
             </div>
           </div>
-          <button onClick={() => { signOut(); navigate("/admin/login"); }}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-coral transition-colors font-body">
-            <LogOut className="w-3 h-3" /> Sign out
-          </button>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => { signOut(); navigate("/admin/login"); }}
+              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-coral transition-colors font-body">
+              <LogOut className="w-3 h-3" /> Sign out
+            </button>
+            <Link to="/admin/install" className="lg:hidden flex items-center gap-1 text-[11px] text-white/60 hover:text-coral transition-colors font-body">
+              <Smartphone className="w-3 h-3" /> Install app
+            </Link>
+          </div>
         </div>
       </aside>
 
