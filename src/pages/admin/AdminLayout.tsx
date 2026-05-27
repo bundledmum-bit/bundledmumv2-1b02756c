@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdmin } from "@/hooks/useAdmin";
 import { AdminPermissionsProvider, usePermissions } from "@/hooks/useAdminPermissionsContext";
@@ -10,12 +11,14 @@ import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
+import AdminMobileBottomNav from "@/components/admin/AdminMobileBottomNav";
 
 // Map icon-name strings stored on admin_nav_items.icon to lucide components.
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -267,10 +270,20 @@ function AdminLayoutInner() {
 
   return (
     <div className="min-h-screen flex bg-muted/30">
+      <Helmet>
+        <link rel="manifest" href="/admin-manifest.webmanifest" />
+        <meta name="theme-color" content="#2D6A4F" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="BM Admin" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </Helmet>
       {mobileOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />}
 
       <aside className={`fixed h-full z-50 flex flex-col transition-transform lg:translate-x-0 w-60 flex-shrink-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
         style={{ background: "linear-gradient(180deg, #2D6A4F 0%, #1A4A33 100%)" }}>
+        
         
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <Link to="/admin" className="flex items-center gap-2.5">
@@ -375,10 +388,15 @@ function AdminLayoutInner() {
               <div className="text-[10px] text-white/40 truncate capitalize">{adminUser?.role?.replace("_", " ") || "admin"}</div>
             </div>
           </div>
-          <button onClick={() => { signOut(); navigate("/admin/login"); }}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-coral transition-colors font-body">
-            <LogOut className="w-3 h-3" /> Sign out
-          </button>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => { signOut(); navigate("/admin/login"); }}
+              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-coral transition-colors font-body">
+              <LogOut className="w-3 h-3" /> Sign out
+            </button>
+            <Link to="/admin/install" className="lg:hidden flex items-center gap-1 text-[11px] text-white/60 hover:text-coral transition-colors font-body">
+              <Smartphone className="w-3 h-3" /> Install app
+            </Link>
+          </div>
         </div>
       </aside>
 
@@ -433,10 +451,12 @@ function AdminLayoutInner() {
           </div>
         )}
 
-        <div className="p-6 max-w-[1200px]">
+        <div className="p-4 sm:p-6 max-w-[1200px] pb-24 lg:pb-6">
           <Outlet />
         </div>
       </main>
+
+      <AdminMobileBottomNav onOpenMenu={() => setMobileOpen(true)} />
     </div>
   );
 }

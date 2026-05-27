@@ -69,6 +69,7 @@ import NotFound from "./pages/NotFound.tsx";
 
 // Admin
 import AdminLogin from "@/pages/admin/AdminLogin";
+import AdminInstall from "@/pages/admin/AdminInstall";
 import AdminSetPassword from "@/pages/admin/AdminSetPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import AdminLayout from "@/pages/admin/AdminLayout";
@@ -341,6 +342,7 @@ const App = () => (
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<PermissionGate module="dashboard" action="view"><AdminDashboard /></PermissionGate>} />
+                <Route path="install" element={<AdminInstall />} />
                 <Route path="products" element={<PermissionGate module="products" action="view"><AdminProducts /></PermissionGate>} />
                 <Route path="products/margins" element={<PermissionGate module="products" action="view"><MarginsPage /></PermissionGate>} />
                 <Route path="bundles" element={<PermissionGate module="products" action="view"><AdminBundles /></PermissionGate>} />
