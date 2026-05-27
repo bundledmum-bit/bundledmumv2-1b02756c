@@ -260,6 +260,13 @@ export type Database = {
             foreignKeyName: "admin_notifications_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -706,6 +713,7 @@ export type Database = {
           image_url: string | null
           images: string[] | null
           in_stock: boolean | null
+          is_active: boolean
           is_default_for_tier: boolean | null
           logo_url: string | null
           low_stock_threshold: number | null
@@ -736,6 +744,7 @@ export type Database = {
           image_url?: string | null
           images?: string[] | null
           in_stock?: boolean | null
+          is_active?: boolean
           is_default_for_tier?: boolean | null
           logo_url?: string | null
           low_stock_threshold?: number | null
@@ -766,6 +775,7 @@ export type Database = {
           image_url?: string | null
           images?: string[] | null
           in_stock?: boolean | null
+          is_active?: boolean
           is_default_for_tier?: boolean | null
           logo_url?: string | null
           low_stock_threshold?: number | null
@@ -996,6 +1006,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "coupons"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coupon_usage_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "coupon_usage_order_id_fkey"
@@ -1737,6 +1754,98 @@ export type Database = {
         }
         Relationships: []
       }
+      email_send_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          order_id: string | null
+          recipient_email: string
+          resend_email_id: string | null
+          return_id: string | null
+          send_to_type: string
+          status: string
+          subject: string
+          template_slug: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          recipient_email: string
+          resend_email_id?: string | null
+          return_id?: string | null
+          send_to_type: string
+          status: string
+          subject: string
+          template_slug: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          order_id?: string | null
+          recipient_email?: string
+          resend_email_id?: string | null
+          return_id?: string | null
+          send_to_type?: string
+          status?: string
+          subject?: string
+          template_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_send_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "email_send_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "email_send_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_send_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "email_send_log_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "admin_returns_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_send_log_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "order_returns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_send_log_template_slug_fkey"
+            columns: ["template_slug"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
       email_templates: {
         Row: {
           created_at: string | null
@@ -2290,6 +2399,60 @@ export type Database = {
           vat_registered?: boolean | null
           wht_rate_goods?: number | null
           wht_rate_services?: number | null
+        }
+        Relationships: []
+      }
+      free_delivery_thresholds: {
+        Row: {
+          applicable_states: string[] | null
+          banner_display_threshold_pct: number | null
+          created_at: string | null
+          customer_pays_fee: number
+          delivery_label: string
+          display_order: number | null
+          helper_text: string | null
+          id: string
+          is_active: boolean | null
+          marketing_copy: string | null
+          name: string
+          progress_template: string | null
+          scope: string
+          threshold_amount: number
+          updated_at: string | null
+        }
+        Insert: {
+          applicable_states?: string[] | null
+          banner_display_threshold_pct?: number | null
+          created_at?: string | null
+          customer_pays_fee?: number
+          delivery_label: string
+          display_order?: number | null
+          helper_text?: string | null
+          id?: string
+          is_active?: boolean | null
+          marketing_copy?: string | null
+          name: string
+          progress_template?: string | null
+          scope: string
+          threshold_amount: number
+          updated_at?: string | null
+        }
+        Update: {
+          applicable_states?: string[] | null
+          banner_display_threshold_pct?: number | null
+          created_at?: string | null
+          customer_pays_fee?: number
+          delivery_label?: string
+          display_order?: number | null
+          helper_text?: string | null
+          id?: string
+          is_active?: boolean | null
+          marketing_copy?: string | null
+          name?: string
+          progress_template?: string | null
+          scope?: string
+          threshold_amount?: number
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -3524,6 +3687,13 @@ export type Database = {
             foreignKeyName: "invoices_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "invoices_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -3576,6 +3746,13 @@ export type Database = {
           sent_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "marketing_email_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
           {
             foreignKeyName: "marketing_email_log_order_id_fkey"
             columns: ["order_id"]
@@ -4027,6 +4204,13 @@ export type Database = {
             foreignKeyName: "order_items_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -4090,6 +4274,13 @@ export type Database = {
             foreignKeyName: "order_notes_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_notes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -4141,6 +4332,13 @@ export type Database = {
           vendor_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "order_picking_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_item_profit_view"
+            referencedColumns: ["item_id"]
+          },
           {
             foreignKeyName: "order_picking_items_order_item_id_fkey"
             columns: ["order_item_id"]
@@ -4200,6 +4398,13 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "order_picking_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
           {
             foreignKeyName: "order_picking_sessions_order_id_fkey"
             columns: ["order_id"]
@@ -4295,11 +4500,25 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "order_returns_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "order_returns_handled_by_fkey"
             columns: ["handled_by"]
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_returns_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "order_returns_order_id_fkey"
@@ -4379,6 +4598,13 @@ export type Database = {
             foreignKeyName: "order_status_history_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -4403,6 +4629,8 @@ export type Database = {
           actual_courier_partner: string | null
           actual_delivery_cost: number | null
           actual_delivery_date: string | null
+          assigned_at: string | null
+          assigned_picker_id: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -4431,6 +4659,7 @@ export type Database = {
           express_payment_reference: string | null
           express_quoted_at: string | null
           express_status: string | null
+          from_quote_id: string | null
           fulfillment_notes: string | null
           gift_message: string | null
           gift_wrap_fee: number | null
@@ -4455,6 +4684,7 @@ export type Database = {
           payment_status: string | null
           paystack_fee: number | null
           paystack_transaction_id: string | null
+          picking_started_at: string | null
           quiz_answers: Json | null
           referral_code_used: string | null
           referrer: string | null
@@ -4483,6 +4713,8 @@ export type Database = {
           actual_courier_partner?: string | null
           actual_delivery_cost?: number | null
           actual_delivery_date?: string | null
+          assigned_at?: string | null
+          assigned_picker_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -4511,6 +4743,7 @@ export type Database = {
           express_payment_reference?: string | null
           express_quoted_at?: string | null
           express_status?: string | null
+          from_quote_id?: string | null
           fulfillment_notes?: string | null
           gift_message?: string | null
           gift_wrap_fee?: number | null
@@ -4535,6 +4768,7 @@ export type Database = {
           payment_status?: string | null
           paystack_fee?: number | null
           paystack_transaction_id?: string | null
+          picking_started_at?: string | null
           quiz_answers?: Json | null
           referral_code_used?: string | null
           referrer?: string | null
@@ -4563,6 +4797,8 @@ export type Database = {
           actual_courier_partner?: string | null
           actual_delivery_cost?: number | null
           actual_delivery_date?: string | null
+          assigned_at?: string | null
+          assigned_picker_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -4591,6 +4827,7 @@ export type Database = {
           express_payment_reference?: string | null
           express_quoted_at?: string | null
           express_status?: string | null
+          from_quote_id?: string | null
           fulfillment_notes?: string | null
           gift_message?: string | null
           gift_wrap_fee?: number | null
@@ -4615,6 +4852,7 @@ export type Database = {
           payment_status?: string | null
           paystack_fee?: number | null
           paystack_transaction_id?: string | null
+          picking_started_at?: string | null
           quiz_answers?: Json | null
           referral_code_used?: string | null
           referrer?: string | null
@@ -4641,6 +4879,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "orders_assigned_picker_id_fkey"
+            columns: ["assigned_picker_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "orders_cancelled_by_fkey"
             columns: ["cancelled_by"]
             isOneToOne: false
@@ -4652,6 +4897,20 @@ export type Database = {
             columns: ["coupon_id"]
             isOneToOne: false
             referencedRelation: "coupons"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_from_quote_id_fkey"
+            columns: ["from_quote_id"]
+            isOneToOne: false
+            referencedRelation: "admin_quotes_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_from_quote_id_fkey"
+            columns: ["from_quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
             referencedColumns: ["id"]
           },
           {
@@ -5338,6 +5597,13 @@ export type Database = {
             foreignKeyName: "quiz_customers_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quiz_customers_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -5557,6 +5823,13 @@ export type Database = {
             foreignKeyName: "quiz_sessions_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quiz_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -5681,6 +5954,58 @@ export type Database = {
             foreignKeyName: "quote_items_quote_id_fkey"
             columns: ["quote_id"]
             isOneToOne: false
+            referencedRelation: "admin_quotes_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_items_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_status_history: {
+        Row: {
+          changed_by: string | null
+          created_at: string | null
+          from_status: string | null
+          id: string
+          notes: string | null
+          quote_id: string
+          to_status: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string | null
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          quote_id: string
+          to_status: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string | null
+          from_status?: string | null
+          id?: string
+          notes?: string | null
+          quote_id?: string
+          to_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_status_history_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "admin_quotes_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_status_history_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
             referencedRelation: "quotes"
             referencedColumns: ["id"]
           },
@@ -5688,66 +6013,138 @@ export type Database = {
       }
       quotes: {
         Row: {
+          accepted_at: string | null
+          bypass_delivery_threshold: boolean
+          bypass_spend_threshold: boolean
+          converted_order_id: string | null
           created_at: string
           created_by: string | null
           customer_email: string | null
-          customer_name: string
+          customer_name: string | null
           customer_notes: string | null
           customer_phone: string | null
           delivery_address: string | null
           delivery_city: string | null
+          delivery_fee_override: number | null
           delivery_state: string | null
+          discount_amount: number
+          discount_reason: string | null
           estimated_delivery_fee: number
+          expires_at: string | null
           id: string
           internal_notes: string | null
+          last_viewed_at: string | null
           quote_number: string
+          sent_at: string | null
           service_fee: number
+          share_token: string | null
           status: string
           subtotal: number
           total: number
           updated_at: string
+          view_count: number
         }
         Insert: {
+          accepted_at?: string | null
+          bypass_delivery_threshold?: boolean
+          bypass_spend_threshold?: boolean
+          converted_order_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_email?: string | null
-          customer_name: string
+          customer_name?: string | null
           customer_notes?: string | null
           customer_phone?: string | null
           delivery_address?: string | null
           delivery_city?: string | null
+          delivery_fee_override?: number | null
           delivery_state?: string | null
+          discount_amount?: number
+          discount_reason?: string | null
           estimated_delivery_fee?: number
+          expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          last_viewed_at?: string | null
           quote_number: string
+          sent_at?: string | null
           service_fee?: number
+          share_token?: string | null
           status?: string
           subtotal?: number
           total?: number
           updated_at?: string
+          view_count?: number
         }
         Update: {
+          accepted_at?: string | null
+          bypass_delivery_threshold?: boolean
+          bypass_spend_threshold?: boolean
+          converted_order_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_email?: string | null
-          customer_name?: string
+          customer_name?: string | null
           customer_notes?: string | null
           customer_phone?: string | null
           delivery_address?: string | null
           delivery_city?: string | null
+          delivery_fee_override?: number | null
           delivery_state?: string | null
+          discount_amount?: number
+          discount_reason?: string | null
           estimated_delivery_fee?: number
+          expires_at?: string | null
           id?: string
           internal_notes?: string | null
+          last_viewed_at?: string | null
           quote_number?: string
+          sent_at?: string | null
           service_fee?: number
+          share_token?: string | null
           status?: string
           subtotal?: number
           total?: number
           updated_at?: string
+          view_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referral_codes: {
         Row: {
@@ -5805,6 +6202,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
           {
             foreignKeyName: "referral_codes_referrer_order_id_fkey"
             columns: ["referrer_order_id"]
@@ -5873,6 +6277,13 @@ export type Database = {
             foreignKeyName: "referral_credits_applied_order_id_fkey"
             columns: ["applied_order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "referral_credits_applied_order_id_fkey"
+            columns: ["applied_order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -5896,6 +6307,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "referral_codes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_credits_referred_order_id_fkey"
+            columns: ["referred_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "referral_credits_referred_order_id_fkey"
@@ -5964,6 +6382,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "referral_codes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_redemptions_referred_order_id_fkey"
+            columns: ["referred_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "referral_redemptions_referred_order_id_fkey"
@@ -6173,6 +6598,13 @@ export type Database = {
             foreignKeyName: "sessions_conversion_order_id_fkey"
             columns: ["conversion_order_id"]
             isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "sessions_conversion_order_id_fkey"
+            columns: ["conversion_order_id"]
+            isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
           },
@@ -6191,6 +6623,36 @@ export type Database = {
             referencedColumns: ["order_uuid"]
           },
         ]
+      }
+      shared_carts: {
+        Row: {
+          cart_payload: Json
+          created_at: string
+          expires_at: string
+          id: string
+          last_viewed_at: string | null
+          share_token: string
+          view_count: number
+        }
+        Insert: {
+          cart_payload: Json
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_viewed_at?: string | null
+          share_token: string
+          view_count?: number
+        }
+        Update: {
+          cart_payload?: Json
+          created_at?: string
+          expires_at?: string
+          id?: string
+          last_viewed_at?: string | null
+          share_token?: string
+          view_count?: number
+        }
+        Relationships: []
       }
       shipping_zones: {
         Row: {
@@ -6587,6 +7049,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
           {
             foreignKeyName: "subscription_orders_order_id_fkey"
             columns: ["order_id"]
@@ -7029,6 +7498,169 @@ export type Database = {
       }
     }
     Views: {
+      admin_order_item_profit_view: {
+        Row: {
+          brand_name: string | null
+          color: string | null
+          cost_price: number | null
+          has_cogs: boolean | null
+          item_created_at: string | null
+          item_id: string | null
+          line_cost: number | null
+          line_margin: number | null
+          line_margin_pct: number | null
+          line_revenue: number | null
+          order_date: string | null
+          order_id: string | null
+          order_number: string | null
+          product_name: string | null
+          quantity: number | null
+          size: string | null
+          unit_price: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+        ]
+      }
+      admin_order_profit_view: {
+        Row: {
+          cancelled_at: string | null
+          cash_profit: number | null
+          cash_profit_pct: number | null
+          cogs_quality_pct: number | null
+          created_at: string | null
+          customer_delivery_paid: number | null
+          customer_email: string | null
+          customer_name: string | null
+          delivery_city: string | null
+          delivery_cost: number | null
+          delivery_state: string | null
+          discount_amount: number | null
+          gift_wrap_fee: number | null
+          gross_margin: number | null
+          gross_margin_pct: number | null
+          gross_revenue: number | null
+          items_cogs: number | null
+          items_revenue: number | null
+          items_with_cogs: number | null
+          net_revenue: number | null
+          order_id: string | null
+          order_number: string | null
+          order_status: string | null
+          packaging_cost: number | null
+          payment_method: string | null
+          payment_status: string | null
+          paystack_fee: number | null
+          profit_status: string | null
+          refund_amount: number | null
+          service_fee: number | null
+          total_costs: number | null
+          total_items: number | null
+        }
+        Relationships: []
+      }
+      admin_quotes_summary: {
+        Row: {
+          accepted_at: string | null
+          bypass_delivery_threshold: boolean | null
+          bypass_spend_threshold: boolean | null
+          converted_order_id: string | null
+          converted_order_number: string | null
+          converted_order_payment_status: string | null
+          created_at: string | null
+          created_by: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_notes: string | null
+          customer_phone: string | null
+          delivery_address: string | null
+          delivery_city: string | null
+          delivery_fee_override: number | null
+          delivery_state: string | null
+          discount_amount: number | null
+          discount_reason: string | null
+          estimated_delivery_fee: number | null
+          expires_at: string | null
+          id: string | null
+          internal_notes: string | null
+          is_expired_pending: boolean | null
+          item_count: number | null
+          last_viewed_at: string | null
+          quote_number: string | null
+          sent_at: string | null
+          service_fee: number | null
+          share_token: string | null
+          status: string | null
+          subtotal: number | null
+          total: number | null
+          updated_at: string | null
+          view_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_returns_view: {
         Row: {
           admin_notes: string | null
@@ -7056,6 +7688,20 @@ export type Database = {
           updated_at: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "order_returns_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_returns_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
           {
             foreignKeyName: "order_returns_order_id_fkey"
             columns: ["order_id"]
@@ -7526,6 +8172,7 @@ export type Database = {
       }
     }
     Functions: {
+      accept_order_for_picking: { Args: { p_order_id: string }; Returns: Json }
       apply_referral_credit: {
         Args: {
           p_credit_amount: number
@@ -7572,6 +8219,14 @@ export type Database = {
       count_working_days: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: number
+      }
+      create_shared_cart: { Args: { p_items: Json }; Returns: string }
+      duplicate_quote: {
+        Args: { p_source_quote_id: string }
+        Returns: {
+          new_quote_id: string
+          new_quote_number: string
+        }[]
       }
       generate_compliance_notifications: { Args: never; Returns: undefined }
       generate_employment_letter_data: {
@@ -7655,6 +8310,7 @@ export type Database = {
         }[]
       }
       get_dashboard_metrics: { Args: never; Returns: Json }
+      get_default_service_fee: { Args: never; Returns: number }
       get_delivery_fee: {
         Args: { p_city: string; p_state: string; p_subtotal: number }
         Returns: {
@@ -7669,6 +8325,47 @@ export type Database = {
         Args: { p_budget_amount?: number; p_category: string }
         Returns: Json
       }
+      get_quote_by_share_token: {
+        Args: { p_share_token: string }
+        Returns: {
+          created_at: string
+          customer_name: string
+          customer_notes: string
+          delivery_city: string
+          delivery_fee_override: number
+          delivery_state: string
+          discount_amount: number
+          discount_reason: string
+          estimated_delivery_fee: number
+          expires_at: string
+          id: string
+          is_expired: boolean
+          quote_number: string
+          service_fee: number
+          status: string
+          subtotal: number
+          total: number
+        }[]
+      }
+      get_quote_items_by_share_token: {
+        Args: { p_share_token: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          color: string
+          current_image_url: string
+          current_in_stock: boolean
+          display_order: number
+          id: string
+          line_total: number
+          product_id: string
+          product_name: string
+          quantity: number
+          size: string
+          unit_price: number
+        }[]
+      }
+      get_shared_cart: { Args: { p_share_token: string }; Returns: Json }
       get_shop_page: { Args: { p_shop: string }; Returns: Json }
       get_subscription_settings: { Args: never; Returns: Json }
       get_user_permissions: {
@@ -7712,6 +8409,10 @@ export type Database = {
       is_admin_user: { Args: never; Returns: boolean }
       is_sensitive_realtime_topic: { Args: { topic: string }; Returns: boolean }
       link_my_employee_account: { Args: never; Returns: Json }
+      link_order_to_quote: {
+        Args: { p_order_id: string; p_share_token: string }
+        Returns: Json
+      }
       mark_quiz_lead_purchased: {
         Args: {
           p_order_amount?: number
@@ -7734,6 +8435,7 @@ export type Database = {
         Returns: Json
       }
       process_recurring_expenses: { Args: never; Returns: Json }
+      record_quote_view: { Args: { p_share_token: string }; Returns: undefined }
       refresh_maternity_bundle_prices: { Args: never; Returns: Json }
       request_admin_action: {
         Args: {
