@@ -196,7 +196,7 @@ export default function AdminQuotes() {
         bank_account_name: contactSettings?.bank_account_name,
         bank_account_number: contactSettings?.bank_account_number,
       };
-      downloadQuotePdf(pdfQuote, contact);
+      await downloadQuotePdf(pdfQuote, contact);
     } catch (e: any) {
       toast.error(e?.message || "Could not generate PDF");
     }
@@ -933,7 +933,7 @@ function QuoteEditor({
     const orderedItems = (data.quote_items || []).slice().sort(
       (a: any, b: any) => (a.display_order || 0) - (b.display_order || 0),
     );
-    downloadQuotePdf(
+    await downloadQuotePdf(
       {
         quote_number: data.quote_number,
         created_at: data.created_at,

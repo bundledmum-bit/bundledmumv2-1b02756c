@@ -25,6 +25,42 @@ const slugify = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 40) || "customer";
 
+// Public asset path — served by Vite from /public/images/ in dev and by
+// the prod CDN at the same path. Same bytes the email and public quote
+// page reference at https://bundledmum.com/images/BM-LOGO-CORAL.png, so
+// visual handoff is consistent across surfaces. Relative path avoids
+// dev CORS issues (cross-origin fetch from localhost would fail).
+const CORAL_LOGO_URL = "/images/BM-LOGO-CORAL.png";
+
+// jsPDF.addImage() needs a data URL or an HTMLImageElement — it cannot
+// resolve a network URL on its own. We fetch the asset once per PDF
+// generation and convert to a base64 data URL. Returns null on failure
+// (e.g., offline, 404) so the caller can fall back to a text wordmark
+// instead of crashing the whole download.
+async function loadLogoForPdf(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error(`logo fetch ${res.status}`);
+    const blob = await res.blob();
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error || new Error("FileReader failed"));
+      r.readAsDataURL(blob);
+    });
+    const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onerror = () => reject(new Error("logo decode failed"));
+      img.src = dataUrl;
+    });
+    return { dataUrl, ...dims };
+  } catch (e) {
+    console.warn("[quotePdf] coral logo unavailable, falling back to text wordmark", e);
+    return null;
+  }
+}
+
 export interface QuoteItemForPdf {
   product_name: string;
   brand_name?: string | null;
@@ -59,19 +95,42 @@ export interface ContactBlock {
   bank_account_number?: string;
 }
 
-export function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock): jsPDF {
+export async function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 20;
 
+  // Resolve the logo before drawing so the header layout knows whether
+  // to use the image (preferred) or the text-wordmark fallback. Done
+  // here (rather than at module scope) so each PDF gets a fresh fetch
+  // and we surface a useful console warning per generation if it 404s.
+  const logo = await loadLogoForPdf(CORAL_LOGO_URL);
+
   // ── Header band ────────────────────────────────────────────────
+  // Green band height stays at 30mm; logo sits inside it, vertically
+  // centred. The previous coral text wordmark ("BundledMum") was
+  // visually duplicating the brand on every PDF — replaced by the
+  // image to match the email + public quote page.
   doc.setFillColor(FOREST);
   doc.rect(0, 0, pageW, 30, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(CORAL);
-  doc.setFontSize(22);
-  doc.text("BundledMum", margin, 16);
+
+  if (logo) {
+    // Constrain by height so the "Maternity & Baby Essentials" tagline
+    // at y=22 stays clear regardless of the source asset's aspect ratio.
+    // 13mm logo sits at y=4..17 inside the 30mm green band; tagline
+    // continues to render at y=22 underneath.
+    const targetH = 13;
+    const targetW = (logo.w / Math.max(logo.h, 1)) * targetH;
+    doc.addImage(logo.dataUrl, "PNG", margin, 4, targetW, targetH);
+  } else {
+    // Graceful fallback: keep the previous coral text wordmark so the
+    // PDF still ships with brand presence when the asset can't load.
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(CORAL);
+    doc.setFontSize(22);
+    doc.text("BundledMum", margin, 16);
+  }
   doc.setFont("helvetica", "normal");
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(9);
@@ -274,8 +333,8 @@ export function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock): jsP
   return doc;
 }
 
-export function downloadQuotePdf(quote: QuoteForPdf, contact: ContactBlock) {
-  const doc = generateQuotePdf(quote, contact);
+export async function downloadQuotePdf(quote: QuoteForPdf, contact: ContactBlock) {
+  const doc = await generateQuotePdf(quote, contact);
   const filename = `BundledMum-Quote-${quote.quote_number}-${slugify(quote.customer_name)}.pdf`;
   doc.save(filename);
 }
