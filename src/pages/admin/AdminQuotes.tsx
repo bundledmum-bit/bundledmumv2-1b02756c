@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
+  Files,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import { copyToClipboard } from "@/lib/copyToClipboard";
@@ -85,6 +86,9 @@ export default function AdminQuotes() {
   const { can } = usePermissions();
   const canEdit = can("quotes", "edit");
   const canDelete = can("quotes", "delete");
+  // duplicate_quote RPC enforces this server-side as well; the gate
+  // here just hides the button from users who would always 403.
+  const canCreate = can("quotes", "create");
 
   const queryClient = useQueryClient();
   const [view, setView] = useState<"list" | "editor">("list");
@@ -155,6 +159,36 @@ export default function AdminQuotes() {
     onError: (e: any) => toast.error(e?.message || "Could not delete quote"),
   });
 
+  // Duplicate: calls the DB-side RPC (atomic, checks permissions,
+  // generates new quote_number/share_token, copies line items only,
+  // resets customer/fee fields). The RPC returns a 1-row table —
+  // PostgREST surfaces that as an array on `data`.
+  const duplicateQuote = useMutation({
+    mutationFn: async (sourceId: string) => {
+      const { data, error } = await (supabase as any).rpc("duplicate_quote", {
+        p_source_quote_id: sourceId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.new_quote_id) throw new Error("Duplicate succeeded but returned no id");
+      return row as { new_quote_id: string; new_quote_number: string };
+    },
+    onSuccess: (res, sourceId) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+      const source = (quotes as any[]).find((q: any) => q.id === sourceId);
+      toast.success(
+        source?.quote_number
+          ? `Quote ${source.quote_number} duplicated as ${res.new_quote_number}`
+          : `Quote duplicated as ${res.new_quote_number}`,
+      );
+      // Open the newly-created draft in the editor — same in-tree
+      // navigation pattern the Edit button uses.
+      setEditingId(res.new_quote_id);
+      setView("editor");
+    },
+    onError: (e: any) => toast.error(e?.message || "Could not duplicate quote"),
+  });
+
   const handleDownload = async (id: string) => {
     try {
       const { data, error } = await (supabase as any)
@@ -205,9 +239,15 @@ export default function AdminQuotes() {
   if (view === "editor") {
     return (
       <QuoteEditor
+        // Keying by editingId forces a clean remount when the editor
+        // switches to a different quote (e.g., after Duplicate), so
+        // internal useState seeds re-initialise from the new id.
+        key={editingId || "new"}
         quoteId={editingId}
         onClose={() => { setView("list"); setEditingId(null); }}
+        onOpenQuote={(id: string) => { setEditingId(id); /* view stays "editor" */ }}
         canEdit={canEdit}
+        canCreate={canCreate}
         canDelete={canDelete}
         contactSettings={contactSettings || {}}
       />
@@ -392,6 +432,20 @@ export default function AdminQuotes() {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
+                          {canCreate && (
+                            <button
+                              onClick={() => duplicateQuote.mutate(q.id)}
+                              disabled={duplicateQuote.isPending}
+                              className="p-1.5 rounded hover:bg-muted disabled:opacity-40"
+                              title="Duplicate (creates a fresh draft with the same line items)"
+                            >
+                              {duplicateQuote.isPending && duplicateQuote.variables === q.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Files className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
                           {canDelete && q.status === "draft" && (
                             <button
                               onClick={() => {
@@ -509,13 +563,17 @@ const BLANK_FORM: QuoteForm = {
 function QuoteEditor({
   quoteId,
   onClose,
+  onOpenQuote,
   canEdit,
+  canCreate,
   canDelete,
   contactSettings,
 }: {
   quoteId: string | null;
   onClose: () => void;
+  onOpenQuote: (id: string) => void;
   canEdit: boolean;
+  canCreate: boolean;
   canDelete: boolean;
   contactSettings: Record<string, string>;
 }) {
@@ -875,6 +933,34 @@ function QuoteEditor({
     },
     onSuccess: () => { refetchQuote(); queryClient.invalidateQueries({ queryKey: ["admin-quotes"] }); },
     onError: (e: any) => toast.error(e?.message || "Could not remove item"),
+  });
+
+  // Duplicate from inside the editor. Same RPC as the list view —
+  // returns the new quote id which we hand to the parent so it can
+  // swap editingId and trigger a clean remount (via the key prop on
+  // <QuoteEditor>) onto the freshly-created draft.
+  const duplicateInEditor = useMutation({
+    mutationFn: async () => {
+      if (!currentId) throw new Error("Save the quote before duplicating");
+      const { data, error } = await (supabase as any).rpc("duplicate_quote", {
+        p_source_quote_id: currentId,
+      });
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.new_quote_id) throw new Error("Duplicate succeeded but returned no id");
+      return row as { new_quote_id: string; new_quote_number: string };
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+      const sourceNumber = quoteData?.quote_number;
+      toast.success(
+        sourceNumber
+          ? `Quote ${sourceNumber} duplicated as ${res.new_quote_number}`
+          : `Quote duplicated as ${res.new_quote_number}`,
+      );
+      onOpenQuote(res.new_quote_id);
+    },
+    onError: (e: any) => toast.error(e?.message || "Could not duplicate quote"),
   });
 
   const handleSelectProduct = async (row: any) => {
@@ -1309,6 +1395,21 @@ function QuoteEditor({
             >
               <Download className="w-4 h-4" /> Save & Download PDF
             </button>
+            {canCreate && (
+              <button
+                onClick={() => duplicateInEditor.mutate()}
+                disabled={!currentId || duplicateInEditor.isPending}
+                title={!currentId ? "Save before duplicating" : "Create a fresh draft with the same line items"}
+                className="w-full inline-flex items-center justify-center gap-1.5 bg-card border border-border px-4 py-2 rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {duplicateInEditor.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Files className="w-4 h-4" />
+                )}
+                Duplicate
+              </button>
+            )}
             <button
               onClick={onClose}
               className="w-full inline-flex items-center justify-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground py-2"
