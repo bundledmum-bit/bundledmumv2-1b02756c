@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -35,6 +35,24 @@ const STATUS_COLORS: Record<string, string> = {
 
 type QuoteStatus = "all" | "draft" | "sent" | "viewed" | "accepted" | "converted" | "declined" | "expired" | "archived";
 const STATUS_TABS: QuoteStatus[] = ["all", "draft", "sent", "viewed", "accepted", "converted", "declined", "expired", "archived"];
+
+// supabase-js wraps non-2xx edge-function responses as FunctionsHttpError
+// with a generic "Edge Function returned a non-2xx status code" message.
+// The actual server error body is on error.context. Extract it so users
+// see a meaningful message in toasts.
+async function describeFunctionError(err: any): Promise<string> {
+  try {
+    const ctx = err?.context;
+    if (ctx && typeof ctx.clone === "function") {
+      const body = await ctx.clone().json().catch(() => null);
+      if (body?.error) return String(body.error);
+      if (body?.message) return String(body.message);
+    }
+  } catch {
+    /* fall through */
+  }
+  return err?.message || "Unknown error";
+}
 
 const shareUrlFor = (token: string | null | undefined): string => {
   if (!token) return "";
@@ -526,9 +544,35 @@ function QuoteEditor({
     },
   });
 
+  // Ref holds the signature of the last-persisted form payload so the
+  // autosave effect can skip no-op writes immediately after loading.
+  const lastSavedSigRef = useRef<string>("");
+
+  // Build the DB-shaped payload from the in-memory form. Centralised so
+  // the autosave effect, the initial sync, and the explicit save buttons
+  // all produce the same shape.
+  const buildAutosavePayload = (f: QuoteForm) => ({
+    customer_name: f.customer_name.trim() || null,
+    customer_phone: f.customer_phone.trim() || null,
+    customer_email: f.customer_email.trim() || null,
+    delivery_address: f.delivery_address.trim() || null,
+    delivery_city: f.delivery_city || null,
+    delivery_state: f.delivery_state || null,
+    service_fee: parseInt(f.service_fee, 10) || 0,
+    estimated_delivery_fee: parseInt(f.estimated_delivery_fee, 10) || 0,
+    delivery_fee_override: f.delivery_fee_override.trim() === "" ? null : (parseInt(f.delivery_fee_override, 10) || null),
+    discount_amount: parseInt(f.discount_amount, 10) || 0,
+    discount_reason: f.discount_reason.trim() || null,
+    bypass_spend_threshold: !!f.bypass_spend_threshold,
+    bypass_delivery_threshold: !!f.bypass_delivery_threshold,
+    expires_at: f.expires_at ? new Date(f.expires_at + "T23:59:59").toISOString() : null,
+    internal_notes: f.internal_notes.trim() || null,
+    customer_notes: f.customer_notes.trim() || null,
+  });
+
   useEffect(() => {
     if (!quoteData) return;
-    setForm({
+    const nextForm: QuoteForm = {
       customer_name: quoteData.customer_name || "",
       customer_phone: quoteData.customer_phone || "",
       customer_email: quoteData.customer_email || "",
@@ -546,8 +590,43 @@ function QuoteEditor({
       internal_notes: quoteData.internal_notes || "",
       customer_notes: quoteData.customer_notes || "",
       status: (quoteData.status as any) || "draft",
-    });
+    };
+    setForm(nextForm);
+    // Seed the autosave signature with the just-loaded values so the
+    // debounced effect doesn't immediately write the same data back.
+    lastSavedSigRef.current = JSON.stringify(buildAutosavePayload(nextForm));
   }, [quoteData]);
+
+  // ── Autosave ────────────────────────────────────────────────────
+  // Before this existed, customer_name/email/phone (and all other
+  // top-level quote fields) only persisted when the admin explicitly
+  // clicked Save Draft or Save & Download. Items always saved because
+  // each item mutation hits the DB directly. The mismatch let admins
+  // type a customer email, see it on screen, then hit Send to Customer
+  // — but the edge function reads from the DB where the column was
+  // still NULL and 400'd. Debouncing 500 ms keeps the keystroke storm
+  // off the network without surprising the admin.
+  useEffect(() => {
+    if (!currentId || !canEdit) return;
+    const payload = buildAutosavePayload(form);
+    const sig = JSON.stringify(payload);
+    if (sig === lastSavedSigRef.current) return;
+    const t = setTimeout(async () => {
+      const { error } = await (supabase as any)
+        .from("quotes")
+        .update(payload)
+        .eq("id", currentId);
+      if (error) {
+        console.error("[quotes] autosave failed", error);
+        return;
+      }
+      lastSavedSigRef.current = sig;
+      // Keep the list-view cache in step so totals/customer_name reflect.
+      queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, currentId, canEdit]);
 
   const items: any[] = useMemo(
     () => (quoteData?.quote_items || []).slice().sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0)),
@@ -1220,6 +1299,30 @@ function QuoteEditor({
             {currentId && canEdit && (
               <div className="border-t border-border pt-3 space-y-1.5">
                 <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Workflow</p>
+                {quoteData?.share_token && (
+                  <button
+                    onClick={async () => {
+                      const url = shareUrlFor(quoteData.share_token);
+                      try {
+                        // navigator.clipboard is the modern path; falls
+                        // back to a sync copyToClipboard helper only if
+                        // unavailable (older browsers, http contexts).
+                        if (navigator.clipboard?.writeText) {
+                          await navigator.clipboard.writeText(url);
+                        } else {
+                          await copyToClipboard(url);
+                        }
+                        toast.success("Quote link copied");
+                      } catch {
+                        toast.error("Could not copy link");
+                      }
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-1.5 bg-card border border-border px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-muted"
+                    title="Copy the customer-facing share link to share via WhatsApp etc."
+                  >
+                    <CopyIcon className="w-3.5 h-3.5" /> Copy share link
+                  </button>
+                )}
                 {form.status !== "converted" && form.status !== "declined" && form.customer_email && (
                   <button onClick={() => setEditorSend(true)} className="w-full inline-flex items-center justify-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700">
                     <Send className="w-3.5 h-3.5" /> Send to Customer
@@ -1541,9 +1644,15 @@ function SendQuoteDialog({
       const body: any = { quote_id: quoteId };
       if (testMode) body.test_email = target;
       const { data, error } = await (supabase as any).functions.invoke("send-quote-email", { body });
-      if (error || (data && data.success === false)) {
-        const msg = error?.message || data?.error || "Failed to send";
-        throw new Error(msg);
+      if (error) {
+        // Unwrap FunctionsHttpError so the admin sees the real reason
+        // ("No recipient email…", "Template missing…") instead of the
+        // generic "Edge Function returned a non-2xx status code".
+        const detail = await describeFunctionError(error);
+        throw new Error(detail);
+      }
+      if (data && data.success === false) {
+        throw new Error(data?.error || "Failed to send");
       }
       toast.success(`Quote sent to ${target}`);
       onSent();
@@ -1636,8 +1745,12 @@ function ConvertQuoteDialog({
           payment_method: "bank_transfer",
         },
       });
-      if (error || (data && data.success === false)) {
-        throw new Error(error?.message || data?.error || "Conversion failed");
+      if (error) {
+        const detail = await describeFunctionError(error);
+        throw new Error(detail);
+      }
+      if (data && data.success === false) {
+        throw new Error(data?.error || "Conversion failed");
       }
       const orderNo = data?.order_number || data?.order?.order_number;
       toast.success(orderNo ? `Order ${orderNo} created` : "Order created");
