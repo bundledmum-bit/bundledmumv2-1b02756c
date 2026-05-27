@@ -215,7 +215,6 @@ export default function QuotePage() {
         {/* Header */}
         <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
           <div>
-            <h1 className="pf text-2xl md:text-3xl font-bold">BundledMum</h1>
             <p className="text-text-med text-sm mt-1">Quote prepared for you</p>
           </div>
           <div className="text-right text-xs text-text-med">
