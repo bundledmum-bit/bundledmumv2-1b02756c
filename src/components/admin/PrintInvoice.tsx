@@ -1,6 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { toast } from "sonner";
+import { preloadProductImages } from "@/lib/pdfImages";
 
 // The full branded HTML invoice template (A5, self-contained with base64 logos)
 function getInvoiceHTML(): string {
@@ -50,12 +51,14 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
 .items-table { width: 100%; border-collapse: collapse; }
 .items-table thead tr { background: var(--warm-grey); }
 .items-table thead th { font-size: 7px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted); padding: 5px 7px; text-align: left; }
-.items-table thead th:nth-child(2), .items-table thead th:last-child { text-align: right; }
+.items-table thead th:last-child { text-align: right; }
 .items-table thead th:first-child { border-radius: 5px 0 0 5px; }
 .items-table thead th:last-child { border-radius: 0 5px 5px 0; }
 .items-table tbody tr { border-bottom: 1px solid var(--divider); }
 .items-table tbody tr:last-child { border-bottom: none; }
 .items-table tbody td { padding: 6px 7px; vertical-align: top; }
+.item-thumb-cell { width: 48px; padding: 4px 7px !important; }
+.item-thumb { width: 40px; height: 40px; object-fit: contain; border-radius: 4px; border: 1px solid var(--divider); display: block; }
 .prod-name { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 9.5px; color: var(--black); line-height: 1.3; margin-bottom: 1px; }
 .prod-brand { font-size: 8px; color: var(--text-muted); }
 .cell-right { font-size: 9.5px; font-weight: 700; color: var(--black); text-align: right; white-space: nowrap; vertical-align: middle; }
@@ -134,7 +137,7 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
     <div>
       <div class="section-label">Items in this order</div>
       <table class="items-table">
-        <thead><tr><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead>
+        <thead><tr><th style="width:48px"></th><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Amount</th></tr></thead>
         <tbody id="lineItemsBody"></tbody>
       </table>
     </div>
@@ -196,7 +199,7 @@ function populate(data){
   document.getElementById('custAddress').innerHTML=addrParts.join('<br>');
   var items=data.line_items||[];
   document.getElementById('lineItemsBody').innerHTML=items.map(function(item){
-    return '<tr><td><div class="prod-name">'+((item.product_name||''))+'</div><div class="prod-brand">'+((item.brand_name||''))+'</div></td><td class="cell-right">×'+(item.qty||1)+'</td><td class="cell-amount">'+fmt(item.line_total||(item.unit_price*(item.qty||1)))+'</td></tr>';
+    return '<tr><td class="item-thumb-cell">'+(item.image_data_url?'<img class="item-thumb" src="'+item.image_data_url+'" alt="" />':'')+'</td><td><div class="prod-name">'+((item.product_name||''))+'</div><div class="prod-brand">'+((item.brand_name||''))+'</div></td><td class="cell-right">×'+(item.qty||1)+'</td><td class="cell-amount">'+fmt(item.line_total||(item.unit_price*(item.qty||1)))+'</td></tr>';
   }).join('');
   document.getElementById('subtotalVal').textContent=fmt(data.subtotal);
   document.getElementById('deliveryVal').textContent=fmt(data.delivery_fee);
@@ -237,6 +240,31 @@ export async function openBrandedInvoice(order: any, adminUserId?: string) {
     const { data: settingsRows } = await supabase.from("site_settings").select("value").eq("key", "contact_email").single();
     const contactEmail = typeof settingsRows?.value === "string" ? settingsRows.value : (settingsRows?.value || "");
 
+    // Resolve product thumbnails. Only the CORS-safe Supabase Storage
+    // copy (brands.stored_image_url) can be inlined; the external
+    // image_url is CORS-blocked. Missing/empty stored copy -> no
+    // thumbnail (blank cell, never a broken icon). Images are pre-encoded
+    // to base64 in parallel (each independently isolated) so they appear
+    // reliably in the printed output; one failure never breaks the invoice.
+    const orderItems: any[] = order.order_items || [];
+    const brandIds = Array.from(new Set(orderItems.map((it: any) => it.brand_id).filter(Boolean)));
+    const storedByBrand: Record<string, string> = {};
+    if (brandIds.length > 0) {
+      const { data: brandRows } = await supabase
+        .from("brands")
+        .select("id, stored_image_url")
+        .in("id", brandIds as string[]);
+      (brandRows || []).forEach((b: any) => {
+        const u = typeof b.stored_image_url === "string" ? b.stored_image_url.trim() : "";
+        if (u) storedByBrand[b.id] = u;
+      });
+    }
+    const imageMap = await preloadProductImages(orderItems.map((it: any) => storedByBrand[it.brand_id] || ""));
+    const itemImageUrl = (it: any): string | null => {
+      const u = it.brand_id ? storedByBrand[it.brand_id] : null;
+      return u ? (imageMap.get(u)?.dataUrl || null) : null;
+    };
+
     // Step 2: Build invoice data
     const invoiceData = {
       contact_email: contactEmail,
@@ -258,12 +286,13 @@ export async function openBrandedInvoice(order: any, adminUserId?: string) {
       total: order.total,
       gift_message: order.gift_message,
       delivery_notes: order.delivery_notes,
-      line_items: (order.order_items || []).map((item: any) => ({
+      line_items: orderItems.map((item: any) => ({
         product_name: item.product_name,
         brand_name: item.brand_name,
         qty: item.quantity,
         unit_price: item.unit_price,
         line_total: item.line_total,
+        image_data_url: itemImageUrl(item),
       })),
     };
 

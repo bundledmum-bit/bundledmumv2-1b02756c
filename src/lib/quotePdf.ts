@@ -5,6 +5,7 @@
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { preloadProductImages } from "@/lib/pdfImages";
 
 const FOREST = "#2D6A4F";
 const CORAL = "#E76F51";
@@ -76,58 +77,8 @@ export interface QuoteItemForPdf {
   image_url?: string | null;
 }
 
-// Re-encode any fetched image to a PNG data URL via canvas. This both
-// normalises the format (source could be jpeg/webp/png — addImage is
-// happiest with a known format) and yields the intrinsic dimensions in
-// one pass for aspect-ratio fitting. The blob is inlined as a data URL
-// before it touches the canvas, so the canvas is never CORS-tainted.
-// Returns null on any failure so a single bad image can't break the PDF.
-async function loadImageAsPng(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
-  try {
-    const res = await fetch(url, { credentials: "omit" });
-    if (!res.ok) throw new Error(`image fetch ${res.status}`);
-    const blob = await res.blob();
-    const srcDataUrl: string = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result));
-      r.onerror = () => reject(r.error || new Error("FileReader failed"));
-      r.readAsDataURL(blob);
-    });
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error("image decode failed"));
-      i.src = srcDataUrl;
-    });
-    const w = img.naturalWidth || 1;
-    const h = img.naturalHeight || 1;
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("no 2d context");
-    ctx.drawImage(img, 0, 0);
-    const pngDataUrl = canvas.toDataURL("image/png");
-    return { dataUrl: pngDataUrl, w, h };
-  } catch (e) {
-    console.warn("[quotePdf] product image unavailable, skipping thumbnail", url, e);
-    return null;
-  }
-}
-
-// Pre-load every unique image URL to a PNG data URL in parallel. Each
-// fetch is independently isolated — one rejection cannot fail the batch.
-async function preloadProductImages(urls: string[]): Promise<Map<string, { dataUrl: string; w: number; h: number }>> {
-  const unique = Array.from(new Set(urls.filter((u): u is string => !!u && u.trim() !== "")));
-  const map = new Map<string, { dataUrl: string; w: number; h: number }>();
-  await Promise.all(
-    unique.map(async (u) => {
-      const loaded = await loadImageAsPng(u);
-      if (loaded) map.set(u, loaded);
-    }),
-  );
-  return map;
-}
+// Image helpers (loadImageAsPng / preloadProductImages) are shared with
+// the order invoice — see src/lib/pdfImages.ts.
 
 export interface QuoteForPdf {
   quote_number: string;

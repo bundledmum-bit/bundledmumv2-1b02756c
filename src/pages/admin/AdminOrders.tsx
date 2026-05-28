@@ -3,7 +3,7 @@ import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus } from "lucide-react";
+import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2 } from "lucide-react";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import { openBrandedInvoice } from "@/components/admin/PrintInvoice";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -547,9 +547,10 @@ export default function AdminOrders() {
 }
 
 // ═══════ ORDER DETAIL PAGE ═══════
-function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPrint }: { order: any; adminUser: any; can: (m: string, a: string) => boolean; isSuperAdmin: boolean; onBack: () => void; onPrint: () => void }) {
+function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPrint }: { order: any; adminUser: any; can: (m: string, a: string) => boolean; isSuperAdmin: boolean; onBack: () => void; onPrint: () => void | Promise<void> }) {
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState(o.order_status);
+  const [printing, setPrinting] = useState(false);
   const [statusNote, setStatusNote] = useState("");
   const [noteText, setNoteText] = useState("");
   const [showCancel, setShowCancel] = useState(false);
@@ -911,8 +912,16 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       {/* Actions */}
       <div className="flex items-center gap-3 flex-wrap">
         {(can("orders", "print_invoice") || can("fulfilment", "print_invoice")) && (
-          <button onClick={onPrint} className="flex items-center gap-1 text-xs font-semibold text-forest hover:underline">
-            <Printer className="w-3 h-3" /> Print Invoice
+          <button
+            onClick={async () => {
+              setPrinting(true);
+              try { await onPrint(); } finally { setPrinting(false); }
+            }}
+            disabled={printing}
+            className="flex items-center gap-1 text-xs font-semibold text-forest hover:underline disabled:opacity-50"
+          >
+            {printing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Printer className="w-3 h-3" />}
+            {printing ? "Preparing…" : "Print Invoice"}
           </button>
         )}
         {o.is_subscription_order && (can("orders", "print_invoice") || can("fulfilment", "print_invoice")) && (
