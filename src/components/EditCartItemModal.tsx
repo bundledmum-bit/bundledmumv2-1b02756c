@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X, AlertTriangle } from "lucide-react";
 import { useCart, fmt, cartItemImage, type CartItem } from "@/lib/cart";
+import { getBrandImage } from "@/lib/brandImage";
 
 /**
  * Inline modal for editing the variant (brand / size / color / qty) of an
@@ -23,6 +24,7 @@ interface BrandRow {
   in_stock: boolean;
   stock_quantity: number | null;
   image_url: string | null;
+  stored_image_url?: string | null;
 }
 
 interface SizeRow {
@@ -53,7 +55,7 @@ export default function EditCartItemModal({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("brands_public")
-        .select("id, brand_name, price, in_stock, stock_quantity, image_url")
+        .select("id, brand_name, price, in_stock, stock_quantity, image_url, stored_image_url")
         .eq("product_id", productId)
         .order("price");
       if (error) throw error;
@@ -126,7 +128,7 @@ export default function EditCartItemModal({
         id: selectedBrand.id,
         label: selectedBrand.brand_name,
         price: selectedBrand.price,
-        imageUrl: selectedBrand.image_url,
+        imageUrl: getBrandImage(selectedBrand),
         inStock: selectedBrand.in_stock,
         stockQuantity: selectedBrand.stock_quantity,
       },

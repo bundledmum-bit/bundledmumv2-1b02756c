@@ -5,6 +5,7 @@ import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import ProductImage from "@/components/ProductImage";
 import { useFeaturedProducts, useBestsellers } from "@/hooks/useHomepage";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getBrandImage } from "@/lib/brandImage";
 
 interface Props {
   title?: string | null;
@@ -62,7 +63,7 @@ export default function FeaturedProductsRail({ title, subtitle, maxItems = 8 }: 
                 <div key={p.id} className="snap-start flex-shrink-0 w-[160px] md:w-auto bg-card rounded-card shadow-card overflow-hidden flex flex-col">
                   <Link to={`/shop?q=${encodeURIComponent(p.name)}`} className="block aspect-square bg-warm-cream">
                     <ProductImage
-                      imageUrl={brand?.image_url || brand?.thumbnail_url || null}
+                      imageUrl={getBrandImage(brand) || brand?.thumbnail_url || null}
                       emoji="📦"
                       alt={p.name}
                       className="w-full h-full"

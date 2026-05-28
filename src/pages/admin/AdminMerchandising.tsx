@@ -4,6 +4,7 @@ import { supabase as supabaseTyped } from "@/integrations/supabase/client";
 // merch_* tables aren't in the generated supabase types yet; cast to any.
 const supabase = supabaseTyped as any;
 import { toast } from "sonner";
+import { getBrandImage } from "@/lib/brandImage";
 import {
   ChevronDown, ChevronRight, ArrowUp, ArrowDown, Trash2, Plus, X, Search, GripVertical,
 } from "lucide-react";
@@ -35,10 +36,10 @@ import SectionBrandsTab from "@/components/admin/merchandising/SectionBrandsTab"
 
 const BRAND_NONE = "__none__";
 
-/** Resolve a brand row's display image. Falls back through the same
- *  candidates the storefront uses. */
+/** Resolve a brand row's display image. Prefers the self-hosted stored
+ *  copy (via getBrandImage), then the legacy thumbnail. */
 function brandImage(brand: any): string | null {
-  return brand?.image_url || brand?.thumbnail_url || null;
+  return getBrandImage(brand) || brand?.thumbnail_url || null;
 }
 
 /** Pick the row's thumbnail: brand override → product image → null. */

@@ -10,7 +10,7 @@ export function useProducts(category?: string) {
     queryFn: async () => {
       let query = supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("display_order");
@@ -33,7 +33,7 @@ export function useAllProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("display_order");
@@ -50,7 +50,7 @@ export function useBundles() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("bundles")
-        .select("*, bundle_items(*, products!inner(*), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
+        .select("*, bundle_items(*, products!inner(*), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
         .eq("is_active", true)
         .eq("bundle_items.products.is_active", true)
         .is("bundle_items.products.deleted_at", null)
@@ -69,7 +69,7 @@ export function useBundle(slug: string) {
       // Try slug first, then id
       let { data, error } = await supabase
         .from("bundles")
-        .select("*, bundle_items(*, products!inner(*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*)), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
+        .select("*, bundle_items(*, products!inner(*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*)), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
         .eq("slug", slug)
         .eq("is_active", true)
         .eq("bundle_items.products.is_active", true)
@@ -79,7 +79,7 @@ export function useBundle(slug: string) {
       if (!data) {
         const res = await supabase
           .from("bundles")
-          .select("*, bundle_items(*, products!inner(*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*)), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
+          .select("*, bundle_items(*, products!inner(*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*)), brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type))")
           .eq("id", slug)
           .eq("is_active", true)
           .eq("bundle_items.products.is_active", true)

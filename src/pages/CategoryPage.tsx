@@ -27,7 +27,7 @@ const HEADER_PALETTE: Array<{ bar: string; text: string }> = [
 ];
 
 const BRAND_COLS =
-  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type";
+  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type";
 // Aliased embed (`brands:brands_public(...)`) so the JSON key remains `brands`
 // for the existing adapter without leaking admin-only columns to storefront.
 const PRODUCT_COLS = `*, brands:brands_public(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;

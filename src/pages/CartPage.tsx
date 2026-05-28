@@ -10,6 +10,7 @@ import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText } from "lucide-react";
 import { decodeCartFromUrl, buildWhatsappMessage } from "@/lib/cartShareUrl";
 import { generateSharedCartUrl, fetchSharedCart, type SharedCartItem as RpcSharedCartItem } from "@/lib/sharedCart";
+import { getBrandImage } from "@/lib/brandImage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -148,14 +149,14 @@ export default function CartPage() {
         const [prodRes, brandRes] = await Promise.all([
           supabase.from("products").select("id, name, slug, image_url, is_active").in("id", productIds),
           brandIds.length
-            ? (supabase as any).from("brands_public").select("id, brand_name, price, image_url, in_stock, product_id").in("id", brandIds)
+            ? (supabase as any).from("brands_public").select("id, brand_name, price, image_url, stored_image_url, in_stock, product_id").in("id", brandIds)
             : Promise.resolve({ data: [] as any[] }),
         ]);
         // Build a cheapest-in-stock fallback brand lookup so rows whose
         // brand_id is missing or stale still hydrate.
         const fallbackRes = await (supabase as any)
           .from("brands_public")
-          .select("id, brand_name, price, image_url, in_stock, product_id")
+          .select("id, brand_name, price, image_url, stored_image_url, in_stock, product_id")
           .in("product_id", productIds)
           .eq("in_stock", true)
           .order("price");
@@ -191,7 +192,7 @@ export default function CartPage() {
               id: brand.id,
               label: brand.brand_name,
               price: Number(brand.price || 0),
-              imageUrl: brand.image_url,
+              imageUrl: getBrandImage(brand),
               inStock: brand.in_stock !== false,
             } : undefined,
             selectedSize: d.size || undefined,

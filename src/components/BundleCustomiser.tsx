@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ShoppingBag, X, RotateCcw, Plus } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
 import { analytics } from "@/lib/ga";
+import { getBrandImage } from "@/lib/brandImage";
 
 /**
  * Interactive customisation UI for bundle product pages.
@@ -37,6 +38,7 @@ interface BrandRow {
   price: number;
   tier: string | null;
   image_url?: string | null;
+  stored_image_url?: string | null;
   size_variant: string | null;
   variant_type?: string | null;
   in_stock: boolean;
@@ -173,7 +175,7 @@ export default function BundleCustomiser({ productId, productName, bundleLabel, 
       // (same pattern ProductPage / BundleSections use).
       const { data, error } = await (supabase as any)
         .from("brands_public")
-        .select("id, product_id, sku, brand_name, price, tier, image_url, size_variant, variant_type, in_stock")
+        .select("id, product_id, sku, brand_name, price, tier, image_url, stored_image_url, size_variant, variant_type, in_stock")
         .in("product_id", productIds)
         .eq("in_stock", true)
         .gt("price", 0)
@@ -491,6 +493,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                 color,
               }))
             : [];
+          const selectedBrandImage = getBrandImage(item.selected_brand);
           return (
             <li key={item.product_id} className={`px-3 py-2.5 ${item.is_included ? "" : "opacity-60"}`}>
               <div className="flex items-start gap-3">
@@ -499,13 +502,13 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                     full-size zoom lightbox. */}
                 <button
                   type="button"
-                  onClick={() => openImageZoom(item.selected_brand.image_url, item.product_name)}
+                  onClick={() => openImageZoom(selectedBrandImage, item.product_name)}
                   aria-label={`View ${item.product_name} image`}
                   className="flex-shrink-0 w-12 h-12 rounded-md overflow-hidden border border-border hover:opacity-80 transition-opacity focus:outline-none focus:ring-2 focus:ring-forest"
                 >
-                  {item.selected_brand.image_url ? (
+                  {selectedBrandImage ? (
                     <img
-                      src={item.selected_brand.image_url}
+                      src={selectedBrandImage}
                       alt={item.product_name}
                       className="w-full h-full object-cover"
                     />

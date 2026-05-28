@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmt } from "@/lib/cart";
+import { getBrandImage } from "@/lib/brandImage";
 
 /**
  * Reusable "Bundles & Kits" surface for the storefront. Renders three
@@ -25,7 +26,7 @@ interface BundleProduct {
   is_gift_box: boolean;
   bundle_label: string | null;
   shop_section_order: number | null;
-  brands: { id: string; sku: string | null; brand_name: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null; images?: string[] | null }[];
+  brands: { id: string; sku: string | null; brand_name: string; price: number; tier: string | null; in_stock: boolean; image_url: string | null; stored_image_url?: string | null; images?: string[] | null }[];
 }
 
 interface EnrichedBundle extends BundleProduct {
@@ -73,7 +74,7 @@ export default function BundleSections({ variant = "shop" }: { variant?: Variant
         .from("products")
         .select(`
           id, name, slug, description, is_gift_box, bundle_label, shop_section_order,
-          brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, images )
+          brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, stored_image_url, images )
         `)
         .eq("is_gift_box", true)
         .eq("is_active", true)
@@ -310,7 +311,7 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
   // Bundle products keep imagery on the brand row (brands.image_url,
   // brands.images[]) — products.image_url is NULL for every bundle.
   const brand = item.brands?.[0];
-  const image = brand?.image_url
+  const image = getBrandImage(brand)
     || (Array.isArray(brand?.images) ? brand!.images![0] : null)
     || null;
   const isBundlesPage = variant === "bundles";

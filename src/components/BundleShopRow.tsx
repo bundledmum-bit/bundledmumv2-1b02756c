@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmt } from "@/lib/cart";
+import { getBrandImage } from "@/lib/brandImage";
 
 /**
  * Bundle row for the shop page, designed to be visually identical to
@@ -24,7 +25,7 @@ interface BundleItem {
   is_maternity: boolean;
   item_count: number;
   computed_price: number;
-  brands: { id: string; image_url?: string | null; images?: string[] | null; tier?: string | null; price?: number }[];
+  brands: { id: string; image_url?: string | null; stored_image_url?: string | null; images?: string[] | null; tier?: string | null; price?: number }[];
 }
 
 interface PaletteVariant {
@@ -93,7 +94,7 @@ export default function BundleShopRow({
 
 function BundleRowCard({ item }: { item: BundleItem }) {
   const brand = item.brands?.[0];
-  const image = brand?.image_url
+  const image = getBrandImage(brand)
     || (Array.isArray(brand?.images) ? brand!.images![0] : null)
     || null;
   const displayName = item.name;

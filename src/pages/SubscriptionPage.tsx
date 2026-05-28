@@ -7,6 +7,7 @@ import {
   CalendarDays, ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { getBrandImage } from "@/lib/brandImage";
 import {
   useSubscriptionSettings, prettySubcategory, writeDraft,
   WEEKDAYS, FREQUENCY_LABEL,
@@ -25,6 +26,7 @@ interface Brand {
   size_variant: string | null;
   in_stock: boolean | null;
   image_url: string | null;
+  stored_image_url?: string | null;
   images?: string[] | null;
 }
 interface SubProduct {
@@ -67,7 +69,7 @@ export default function SubscriptionPage() {
         .select(`
           id, name, category, subcategory, reorder_days, reorder_label,
           why_included, is_consumable,
-          brands:brands_public(id, brand_name, price, size_variant, in_stock, image_url, images)
+          brands:brands_public(id, brand_name, price, size_variant, in_stock, image_url, stored_image_url, images)
         `)
         .eq("is_subscribable", true)
         .eq("is_active", true)
@@ -116,7 +118,7 @@ export default function SubscriptionPage() {
       [target.id]: {
         brand_id: first.id,
         brand_name: first.brand_name,
-        image_url: first.image_url || first.images?.[0] || null,
+        image_url: getBrandImage(first) || first.images?.[0] || null,
         unit_price: Number(first.price) || 0,
         quantity: 1,
         frequency: globalFrequency,
@@ -135,7 +137,7 @@ export default function SubscriptionPage() {
       next[p.id] = {
         brand_id: first.id,
         brand_name: first.brand_name,
-        image_url: first.image_url || first.images?.[0] || null,
+        image_url: getBrandImage(first) || first.images?.[0] || null,
         unit_price: Number(first.price) || 0,
         quantity: 1,
         frequency: globalFrequency,
@@ -372,7 +374,7 @@ function ProductCard({
     onPatch({
       brand_id: b.id,
       brand_name: b.brand_name,
-      image_url: b.image_url || b.images?.[0] || null,
+      image_url: getBrandImage(b) || b.images?.[0] || null,
       unit_price: Number(b.price) || 0,
     });
   };
@@ -395,9 +397,9 @@ function ProductCard({
           {reorderText && <p className="text-[11px] text-text-light mt-0.5">{reorderText}</p>}
         </div>
 
-        {selectedBrand && (selectedBrand.image_url || selectedBrand.images?.[0]) && (
+        {selectedBrand && (getBrandImage(selectedBrand) || selectedBrand.images?.[0]) && (
           <img
-            src={selectedBrand.image_url || selectedBrand.images?.[0] || ""}
+            src={getBrandImage(selectedBrand) || selectedBrand.images?.[0] || ""}
             alt={product.name}
             className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
           />

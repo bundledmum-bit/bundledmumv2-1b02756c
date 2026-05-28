@@ -76,7 +76,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
       const { data, error } = await (supabase as any)
         .from("products")
         .select(`id, name, slug, description, is_gift_box, bundle_label, shop_section_order,
-                 brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, images )`)
+                 brands:brands_public ( id, sku, brand_name, price, tier, in_stock, image_url, stored_image_url, images )`)
         .eq("is_gift_box", true)
         .eq("is_active", true)
         .ilike("name", `${filterValue}%`)

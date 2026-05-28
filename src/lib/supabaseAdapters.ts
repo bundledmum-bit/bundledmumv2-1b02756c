@@ -3,6 +3,7 @@
  * component-friendly types used throughout the storefront.
  */
 import { getProductImage } from "@/assets/products";
+import { getBrandImage } from "@/lib/brandImage";
 
 // ─── Legacy types used by components ───────────────────────────
 
@@ -190,9 +191,10 @@ export function adaptProduct(row: any): Product {
     .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
     .map((b: any) => {
       // Gallery images: prefer the DB array, fall back to the single
-      // image_url so older variants still render something.
+      // brand image (stored copy first via getBrandImage) so older
+      // variants still render something.
       const dbImages: string[] = Array.isArray(b.images) ? b.images.filter(Boolean) : [];
-      const fallback = b.image_url || b.thumbnail_url;
+      const fallback = getBrandImage(b) || b.thumbnail_url;
       const images = dbImages.length > 0 ? dbImages : (fallback ? [fallback] : []);
       return {
         id: b.id,
@@ -200,7 +202,7 @@ export function adaptProduct(row: any): Product {
         price: b.price,
         compareAtPrice: b.compare_at_price || null,
         img: row.emoji || "📦",
-        imageUrl: b.image_url || null,
+        imageUrl: getBrandImage(b),
         images,
         logoUrl: b.logo_url || null,
         tier: TIER_MAP[b.tier] ?? 1,

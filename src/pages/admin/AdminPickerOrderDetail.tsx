@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { Button } from "@/components/ui/button";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
+import { getBrandImage } from "@/lib/brandImage";
 
 const fmt = (n: number) => "₦" + Math.round(n || 0).toLocaleString("en-NG");
 
@@ -76,7 +77,7 @@ export default function AdminPickerOrderDetail() {
       );
       if (brandIds.length > 0) {
         const { data: brands } = await (supabase.from("brands_public") as any)
-          .select("id, image_url, sku, size_variant, tier")
+          .select("id, image_url, stored_image_url, sku, size_variant, tier")
           .in("id", brandIds);
         const byId: Record<string, any> = {};
         (brands || []).forEach((b: any) => {
@@ -84,7 +85,7 @@ export default function AdminPickerOrderDetail() {
         });
         for (const it of items) {
           const b = it.brand_id ? byId[it.brand_id] : null;
-          it.brand_image_url = b?.image_url || null;
+          it.brand_image_url = getBrandImage(b);
           it.brand_sku = b?.sku || null;
           it.brand_size_variant = b?.size_variant || null;
           it.brand_tier = b?.tier || null;
@@ -292,7 +293,7 @@ function ItemCard({
     enabled: expanded && !!item.product_id,
     queryFn: async () => {
       const q = (supabase.from("brands_public") as any)
-        .select("id, brand_name, size_variant, image_url")
+        .select("id, brand_name, size_variant, image_url, stored_image_url")
         .eq("product_id", item.product_id)
         .eq("in_stock", true)
         .limit(6);
@@ -388,7 +389,7 @@ function ItemCard({
                   className="flex items-center gap-2 text-xs border border-border rounded-md p-1.5"
                 >
                   <img
-                    src={v.image_url || "/no-image.png"}
+                    src={getBrandImage(v) || "/no-image.png"}
                     alt=""
                     className="w-8 h-8 object-cover rounded"
                     onError={(e) => {

@@ -25,7 +25,7 @@ export interface SectionPinnedProduct {
 }
 
 const BRAND_COLS =
-  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type";
+  "id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, images, weight_range_kg, pack_count, diaper_type";
 
 // Admin variant — includes `cost_price` and `sku` which aren't exposed via
 // the public `brands_public` view. Used only by admin section/category hooks.
