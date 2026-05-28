@@ -36,13 +36,37 @@ export default function AccountOrdersPage() {
     queryKey: ["my-orders", email],
     enabled: !!email,
     queryFn: async () => {
+      // Order header rows. We deliberately DROP the previous
+      // `order_items(*)` embed: that exposed cost/margin columns
+      // (cost_price, cogs_amount, line_cost, net_sales) to the customer.
       const { data, error } = await (supabase as any)
         .from("orders")
-        .select("*, order_items(*)")
+        .select("*")
         .eq("customer_email", email)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []) as any[];
+      const orders = (data || []) as any[];
+
+      // Line items now come from the cost-safe customer_order_items view
+      // (own-orders only, filtered by JWT email internally). Fetched as a
+      // separate query keyed by order_id and re-attached as `order_items`
+      // so the existing render is unchanged.
+      const ids = orders.map((o) => o.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: itemsData, error: itemsErr } = await (supabase as any)
+          .from("customer_order_items")
+          .select("*")
+          .in("order_id", ids);
+        if (itemsErr) throw itemsErr;
+        const byOrder: Record<string, any[]> = {};
+        (itemsData || []).forEach((it: any) => {
+          (byOrder[it.order_id] ||= []).push(it);
+        });
+        orders.forEach((o) => { o.order_items = byOrder[o.id] || []; });
+      } else {
+        orders.forEach((o) => { o.order_items = []; });
+      }
+      return orders;
     },
   });
 
