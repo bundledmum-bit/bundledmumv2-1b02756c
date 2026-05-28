@@ -8,6 +8,7 @@ import {
   Files,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
+import { getBrandImage } from "@/lib/brandImage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
@@ -768,7 +769,7 @@ function QuoteEditor({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("brands")
-        .select("id, brand_name, product_id, image_url, images, price, sku, in_stock")
+        .select("id, brand_name, product_id, image_url, stored_image_url, images, price, sku, in_stock")
         .in("product_id", productIds)
         .order("brand_name");
       if (error) throw error;
@@ -1623,7 +1624,7 @@ interface LineItemCardProps {
 function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
   const currentBrand = brands.find((b: any) => b.id === it.brand_id) ?? null;
   const imgSrc: string | null =
-    currentBrand?.image_url ||
+    getBrandImage(currentBrand) ||
     (Array.isArray(currentBrand?.images) && currentBrand.images.length > 0 ? currentBrand.images[0] : null) ||
     null;
   const isOos = currentBrand != null && currentBrand.in_stock === false;

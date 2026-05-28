@@ -5,6 +5,7 @@ import { supabase as supabaseTyped } from "@/integrations/supabase/client";
 // client so TS doesn't reject the new table names. Behaviour is unchanged.
 const supabase = supabaseTyped as any;
 import { adaptProducts, type Product } from "@/lib/supabaseAdapters";
+import { getBrandImage } from "@/lib/brandImage";
 
 const STALE_5MIN = 5 * 60 * 1000;
 const STALE_60SEC = 60 * 1000;
@@ -688,7 +689,7 @@ export function useSectionBrands(categorySlug: string, productId: string, enable
     queryFn: async () => {
       const { data: brandRows, error: bErr } = await supabase
         .from("brands")
-        .select("id, product_id, brand_name, image_url, price, cost_price, in_stock, display_order")
+        .select("id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, display_order")
         .eq("product_id", productId);
       if (bErr) throw bErr;
 
@@ -712,7 +713,7 @@ export function useSectionBrands(categorySlug: string, productId: string, enable
           brand: {
             id: b.id,
             brand_name: b.brand_name,
-            image_url: b.image_url ?? null,
+            image_url: getBrandImage(b),
             price: b.price ?? null,
             cost_price: b.cost_price ?? null,
             in_stock: b.in_stock ?? null,

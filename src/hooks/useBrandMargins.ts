@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase as supabaseTyped } from "@/integrations/supabase/client";
+import { getBrandImage } from "@/lib/brandImage";
 // brands.updated_at and a few admin filters aren't in the generated types yet;
 // cast the supabase client to any so TS doesn't reject the new columns. Same
 // pattern as src/hooks/useMerchandising.ts.
@@ -45,7 +46,7 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
       const { data: brandRows, error: be } = await supabase
         .from("brands")
         .select(
-          "id, product_id, brand_name, image_url, price, cost_price, in_stock, products!inner(id, name, category, subcategory, is_active)",
+          "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, products!inner(id, name, category, subcategory, is_active)",
         )
         .eq("products.is_active", true);
       if (be) throw be;
@@ -86,7 +87,7 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
           productId: b.product_id,
           productName: b.products?.name || "Unknown product",
           brandName: b.brand_name || "",
-          imageUrl: b.image_url || null,
+          imageUrl: getBrandImage(b),
           category: b.products?.category ?? null,
           subcategory: b.products?.subcategory ?? null,
           inStock: b.in_stock !== false,
