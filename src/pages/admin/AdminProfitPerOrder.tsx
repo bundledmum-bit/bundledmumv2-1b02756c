@@ -6,13 +6,12 @@ import {
   Search, ChevronDown, ChevronRight, Download, AlertCircle,
 } from "lucide-react";
 
-// Currency formatter — matches AdminOrders.tsx so the two pages feel
-// like siblings. All values from the views are in naira (not kobo).
+// Currency formatter — all values from order_profit_summary are in naira
+// (integers). Never divide by 100.
 const fmt = (n: number | null | undefined) =>
   typeof n === "number" && isFinite(n) ? `₦${Math.round(n).toLocaleString()}` : "₦0";
 
-// Signed money for margin/profit cells — adds an explicit minus and
-// keeps "₦0" instead of an empty cell when the value rounds to zero.
+// Signed money for profit cells — explicit minus, keeps "₦0" for zero.
 const fmtSigned = (n: number | null | undefined) => {
   if (typeof n !== "number" || !isFinite(n)) return "₦0";
   const r = Math.round(n);
@@ -53,28 +52,30 @@ const DATE_PRESETS = [
 
 const PAGE_SIZE = 25;
 
+// Order-level row — sourced from the refund-aware order_profit_summary
+// view. All money columns are naira integers.
 type OrderRow = {
   order_id: string;
   order_number: string;
+  order_status: string | null;
+  payment_status: string | null;
   customer_name: string | null;
   customer_email: string | null;
   created_at: string;
-  payment_status: string | null;
-  order_status: string | null;
-  gross_revenue: number | null;
-  refund_amount: number | null;
-  net_revenue: number | null;
-  items_cogs: number | null;
-  delivery_cost: number | null;
-  paystack_fee: number | null;
-  packaging_cost: number | null;
-  gross_margin: number | null;
-  gross_margin_pct: number | null;
-  cash_profit: number | null;
-  cash_profit_pct: number | null;
-  cogs_quality_pct: number | null;
+  total: number | null;
+  total_cogs: number | null;
+  gross_profit_pre_cogs: number | null;
+  profit_as_ordered: number | null;       // true profit before refunds
+  refunded_units: number | null;
+  refunded_lines: number | null;
+  refunded_revenue: number | null;
+  refunded_profit_removed: number | null;
+  refund_adjusted_profit: number | null;   // headline profit after refunds
+  has_refund: boolean | null;
 };
 
+// Line-item detail still comes from the existing per-item view — the
+// order-level profit is the only thing that moved to the refund-aware view.
 type ItemRow = {
   order_id: string;
   order_item_id: string;
@@ -94,10 +95,15 @@ type ItemRow = {
 
 type SortKey =
   | "recent"
-  | "cash_profit_desc"
-  | "cash_profit_asc"
-  | "revenue_desc"
-  | "margin_pct_asc";
+  | "profit_desc"
+  | "profit_asc"
+  | "revenue_desc";
+
+// Refunded units are stored numeric; surface as a whole item count.
+const fmtUnits = (n: number | null | undefined) => {
+  const v = Number(n) || 0;
+  return Math.round(v);
+};
 
 export default function AdminProfitPerOrder() {
   const [search, setSearch] = useState("");
@@ -112,12 +118,12 @@ export default function AdminProfitPerOrder() {
     [datePreset],
   );
 
-  // ── Main list query ──────────────────────────────────────────────
+  // ── Main list query (refund-aware view) ──────────────────────────
   const { data: pageData, isLoading, error } = useQuery({
     queryKey: ["admin-profit-per-order", { paymentFilter, range, sortKey, search, page }],
     queryFn: async () => {
       let q = (supabase as any)
-        .from("admin_order_profit_view")
+        .from("order_profit_summary")
         .select("*", { count: "exact" });
 
       if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
@@ -125,19 +131,17 @@ export default function AdminProfitPerOrder() {
       if (range.until) q = q.lte("created_at", range.until);
       const s = search.trim();
       if (s.length >= 2) {
-        // Postgrest .or with comma-separated filters. ilike uses %.
         const esc = s.replace(/[%_,]/g, "");
         q = q.or(`order_number.ilike.%${esc}%,customer_name.ilike.%${esc}%`);
       }
 
-      // Sort
+      // Sort — all profit sorting is on the refund-adjusted figure.
       switch (sortKey) {
-        case "cash_profit_desc": q = q.order("cash_profit", { ascending: false, nullsFirst: false }); break;
-        case "cash_profit_asc":  q = q.order("cash_profit", { ascending: true, nullsFirst: false }); break;
-        case "revenue_desc":     q = q.order("gross_revenue", { ascending: false, nullsFirst: false }); break;
-        case "margin_pct_asc":   q = q.order("gross_margin_pct", { ascending: true, nullsFirst: false }); break;
+        case "profit_desc": q = q.order("refund_adjusted_profit", { ascending: false, nullsFirst: false }); break;
+        case "profit_asc":  q = q.order("refund_adjusted_profit", { ascending: true, nullsFirst: false }); break;
+        case "revenue_desc": q = q.order("total", { ascending: false, nullsFirst: false }); break;
         case "recent":
-        default:                 q = q.order("created_at", { ascending: false });
+        default:            q = q.order("created_at", { ascending: false });
       }
 
       const from = page * PAGE_SIZE;
@@ -149,14 +153,14 @@ export default function AdminProfitPerOrder() {
     staleTime: 30_000,
   });
 
-  // ── Aggregate summary — sums the SAME filter set, full set (not
-  // paginated), so the cards reflect what the table is filtered to.
+  // ── Aggregate summary — refund-aware. Sums the SAME filter set across
+  // the full (non-paginated) result so the cards reflect the filters.
   const { data: aggregates } = useQuery({
     queryKey: ["admin-profit-per-order-agg", { paymentFilter, range, search }],
     queryFn: async () => {
       let q = (supabase as any)
-        .from("admin_order_profit_view")
-        .select("gross_revenue, net_revenue, items_cogs, delivery_cost, paystack_fee, packaging_cost, cash_profit");
+        .from("order_profit_summary")
+        .select("total, total_cogs, profit_as_ordered, refunded_revenue, refund_adjusted_profit");
       if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
       if (range.since) q = q.gte("created_at", range.since);
       if (range.until) q = q.lte("created_at", range.until);
@@ -170,15 +174,15 @@ export default function AdminProfitPerOrder() {
       const rows = (data || []) as Partial<OrderRow>[];
       const sum = (k: keyof OrderRow) =>
         rows.reduce((acc, r) => acc + (Number((r as any)[k]) || 0), 0);
-      const revenue = sum("net_revenue");
-      const cash = sum("cash_profit");
+      const revenue = sum("total");
+      const profit = sum("refund_adjusted_profit");
       return {
         revenue,
-        cogs: sum("items_cogs"),
-        delivery: sum("delivery_cost"),
-        otherCosts: sum("paystack_fee") + sum("packaging_cost"),
-        cash,
-        cashPct: revenue > 0 ? (cash / revenue) * 100 : 0,
+        cogs: sum("total_cogs"),
+        profitAsOrdered: sum("profit_as_ordered"),
+        refunded: sum("refunded_revenue"),
+        profit,
+        profitPct: revenue > 0 ? (profit / revenue) * 100 : 0,
         count: rows.length,
       };
     },
@@ -209,8 +213,8 @@ export default function AdminProfitPerOrder() {
   // ── CSV export — current filter, ignores pagination ──────────────
   const handleExport = async () => {
     let q = (supabase as any)
-      .from("admin_order_profit_view")
-      .select("order_number, created_at, customer_name, payment_status, gross_revenue, refund_amount, net_revenue, items_cogs, delivery_cost, paystack_fee, packaging_cost, gross_margin, gross_margin_pct, cash_profit, cash_profit_pct, cogs_quality_pct");
+      .from("order_profit_summary")
+      .select("order_number, created_at, customer_name, payment_status, total, total_cogs, gross_profit_pre_cogs, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund");
     if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
     if (range.since) q = q.gte("created_at", range.since);
     if (range.until) q = q.lte("created_at", range.until);
@@ -223,10 +227,10 @@ export default function AdminProfitPerOrder() {
     if (error) { alert(error.message); return; }
     const rows = (data || []) as OrderRow[];
     const headers = [
-      "Order #", "Date", "Customer", "Payment", "Gross Revenue", "Refund",
-      "Net Revenue", "Items COGS", "Delivery Cost", "Paystack Fee",
-      "Packaging", "Gross Margin", "Margin %", "Cash Profit", "Cash %",
-      "COGS Quality %",
+      "Order #", "Date", "Customer", "Payment", "Revenue", "COGS",
+      "Gross Profit (pre-COGS)", "Profit (as ordered)", "Refunded Units",
+      "Refunded Lines", "Refunded Revenue", "Refunded Profit Removed",
+      "Refund-Adjusted Profit", "Has Refund",
     ];
     const escape = (v: any) => {
       if (v == null) return "";
@@ -237,10 +241,9 @@ export default function AdminProfitPerOrder() {
       headers.join(","),
       ...rows.map(r => [
         r.order_number, r.created_at, r.customer_name, r.payment_status,
-        r.gross_revenue, r.refund_amount, r.net_revenue, r.items_cogs,
-        r.delivery_cost, r.paystack_fee, r.packaging_cost,
-        r.gross_margin, r.gross_margin_pct,
-        r.cash_profit, r.cash_profit_pct, r.cogs_quality_pct,
+        r.total, r.total_cogs, r.gross_profit_pre_cogs, r.profit_as_ordered,
+        r.refunded_units, r.refunded_lines, r.refunded_revenue,
+        r.refunded_profit_removed, r.refund_adjusted_profit, r.has_refund,
       ].map(escape).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -261,7 +264,7 @@ export default function AdminProfitPerOrder() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold">Profit per Order</h1>
           <p className="text-xs sm:text-sm text-text-med mt-1">
-            Per-order P&amp;L showing what each customer's money becomes after costs.
+            Per-order product margin, refund-aware — profit after removing refunded items' margin.
           </p>
         </div>
         <button
@@ -309,10 +312,9 @@ export default function AdminProfitPerOrder() {
               className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
             >
               <option value="recent">Most recent</option>
-              <option value="cash_profit_desc">Highest cash profit</option>
-              <option value="cash_profit_asc">Lowest cash profit</option>
+              <option value="profit_desc">Highest profit</option>
+              <option value="profit_asc">Lowest profit</option>
               <option value="revenue_desc">Highest revenue</option>
-              <option value="margin_pct_asc">Lowest margin %</option>
             </select>
           </div>
           <div>
@@ -330,24 +332,24 @@ export default function AdminProfitPerOrder() {
         </div>
       </section>
 
-      {/* Aggregate cards */}
+      {/* Aggregate cards — refund-aware */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         <AggCard label="Revenue" value={fmt(aggregates?.revenue)} sub={`${aggregates?.count ?? 0} orders`} />
         <AggCard label="COGS" value={fmt(aggregates?.cogs)} />
-        <AggCard label="Delivery cost" value={fmt(aggregates?.delivery)} />
-        <AggCard label="Paystack + Packaging" value={fmt(aggregates?.otherCosts)} />
+        <AggCard label="Profit before refunds" value={fmtSigned(aggregates?.profitAsOrdered)} />
+        <AggCard label="Refunded revenue" value={fmt(aggregates?.refunded)} />
         <AggCard
-          label="Cash profit"
-          value={fmtSigned(aggregates?.cash)}
-          sub={fmtPct(aggregates?.cashPct)}
-          tone={(aggregates?.cash ?? 0) >= 0 ? "positive" : "negative"}
+          label="Profit (refund-adjusted)"
+          value={fmtSigned(aggregates?.profit)}
+          sub={fmtPct(aggregates?.profitPct)}
+          tone={(aggregates?.profit ?? 0) >= 0 ? "positive" : "negative"}
         />
       </section>
 
       {/* Table */}
       <section className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[1000px]">
+          <table className="w-full text-sm min-w-[820px]">
             <thead className="bg-muted/40 text-[11px] font-semibold text-text-med uppercase tracking-wide">
               <tr>
                 <th className="w-8 px-2 py-2"></th>
@@ -356,33 +358,29 @@ export default function AdminProfitPerOrder() {
                 <th className="text-left px-2 py-2">Status</th>
                 <th className="text-right px-2 py-2">Revenue</th>
                 <th className="text-right px-2 py-2">COGS</th>
-                <th className="text-right px-2 py-2">Delivery</th>
-                <th className="text-right px-2 py-2">Other</th>
-                <th className="text-right px-2 py-2">Gross margin</th>
-                <th className="text-right px-2 py-2">Cash profit</th>
+                <th className="text-right px-2 py-2">Profit</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={10} className="text-center py-10 text-xs text-text-med">Loading…</td></tr>
+                <tr><td colSpan={7} className="text-center py-10 text-xs text-text-med">Loading…</td></tr>
               )}
               {error && (
-                <tr><td colSpan={10} className="text-center py-10 text-xs text-red-600">
+                <tr><td colSpan={7} className="text-center py-10 text-xs text-red-600">
                   Could not load orders: {(error as any).message}
                 </td></tr>
               )}
               {!isLoading && !error && (pageData?.rows || []).length === 0 && (
-                <tr><td colSpan={10} className="text-center py-10 text-xs text-text-med">
+                <tr><td colSpan={7} className="text-center py-10 text-xs text-text-med">
                   No orders match the current filters.
                 </td></tr>
               )}
               {(pageData?.rows || []).map((r) => {
                 const isCancelled = r.payment_status === "cancelled" || r.order_status === "cancelled";
-                const isRefunded = r.payment_status === "refunded" || (r.refund_amount || 0) > 0;
                 const isExpanded = expandedId === r.order_id;
-                const cashTone =
-                  (r.cash_profit || 0) > 0 ? "text-green-700"
-                  : (r.cash_profit || 0) < 0 ? "text-red-700"
+                const profitTone =
+                  (r.refund_adjusted_profit || 0) > 0 ? "text-green-700"
+                  : (r.refund_adjusted_profit || 0) < 0 ? "text-red-700"
                   : "text-yellow-700";
                 return (
                   <RowGroup
@@ -390,8 +388,7 @@ export default function AdminProfitPerOrder() {
                     row={r}
                     isExpanded={isExpanded}
                     isCancelled={isCancelled}
-                    isRefunded={isRefunded}
-                    cashTone={cashTone}
+                    profitTone={profitTone}
                     items={isExpanded ? (expandedItems || []) : []}
                     itemsLoading={isExpanded && itemsLoading}
                     onToggle={() => setExpandedId(isExpanded ? null : r.order_id)}
@@ -451,18 +448,19 @@ function AggCard({
 }
 
 function RowGroup({
-  row, isExpanded, isCancelled, isRefunded, cashTone, items, itemsLoading, onToggle,
+  row, isExpanded, isCancelled, profitTone, items, itemsLoading, onToggle,
 }: {
   row: OrderRow;
   isExpanded: boolean;
   isCancelled: boolean;
-  isRefunded: boolean;
-  cashTone: string;
+  profitTone: string;
   items: ItemRow[];
   itemsLoading: boolean;
   onToggle: () => void;
 }) {
   const rowDim = isCancelled ? "opacity-50" : "";
+  const hasRefund = row.has_refund === true;
+  const netRevenue = (row.total || 0) - (row.refunded_revenue || 0);
   return (
     <>
       <tr className={`border-t border-border ${rowDim}`}>
@@ -490,39 +488,41 @@ function RowGroup({
           {new Date(row.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
         </td>
         <td className="px-2 py-2 align-top">
-          <div className="flex items-center gap-1.5">
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_BADGE[row.payment_status || ""] || "bg-gray-100 text-gray-700"}`}>
-              {row.payment_status || "—"}
-            </span>
-            <CogsQualityDot pct={row.cogs_quality_pct} />
-          </div>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_BADGE[row.payment_status || ""] || "bg-gray-100 text-gray-700"}`}>
+            {row.payment_status || "—"}
+          </span>
         </td>
         <td className="px-2 py-2 align-top text-right tabular-nums">
-          {isRefunded && (row.gross_revenue || 0) !== (row.net_revenue || 0) ? (
+          {hasRefund && (row.refunded_revenue || 0) > 0 ? (
             <>
-              <div className="font-semibold">{fmt(row.net_revenue)}</div>
-              <div className="text-[11px] text-text-light line-through">{fmt(row.gross_revenue)}</div>
+              <div className="font-semibold">{fmt(netRevenue)}</div>
+              <div className="text-[11px] text-text-light line-through">{fmt(row.total)}</div>
             </>
           ) : (
-            <div className="font-semibold">{fmt(row.gross_revenue)}</div>
+            <div className="font-semibold">{fmt(row.total)}</div>
           )}
         </td>
-        <td className="px-2 py-2 align-top text-right tabular-nums">{fmt(row.items_cogs)}</td>
-        <td className="px-2 py-2 align-top text-right tabular-nums">{fmt(row.delivery_cost)}</td>
-        <td className="px-2 py-2 align-top text-right tabular-nums">{fmt((row.paystack_fee || 0) + (row.packaging_cost || 0))}</td>
-        <td className="px-2 py-2 align-top text-right tabular-nums">
-          <div className="font-semibold">{fmt(row.gross_margin)}</div>
-          <div className="text-[11px] text-text-med">{fmtPct(row.gross_margin_pct)}</div>
-        </td>
-        <td className={`px-2 py-2 align-top text-right tabular-nums ${cashTone} ${isCancelled ? "line-through" : ""}`}>
-          <div className="font-bold">{fmtSigned(row.cash_profit)}</div>
-          <div className="text-[11px] opacity-80">{fmtPct(row.cash_profit_pct)}</div>
+        <td className="px-2 py-2 align-top text-right tabular-nums">{fmt(row.total_cogs)}</td>
+        <td className={`px-2 py-2 align-top text-right tabular-nums ${profitTone} ${isCancelled ? "line-through" : ""}`}>
+          {hasRefund ? (
+            <>
+              <div className="font-bold">{fmtSigned(row.refund_adjusted_profit)}</div>
+              <div className="text-[11px] text-text-light line-through" title="Profit before refunds">
+                {fmtSigned(row.profit_as_ordered)}
+              </div>
+              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-semibold">
+                {fmtUnits(row.refunded_units)} item{fmtUnits(row.refunded_units) === 1 ? "" : "s"} refunded
+              </span>
+            </>
+          ) : (
+            <div className="font-bold">{fmtSigned(row.refund_adjusted_profit)}</div>
+          )}
         </td>
       </tr>
       {isExpanded && (
         <tr className="bg-muted/20">
           <td></td>
-          <td colSpan={9} className="px-2 py-3">
+          <td colSpan={6} className="px-2 py-3">
             {itemsLoading ? (
               <div className="text-xs text-text-med text-center py-3">Loading items…</div>
             ) : items.length === 0 ? (
@@ -583,17 +583,5 @@ function RowGroup({
         </tr>
       )}
     </>
-  );
-}
-
-function CogsQualityDot({ pct }: { pct: number | null | undefined }) {
-  if (pct == null) return null;
-  const v = Number(pct);
-  if (v >= 100) return <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="All items have cost captured" />;
-  if (v >= 80) return (
-    <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" title={`Some items missing cost price (${v.toFixed(0)}% captured)`} />
-  );
-  return (
-    <span className="w-1.5 h-1.5 rounded-full bg-red-500" title={`Most items missing cost price (${v.toFixed(0)}% captured) — profit estimate unreliable`} />
   );
 }
