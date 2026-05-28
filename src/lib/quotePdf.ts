@@ -69,6 +69,64 @@ export interface QuoteItemForPdf {
   quantity: number;
   unit_price: number;
   line_total: number;
+  // CORS-safe Supabase Storage URL (brands.stored_image_url) only. The
+  // caller is responsible for already having filtered out null/"" and
+  // the CORS-blocked external brands.image_url — anything passed here is
+  // assumed embeddable. Null means "no thumbnail for this row".
+  image_url?: string | null;
+}
+
+// Re-encode any fetched image to a PNG data URL via canvas. This both
+// normalises the format (source could be jpeg/webp/png — addImage is
+// happiest with a known format) and yields the intrinsic dimensions in
+// one pass for aspect-ratio fitting. The blob is inlined as a data URL
+// before it touches the canvas, so the canvas is never CORS-tainted.
+// Returns null on any failure so a single bad image can't break the PDF.
+async function loadImageAsPng(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error(`image fetch ${res.status}`);
+    const blob = await res.blob();
+    const srcDataUrl: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = () => reject(r.error || new Error("FileReader failed"));
+      r.readAsDataURL(blob);
+    });
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("image decode failed"));
+      i.src = srcDataUrl;
+    });
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    ctx.drawImage(img, 0, 0);
+    const pngDataUrl = canvas.toDataURL("image/png");
+    return { dataUrl: pngDataUrl, w, h };
+  } catch (e) {
+    console.warn("[quotePdf] product image unavailable, skipping thumbnail", url, e);
+    return null;
+  }
+}
+
+// Pre-load every unique image URL to a PNG data URL in parallel. Each
+// fetch is independently isolated — one rejection cannot fail the batch.
+async function preloadProductImages(urls: string[]): Promise<Map<string, { dataUrl: string; w: number; h: number }>> {
+  const unique = Array.from(new Set(urls.filter((u): u is string => !!u && u.trim() !== "")));
+  const map = new Map<string, { dataUrl: string; w: number; h: number }>();
+  await Promise.all(
+    unique.map(async (u) => {
+      const loaded = await loadImageAsPng(u);
+      if (loaded) map.set(u, loaded);
+    }),
+  );
+  return map;
 }
 
 export interface QuoteForPdf {
@@ -199,10 +257,26 @@ export async function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock
   doc.text("ITEMS", margin, y);
   y += 3;
 
+  // Pre-load all line-item thumbnails to base64 BEFORE autoTable runs —
+  // didDrawCell is synchronous, so images must be resolved up front.
+  // Parallel fetch, per-image error isolation (see preloadProductImages).
+  const imageMap = await preloadProductImages(quote.items.map((it) => it.image_url || ""));
+  // Parallel array of the resolved-or-null image per row, indexed the
+  // same way autoTable indexes body rows (data.row.index).
+  const rowImages: Array<{ dataUrl: string; w: number; h: number } | null> = quote.items.map((it) => {
+    const u = it.image_url;
+    return u && u.trim() !== "" ? (imageMap.get(u) || null) : null;
+  });
+
+  const IMG_COL = 1;          // image column index (after #)
+  const IMG_BOX = 16;         // thumbnail box (mm)
+  const IMG_CELL_W = 20;      // image column width (mm)
+
   const itemRows = quote.items.map((it, i) => {
     const item = it.product_name + (it.size ? `\nSize: ${it.size}` : "") + (it.color ? `\nColour: ${it.color}` : "");
     return [
       String(i + 1),
+      "", // image cell — drawn manually in didDrawCell
       item,
       it.brand_name || "—",
       String(it.quantity),
@@ -213,17 +287,37 @@ export async function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock
 
   autoTable(doc, {
     startY: y,
-    head: [["#", "Item", "Brand", "Qty", "Unit Price", "Total"]],
-    body: itemRows.length > 0 ? itemRows : [["—", "No items on this quote", "", "", "", ""]],
+    head: [["#", "Image", "Item", "Brand", "Qty", "Unit Price", "Total"]],
+    body: itemRows.length > 0 ? itemRows : [["—", "", "No items on this quote", "", "", "", ""]],
     margin: { left: margin, right: margin },
     styles: { fontSize: 9, cellPadding: 2.5, textColor: BODY, lineColor: [230, 230, 230] },
     headStyles: { fillColor: FOREST, textColor: [255, 255, 255], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [250, 247, 241] },
+    bodyStyles: { minCellHeight: 18, valign: "middle" },
     columnStyles: {
       0: { cellWidth: 12, halign: "center" },
-      3: { cellWidth: 12, halign: "center" },
-      4: { cellWidth: 28, halign: "right" },
-      5: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+      1: { cellWidth: IMG_CELL_W, halign: "center" },
+      4: { cellWidth: 12, halign: "center" },
+      5: { cellWidth: 28, halign: "right" },
+      6: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+    },
+    didDrawCell: (data) => {
+      if (data.section !== "body" || data.column.index !== IMG_COL) return;
+      const entry = rowImages[data.row.index];
+      if (!entry) return; // no thumbnail → leave the cell blank
+      // Fit within a 16mm box, preserving aspect ratio, centred in cell.
+      const ratio = entry.w / Math.max(entry.h, 1);
+      let drawW = IMG_BOX;
+      let drawH = IMG_BOX;
+      if (ratio >= 1) { drawH = IMG_BOX / ratio; } else { drawW = IMG_BOX * ratio; }
+      const x = data.cell.x + (data.cell.width - drawW) / 2;
+      const yc = data.cell.y + (data.cell.height - drawH) / 2;
+      try {
+        doc.addImage(entry.dataUrl, "PNG", x, yc, drawW, drawH);
+      } catch (e) {
+        // A malformed image must never abort the table render.
+        console.warn("[quotePdf] addImage failed for a thumbnail", e);
+      }
     },
   });
 

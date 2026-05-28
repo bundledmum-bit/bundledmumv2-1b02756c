@@ -99,6 +99,10 @@ export default function AdminQuotes() {
   const [sendingFor, setSendingFor] = useState<string | null>(null);
   const [convertingFor, setConvertingFor] = useState<string | null>(null);
   const [page, setPage] = useState(0);
+  // Which row's PDF is currently being generated — the image pre-load
+  // can take a few seconds on large quotes, so the row's Download button
+  // shows a spinner meanwhile.
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Pulls from the admin_quotes_summary view so the table cells get
   // item_count, is_expired_pending and converted_order_number without
@@ -190,10 +194,11 @@ export default function AdminQuotes() {
   });
 
   const handleDownload = async (id: string) => {
+    setDownloadingId(id);
     try {
       const { data, error } = await (supabase as any)
         .from("quotes")
-        .select("*, quote_items(*)")
+        .select("*, quote_items(*, brands(stored_image_url, image_url))")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -222,6 +227,12 @@ export default function AdminQuotes() {
           quantity: it.quantity,
           unit_price: it.unit_price,
           line_total: it.line_total,
+          // Only the CORS-safe Supabase Storage URL is embeddable; the
+          // external image_url is CORS-blocked. Empty string = re-host
+          // failed → treat as null (no thumbnail).
+          image_url: (it.brands?.stored_image_url && it.brands.stored_image_url.trim() !== "")
+            ? it.brands.stored_image_url
+            : null,
         })),
       };
       const contact: ContactBlock = {
@@ -233,6 +244,8 @@ export default function AdminQuotes() {
       await downloadQuotePdf(pdfQuote, contact);
     } catch (e: any) {
       toast.error(e?.message || "Could not generate PDF");
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -385,10 +398,15 @@ export default function AdminQuotes() {
                           )}
                           <button
                             onClick={() => handleDownload(q.id)}
-                            className="p-1.5 rounded hover:bg-muted"
+                            disabled={downloadingId === q.id}
+                            className="p-1.5 rounded hover:bg-muted disabled:opacity-40"
                             title="Download PDF (admin template)"
                           >
-                            <Download className="w-3.5 h-3.5" />
+                            {downloadingId === q.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
                           </button>
                           {canEdit && q.customer_email && !isFinal && (
                             <button
@@ -586,6 +604,9 @@ function QuoteEditor({
   const [itemSearchRaw, setItemSearchRaw] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  // Covers the full save + image-preload + PDF render window so the
+  // button stays disabled while thumbnails are being fetched.
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   // Load the quote (and items) when editing.
   const { data: quoteData, refetch: refetchQuote } = useQuery({
@@ -1037,44 +1058,55 @@ function QuoteEditor({
   };
 
   const handleSaveAndDownload = async () => {
-    const row = await upsertQuote.mutateAsync(form);
-    // Refetch to get the latest items + computed totals after the update trigger.
-    const { data, error } = await (supabase as any)
-      .from("quotes").select("*, quote_items(*)").eq("id", row.id).single();
-    if (error) { toast.error(error.message); return; }
-    const orderedItems = (data.quote_items || []).slice().sort(
-      (a: any, b: any) => (a.display_order || 0) - (b.display_order || 0),
-    );
-    await downloadQuotePdf(
-      {
-        quote_number: data.quote_number,
-        created_at: data.created_at,
-        customer_name: data.customer_name,
-        customer_phone: data.customer_phone,
-        customer_email: data.customer_email,
-        delivery_address: data.delivery_address,
-        delivery_city: data.delivery_city,
-        delivery_state: data.delivery_state,
-        subtotal: data.subtotal || 0,
-        service_fee: data.service_fee || 0,
-        estimated_delivery_fee: data.estimated_delivery_fee || 0,
-        total: data.total || 0,
-        customer_notes: data.customer_notes,
-        items: orderedItems.map((it: any) => ({
-          product_name: it.product_name, brand_name: it.brand_name,
-          size: it.size, color: it.color,
-          quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
-        })),
-      },
-      {
-        whatsapp_number: contactSettings.whatsapp_number,
-        bank_name: contactSettings.bank_name,
-        bank_account_name: contactSettings.bank_account_name,
-        bank_account_number: contactSettings.bank_account_number,
-      },
-    );
-    toast.success(`PDF downloaded · ${data.quote_number}`);
-    onClose();
+    setPdfBusy(true);
+    try {
+      const row = await upsertQuote.mutateAsync(form);
+      // Refetch to get the latest items + computed totals after the update trigger.
+      const { data, error } = await (supabase as any)
+        .from("quotes").select("*, quote_items(*, brands(stored_image_url, image_url))").eq("id", row.id).single();
+      if (error) { toast.error(error.message); return; }
+      const orderedItems = (data.quote_items || []).slice().sort(
+        (a: any, b: any) => (a.display_order || 0) - (b.display_order || 0),
+      );
+      await downloadQuotePdf(
+        {
+          quote_number: data.quote_number,
+          created_at: data.created_at,
+          customer_name: data.customer_name,
+          customer_phone: data.customer_phone,
+          customer_email: data.customer_email,
+          delivery_address: data.delivery_address,
+          delivery_city: data.delivery_city,
+          delivery_state: data.delivery_state,
+          subtotal: data.subtotal || 0,
+          service_fee: data.service_fee || 0,
+          estimated_delivery_fee: data.estimated_delivery_fee || 0,
+          total: data.total || 0,
+          customer_notes: data.customer_notes,
+          items: orderedItems.map((it: any) => ({
+            product_name: it.product_name, brand_name: it.brand_name,
+            size: it.size, color: it.color,
+            quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
+            // CORS-safe stored URL only; "" / null → no thumbnail.
+            image_url: (it.brands?.stored_image_url && it.brands.stored_image_url.trim() !== "")
+              ? it.brands.stored_image_url
+              : null,
+          })),
+        },
+        {
+          whatsapp_number: contactSettings.whatsapp_number,
+          bank_name: contactSettings.bank_name,
+          bank_account_name: contactSettings.bank_account_name,
+          bank_account_number: contactSettings.bank_account_number,
+        },
+      );
+      toast.success(`PDF downloaded · ${data.quote_number}`);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate PDF");
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const handleStatus = async (next: QuoteForm["status"]) => {
@@ -1411,10 +1443,14 @@ function QuoteEditor({
             </button>
             <button
               onClick={handleSaveAndDownload}
-              disabled={!canEdit || upsertQuote.isPending}
+              disabled={!canEdit || upsertQuote.isPending || pdfBusy}
               className="w-full inline-flex items-center justify-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-40"
             >
-              <Download className="w-4 h-4" /> Save & Download PDF
+              {pdfBusy ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Generating PDF…</>
+              ) : (
+                <><Download className="w-4 h-4" /> Save & Download PDF</>
+              )}
             </button>
             {canCreate && (
               <button
