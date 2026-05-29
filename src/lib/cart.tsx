@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { computeAutoFees, type AutoFeesResult } from "@/lib/computeAutoFees";
 import { trackEvent } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { trackEcommerce } from "@/lib/ga";
@@ -121,6 +122,9 @@ interface CartContextType {
   ) => string | null;
   totalItems: number;
   subtotal: number;
+  // Auto-applied fee rules (gift wrap + service & packaging), computed
+  // server-side via the compute_auto_fees RPC. Null until first resolved.
+  autoFees: AutoFeesResult | null;
   justAdded: boolean;
   savedItems: CartItem[];
   saveForLater: (key: string) => void;
@@ -361,8 +365,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
   const subtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
+  // ── Auto-applied fees ─────────────────────────────────────────────
+  // Recompute via the DB RPC whenever the cart changes, debounced 300ms
+  // so fast quantity edits don't hammer the DB. The RPC is the single
+  // source of truth; on failure computeAutoFees returns a safe no-fee
+  // fallback so checkout never breaks.
+  const [autoFees, setAutoFees] = useState<AutoFeesResult | null>(null);
+  // Serialise the fee-relevant slice so the effect only refires on real
+  // changes (id/qty/price), not on unrelated cart-row mutations.
+  const feeItemsSig = JSON.stringify(
+    cart.map((i) => [String(i.id), i.qty, i.price]),
+  );
+  useEffect(() => {
+    if (cart.length === 0) { setAutoFees(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const items = cart.map((i) => ({
+        product_id: String(i.id),
+        quantity: i.qty,
+        unit_price: i.price,
+      }));
+      const res = await computeAutoFees(items);
+      if (!cancelled) setAutoFees(res);
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feeItemsSig]);
+
   return (
-    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
+    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, autoFees, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
       {children}
     </CartContext.Provider>
   );

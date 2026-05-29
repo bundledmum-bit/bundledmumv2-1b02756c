@@ -6,7 +6,7 @@ import { Save, Plus, Trash2, Lock } from "lucide-react";
 import AdminQuizExitPopupTab from "@/components/admin/AdminQuizExitPopupTab";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
-const ALL_TABS = ["General", "Revenue Targets", "Notification Recipients", "Quiz Lead Notifications", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Payment", "SEO", "Subscriptions"];
+const ALL_TABS = ["General", "Revenue Targets", "Notification Recipients", "Quiz Lead Notifications", "Homepage", "Social", "Legacy Bar", "Quiz Exit Popup", "Fees", "Auto-applied fees", "Payment", "SEO", "Subscriptions"];
 const RESTRICTED_TABS: Record<string, { module: string; action: string }> = {
   "Quiz Exit Popup": { module: "content", action: "manage_quiz_exit_popup" },
   "Notification Recipients": { module: "settings", action: "manage_notifications" },
@@ -171,6 +171,8 @@ export default function AdminSettings() {
             </p>
           </div>
         )
+      ) : activeTab === "Auto-applied fees" ? (
+        <AutoFeesTab />
       ) : activeTab === "Subscriptions" ? (
         <AdminSubscriptionsTab />
       ) : isLoading ? (
@@ -332,6 +334,157 @@ const KEY_META: Record<string, { label?: string; description?: string; prefix?: 
   upsell_max_recommendations: { label: "Max recommendations per email", description: "Cap the number of suggested products shown in upsell emails", suffix: "products", min: 0, max: 12 },
   anniversary_email_every_n_cycles: { label: "Anniversary email cadence", description: "Send an anniversary email every N completed cycles (0 turns this off)", suffix: "deliveries (0 = off)", min: 0, max: 24 },
 };
+
+// ---------------------------------------------------------------------------
+// Auto-applied fees — controls for the two server-enforced rules:
+//   A. auto-check + lock gift wrap when the cart has a gift item
+//   B. auto-add a service & packaging fee on large orders
+// The compute_auto_fees RPC + DB triggers are the source of truth; this
+// panel only edits the site_settings keys that feed them. Values are saved
+// as proper jsonb scalars (bare numbers / booleans).
+// ---------------------------------------------------------------------------
+
+function AutoFeesTab() {
+  const queryClient = useQueryClient();
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["auto-fees-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("key, value")
+        .in("key", [
+          "auto_gift_wrap_enabled",
+          "auto_service_fee_enabled",
+          "auto_service_fee_min_items",
+          "auto_service_fee_min_total_naira",
+          "auto_service_fee_amount_naira",
+          "service_fee_label",
+        ]);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const map = new Map((rows || []).map((r: any) => [r.key, r.value]));
+  const asBool = (k: string, dflt: boolean) => {
+    const v = map.get(k);
+    return v === undefined || v === null ? dflt : v === true || v === "true";
+  };
+  const asNum = (k: string, dflt: number) => {
+    const v = map.get(k);
+    const n = typeof v === "number" ? v : parseInt(String(v ?? ""), 10);
+    return Number.isFinite(n) ? n : dflt;
+  };
+
+  // Save proper jsonb scalars — bare number / boolean, never a string.
+  const save = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: number | boolean }) => {
+      const { error } = await supabase.from("site_settings").upsert({ key, value }, { onConflict: "key" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["auto-fees-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["site_settings"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+      toast.success("Setting saved");
+    },
+    onError: (e: any) => toast.error(e?.message || "Could not save setting"),
+  });
+
+  if (isLoading) return <div className="text-center py-10 text-text-med">Loading…</div>;
+
+  const giftEnabled = asBool("auto_gift_wrap_enabled", true);
+  const svcEnabled = asBool("auto_service_fee_enabled", true);
+  const minItems = asNum("auto_service_fee_min_items", 8);
+  const minTotal = asNum("auto_service_fee_min_total_naira", 50000);
+  const feeAmount = asNum("auto_service_fee_amount_naira", 3500);
+  const serviceLabel = String(map.get("service_fee_label") ?? "Service & Packaging");
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {/* Card 1 — Gift wrap auto-apply */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <h3 className="text-sm font-bold mb-1">Gift wrap auto-apply</h3>
+        <label className="flex items-start gap-3 cursor-pointer mt-3">
+          <input
+            type="checkbox"
+            checked={giftEnabled}
+            onChange={(e) => save.mutate({ key: "auto_gift_wrap_enabled", value: e.target.checked })}
+            className="mt-0.5 w-4 h-4"
+          />
+          <span>
+            <span className="text-sm font-semibold block">Auto-check gift wrap when cart contains a gift item</span>
+            <span className="text-xs text-text-med">
+              When ON, gift wrap is automatically added and locked on any cart that includes a
+              push-gift product. Customers cannot uncheck it.
+            </span>
+          </span>
+        </label>
+      </div>
+
+      {/* Card 2 — Service & packaging fee */}
+      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-bold">Service &amp; Packaging fee</h3>
+
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={svcEnabled}
+            onChange={(e) => save.mutate({ key: "auto_service_fee_enabled", value: e.target.checked })}
+            className="mt-0.5 w-4 h-4"
+          />
+          <span className="text-sm font-semibold">Auto-apply service &amp; packaging fee on large orders</span>
+        </label>
+
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum item count to trigger fee</label>
+            <input
+              type="number" min={1} defaultValue={minItems} key={`mi-${minItems}`}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v) && v !== minItems) save.mutate({ key: "auto_service_fee_min_items", value: v });
+              }}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-[10px] text-text-light mt-1">Counts as 'distinct products' OR 'total units', whichever hits the threshold first.</p>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum cart subtotal (₦)</label>
+            <input
+              type="number" min={0} defaultValue={minTotal} key={`mt-${minTotal}`}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v) && v !== minTotal) save.mutate({ key: "auto_service_fee_min_total_naira", value: v });
+              }}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-[10px] text-text-light mt-1">Fee only applies when subtotal is at or above this.</p>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-text-med block mb-1">Fee amount (₦)</label>
+            <input
+              type="number" min={0} defaultValue={feeAmount} key={`fa-${feeAmount}`}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v) && v !== feeAmount) save.mutate({ key: "auto_service_fee_amount_naira", value: v });
+              }}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <label className="text-[11px] font-semibold text-text-med block mb-1">Customer-facing label</label>
+          <div className="text-sm font-semibold">{serviceLabel}</div>
+          <p className="text-[10px] text-text-light mt-1">
+            This is the label shown to customers and on receipts. Edit it in the <span className="font-semibold">Fees</span> tab.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Revenue Targets — annual GMV target, start date, derived monthly target.

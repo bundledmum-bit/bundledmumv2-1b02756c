@@ -54,7 +54,7 @@ function cartItemHasIssue(item: any, issues: StockIssue[]): boolean {
 }
 
 export default function CheckoutPage() {
-  const { cart, subtotal, clearCart, totalItems } = useCart();
+  const { cart, subtotal, clearCart, totalItems, autoFees } = useCart();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
   const navigate = useNavigate();
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
@@ -292,15 +292,23 @@ export default function CheckoutPage() {
   const slaLabel = `within ${expressSlaHours} hour${expressSlaHours === 1 ? "" : "s"}`;
   const whatsappNumber = String(settings?.whatsapp_number || "").replace(/^"|"$/g, "").replace(/\D/g, "");
 
-  const sfEnabledRaw = settings?.service_fee_enabled;
-  const serviceFeeEnabled =
-    sfEnabledRaw !== false && sfEnabledRaw !== "false" && sfEnabledRaw !== 0 && sfEnabledRaw !== "0";
-  const serviceFee = serviceFeeEnabled ? (parseInt(String(settings?.service_fee ?? "0"), 10) || 0) : 0;
+  // Service & packaging fee now comes from the compute_auto_fees RPC
+  // (RULE B), surfaced via the cart context. The RPC is the single source
+  // of truth — we never recompute it here. Falls back to 0 until resolved
+  // or on RPC failure.
+  const serviceFee = autoFees?.service_fee ?? 0;
   const serviceFeeLabel = settings?.service_fee_label || "Service & Packaging";
+
+  // RULE A: when the cart contains a gift item and the rule is enabled,
+  // gift wrap is auto-applied and locked (customer cannot uncheck).
+  const giftWrapLocked = !!autoFees?.has_gift_item && !!autoFees?.settings?.auto_gift_wrap_enabled;
+  const effectiveGiftWrap = giftWrapLocked ? true : giftWrap;
 
   const defaultDeliveryFee = parseInt(settings?.default_delivery_fee) || 0;
   const defaultFreeThreshold = parseInt(settings?.default_free_threshold) || 0;
-  const giftWrapPrice = parseInt(settings?.gift_wrapping_price) || 0;
+  // Prefer the RPC-reported gift wrap price (same source of truth); fall
+  // back to the raw setting before the RPC resolves.
+  const giftWrapPrice = (autoFees?.settings?.gift_wrap_price ?? 0) || (parseInt(settings?.gift_wrapping_price) || 0);
 
   const bankName = settings?.bank_name || "";
   const bankAccountName = settings?.bank_account_name || "";
@@ -538,7 +546,7 @@ export default function CheckoutPage() {
   // Referral discount
   const referralDiscount = appliedReferral?.discount_amount || 0;
 
-  const giftWrapFee = giftWrap ? giftWrapPrice : 0;
+  const giftWrapFee = effectiveGiftWrap ? giftWrapPrice : 0;
   const grand = Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount);
 
   // ── GA4 funnel instrumentation ───────────────────────────────────────
@@ -851,7 +859,7 @@ export default function CheckoutPage() {
     paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : "PAID",
     paystackRef: paystackRef || null,
     paystackStatus: paystackStatus || null,
-    giftWrap, notes: "",
+    giftWrap: effectiveGiftWrap, notes: "",
   });
 
   const saveOrderToDb = async (orderData: ReturnType<typeof buildOrderData>, cartItems: typeof cart): Promise<SavedOrderResult | null> => {
@@ -1382,8 +1390,8 @@ export default function CheckoutPage() {
                     📍 Delivery fee will appear once you {stateHasZones ? "select your zone, LGA or area" : "enter your state"}.
                   </div>
                 )}
-                <div className="flex justify-between"><span className="text-text-med">{serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>
-                {giftWrap && <div className="flex justify-between"><span className="text-text-med">Gift Wrapping</span><span>{fmt(giftWrapPrice)}</span></div>}
+                {serviceFee > 0 && <div className="flex justify-between"><span className="text-text-med">{serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>}
+                {effectiveGiftWrap && <div className="flex justify-between"><span className="text-text-med">Gift Wrapping</span><span>{fmt(giftWrapPrice)}</span></div>}
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span>🏷️ Coupon ({appliedCoupon?.code})</span><span>-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span>🎁 Referral ({appliedReferral?.code})</span><span>-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span>🎉 Spend Discount</span><span>-{fmt(spendDiscount)}</span></div>}
@@ -1521,18 +1529,28 @@ export default function CheckoutPage() {
                   <textarea value={form.notes} onChange={e => update("notes", e.target.value)} className="w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body resize-y h-20 focus:border-forest outline-none" placeholder="E.g. Landmark, gate colour..." />
                 </div>
 
-                {/* Gift Wrapping */}
-                <div onClick={() => setGiftWrap(g => !g)} className={`mt-1 flex items-center gap-3.5 p-4 rounded-[14px] border-2 cursor-pointer transition-all ${giftWrap ? "border-[#FFD54F] bg-[#FFF8E1]" : "border-border bg-warm-cream"}`}>
+                {/* Gift Wrapping — auto-applied + locked when the cart has a
+                    gift item (RULE A); freely toggleable otherwise. */}
+                <div
+                  onClick={() => { if (!giftWrapLocked) setGiftWrap(g => !g); }}
+                  title={giftWrapLocked ? "Auto-applied — your cart contains a gift item. Manage in admin settings to change." : undefined}
+                  className={`mt-1 flex items-center gap-3.5 p-4 rounded-[14px] border-2 transition-all ${giftWrapLocked ? "cursor-default" : "cursor-pointer"} ${effectiveGiftWrap ? "border-[#FFD54F] bg-[#FFF8E1]" : "border-border bg-warm-cream"}`}
+                >
                   <span className="text-3xl flex-shrink-0">🎀</span>
                   <div className="flex-1">
                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
                       Add Gift Wrapping
                       <span className="bg-[#FFD54F] text-[#7B5E00] text-[10px] px-2 py-0.5 rounded-[10px] font-bold">+{fmt(giftWrapPrice)}</span>
+                      {giftWrapLocked && <span className="bg-forest-light text-forest text-[10px] px-2 py-0.5 rounded-[10px] font-bold">Auto-applied</span>}
                     </div>
-                    <div className="text-text-med text-xs mt-0.5">Premium gift box · Satin ribbon · Shredded paper</div>
+                    <div className="text-text-med text-xs mt-0.5">
+                      {giftWrapLocked
+                        ? "Auto-applied — your cart contains a gift item."
+                        : "Premium gift box · Satin ribbon · Shredded paper"}
+                    </div>
                   </div>
-                  <div className={`w-5 h-5 rounded-md flex-shrink-0 border-2 flex items-center justify-center transition-all ${giftWrap ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"}`}>
-                    {giftWrap && <span className="text-primary-foreground text-xs font-bold">✓</span>}
+                  <div className={`w-5 h-5 rounded-md flex-shrink-0 border-2 flex items-center justify-center transition-all ${effectiveGiftWrap ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"} ${giftWrapLocked ? "opacity-80" : ""}`}>
+                    {effectiveGiftWrap && <span className="text-primary-foreground text-xs font-bold">✓</span>}
                   </div>
                 </div>
               </div>
@@ -1872,8 +1890,8 @@ export default function CheckoutPage() {
                     📍 Delivery fee will appear once you {stateHasZones ? "select your zone, LGA or area" : "enter your state"}.
                   </div>
                 )}
-                <div className="flex justify-between"><span className="text-text-med flex items-center gap-1">📦 {serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>
-                {giftWrap && <div className="flex justify-between"><span className="text-text-med">🎀 Gift Wrapping</span><span className="text-[#7B5E00]">{fmt(giftWrapPrice)}</span></div>}
+                {serviceFee > 0 && <div className="flex justify-between"><span className="text-text-med flex items-center gap-1">📦 {serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>}
+                {effectiveGiftWrap && <div className="flex justify-between"><span className="text-text-med">🎀 Gift Wrapping</span><span className="text-[#7B5E00]">{fmt(giftWrapPrice)}</span></div>}
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🏷️ Coupon ({appliedCoupon?.code})</span><span className="font-bold">-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎁 Referral ({appliedReferral?.code})</span><span className="font-bold">-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎉 Spend Discount ({spendPrompt?.currentDiscount?.discount_percent}%)</span><span className="font-bold">-{fmt(spendDiscount)}</span></div>}

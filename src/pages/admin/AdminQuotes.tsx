@@ -1338,8 +1338,24 @@ function QuoteEditor({
                 <span className="font-semibold">{fmtN(liveSubtotal)}</span>
               </div>
               <div>
-                <label className={labelCls}>Service & Packaging (₦)</label>
-                <input type="number" min={0} value={form.service_fee} onChange={(e) => update({ service_fee: e.target.value })} className={inputCls} disabled={!canEdit} />
+                <label className={`${labelCls} flex items-center gap-1.5`}>
+                  Service &amp; Packaging (₦)
+                  <span
+                    className="px-1.5 py-0.5 rounded bg-forest-light text-forest text-[9px] font-bold normal-case tracking-normal"
+                    title="Calculated from cart contents. Manage rules in admin settings."
+                  >
+                    Auto
+                  </span>
+                </label>
+                {/* Read-only: the DB trigger overwrites quote.service_fee from
+                    the auto-fee rules on every save, so an input here would be
+                    ignored. Display the computed value only. */}
+                <div
+                  className={`${inputCls} bg-muted/40 text-text-med cursor-not-allowed flex items-center`}
+                  title="Calculated from cart contents. Manage rules in admin settings."
+                >
+                  {fmtN(parseInt(form.service_fee, 10) || 0)}
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Estimated Delivery (₦)</label>
