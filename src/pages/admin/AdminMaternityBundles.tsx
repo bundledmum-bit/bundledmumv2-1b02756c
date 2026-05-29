@@ -300,7 +300,7 @@ function MaternityBundlePanel({ bundle, snapshot }: { bundle: MatBundleRow; snap
               )}
             </div>
             <p className="text-[10px] text-text-light mt-2 italic">
-              Items are curated automatically by the quiz engine. Prices update nightly or when you click Refresh.
+              Items are curated automatically by the quiz engine. Premium gift box · Satin ribbon · Shredded paper.
             </p>
           </div>
         </>
