@@ -1,10 +1,24 @@
 import { useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
-  Search, ChevronDown, ChevronRight, Download, AlertCircle,
+  Search, ChevronDown, ChevronRight, Download, AlertCircle, Plus, Trash2, Loader2,
 } from "lucide-react";
+
+// Free-text category options for manual extra costs (no DB constraint —
+// just the dropdown choices). Value stored as-is; label shown in UI.
+const EXTRA_COST_CATEGORIES: { value: string; label: string }[] = [
+  { value: "delivery_overage", label: "Delivery overage" },
+  { value: "replacement", label: "Replacement" },
+  { value: "packaging", label: "Packaging" },
+  { value: "compensation", label: "Compensation" },
+  { value: "other", label: "Other" },
+];
+const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
+  EXTRA_COST_CATEGORIES.map((c) => [c.value, c.label]),
+);
 
 // Currency formatter — all values from order_profit_summary are in naira
 // (integers). Never divide by 100.
@@ -70,7 +84,9 @@ type OrderRow = {
   refunded_lines: number | null;
   refunded_revenue: number | null;
   refunded_profit_removed: number | null;
-  refund_adjusted_profit: number | null;   // headline profit after refunds
+  refund_adjusted_profit: number | null;   // profit after refunds, before extras
+  extra_costs_total: number | null;        // sum of non-deleted manual extras
+  net_profit: number | null;               // headline: refund_adjusted_profit − extras
   has_refund: boolean | null;
 };
 
@@ -106,11 +122,20 @@ const fmtUnits = (n: number | null | undefined) => {
 };
 
 export default function AdminProfitPerOrder() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<string>("paid");
   const [datePreset, setDatePreset] = useState<string>("30d");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [page, setPage] = useState(0);
+
+  // After any extra-cost insert/soft-delete, force the view-backed
+  // queries to re-read so the recomputed net_profit/extra_costs_total flow
+  // through the row + aggregate cards. The view IS the calculation.
+  const refreshProfitData = () => {
+    queryClient.invalidateQueries({ queryKey: ["admin-profit-per-order"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-profit-per-order-agg"] });
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const range = useMemo(
@@ -137,8 +162,8 @@ export default function AdminProfitPerOrder() {
 
       // Sort — all profit sorting is on the refund-adjusted figure.
       switch (sortKey) {
-        case "profit_desc": q = q.order("refund_adjusted_profit", { ascending: false, nullsFirst: false }); break;
-        case "profit_asc":  q = q.order("refund_adjusted_profit", { ascending: true, nullsFirst: false }); break;
+        case "profit_desc": q = q.order("net_profit", { ascending: false, nullsFirst: false }); break;
+        case "profit_asc":  q = q.order("net_profit", { ascending: true, nullsFirst: false }); break;
         case "revenue_desc": q = q.order("total", { ascending: false, nullsFirst: false }); break;
         case "recent":
         default:            q = q.order("created_at", { ascending: false });
@@ -160,7 +185,7 @@ export default function AdminProfitPerOrder() {
     queryFn: async () => {
       let q = (supabase as any)
         .from("order_profit_summary")
-        .select("total, total_cogs, profit_as_ordered, refunded_revenue, refund_adjusted_profit");
+        .select("total, total_cogs, profit_as_ordered, refunded_revenue, refund_adjusted_profit, extra_costs_total, net_profit");
       if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
       if (range.since) q = q.gte("created_at", range.since);
       if (range.until) q = q.lte("created_at", range.until);
@@ -175,14 +200,18 @@ export default function AdminProfitPerOrder() {
       const sum = (k: keyof OrderRow) =>
         rows.reduce((acc, r) => acc + (Number((r as any)[k]) || 0), 0);
       const revenue = sum("total");
-      const profit = sum("refund_adjusted_profit");
+      const refundAdjusted = sum("refund_adjusted_profit");
+      const extras = sum("extra_costs_total");
+      const net = sum("net_profit");
       return {
         revenue,
         cogs: sum("total_cogs"),
         profitAsOrdered: sum("profit_as_ordered"),
         refunded: sum("refunded_revenue"),
-        profit,
-        profitPct: revenue > 0 ? (profit / revenue) * 100 : 0,
+        refundAdjusted,
+        extras,
+        net,
+        netPct: revenue > 0 ? (net / revenue) * 100 : 0,
         count: rows.length,
       };
     },
@@ -214,7 +243,7 @@ export default function AdminProfitPerOrder() {
   const handleExport = async () => {
     let q = (supabase as any)
       .from("order_profit_summary")
-      .select("order_number, created_at, customer_name, payment_status, total, total_cogs, gross_profit_pre_cogs, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund");
+      .select("order_number, created_at, customer_name, payment_status, total, total_cogs, gross_profit_pre_cogs, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund, extra_costs_total, net_profit");
     if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
     if (range.since) q = q.gte("created_at", range.since);
     if (range.until) q = q.lte("created_at", range.until);
@@ -230,7 +259,7 @@ export default function AdminProfitPerOrder() {
       "Order #", "Date", "Customer", "Payment", "Revenue", "COGS",
       "Gross Profit (pre-COGS)", "Profit (as ordered)", "Refunded Units",
       "Refunded Lines", "Refunded Revenue", "Refunded Profit Removed",
-      "Refund-Adjusted Profit", "Has Refund",
+      "Refund-Adjusted Profit", "Has Refund", "Extra Costs Total", "Net Profit",
     ];
     const escape = (v: any) => {
       if (v == null) return "";
@@ -244,6 +273,7 @@ export default function AdminProfitPerOrder() {
         r.total, r.total_cogs, r.gross_profit_pre_cogs, r.profit_as_ordered,
         r.refunded_units, r.refunded_lines, r.refunded_revenue,
         r.refunded_profit_removed, r.refund_adjusted_profit, r.has_refund,
+        r.extra_costs_total, r.net_profit,
       ].map(escape).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -332,17 +362,19 @@ export default function AdminProfitPerOrder() {
         </div>
       </section>
 
-      {/* Aggregate cards — refund-aware */}
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
+      {/* Aggregate cards — refund-aware + extra costs */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         <AggCard label="Revenue" value={fmt(aggregates?.revenue)} sub={`${aggregates?.count ?? 0} orders`} />
         <AggCard label="COGS" value={fmt(aggregates?.cogs)} />
-        <AggCard label="Profit before refunds" value={fmtSigned(aggregates?.profitAsOrdered)} />
         <AggCard label="Refunded revenue" value={fmt(aggregates?.refunded)} />
+        <AggCard label="Total extras" value={fmt(aggregates?.extras)} />
+        <AggCard label="Profit before refunds" value={fmtSigned(aggregates?.profitAsOrdered)} />
         <AggCard
-          label="Profit (refund-adjusted)"
-          value={fmtSigned(aggregates?.profit)}
-          sub={fmtPct(aggregates?.profitPct)}
-          tone={(aggregates?.profit ?? 0) >= 0 ? "positive" : "negative"}
+          label="Net profit"
+          value={fmtSigned(aggregates?.net)}
+          sub={fmtPct(aggregates?.netPct)}
+          note={`Refund-adj: ${fmtSigned(aggregates?.refundAdjusted)} · Extras: −${fmt(aggregates?.extras)}`}
+          tone={(aggregates?.net ?? 0) >= 0 ? "positive" : "negative"}
         />
       </section>
 
@@ -379,8 +411,8 @@ export default function AdminProfitPerOrder() {
                 const isCancelled = r.payment_status === "cancelled" || r.order_status === "cancelled";
                 const isExpanded = expandedId === r.order_id;
                 const profitTone =
-                  (r.refund_adjusted_profit || 0) > 0 ? "text-green-700"
-                  : (r.refund_adjusted_profit || 0) < 0 ? "text-red-700"
+                  (r.net_profit || 0) > 0 ? "text-green-700"
+                  : (r.net_profit || 0) < 0 ? "text-red-700"
                   : "text-yellow-700";
                 return (
                   <RowGroup
@@ -392,6 +424,7 @@ export default function AdminProfitPerOrder() {
                     items={isExpanded ? (expandedItems || []) : []}
                     itemsLoading={isExpanded && itemsLoading}
                     onToggle={() => setExpandedId(isExpanded ? null : r.order_id)}
+                    onCostsChanged={refreshProfitData}
                   />
                 );
               })}
@@ -430,9 +463,9 @@ export default function AdminProfitPerOrder() {
 // ── Sub-components ──────────────────────────────────────────────────
 
 function AggCard({
-  label, value, sub, tone,
+  label, value, sub, note, tone,
 }: {
-  label: string; value: string; sub?: string; tone?: "positive" | "negative";
+  label: string; value: string; sub?: string; note?: string; tone?: "positive" | "negative";
 }) {
   const valTone =
     tone === "positive" ? "text-green-700"
@@ -443,12 +476,13 @@ function AggCard({
       <div className="text-[11px] font-semibold text-text-med uppercase tracking-wide">{label}</div>
       <div className={`mt-1 text-base sm:text-lg font-bold ${valTone}`}>{value}</div>
       {sub && <div className="text-[11px] text-text-med mt-0.5">{sub}</div>}
+      {note && <div className="text-[10px] text-text-light mt-0.5">{note}</div>}
     </div>
   );
 }
 
 function RowGroup({
-  row, isExpanded, isCancelled, profitTone, items, itemsLoading, onToggle,
+  row, isExpanded, isCancelled, profitTone, items, itemsLoading, onToggle, onCostsChanged,
 }: {
   row: OrderRow;
   isExpanded: boolean;
@@ -457,10 +491,15 @@ function RowGroup({
   items: ItemRow[];
   itemsLoading: boolean;
   onToggle: () => void;
+  onCostsChanged: () => void;
 }) {
   const rowDim = isCancelled ? "opacity-50" : "";
   const hasRefund = row.has_refund === true;
+  // Partial refunds now stay payment_status='paid' (DB fix). That pairing
+  // is the signal for "some items refunded" — distinct from a full refund.
+  const partialRefund = hasRefund && row.payment_status === "paid";
   const netRevenue = (row.total || 0) - (row.refunded_revenue || 0);
+  const hasExtras = (row.extra_costs_total || 0) > 0;
   return (
     <>
       <tr className={`border-t border-border ${rowDim}`}>
@@ -488,9 +527,16 @@ function RowGroup({
           {new Date(row.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
         </td>
         <td className="px-2 py-2 align-top">
-          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_BADGE[row.payment_status || ""] || "bg-gray-100 text-gray-700"}`}>
-            {row.payment_status || "—"}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${STATUS_BADGE[row.payment_status || ""] || "bg-gray-100 text-gray-700"}`}>
+              {row.payment_status || "—"}
+            </span>
+            {partialRefund && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 whitespace-nowrap">
+                {fmtUnits(row.refunded_units)} item{fmtUnits(row.refunded_units) === 1 ? "" : "s"} refunded
+              </span>
+            )}
+          </div>
         </td>
         <td className="px-2 py-2 align-top text-right tabular-nums">
           {hasRefund && (row.refunded_revenue || 0) > 0 ? (
@@ -504,25 +550,23 @@ function RowGroup({
         </td>
         <td className="px-2 py-2 align-top text-right tabular-nums">{fmt(row.total_cogs)}</td>
         <td className={`px-2 py-2 align-top text-right tabular-nums ${profitTone} ${isCancelled ? "line-through" : ""}`}>
-          {hasRefund ? (
-            <>
-              <div className="font-bold">{fmtSigned(row.refund_adjusted_profit)}</div>
-              <div className="text-[11px] text-text-light line-through" title="Profit before refunds">
-                {fmtSigned(row.profit_as_ordered)}
-              </div>
-              <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 text-[10px] font-semibold">
-                {fmtUnits(row.refunded_units)} item{fmtUnits(row.refunded_units) === 1 ? "" : "s"} refunded
-              </span>
-            </>
-          ) : (
-            <div className="font-bold">{fmtSigned(row.refund_adjusted_profit)}</div>
+          <div className="font-bold">{fmtSigned(row.net_profit)}</div>
+          {hasExtras && (
+            <div className="text-[11px] text-text-light" title="Refund-adjusted profit minus manual extra costs">
+              RA: {fmtSigned(row.refund_adjusted_profit)} · Extras: −{fmt(row.extra_costs_total)}
+            </div>
+          )}
+          {hasRefund && (
+            <div className="text-[11px] text-text-light line-through" title="Profit before refunds">
+              {fmtSigned(row.profit_as_ordered)}
+            </div>
           )}
         </td>
       </tr>
       {isExpanded && (
         <tr className="bg-muted/20">
           <td></td>
-          <td colSpan={6} className="px-2 py-3">
+          <td colSpan={6} className="px-2 py-3 space-y-4">
             {itemsLoading ? (
               <div className="text-xs text-text-med text-center py-3">Loading items…</div>
             ) : items.length === 0 ? (
@@ -579,9 +623,200 @@ function RowGroup({
                 </table>
               </div>
             )}
+
+            {/* Manual extra costs — delivery overages, replacements, etc.
+                The view recomputes net_profit; we just refetch after edits. */}
+            <ExtraCosts orderId={row.order_id} onChanged={onCostsChanged} />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+// ── Extra costs editor (per order) ──────────────────────────────────
+// Lists non-deleted order_extra_costs and lets an admin add or soft-delete
+// them. created_by is set by the DB from auth.uid() — never sent here.
+// Deletes set deleted_at (soft delete) — never a hard DELETE.
+type ExtraCostRow = {
+  id: string;
+  amount: number | null;
+  description: string | null;
+  category: string | null;
+  created_at: string;
+};
+
+function ExtraCosts({ orderId, onChanged }: { orderId: string; onChanged: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const { data: costs = [], isLoading, refetch } = useQuery({
+    queryKey: ["order-extra-costs", orderId],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("order_extra_costs")
+        .select("id, amount, description, category, created_at")
+        .eq("order_id", orderId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return (data || []) as ExtraCostRow[];
+    },
+    staleTime: 10_000,
+  });
+
+  const resetForm = () => { setAmount(""); setDescription(""); setCategory(""); setAdding(false); };
+
+  const save = async () => {
+    const amt = parseInt(amount, 10);
+    if (!amt || amt <= 0) { toast.error("Enter a valid amount (naira)"); return; }
+    if (!description.trim()) { toast.error("Description is required"); return; }
+    setSaving(true);
+    try {
+      // created_by intentionally omitted — DB sets it from auth.uid().
+      const { error } = await (supabase as any).from("order_extra_costs").insert({
+        order_id: orderId,
+        amount: amt,
+        description: description.trim(),
+        category: category || null,
+      });
+      if (error) throw error;
+      resetForm();
+      await refetch();
+      onChanged(); // re-read net_profit from the view
+      toast.success("Extra cost added");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not add extra cost");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const softDelete = async (id: string) => {
+    setDeletingId(id);
+    try {
+      const { error } = await (supabase as any)
+        .from("order_extra_costs")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+      await refetch();
+      onChanged();
+      toast.success("Extra cost removed");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not remove extra cost");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const total = costs.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+
+  return (
+    <div className="border-t border-border/60 pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] font-semibold text-text-med uppercase tracking-wide">
+          Extra costs{costs.length > 0 ? ` · ${fmt(total)}` : ""}
+        </div>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest hover:underline"
+          >
+            <Plus className="w-3 h-3" /> Add extra cost
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="text-xs text-text-med py-2">Loading extra costs…</div>
+      ) : costs.length === 0 && !adding ? (
+        <div className="text-xs text-text-light py-1">No extra costs recorded.</div>
+      ) : (
+        <div className="space-y-1.5">
+          {costs.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 text-xs bg-card border border-border rounded-lg px-2.5 py-1.5">
+              <span className="font-semibold tabular-nums w-20 text-right">{fmt(c.amount)}</span>
+              <span className="flex-1 min-w-0">
+                <span className="truncate">{c.description || "—"}</span>
+                {c.category && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-muted text-text-med text-[10px]">
+                    {CATEGORY_LABEL[c.category] || c.category}
+                  </span>
+                )}
+              </span>
+              <span className="text-[10px] text-text-light whitespace-nowrap">
+                {new Date(c.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
+              </span>
+              <button
+                onClick={() => softDelete(c.id)}
+                disabled={deletingId === c.id}
+                className="p-1 rounded hover:bg-destructive/10 text-destructive disabled:opacity-40"
+                title="Remove (soft delete)"
+                aria-label="Remove extra cost"
+              >
+                {deletingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adding && (
+        <div className="mt-2 flex flex-wrap items-end gap-2 bg-card border border-border rounded-lg p-2.5">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-text-med mb-0.5">Amount (₦) *</label>
+            <input
+              type="number" min={1} value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0"
+              className="w-28 border border-input rounded px-2 py-1 text-xs bg-background"
+            />
+          </div>
+          <div className="flex flex-col flex-1 min-w-[160px]">
+            <label className="text-[10px] font-semibold text-text-med mb-0.5">Description *</label>
+            <input
+              type="text" value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="e.g. Replacement for damaged towel"
+              className="w-full border border-input rounded px-2 py-1 text-xs bg-background"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-[10px] font-semibold text-text-med mb-0.5">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="border border-input rounded px-2 py-1 text-xs bg-background"
+            >
+              <option value="">—</option>
+              {EXTRA_COST_CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="inline-flex items-center gap-1 bg-forest text-primary-foreground px-3 py-1.5 rounded text-xs font-semibold hover:bg-forest-deep disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Save
+            </button>
+            <button
+              onClick={resetForm}
+              disabled={saving}
+              className="px-3 py-1.5 rounded text-xs font-semibold border border-border hover:bg-muted disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
