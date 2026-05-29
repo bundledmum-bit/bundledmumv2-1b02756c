@@ -1529,7 +1529,7 @@ export default function CheckoutPage() {
                       Add Gift Wrapping
                       <span className="bg-[#FFD54F] text-[#7B5E00] text-[10px] px-2 py-0.5 rounded-[10px] font-bold">+{fmt(giftWrapPrice)}</span>
                     </div>
-                    <div className="text-text-med text-xs mt-0.5">Premium gift box · satin ribbon · handwritten card · branded tissue paper</div>
+                    <div className="text-text-med text-xs mt-0.5">Premium gift box · Satin ribbon · Shredded paper</div>
                   </div>
                   <div className={`w-5 h-5 rounded-md flex-shrink-0 border-2 flex items-center justify-center transition-all ${giftWrap ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"}`}>
                     {giftWrap && <span className="text-primary-foreground text-xs font-bold">✓</span>}
