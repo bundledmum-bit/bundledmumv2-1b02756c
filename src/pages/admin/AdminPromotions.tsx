@@ -491,7 +491,7 @@ function FreeDeliveryThresholdsTab() {
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <p className="text-text-med text-sm max-w-[640px]">
-          Free delivery to any state in Nigeria on orders ₦500,000+. ⚖️ Lagos thresholds are managed per zone in /admin/shipping-zones.
+          Free delivery to any state in Nigeria on orders ₦500,000+.
         </p>
         {canEdit && !showForm && (
           <button
