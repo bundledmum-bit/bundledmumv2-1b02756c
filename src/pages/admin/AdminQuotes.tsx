@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import { getBrandImage } from "@/lib/brandImage";
-import { useDeliverableStates } from "@/hooks/useDeliverableStates";
+import StateZoneLgaCityCascade from "@/components/address/StateZoneLgaCityCascade";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
@@ -849,10 +849,8 @@ function QuoteEditor({
     });
   }, [items, itemSearch, brandsByProduct]);
 
-  // ── Delivery: state options + auto-calculated fee ──────────────────
-  // State dropdown shares the storefront's source of truth so the quote
-  // editor and checkout always offer the same options.
-  const { data: deliverableStates = [] } = useDeliverableStates(true);
+  // ── Delivery: auto-calculated fee ──────────────────────────────────
+  // State options now live inside the StateZoneLgaCityCascade component.
 
   // Estimated order weight (kg), mirroring CheckoutPage: per-line
   // brand.weight_kg × qty, with a conservative 0.5kg/unit fallback so a
@@ -1271,18 +1269,19 @@ function QuoteEditor({
                 <label className={labelCls}>Delivery Address</label>
                 <textarea value={form.delivery_address} onChange={(e) => update({ delivery_address: e.target.value })} rows={2} className={inputCls} disabled={!canEdit} />
               </div>
-              <div>
-                <label className={labelCls}>City</label>
-                <input value={form.delivery_city} onChange={(e) => update({ delivery_city: e.target.value })} className={inputCls} disabled={!canEdit} />
-              </div>
-              <div>
-                <label className={labelCls}>State</label>
-                {/* Same source of truth as checkout: deliverable_states. */}
-                <select value={form.delivery_state} onChange={(e) => update({ delivery_state: e.target.value })} className={inputCls} disabled={!canEdit}>
-                  <option value="">—</option>
-                  {(deliverableStates as any[]).map((s: any) => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-              </div>
+              {/* State → Delivery Zone → LGA → City cascade — same
+                  behaviour as checkout. Zone/LGA are UI-only; only state
+                  and city are persisted via the existing autosave. */}
+              <StateZoneLgaCityCascade
+                value={{ state: form.delivery_state, city: form.delivery_city }}
+                onChange={(patch) => update({
+                  ...(patch.state !== undefined ? { delivery_state: patch.state } : {}),
+                  ...(patch.city !== undefined ? { delivery_city: patch.city } : {}),
+                })}
+                disabled={!canEdit}
+                labelClassName={labelCls}
+                inputClassName={inputCls}
+              />
             </div>
           </section>
 
