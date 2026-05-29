@@ -274,6 +274,13 @@ export type Database = {
             foreignKeyName: "admin_notifications_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -724,6 +731,7 @@ export type Database = {
           size_variant: string | null
           sku: string | null
           stock_quantity: number | null
+          stored_image_url: string | null
           thumbnail_url: string | null
           tier: string
           updated_at: string
@@ -755,6 +763,7 @@ export type Database = {
           size_variant?: string | null
           sku?: string | null
           stock_quantity?: number | null
+          stored_image_url?: string | null
           thumbnail_url?: string | null
           tier: string
           updated_at?: string
@@ -786,6 +795,7 @@ export type Database = {
           size_variant?: string | null
           sku?: string | null
           stock_quantity?: number | null
+          stored_image_url?: string | null
           thumbnail_url?: string | null
           tier?: string
           updated_at?: string
@@ -1020,6 +1030,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "coupon_usage_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "coupon_usage_order_id_fkey"
@@ -1808,6 +1825,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "email_send_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "email_send_log_order_id_fkey"
@@ -3560,6 +3584,24 @@ export type Database = {
           },
         ]
       }
+      internal_function_secrets: {
+        Row: {
+          created_at: string
+          key: string
+          secret: string
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          secret: string
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          secret?: string
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           billing_address: string | null
@@ -3701,6 +3743,13 @@ export type Database = {
             foreignKeyName: "invoices_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "invoices_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -3759,6 +3808,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "marketing_email_log_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "marketing_email_log_order_id_fkey"
@@ -4112,6 +4168,85 @@ export type Database = {
           },
         ]
       }
+      order_extra_costs: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string
+          id: string
+          order_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description: string
+          id?: string
+          order_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string
+          id?: string
+          order_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_extra_costs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_extra_costs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_extra_costs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_extra_costs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_extra_costs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_extra_costs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           brand_id: string | null
@@ -4218,6 +4353,13 @@ export type Database = {
             foreignKeyName: "order_items_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -4288,6 +4430,13 @@ export type Database = {
             foreignKeyName: "order_notes_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_notes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -4338,6 +4487,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_order_item_profit_view"
             referencedColumns: ["item_id"]
+          },
+          {
+            foreignKeyName: "order_picking_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "customer_order_items"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "order_picking_items_order_item_id_fkey"
@@ -4411,6 +4567,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_picking_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "order_picking_sessions_order_id_fkey"
@@ -4531,6 +4694,13 @@ export type Database = {
             foreignKeyName: "order_returns_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_returns_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -4607,6 +4777,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "order_status_history_order_id_fkey"
@@ -5611,6 +5788,13 @@ export type Database = {
             foreignKeyName: "quiz_customers_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quiz_customers_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -5832,6 +6016,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "quiz_sessions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "quiz_sessions_order_id_fkey"
@@ -6127,6 +6318,13 @@ export type Database = {
             foreignKeyName: "quotes_converted_order_id_fkey"
             columns: ["converted_order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -6220,6 +6418,13 @@ export type Database = {
             foreignKeyName: "referral_codes_referrer_order_id_fkey"
             columns: ["referrer_order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -6291,6 +6496,13 @@ export type Database = {
             foreignKeyName: "referral_credits_applied_order_id_fkey"
             columns: ["applied_order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "referral_credits_applied_order_id_fkey"
+            columns: ["applied_order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -6321,6 +6533,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "referral_credits_referred_order_id_fkey"
+            columns: ["referred_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "referral_credits_referred_order_id_fkey"
@@ -6396,6 +6615,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "referral_redemptions_referred_order_id_fkey"
+            columns: ["referred_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "referral_redemptions_referred_order_id_fkey"
@@ -6607,6 +6833,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "sessions_conversion_order_id_fkey"
+            columns: ["conversion_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "sessions_conversion_order_id_fkey"
@@ -7062,6 +7295,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "order_lines_report"
             referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "subscription_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "subscription_orders_order_id_fkey"
@@ -7537,6 +7777,13 @@ export type Database = {
             foreignKeyName: "order_items_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -7642,6 +7889,13 @@ export type Database = {
             foreignKeyName: "quotes_converted_order_id_fkey"
             columns: ["converted_order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "quotes_converted_order_id_fkey"
+            columns: ["converted_order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -7713,6 +7967,13 @@ export type Database = {
             foreignKeyName: "order_returns_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_returns_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
@@ -7744,6 +8005,7 @@ export type Database = {
           size_variant: string | null
           sku: string | null
           stock_quantity: number | null
+          stored_image_url: string | null
           thumbnail_url: string | null
           tier: string | null
           updated_at: string | null
@@ -7768,6 +8030,7 @@ export type Database = {
           size_variant?: string | null
           sku?: string | null
           stock_quantity?: number | null
+          stored_image_url?: string | null
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
@@ -7792,6 +8055,7 @@ export type Database = {
           size_variant?: string | null
           sku?: string | null
           stock_quantity?: number | null
+          stored_image_url?: string | null
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
@@ -7831,6 +8095,114 @@ export type Database = {
           whatsapp_number: string | null
         }
         Relationships: []
+      }
+      customer_order_items: {
+        Row: {
+          brand_id: string | null
+          brand_name: string | null
+          bundle_name: string | null
+          color: string | null
+          created_at: string | null
+          discount_amount: number | null
+          id: string | null
+          line_total: number | null
+          order_id: string | null
+          product_id: string | null
+          product_name: string | null
+          quantity: number | null
+          size: string | null
+          unit_price: number | null
+        }
+        Insert: {
+          brand_id?: string | null
+          brand_name?: string | null
+          bundle_name?: string | null
+          color?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          id?: string | null
+          line_total?: number | null
+          order_id?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          size?: string | null
+          unit_price?: number | null
+        }
+        Update: {
+          brand_id?: string | null
+          brand_name?: string | null
+          bundle_name?: string | null
+          color?: string | null
+          created_at?: string | null
+          discount_amount?: number | null
+          id?: string | null
+          line_total?: number | null
+          order_id?: string | null
+          product_id?: string | null
+          product_name?: string | null
+          quantity?: number | null
+          size?: string | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customer_report: {
         Row: {
@@ -7958,6 +8330,25 @@ export type Database = {
           on_leave: number | null
           terminated: number | null
           total: number | null
+        }
+        Relationships: []
+      }
+      margin_trends: {
+        Row: {
+          cogs: number | null
+          extra_costs_total: number | null
+          margin_pct: number | null
+          n_orders: number | null
+          net_margin_pct: number | null
+          net_profit: number | null
+          profit_as_ordered: number | null
+          refund_adjusted_profit: number | null
+          refund_rate_pct: number | null
+          refunded_profit_removed: number | null
+          refunded_revenue: number | null
+          revenue: number | null
+          sort_key: number | null
+          window_label: string | null
         }
         Relationships: []
       }
@@ -8107,6 +8498,30 @@ export type Database = {
           total_tax: number | null
           total_units: number | null
           unique_customers: number | null
+        }
+        Relationships: []
+      }
+      order_profit_summary: {
+        Row: {
+          created_at: string | null
+          customer_email: string | null
+          customer_name: string | null
+          extra_costs_total: number | null
+          gross_profit_pre_cogs: number | null
+          has_refund: boolean | null
+          net_profit: number | null
+          order_id: string | null
+          order_number: string | null
+          order_status: string | null
+          payment_status: string | null
+          profit_as_ordered: number | null
+          refund_adjusted_profit: number | null
+          refunded_lines: number | null
+          refunded_profit_removed: number | null
+          refunded_revenue: number | null
+          refunded_units: number | null
+          total: number | null
+          total_cogs: number | null
         }
         Relationships: []
       }
