@@ -117,7 +117,8 @@ export default function AdminMaternityBundles() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <p className="text-text-med text-sm max-w-2xl">
-          Maternity bundles are curated by the quiz engine. Items + retail prices snapshot nightly; click <em>Refresh prices</em> to re-run on demand.
+          Maternity bundles are curated by the quiz engine. Items + retail prices snapshot nightly; click <em>Refresh prices</em> to re-run on demand. <br />
+          Premium gift box · Satin ribbon · Shredded paper
         </p>
         <button
           onClick={refreshAll}
@@ -299,7 +300,7 @@ function MaternityBundlePanel({ bundle, snapshot }: { bundle: MatBundleRow; snap
               )}
             </div>
             <p className="text-[10px] text-text-light mt-2 italic">
-              Items are curated automatically by the quiz engine. Prices update nightly or when you click Refresh.
+              Items are curated automatically by the quiz engine. Premium gift box · Satin ribbon · Shredded paper.
             </p>
           </div>
         </>
