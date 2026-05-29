@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import { getBrandImage } from "@/lib/brandImage";
+import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
@@ -769,7 +770,7 @@ function QuoteEditor({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("brands")
-        .select("id, brand_name, product_id, image_url, stored_image_url, images, price, sku, in_stock")
+        .select("id, brand_name, product_id, image_url, stored_image_url, images, price, sku, in_stock, weight_kg")
         .in("product_id", productIds)
         .order("brand_name");
       if (error) throw error;
@@ -847,6 +848,84 @@ function QuoteEditor({
       return false;
     });
   }, [items, itemSearch, brandsByProduct]);
+
+  // ── Delivery: state options + auto-calculated fee ──────────────────
+  // State dropdown shares the storefront's source of truth so the quote
+  // editor and checkout always offer the same options.
+  const { data: deliverableStates = [] } = useDeliverableStates(true);
+
+  // Estimated order weight (kg), mirroring CheckoutPage: per-line
+  // brand.weight_kg × qty, with a conservative 0.5kg/unit fallback so a
+  // missing weight never yields a zero fee.
+  const cartWeightKg = useMemo(() => {
+    return (items as any[]).reduce((sum: number, it: any) => {
+      const brand = (brandsByProduct.get(it.product_id) || []).find((b: any) => b.id === it.brand_id);
+      const w = Number(brand?.weight_kg);
+      const per = Number.isFinite(w) && w > 0 ? w : 0.5;
+      return sum + per * (it.quantity || 0);
+    }, 0);
+  }, [items, brandsByProduct]);
+
+  // Auto-calc result surfaced to the delivery UI.
+  const [deliveryPartner, setDeliveryPartner] = useState<string | null>(null);
+  const [deliveryNotDeliverable, setDeliveryNotDeliverable] = useState(false);
+  const [deliveryCalcLoading, setDeliveryCalcLoading] = useState(false);
+
+  // Recompute estimated_delivery_fee via get_courier_assignment whenever
+  // the address or items change. Mirrors CheckoutPage's parsing EXACTLY:
+  // the RPC returns customer_rate in KOBO, so we ÷100 → naira for the
+  // quotes.estimated_delivery_fee column. Writes through the form so the
+  // existing debounced autosave persists it; never touches the override.
+  const stateForCalc = form.delivery_state;
+  const cityForCalc = form.delivery_city;
+  useEffect(() => {
+    if (!currentId || !canEdit) return;
+    if (!stateForCalc.trim() || !cityForCalc.trim()) {
+      setDeliveryNotDeliverable(false);
+      setDeliveryPartner(null);
+      return;
+    }
+    if (cartWeightKg <= 0) return;
+    let cancelled = false;
+    setDeliveryCalcLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await (supabase.rpc as any)("get_courier_assignment", {
+          p_delivery_city: cityForCalc,
+          p_delivery_state: stateForCalc,
+          p_bundle_tier: "standard",
+          p_order_day: new Date().toLocaleDateString("en-US", { weekday: "long" }),
+          p_daily_order_count: 1,
+          p_order_weight_kg: cartWeightKg,
+          p_order_subtotal: liveSubtotal,
+        });
+        if (cancelled) return;
+        const r = data || {};
+        const deliverable = !error && r.deliverable !== false;
+        if (deliverable) {
+          // customer_rate is KOBO (see CheckoutPage line ~492) → naira.
+          const feeNaira = Math.round((Number(r.customer_rate) || 0) / 100);
+          setDeliveryNotDeliverable(false);
+          setDeliveryPartner(r.partner || null);
+          update({ estimated_delivery_fee: String(feeNaira) });
+        } else {
+          // Don't overwrite the estimate; surface a warning instead.
+          setDeliveryNotDeliverable(true);
+          setDeliveryPartner(null);
+        }
+      } catch {
+        if (!cancelled) { setDeliveryNotDeliverable(false); }
+      } finally {
+        if (!cancelled) setDeliveryCalcLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stateForCalc, cityForCalc, cartWeightKg, currentId, canEdit]);
+
+  // Inline override editing UI state.
+  const [overrideEditing, setOverrideEditing] = useState(false);
+  const [overrideDraft, setOverrideDraft] = useState("");
 
   // ── Product search ─────────────────────────────────────────────
   const trimmedSearch = productSearch.trim();
@@ -1198,9 +1277,10 @@ function QuoteEditor({
               </div>
               <div>
                 <label className={labelCls}>State</label>
+                {/* Same source of truth as checkout: deliverable_states. */}
                 <select value={form.delivery_state} onChange={(e) => update({ delivery_state: e.target.value })} className={inputCls} disabled={!canEdit}>
                   <option value="">—</option>
-                  {NG_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {(deliverableStates as any[]).map((s: any) => <option key={s.id} value={s.name}>{s.name}</option>)}
                 </select>
               </div>
             </div>
@@ -1357,23 +1437,76 @@ function QuoteEditor({
                   {fmtN(parseInt(form.service_fee, 10) || 0)}
                 </div>
               </div>
-              <div>
-                <label className={labelCls}>Estimated Delivery (₦)</label>
-                <input type="number" min={0} value={form.estimated_delivery_fee} onChange={(e) => update({ estimated_delivery_fee: e.target.value })} className={inputCls} disabled={!canEdit} />
-              </div>
-              <div>
-                <label className={labelCls}>Delivery Fee Override (₦) <span className="text-text-light font-normal">optional</span></label>
-                <input
-                  type="number"
-                  min={0}
-                  value={form.delivery_fee_override}
-                  onChange={(e) => update({ delivery_fee_override: e.target.value })}
-                  placeholder="Leave empty to use estimated"
-                  className={inputCls}
-                  disabled={!canEdit}
-                />
-                <p className="text-[10px] text-text-light mt-1">Wins over the estimate when set. Leave empty for auto.</p>
-              </div>
+              {/* Delivery fee — auto-calculated from address + cart via
+                  get_courier_assignment, with optional manual override.
+                  Auto-calc only writes estimated_delivery_fee; override is
+                  a separate value the admin controls. */}
+              {(() => {
+                const estimated = parseInt(form.estimated_delivery_fee, 10) || 0;
+                const hasOverride = form.delivery_fee_override.trim() !== "";
+                const overrideVal = parseInt(form.delivery_fee_override, 10) || 0;
+                const saveOverride = () => {
+                  const v = Math.max(0, parseInt(overrideDraft, 10) || 0);
+                  update({ delivery_fee_override: String(v) });
+                  setOverrideEditing(false);
+                };
+                return (
+                  <div>
+                    <label className={labelCls}>Delivery fee</label>
+                    {deliveryNotDeliverable && (
+                      <div className="mb-2 text-[11px] bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">
+                        ⚠️ Delivery not available to this location. Please contact the customer to arrange pickup or alternative arrangements.
+                      </div>
+                    )}
+                    {overrideEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number" min={0} autoFocus
+                          value={overrideDraft}
+                          onChange={(e) => setOverrideDraft(e.target.value)}
+                          className={inputCls}
+                          disabled={!canEdit}
+                        />
+                        <button onClick={saveOverride} disabled={!canEdit} className="px-3 py-2 rounded-lg bg-forest text-primary-foreground text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">Save</button>
+                        <button onClick={() => setOverrideEditing(false)} className="px-3 py-2 rounded-lg border border-border text-xs font-semibold hover:bg-muted">Cancel</button>
+                      </div>
+                    ) : hasOverride ? (
+                      // STATE 2 — override set
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold">{fmtN(overrideVal)}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-wide">Overridden</span>
+                        </div>
+                        <p className="text-[11px] text-text-light mt-0.5">
+                          Calculated: {fmtN(estimated)} (auto-replaced by your override)
+                        </p>
+                        {canEdit && (
+                          <div className="flex items-center gap-3 mt-1.5">
+                            <button onClick={() => { setOverrideDraft(String(overrideVal)); setOverrideEditing(true); }} className="text-xs font-semibold text-forest hover:underline">Edit</button>
+                            <button onClick={() => update({ delivery_fee_override: "" })} className="text-xs font-semibold text-text-med hover:underline">Reset to calculated</button>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // STATE 1 — no override; show the calculated value
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold">{fmtN(estimated)}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-forest-light text-forest text-[9px] font-bold uppercase tracking-wide">
+                            {deliveryCalcLoading ? "Calculating…" : "Calculated"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-text-light mt-0.5">
+                          Auto-calculated from address + cart.{deliveryPartner ? ` ${deliveryPartner}` : ""}
+                        </p>
+                        {canEdit && (
+                          <button onClick={() => { setOverrideDraft(String(estimated)); setOverrideEditing(true); }} className="text-xs font-semibold text-forest hover:underline mt-1.5">Override</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="grid grid-cols-1 gap-2">
                 <div>
                   <label className={labelCls}>Discount (₦)</label>

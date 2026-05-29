@@ -260,13 +260,21 @@ export default function QuotePage() {
           </div>
         )}
 
-        {/* Greeting + customer note */}
-        {(quote.customer_name || quote.customer_notes) && (
+        {/* Greeting + delivery summary + customer note */}
+        {(quote.customer_name || quote.customer_notes || quote.delivery_city || quote.delivery_state) && (
           <div className="bg-card quote-card border border-border rounded-xl p-5 mb-4">
             {quote.customer_name && (
               <p className="text-sm">
                 <span className="text-text-med">Prepared for:</span>{" "}
                 <span className="font-semibold">{quote.customer_name}</span>
+              </p>
+            )}
+            {(quote.delivery_city || quote.delivery_state) && (
+              <p className="text-sm mt-1">
+                <span className="text-text-med">Deliver to:</span>{" "}
+                <span className="font-semibold">
+                  {[quote.delivery_city, quote.delivery_state].filter(Boolean).join(", ")}
+                </span>
               </p>
             )}
             {quote.customer_notes && (
