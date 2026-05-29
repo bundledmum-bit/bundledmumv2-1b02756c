@@ -612,7 +612,7 @@ function FreeDeliveryThresholdsTab() {
               <textarea
                 value={form.marketing_copy}
                 onChange={(e) => setForm((f) => ({ ...f, marketing_copy: e.target.value }))}
-                placeholder="Premium gift box · Satin ribbon · Shredded paper"
+                placeholder="Spend ₦500k+ for FREE delivery anywhere in Nigeria!"
                 rows={2}
                 className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
                 maxLength={200}
