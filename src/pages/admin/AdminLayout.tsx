@@ -270,6 +270,7 @@ function AdminLayoutInner() {
 
   return (
     <div className="min-h-screen flex bg-muted/30">
+      <IdleTimeoutGuard />
       <Helmet>
         <link rel="manifest" href="/admin-manifest.webmanifest" />
         <meta name="theme-color" content="#2D6A4F" />
