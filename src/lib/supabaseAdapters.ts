@@ -46,6 +46,9 @@ export interface Product {
   brands: Brand[];
   category: string;
   subcategory?: string | null;
+  // Quiz-result section assignment (DB-canonical). Drives the
+  // Hospital/Mum/Baby grouping in HomeQuiz.tsx → sectionFor().
+  quiz_section?: "mum_essentials" | "baby_essentials" | "hospital_consumables" | null;
   productSlot?: string | null;
   stage: string[];
   priority: "essential" | "recommended" | "nice-to-have";
@@ -240,6 +243,7 @@ export function adaptProduct(row: any): Product {
     brands,
     category: row.category,
     subcategory: row.subcategory || null,
+    quiz_section: row.quiz_section ?? null,
     productSlot: row.product_slot || null,
     stage: stageTags.length ? stageTags : ["expecting", "newborn", "0-3m"],
     priority: row.priority as any,
