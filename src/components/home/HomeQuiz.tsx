@@ -729,18 +729,36 @@ function ResultsScreen({
   const giftItems = isGift ? results : [];
 
   // Non-gift path: 4 buckets.
-  // Hospital Consumables = mum.hospital-essentials + baby.nappies-wipes
-  //   (pads, slippers, disposable underwear, toiletries, antiseptics, nappies, wipes).
-  // Convenience Extras = priority='nice-to-have' (not in hospital) — the
-  //   ranked "extras" the RPC pulls in at higher budgets.
-  // Baby/Mum Essentials = category buckets filtered to essential/recommended.
-  const HOSPITAL_SUBCATEGORIES = new Set(["maternity-postpartum"]);
-  const isHospital = (r: RecommendedProduct) => HOSPITAL_SUBCATEGORIES.has(r.subcategory || "");
+  // Section assignment is driven by products.quiz_section, the canonical
+  // column the DB owns (values: 'mum_essentials' | 'baby_essentials' |
+  // 'hospital_consumables' | NULL). The RPC doesn't carry it, but
+  // useAllProducts() does SELECT * so productMap has it at runtime
+  // (TS types may not be regenerated yet — hence the cast).
+  //
+  // For products with quiz_section IS NULL (push-gift items + any
+  // un-backfilled stragglers), fall back to the previous category-based
+  // routing. Push-gift never reaches this code anyway — the isGift
+  // branch above handles it — so the fallback is a safety net only.
+  //
+  // Convenience Extras = priority='nice-to-have' AND not hospital. Hospital
+  // wins over nice-to-have (matches prior semantic so clinical items
+  // marked as 'nice-to-have' still land in Hospital, not Extras).
+  const sectionFor = (r: RecommendedProduct): "hospital" | "mum" | "baby" | null => {
+    const fp = productMap.get(r.product_id) as any;
+    const qs = fp?.quiz_section as string | null | undefined;
+    if (qs === "hospital_consumables") return "hospital";
+    if (qs === "mum_essentials") return "mum";
+    if (qs === "baby_essentials") return "baby";
+    // Fallback for null quiz_section (push-gift / un-backfilled rows).
+    if (r.category === "baby") return "baby";
+    if (r.category === "mum") return "mum";
+    return null;
+  };
   const isNice = (r: RecommendedProduct) => r.priority === "nice-to-have";
-  const hospitalItems = isGift ? [] : results.filter(r => isHospital(r));
-  const extrasItems = isGift ? [] : results.filter(r => !isHospital(r) && isNice(r));
-  const babyItems = isGift ? [] : results.filter(r => r.category === "baby" && !isHospital(r) && !isNice(r));
-  const mumItems = isGift ? [] : results.filter(r => r.category === "mum" && !isHospital(r) && !isNice(r));
+  const hospitalItems = isGift ? [] : results.filter(r => sectionFor(r) === "hospital");
+  const extrasItems = isGift ? [] : results.filter(r => sectionFor(r) !== "hospital" && isNice(r));
+  const babyItems = isGift ? [] : results.filter(r => sectionFor(r) === "baby" && !isNice(r));
+  const mumItems = isGift ? [] : results.filter(r => sectionFor(r) === "mum" && !isNice(r));
 
   // Recommendation total — reactive to the user's pre-add qty steppers.
   // Uses each item's recommended brand price; null-brand "coming soon"
