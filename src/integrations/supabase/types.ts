@@ -6222,6 +6222,9 @@ export type Database = {
           discount_reason: string | null
           estimated_delivery_fee: number
           expires_at: string | null
+          gift_wrap_admin_override: boolean
+          gift_wrap_fee: number
+          gift_wrapping: boolean
           id: string
           internal_notes: string | null
           last_viewed_at: string | null
@@ -6254,6 +6257,9 @@ export type Database = {
           discount_reason?: string | null
           estimated_delivery_fee?: number
           expires_at?: string | null
+          gift_wrap_admin_override?: boolean
+          gift_wrap_fee?: number
+          gift_wrapping?: boolean
           id?: string
           internal_notes?: string | null
           last_viewed_at?: string | null
@@ -6286,6 +6292,9 @@ export type Database = {
           discount_reason?: string | null
           estimated_delivery_fee?: number
           expires_at?: string | null
+          gift_wrap_admin_override?: boolean
+          gift_wrap_fee?: number
+          gift_wrapping?: boolean
           id?: string
           internal_notes?: string | null
           last_viewed_at?: string | null
@@ -8631,6 +8640,7 @@ export type Database = {
         Args: { p_session_id: string }
         Returns: undefined
       }
+      compute_auto_fees: { Args: { p_items: Json }; Returns: Json }
       count_working_days: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: number
@@ -8753,6 +8763,8 @@ export type Database = {
           discount_reason: string
           estimated_delivery_fee: number
           expires_at: string
+          gift_wrap_fee: number
+          gift_wrapping: boolean
           id: string
           is_expired: boolean
           quote_number: string
