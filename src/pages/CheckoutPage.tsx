@@ -60,6 +60,12 @@ export default function CheckoutPage() {
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
   const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
   const [giftWrap, setGiftWrap] = useState(false);
+  // Session-scoped: once the customer makes any explicit choice on the
+  // gift-wrap checkbox, that choice wins over the auto-rule until reload.
+  const [userExplicitlyToggledGiftWrap, setUserExplicitlyToggledGiftWrap] = useState(false);
+  // Confirmation modal — only opened when unchecking would override the
+  // auto-rule. ESC / outside-click = "Keep gift wrapping" (no-op).
+  const [confirmSkipGiftWrap, setConfirmSkipGiftWrap] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [stockIssues, setStockIssues] = useState<StockIssue[]>([]);
   const [errors, setErrors] = useState<Partial<FormData>>({});
@@ -299,10 +305,12 @@ export default function CheckoutPage() {
   const serviceFee = autoFees?.service_fee ?? 0;
   const serviceFeeLabel = settings?.service_fee_label || "Service & Packaging";
 
-  // RULE A: when the cart contains a gift item and the rule is enabled,
-  // gift wrap is auto-applied and locked (customer cannot uncheck).
-  const giftWrapLocked = !!autoFees?.has_gift_item && !!autoFees?.settings?.auto_gift_wrap_enabled;
-  const effectiveGiftWrap = giftWrapLocked ? true : giftWrap;
+  // RULE A (soft): when the DB's gift-wrap rule fires, we PRE-SELECT
+  // gift wrap but leave the checkbox interactive. The customer can
+  // uncheck after a confirmation. Once they make any explicit choice
+  // this session, we respect it over the rule.
+  const giftWrapShouldApply = !!autoFees?.gift_wrap_should_apply;
+  const effectiveGiftWrap = userExplicitlyToggledGiftWrap ? giftWrap : giftWrapShouldApply;
 
   const defaultDeliveryFee = parseInt(settings?.default_delivery_fee) || 0;
   const defaultFreeThreshold = parseInt(settings?.default_free_threshold) || 0;
@@ -1529,27 +1537,46 @@ export default function CheckoutPage() {
                   <textarea value={form.notes} onChange={e => update("notes", e.target.value)} className="w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body resize-y h-20 focus:border-forest outline-none" placeholder="E.g. Landmark, gate colour..." />
                 </div>
 
-                {/* Gift Wrapping — auto-applied + locked when the cart has a
-                    gift item (RULE A); freely toggleable otherwise. */}
+                {/* Gift Wrapping — soft auto-apply (RULE A): pre-selected
+                    when the DB rule fires but always interactive. Unchecking
+                    while the rule is on prompts a confirmation. */}
                 <div
-                  onClick={() => { if (!giftWrapLocked) setGiftWrap(g => !g); }}
-                  title={giftWrapLocked ? "Auto-applied — your cart contains a gift item. Manage in admin settings to change." : undefined}
-                  className={`mt-1 flex items-center gap-3.5 p-4 rounded-[14px] border-2 transition-all ${giftWrapLocked ? "cursor-default" : "cursor-pointer"} ${effectiveGiftWrap ? "border-[#FFD54F] bg-[#FFF8E1]" : "border-border bg-warm-cream"}`}
+                  onClick={() => {
+                    if (effectiveGiftWrap) {
+                      // Unchecking
+                      if (giftWrapShouldApply && !userExplicitlyToggledGiftWrap) {
+                        // Auto-applied; ask before overriding the rule.
+                        setConfirmSkipGiftWrap(true);
+                        return;
+                      }
+                      // Either the rule isn't firing, or user already chose
+                      // — uncheck directly.
+                      setGiftWrap(false);
+                      setUserExplicitlyToggledGiftWrap(true);
+                    } else {
+                      // Checking — no confirmation needed.
+                      setGiftWrap(true);
+                      setUserExplicitlyToggledGiftWrap(true);
+                    }
+                  }}
+                  className={`mt-1 flex items-center gap-3.5 p-4 rounded-[14px] border-2 cursor-pointer transition-all ${effectiveGiftWrap ? "border-[#FFD54F] bg-[#FFF8E1]" : "border-border bg-warm-cream"}`}
                 >
                   <span className="text-3xl flex-shrink-0">🎀</span>
                   <div className="flex-1">
                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap">
                       Add Gift Wrapping
                       <span className="bg-[#FFD54F] text-[#7B5E00] text-[10px] px-2 py-0.5 rounded-[10px] font-bold">+{fmt(giftWrapPrice)}</span>
-                      {giftWrapLocked && <span className="bg-forest-light text-forest text-[10px] px-2 py-0.5 rounded-[10px] font-bold">Auto-applied</span>}
                     </div>
                     <div className="text-text-med text-xs mt-0.5">
-                      {giftWrapLocked
-                        ? "Auto-applied — your cart contains a gift item."
-                        : "Premium gift box · Satin ribbon · Shredded paper"}
+                      Premium gift box · Satin ribbon · Shredded paper
                     </div>
+                    {giftWrapShouldApply && (
+                      <div className="text-forest text-[11px] mt-1 font-semibold">
+                        Recommended for your cart — your order qualifies for gift packaging.
+                      </div>
+                    )}
                   </div>
-                  <div className={`w-5 h-5 rounded-md flex-shrink-0 border-2 flex items-center justify-center transition-all ${effectiveGiftWrap ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"} ${giftWrapLocked ? "opacity-80" : ""}`}>
+                  <div className={`w-5 h-5 rounded-md flex-shrink-0 border-2 flex items-center justify-center transition-all ${effectiveGiftWrap ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"}`}>
                     {effectiveGiftWrap && <span className="text-primary-foreground text-xs font-bold">✓</span>}
                   </div>
                 </div>
@@ -1957,6 +1984,66 @@ export default function CheckoutPage() {
         onClose={() => setShowWhatsAppModal(false)}
         context={recoveryContext}
       />
+
+      {/* Skip-gift-wrap confirmation — opens only when the customer
+          unchecks while the auto-rule is firing. ESC / outside-click =
+          "Keep gift wrapping" (no-op). */}
+      {confirmSkipGiftWrap && (
+        <SkipGiftWrapConfirmModal
+          onKeep={() => setConfirmSkipGiftWrap(false)}
+          onSkip={() => {
+            setGiftWrap(false);
+            setUserExplicitlyToggledGiftWrap(true);
+            setConfirmSkipGiftWrap(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Skip-gift-wrap confirmation modal ────────────────────────────────
+function SkipGiftWrapConfirmModal({ onKeep, onSkip }: { onKeep: () => void; onSkip: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onKeep(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onKeep]);
+  return (
+    <div
+      className="fixed inset-0 z-[200] bg-foreground/60 flex items-center justify-center p-4"
+      onClick={onKeep}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="skip-gift-wrap-title"
+    >
+      <div
+        className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="skip-gift-wrap-title" className="font-bold text-base mb-2">Skip gift wrapping?</h3>
+        <p className="text-sm text-text-med">
+          Your cart contains gift items, so we've added gift wrapping. If you skip it,
+          your items will be delivered in our regular packaging, not as a gift.
+        </p>
+        <div className="flex flex-col-reverse sm:flex-row gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="flex-1 px-4 py-2 border border-border rounded-lg text-xs font-semibold hover:bg-muted"
+          >
+            Skip anyway
+          </button>
+          <button
+            type="button"
+            autoFocus
+            onClick={onKeep}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep"
+          >
+            Keep gift wrapping
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

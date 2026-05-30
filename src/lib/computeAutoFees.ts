@@ -23,17 +23,26 @@ export interface AutoFeesSettings {
   min_total: number;
   fee_amount: number;
   gift_wrap_price: number;
+  // Stricter gift-wrap rule thresholds (DB defaults: 5 / 2). The
+  // rule fires when the cart hits BOTH:
+  //   distinct OR total products >= gift_wrap_min_products
+  //   AND distinct OR total gift items >= gift_wrap_min_gift_items
+  gift_wrap_min_products: number;
+  gift_wrap_min_gift_items: number;
 }
 
 export interface AutoFeesResult {
-  gift_wrap_should_apply: boolean;
+  gift_wrap_should_apply: boolean;        // canonical UI trigger
   gift_wrap_fee: number;
   service_fee: number;
   distinct_items: number;
   total_units: number;
   subtotal: number;
-  has_gift_item: boolean;
+  has_gift_item: boolean;                 // informational — do NOT key UI off this
   service_fee_rule_triggered: boolean;
+  distinct_gift_items: number;
+  total_gift_units: number;
+  gift_wrap_rule_triggered: boolean;      // mirrors gift_wrap_should_apply
   settings: AutoFeesSettings;
 }
 
@@ -49,6 +58,9 @@ export const AUTO_FEES_FALLBACK: AutoFeesResult = {
   subtotal: 0,
   has_gift_item: false,
   service_fee_rule_triggered: false,
+  distinct_gift_items: 0,
+  total_gift_units: 0,
+  gift_wrap_rule_triggered: false,
   settings: {
     auto_gift_wrap_enabled: false,
     auto_service_fee_enabled: false,
@@ -56,6 +68,8 @@ export const AUTO_FEES_FALLBACK: AutoFeesResult = {
     min_total: 0,
     fee_amount: 0,
     gift_wrap_price: 0,
+    gift_wrap_min_products: 0,
+    gift_wrap_min_gift_items: 0,
   },
 };
 

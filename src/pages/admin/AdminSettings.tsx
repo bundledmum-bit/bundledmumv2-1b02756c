@@ -354,6 +354,8 @@ function AutoFeesTab() {
         .select("key, value")
         .in("key", [
           "auto_gift_wrap_enabled",
+          "auto_gift_wrap_min_products",
+          "auto_gift_wrap_min_gift_items",
           "auto_service_fee_enabled",
           "auto_service_fee_min_items",
           "auto_service_fee_min_total_naira",
@@ -394,6 +396,8 @@ function AutoFeesTab() {
   if (isLoading) return <div className="text-center py-10 text-text-med">Loading…</div>;
 
   const giftEnabled = asBool("auto_gift_wrap_enabled", true);
+  const giftMinProducts = asNum("auto_gift_wrap_min_products", 5);
+  const giftMinGiftItems = asNum("auto_gift_wrap_min_gift_items", 2);
   const svcEnabled = asBool("auto_service_fee_enabled", true);
   const minItems = asNum("auto_service_fee_min_items", 8);
   const minTotal = asNum("auto_service_fee_min_total_naira", 50000);
@@ -403,9 +407,9 @@ function AutoFeesTab() {
   return (
     <div className="space-y-4 max-w-2xl">
       {/* Card 1 — Gift wrap auto-apply */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <h3 className="text-sm font-bold mb-1">Gift wrap auto-apply</h3>
-        <label className="flex items-start gap-3 cursor-pointer mt-3">
+      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+        <h3 className="text-sm font-bold">Gift wrap auto-apply</h3>
+        <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={giftEnabled}
@@ -415,11 +419,42 @@ function AutoFeesTab() {
           <span>
             <span className="text-sm font-semibold block">Auto-check gift wrap when cart contains a gift item</span>
             <span className="text-xs text-text-med">
-              When ON, gift wrap is automatically added and locked on any cart that includes a
-              push-gift product. Customers cannot uncheck it.
+              When ON, gift wrap is automatically pre-selected for carts that meet the rule below.
+              Customers can still uncheck it, but will see a confirmation prompt.
             </span>
           </span>
         </label>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum products in cart</label>
+            <input
+              type="number" min={1} defaultValue={giftMinProducts} key={`gmp-${giftMinProducts}`}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v) && v !== giftMinProducts) save.mutate({ key: "auto_gift_wrap_min_products", value: v });
+              }}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-[10px] text-text-light mt-1">
+              The rule needs at least this many products in the cart (counts as 'distinct products' OR 'total units', whichever hits the threshold first).
+            </p>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum gift items in cart</label>
+            <input
+              type="number" min={1} defaultValue={giftMinGiftItems} key={`gmg-${giftMinGiftItems}`}
+              onBlur={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v) && v !== giftMinGiftItems) save.mutate({ key: "auto_gift_wrap_min_gift_items", value: v });
+              }}
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-[10px] text-text-light mt-1">
+              Of those products, this many must be gift items (push-gift category or marked as gift-eligible). Same OR-counting rule.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Card 2 — Service & packaging fee */}
