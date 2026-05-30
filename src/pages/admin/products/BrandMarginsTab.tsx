@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, X, Search as SearchIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -53,12 +53,68 @@ function computeMarkupPct(retail: number, cost: number | null): number | null {
 }
 
 export default function BrandMarginsTab() {
-  // Filters
-  const [category, setCategory] = useState<string>(ALL);
-  const [subcategory, setSubcategory] = useState<string>(ALL);
-  const [inStock, setInStock] = useState<"all" | "in" | "out">("all");
-  const [bundle, setBundle] = useState<"all" | "in" | "out" | BundleTier>("all");
-  const [missingCostOnly, setMissingCostOnly] = useState(false);
+  // Filters — URL params are the source of truth so admins can bookmark
+  // and share filtered views. Default values map to "no param" so a
+  // clean URL = the default unfiltered view.
+  const [params, setParams] = useSearchParams();
+
+  // Helpers for reading + writing URL params with replaceState (so the
+  // back button doesn't fill up with filter-change history).
+  const getParam = (k: string) => params.get(k) || "";
+  const setParam = (k: string, v: string | null) => {
+    const next = new URLSearchParams(params);
+    if (v == null || v === "" || v === ALL) next.delete(k);
+    else next.set(k, v);
+    setParams(next, { replace: true });
+  };
+  const setParamPair = (k1: string, v1: string | null, k2: string, v2: string | null) => {
+    const next = new URLSearchParams(params);
+    [[k1, v1], [k2, v2]].forEach(([k, v]) => {
+      if (v == null || v === "" || v === ALL) next.delete(k as string);
+      else next.set(k as string, v as string);
+    });
+    setParams(next, { replace: true });
+  };
+
+  // Status / stock / has-cost — single-select tri-state UIs.
+  const status = getParam("status");                        // "" | "active" | "inactive"
+  const stock = getParam("stock");                          // "" | "in" | "out"
+  const cost = getParam("cost");                            // "" | "has" | "missing"
+  // Category / subcategory / brand-tier dropdowns.
+  const category = getParam("category");                    // "" | <value>
+  const subcategory = getParam("subcategory");              // "" | <value>
+  const tier = getParam("tier");                            // "" | tier | "none"
+  // Bundle membership — pre-existing filter, kept and URL-persisted.
+  const bundle = getParam("bundle");                        // "" | "in" | "out" | tier
+  // Margin / markup numeric ranges (defaults = no filter).
+  const marginMinStr = getParam("margin_min");
+  const marginMaxStr = getParam("margin_max");
+  const markupMinStr = getParam("markup_min");
+  const markupMaxStr = getParam("markup_max");
+  const marginMin = marginMinStr === "" ? null : Number(marginMinStr);
+  const marginMax = marginMaxStr === "" ? null : Number(marginMaxStr);
+  const markupMin = markupMinStr === "" ? null : Number(markupMinStr);
+  const markupMax = markupMaxStr === "" ? null : Number(markupMaxStr);
+  // Text search — debounced into the URL.
+  const q = getParam("q");
+
+  // Search input mirrors `q` but debounces writes to the URL.
+  const [searchInput, setSearchInput] = useState(q);
+  useEffect(() => {
+    // Local edits push into the URL after 300ms.
+    if (searchInput === q) return;
+    const t = setTimeout(() => setParam("q", searchInput), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+  // Reset / external URL change → mirror back into the input.
+  useEffect(() => { if (q !== searchInput) setSearchInput(q); /* eslint-disable-next-line */ }, [q]);
+
+  const anyFilterActive =
+    !!status || !!stock || !!cost || !!category || !!subcategory || !!tier || !!bundle ||
+    marginMinStr !== "" || marginMaxStr !== "" || markupMinStr !== "" || markupMaxStr !== "" ||
+    !!q;
+  const resetAll = () => setParams({}, { replace: true });
 
   // Always pull the unfiltered list to derive distinct categories/subcategories.
   const allRowsQuery = useBrandMargins();
@@ -69,30 +125,68 @@ export default function BrandMarginsTab() {
     [allRows],
   );
   const distinctSubcategories = useMemo(() => {
-    const scoped = category === ALL ? allRows : allRows.filter(r => r.category === category);
+    const scoped = !category ? allRows : allRows.filter(r => r.category === category);
     return Array.from(new Set(scoped.map(r => r.subcategory).filter((s): s is string => !!s))).sort();
   }, [allRows, category]);
 
   // Reset subcategory when category changes if it no longer matches.
   useEffect(() => {
-    if (subcategory !== ALL && !distinctSubcategories.includes(subcategory)) {
-      setSubcategory(ALL);
+    if (subcategory && !distinctSubcategories.includes(subcategory)) {
+      setParam("subcategory", null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [distinctSubcategories, subcategory]);
 
   const filtered = useMemo(() => {
     let f = allRows;
-    if (category !== ALL) f = f.filter(r => r.category === category);
-    if (subcategory !== ALL) f = f.filter(r => r.subcategory === subcategory);
-    if (inStock !== "all") f = f.filter(r => (inStock === "in" ? r.inStock : !r.inStock));
-    if (bundle !== "all") {
-      if (bundle === "in") f = f.filter(r => r.bundleTiers.length > 0);
-      else if (bundle === "out") f = f.filter(r => r.bundleTiers.length === 0);
-      else f = f.filter(r => r.bundleTiers.includes(bundle as BundleTier));
+    // Status: active / inactive
+    if (status === "active") f = f.filter(r => r.isActive);
+    else if (status === "inactive") f = f.filter(r => !r.isActive);
+    // Stock
+    if (stock === "in") f = f.filter(r => r.inStock);
+    else if (stock === "out") f = f.filter(r => !r.inStock);
+    // Cost present / missing (treat 0 as missing per spec)
+    if (cost === "has") f = f.filter(r => r.costPrice != null && r.costPrice > 0);
+    else if (cost === "missing") f = f.filter(r => r.costPrice == null || r.costPrice === 0);
+    // Category / subcategory
+    if (category) f = f.filter(r => r.category === category);
+    if (subcategory) f = f.filter(r => r.subcategory === subcategory);
+    // Brand tier ("none" = explicitly NULL tier)
+    if (tier === "none") f = f.filter(r => r.tier == null);
+    else if (tier) f = f.filter(r => r.tier === tier);
+    // Bundle membership (existing filter)
+    if (bundle === "in") f = f.filter(r => r.bundleTiers.length > 0);
+    else if (bundle === "out") f = f.filter(r => r.bundleTiers.length === 0);
+    else if (bundle) f = f.filter(r => r.bundleTiers.includes(bundle as BundleTier));
+    // Margin range — excludes rows with no cost per spec
+    if (marginMin != null || marginMax != null) {
+      f = f.filter(r => {
+        const m = computeMarginPct(r.retailPrice, r.costPrice);
+        if (m == null) return false;
+        if (marginMin != null && m < marginMin) return false;
+        if (marginMax != null && m > marginMax) return false;
+        return true;
+      });
     }
-    if (missingCostOnly) f = f.filter(r => r.costPrice == null);
+    if (markupMin != null || markupMax != null) {
+      f = f.filter(r => {
+        const m = computeMarkupPct(r.retailPrice, r.costPrice);
+        if (m == null) return false;
+        if (markupMin != null && m < markupMin) return false;
+        if (markupMax != null && m > markupMax) return false;
+        return true;
+      });
+    }
+    // Search: case-insensitive partial on product name OR brand name.
+    if (q.trim()) {
+      const needle = q.trim().toLowerCase();
+      f = f.filter(r =>
+        r.productName.toLowerCase().includes(needle) ||
+        r.brandName.toLowerCase().includes(needle),
+      );
+    }
     return f;
-  }, [allRows, category, subcategory, inStock, bundle, missingCostOnly]);
+  }, [allRows, status, stock, cost, category, subcategory, tier, bundle, marginMin, marginMax, markupMin, markupMax, q]);
 
   // Sorting — null cost rows always go to the bottom regardless of direction.
   const [sortKey, setSortKey] = useState<SortKey>("marginPct");
@@ -193,56 +287,137 @@ export default function BrandMarginsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Filters bar */}
-      <div className="bg-card border border-border rounded-xl p-3 flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Category</span>
-          <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All categories</SelectItem>
-              {distinctCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      {/* Filters bar — URL-persisted (status / stock / cost / category /
+          subcategory / tier / bundle / margin range / markup range /
+          search). Each control writes the URL; defaults map to no param. */}
+      <div className="bg-card border border-border rounded-xl p-3 space-y-3">
+        {/* Row 1: tri-state status pills + search + reset */}
+        <div className="flex flex-wrap items-end gap-3">
+          <TriPill
+            label="Status"
+            value={status || "all"}
+            onChange={(v) => setParam("status", v === "all" ? null : v)}
+            options={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+            ]}
+          />
+          <TriPill
+            label="Stock"
+            value={stock || "all"}
+            onChange={(v) => setParam("stock", v === "all" ? null : v)}
+            options={[
+              { value: "all", label: "All" },
+              { value: "in", label: "In stock" },
+              { value: "out", label: "Out of stock" },
+            ]}
+          />
+          <TriPill
+            label="Cost"
+            value={cost || "all"}
+            onChange={(v) => setParam("cost", v === "all" ? null : v)}
+            options={[
+              { value: "all", label: "All" },
+              { value: "has", label: "Has cost" },
+              { value: "missing", label: "Missing cost" },
+            ]}
+          />
+
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+            <span className="text-[11px] text-muted-foreground">Search</span>
+            <div className="relative">
+              <SearchIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Product or brand…"
+                className="h-9 pl-8"
+              />
+            </div>
+          </div>
+
+          {anyFilterActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAll}
+              className="h-9 text-xs gap-1 self-end"
+              title="Clear all filters"
+            >
+              <X className="w-3.5 h-3.5" /> Reset filters
+            </Button>
+          )}
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Subcategory</span>
-          <Select value={subcategory} onValueChange={setSubcategory}>
-            <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>All subcategories</SelectItem>
-              {distinctSubcategories.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
+
+        {/* Row 2: dropdowns (category / subcategory / brand tier / bundle) */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">Category</span>
+            <Select value={category || ALL} onValueChange={(v) => setParamPair("category", v === ALL ? null : v, "subcategory", null)}>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All categories</SelectItem>
+                {distinctCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">Subcategory</span>
+            <Select value={subcategory || ALL} onValueChange={(v) => setParam("subcategory", v === ALL ? null : v)}>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All subcategories</SelectItem>
+                {distinctSubcategories.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">Brand tier</span>
+            <Select value={tier || ALL} onValueChange={(v) => setParam("tier", v === ALL ? null : v)}>
+              <SelectTrigger className="h-9 w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                <SelectItem value="starter">Starter</SelectItem>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="premium">Premium</SelectItem>
+                <SelectItem value="none">No tier</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">Bundle membership</span>
+            <Select value={bundle || ALL} onValueChange={(v) => setParam("bundle", v === ALL ? null : v)}>
+              <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All</SelectItem>
+                <SelectItem value="in">In a bundle</SelectItem>
+                <SelectItem value="out">Not in a bundle</SelectItem>
+                <SelectItem value="starter">Starter</SelectItem>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="premium">Premium</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">In stock</span>
-          <Select value={inStock} onValueChange={(v) => setInStock(v as any)}>
-            <SelectTrigger className="h-9 w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="in">In stock</SelectItem>
-              <SelectItem value="out">Out of stock</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Bundle membership</span>
-          <Select value={bundle} onValueChange={(v) => setBundle(v as any)}>
-            <SelectTrigger className="h-9 w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="in">In a bundle</SelectItem>
-              <SelectItem value="out">Not in a bundle</SelectItem>
-              <SelectItem value="starter">Starter</SelectItem>
-              <SelectItem value="standard">Standard</SelectItem>
-              <SelectItem value="premium">Premium</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2 h-9 self-end">
-          <Switch checked={missingCostOnly} onCheckedChange={setMissingCostOnly} id="missing-cost" />
-          <label htmlFor="missing-cost" className="text-xs">Missing cost only</label>
+
+        {/* Row 3: numeric ranges (margin % / markup %). Commit on blur to
+            avoid hammering the URL while typing. */}
+        <div className="flex flex-wrap items-end gap-3">
+          <RangePair
+            label="Margin %"
+            min={marginMinStr}
+            max={marginMaxStr}
+            onCommit={(lo, hi) => setParamPair("margin_min", lo, "margin_max", hi)}
+            range={{ lo: 0, hi: 100 }}
+          />
+          <RangePair
+            label="Markup %"
+            min={markupMinStr}
+            max={markupMaxStr}
+            onCommit={(lo, hi) => setParamPair("markup_min", lo, "markup_max", hi)}
+            range={{ lo: 0, hi: 200 }}
+          />
         </div>
       </div>
 
@@ -263,7 +438,7 @@ export default function BrandMarginsTab() {
           Apply to bundle tier
         </Button>
         <span className="text-xs text-muted-foreground ml-auto">
-          {sorted.length} of {allRows.length} brands
+          Showing {sorted.length} of {allRows.length} SKUs
         </span>
       </div>
 
@@ -322,6 +497,97 @@ export default function BrandMarginsTab() {
           categories={distinctCategories}
         />
       )}
+    </div>
+  );
+}
+
+// ── Filter primitives ───────────────────────────────────────────────
+
+interface TriPillOpt { value: string; label: string }
+function TriPill({
+  label, value, onChange, options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: TriPillOpt[];
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <div className="inline-flex h-9 rounded-md border border-border bg-card overflow-hidden">
+        {options.map((o, i) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`px-3 text-xs font-semibold border-l border-border first:border-l-0 ${
+              value === o.value ? "bg-forest text-primary-foreground" : "text-text-med hover:bg-muted"
+            } ${i === 0 ? "rounded-l-md" : ""} ${i === options.length - 1 ? "rounded-r-md" : ""}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Paired min/max numeric input. Commits to the URL on blur so typing
+// doesn't push every keystroke into history. Empty input = no bound.
+function RangePair({
+  label, min, max, onCommit, range,
+}: {
+  label: string;
+  min: string;
+  max: string;
+  onCommit: (lo: string | null, hi: string | null) => void;
+  range: { lo: number; hi: number };
+}) {
+  const [lo, setLo] = useState(min);
+  const [hi, setHi] = useState(max);
+  // External URL → local sync when values change outside this control
+  // (e.g. via Reset filters).
+  useEffect(() => setLo(min), [min]);
+  useEffect(() => setHi(max), [max]);
+  const commit = () => {
+    const sanitise = (v: string): string | null => {
+      const t = v.trim();
+      if (t === "") return null;
+      const n = Number(t);
+      if (!Number.isFinite(n)) return null;
+      return String(Math.max(0, n));
+    };
+    onCommit(sanitise(lo), sanitise(hi));
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <div className="inline-flex items-center gap-1">
+        <Input
+          type="number"
+          value={lo}
+          min={range.lo}
+          max={range.hi}
+          placeholder="min"
+          onChange={(e) => setLo(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+          className="h-9 w-20 text-sm"
+        />
+        <span className="text-text-light text-xs">to</span>
+        <Input
+          type="number"
+          value={hi}
+          min={range.lo}
+          max={range.hi}
+          placeholder="max"
+          onChange={(e) => setHi(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur(); }}
+          className="h-9 w-20 text-sm"
+        />
+      </div>
     </div>
   );
 }

@@ -19,6 +19,8 @@ export interface BrandMarginRow {
   category: string | null;
   subcategory: string | null;
   inStock: boolean;
+  isActive: boolean;          // products.is_active
+  tier: BundleTier | null;    // brands.tier (nullable on some rows)
   costPrice: number | null;
   retailPrice: number;
   bundleTiers: BundleTier[];
@@ -42,13 +44,14 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
   return useQuery<BrandMarginRow[]>({
     queryKey: ["brand-margins"],
     queryFn: async () => {
-      // 1. brands joined to active products (inner join).
+      // 1. brands joined to products (inner). We no longer filter to
+      // is_active=true here so the page's Active/Inactive filter can
+      // toggle between them. is_active and tier are exposed on the row.
       const { data: brandRows, error: be } = await supabase
         .from("brands")
         .select(
-          "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, products!inner(id, name, category, subcategory, is_active)",
-        )
-        .eq("products.is_active", true);
+          "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, tier, products!inner(id, name, category, subcategory, is_active)",
+        );
       if (be) throw be;
 
       // 2. Bundle membership map: product_id → set of tiers.
@@ -82,6 +85,11 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
           const order = { starter: 0, standard: 1, premium: 2 } as const;
           return order[a] - order[b];
         });
+        const rawTier = typeof b.tier === "string" ? b.tier.toLowerCase() : "";
+        const normalisedTier: BundleTier | null =
+          rawTier === "starter" || rawTier === "standard" || rawTier === "premium"
+            ? (rawTier as BundleTier)
+            : null;
         return {
           id: b.id,
           productId: b.product_id,
@@ -91,6 +99,8 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
           category: b.products?.category ?? null,
           subcategory: b.products?.subcategory ?? null,
           inStock: b.in_stock !== false,
+          isActive: b.products?.is_active !== false,
+          tier: normalisedTier,
           costPrice: b.cost_price == null ? null : Number(b.cost_price),
           retailPrice: Number(b.price) || 0,
           bundleTiers: tiers,
