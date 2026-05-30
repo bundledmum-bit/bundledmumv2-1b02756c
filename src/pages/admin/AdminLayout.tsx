@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdmin } from "@/hooks/useAdmin";
 import { AdminPermissionsProvider, usePermissions } from "@/hooks/useAdminPermissionsContext";
-import { useIdleTimeout } from "@/hooks/useIdleTimeout";
+import IdleTimeoutGuard from "@/components/admin/IdleTimeoutGuard";
 import { useQuery } from "@tanstack/react-query";
 import { usePendingApprovalsCount } from "@/hooks/useApprovals";
 import {
