@@ -60,7 +60,7 @@ function AdminLayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  useIdleTimeout();
+  
   const isSuperAdmin = adminUser?.role === "super_admin";
   const { data: pendingApprovalsCount } = usePendingApprovalsCount(isSuperAdmin);
   const [mobileOpen, setMobileOpen] = useState(false);
