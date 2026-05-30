@@ -12,6 +12,8 @@ export type QuoteFromShare = {
   service_fee: number;
   estimated_delivery_fee: number;
   delivery_fee_override: number | null;
+  gift_wrapping: boolean;
+  gift_wrap_fee: number;
   discount_amount: number;
   discount_reason: string | null;
   total: number;

@@ -10,6 +10,8 @@ import {
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import { getBrandImage } from "@/lib/brandImage";
 import StateZoneLgaCityCascade from "@/components/address/StateZoneLgaCityCascade";
+import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmModal";
+import { computeAutoFees, AUTO_FEES_FALLBACK, type AutoFeesResult } from "@/lib/computeAutoFees";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
@@ -747,7 +749,11 @@ function QuoteEditor({
     ? overrideFee
     : (parseInt(form.estimated_delivery_fee, 10) || 0);
   const discountNum = parseInt(form.discount_amount, 10) || 0;
-  const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum - discountNum);
+  // Gift wrap fee is DB-derived (trigger from settings.gift_wrap_price);
+  // include it in the live total so the editor reflects the persisted DB
+  // total without a refetch round-trip after toggling.
+  const giftWrapFeeNum = Number(((quoteData as any)?.gift_wrap_fee) || 0);
+  const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum + giftWrapFeeNum - discountNum);
 
   // Debounce the item-search input (~150 ms) — purely client-side filter.
   useEffect(() => {
@@ -924,6 +930,66 @@ function QuoteEditor({
   // Inline override editing UI state.
   const [overrideEditing, setOverrideEditing] = useState(false);
   const [overrideDraft, setOverrideDraft] = useState("");
+
+  // ── Gift wrap auto-rule (mirrors customer checkout) ────────────────
+  // Calls compute_auto_fees with the quote's items; the result tells us
+  // whether the rule fires (gift_wrap_should_apply) and the configured
+  // gift_wrap_price for display. Debounced 300ms. The DB trigger does
+  // the actual fee derivation on save — we never compute it here.
+  const [autoFees, setAutoFees] = useState<AutoFeesResult | null>(null);
+  const itemsSigForFees = useMemo(
+    () => JSON.stringify((items as any[]).map((it: any) => [String(it.product_id || ""), it.quantity, it.unit_price])),
+    [items],
+  );
+  useEffect(() => {
+    if ((items as any[]).length === 0) { setAutoFees(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const payload = (items as any[])
+        .filter((it: any) => it.product_id)
+        .map((it: any) => ({
+          product_id: String(it.product_id),
+          quantity: Number(it.quantity) || 0,
+          unit_price: Number(it.unit_price) || 0,
+        }));
+      const res = await computeAutoFees(payload);
+      if (!cancelled) setAutoFees(res);
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsSigForFees]);
+
+  // Gift-wrap mutation — sends gift_wrapping AND gift_wrap_admin_override
+  // in the SAME payload. Sending them in separate writes would let the
+  // trigger see admin_override=false on the first save and overwrite
+  // gift_wrapping back to the rule result.
+  const setGiftWrap = useMutation({
+    mutationFn: async (next: boolean) => {
+      if (!currentId) throw new Error("Save the quote first");
+      const { error } = await (supabase as any)
+        .from("quotes")
+        .update({ gift_wrapping: next, gift_wrap_admin_override: true })
+        .eq("id", currentId);
+      if (error) throw error;
+    },
+    onSuccess: () => { refetchQuote(); queryClient.invalidateQueries({ queryKey: ["admin-quotes"] }); },
+    onError: (e: any) => toast.error(e?.message || "Could not update gift wrap"),
+  });
+
+  const resetGiftWrapAuto = useMutation({
+    mutationFn: async () => {
+      if (!currentId) throw new Error("Save the quote first");
+      const { error } = await (supabase as any)
+        .from("quotes")
+        .update({ gift_wrap_admin_override: false })
+        .eq("id", currentId);
+      if (error) throw error;
+    },
+    onSuccess: () => { refetchQuote(); queryClient.invalidateQueries({ queryKey: ["admin-quotes"] }); },
+    onError: (e: any) => toast.error(e?.message || "Could not reset gift wrap"),
+  });
+
+  const [confirmSkipGiftWrap, setConfirmSkipGiftWrap] = useState(false);
 
   // ── Product search ─────────────────────────────────────────────
   const trimmedSearch = productSearch.trim();
@@ -1506,6 +1572,74 @@ function QuoteEditor({
                   </div>
                 );
               })()}
+
+              {/* Gift wrapping — mirrors customer-checkout's soft auto-rule
+                  with persistent admin override. The DB trigger derives
+                  gift_wrap_fee from settings; we only display + toggle. */}
+              {(() => {
+                const giftWrapping = !!((quoteData as any)?.gift_wrapping);
+                const adminOverride = !!((quoteData as any)?.gift_wrap_admin_override);
+                const ruleFires = !!autoFees?.gift_wrap_should_apply;
+                const giftPrice = Number(autoFees?.settings?.gift_wrap_price ?? 0);
+                const feeShown = Number(((quoteData as any)?.gift_wrap_fee) || 0) || giftPrice;
+                const pending = setGiftWrap.isPending || resetGiftWrapAuto.isPending;
+                const onToggle = () => {
+                  if (!canEdit || pending) return;
+                  if (giftWrapping) {
+                    // Unchecking — confirm only if the rule fires AND there's
+                    // no manual override yet (mirrors customer checkout).
+                    if (ruleFires && !adminOverride) {
+                      setConfirmSkipGiftWrap(true);
+                      return;
+                    }
+                    setGiftWrap.mutate(false);
+                  } else {
+                    setGiftWrap.mutate(true);
+                  }
+                };
+                return (
+                  <div>
+                    <label className={labelCls}>Gift wrapping</label>
+                    <div
+                      onClick={onToggle}
+                      className={`flex items-start gap-3 p-3 rounded-lg border ${giftWrapping ? "border-[#FFD54F] bg-[#FFF8E1]" : "border-border bg-card"} ${canEdit && !pending ? "cursor-pointer" : "cursor-default"}`}
+                    >
+                      <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${giftWrapping ? "border-[#F9A825] bg-[#F9A825]" : "border-border bg-card"}`}>
+                        {giftWrapping && <span className="text-primary-foreground text-[10px] font-bold">✓</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">
+                          Add gift wrapping
+                          {adminOverride ? (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-wide">Manually set</span>
+                          ) : ruleFires ? (
+                            <span className="px-1.5 py-0.5 rounded bg-forest-light text-forest text-[9px] font-bold uppercase tracking-wide">Auto</span>
+                          ) : null}
+                        </div>
+                        <div className="text-[11px] text-text-med mt-0.5">{fmtN(feeShown)}</div>
+                        <div className="text-[11px] text-text-light mt-0.5">
+                          {adminOverride
+                            ? "Admin override active. Click 'Reset to auto' to re-apply the rule."
+                            : ruleFires
+                              ? "Auto-applied — cart qualifies for gift packaging."
+                              : "Not auto-applied for this cart."}
+                        </div>
+                        {adminOverride && canEdit && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); resetGiftWrapAuto.mutate(); }}
+                            disabled={pending}
+                            className="mt-1.5 text-xs font-semibold text-forest hover:underline disabled:opacity-40"
+                          >
+                            Reset to auto
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="grid grid-cols-1 gap-2">
                 <div>
                   <label className={labelCls}>Discount (₦)</label>
@@ -1696,6 +1830,19 @@ function QuoteEditor({
 
       {/* Image zoom modal */}
       <ImageZoomModal src={zoomSrc} onClose={() => setZoomSrc(null)} />
+
+      {/* Skip-gift-wrap confirmation — same component as customer
+          checkout, with identical copy. Opens only when unchecking
+          would override the auto-rule. */}
+      {confirmSkipGiftWrap && (
+        <SkipGiftWrapConfirmModal
+          onKeep={() => setConfirmSkipGiftWrap(false)}
+          onSkip={() => {
+            setGiftWrap.mutate(false);
+            setConfirmSkipGiftWrap(false);
+          }}
+        />
+      )}
 
       {/* Size picker modal */}
       {pendingSizeProduct && (

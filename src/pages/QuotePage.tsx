@@ -355,6 +355,15 @@ export default function QuotePage() {
               <span className="text-text-med">Delivery</span>
               <span>{deliveryFee === 0 ? "FREE" : fmt(deliveryFee)}</span>
             </div>
+            {/* Gift wrapping — shown only when the admin set it on the
+                quote. No admin indicators (Auto / Manually set) leak
+                through here; the customer just sees the fee line. */}
+            {quote.gift_wrapping && (
+              <div className="flex justify-between">
+                <span className="text-text-med">Gift wrapping</span>
+                <span>{fmt(quote.gift_wrap_fee)}</span>
+              </div>
+            )}
             {hasDiscount && (
               <div className="flex justify-between text-forest">
                 <span>
