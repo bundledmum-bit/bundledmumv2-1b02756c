@@ -146,6 +146,7 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
       <div class="totals-line"><span>Subtotal</span><span class="v" id="subtotalVal">₦0</span></div>
       <div class="totals-line"><span>Delivery Fee</span><span class="v" id="deliveryVal">₦0</span></div>
       <div class="totals-line" id="serviceFeeRow"><span>Service Fee</span><span class="v" id="serviceFeeVal">₦0</span></div>
+      <div class="totals-line" id="giftWrapRow" style="display:none"><span>Gift wrapping</span><span class="v" id="giftWrapVal">₦0</span></div>
       <div class="totals-line discount" id="discountRow" style="display:none">
         <span>Discount <span id="couponTag" style="background:var(--green-light);color:var(--green);padding:1px 5px;border-radius:3px;font-size:6.5px;font-weight:800;margin-left:3px"></span></span>
         <span class="v" id="discountVal">-₦0</span>
@@ -204,6 +205,7 @@ function populate(data){
   document.getElementById('subtotalVal').textContent=fmt(data.subtotal);
   document.getElementById('deliveryVal').textContent=fmt(data.delivery_fee);
   document.getElementById('serviceFeeVal').textContent=fmt(data.service_fee);
+  if(data.gift_wrapping){document.getElementById('giftWrapRow').style.display='flex';document.getElementById('giftWrapVal').textContent=fmt(data.gift_wrap_fee||0);}
   document.getElementById('totalVal').textContent=fmt(data.total);
   if(data.discount_amount>0){document.getElementById('discountRow').style.display='flex';document.getElementById('discountVal').textContent='-'+fmt(data.discount_amount);if(data.coupon_code)document.getElementById('couponTag').textContent=data.coupon_code;}
   document.getElementById('payMethodLabel').textContent=cap(data.payment_method)||'Card Payment';
@@ -281,6 +283,8 @@ export async function openBrandedInvoice(order: any, adminUserId?: string) {
       subtotal: order.subtotal,
       delivery_fee: order.delivery_fee,
       service_fee: order.service_fee,
+      gift_wrapping: !!order.gift_wrapping,
+      gift_wrap_fee: order.gift_wrap_fee || 0,
       discount_amount: order.discount_amount || 0,
       coupon_code: order.coupon_code || null,
       total: order.total,

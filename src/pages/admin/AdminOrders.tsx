@@ -768,6 +768,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{fmt(o.subtotal || 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Delivery Fee</span><span>{fmt(o.delivery_fee || 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Service Fee</span><span>{fmt(o.service_fee || 0)}</span></div>
+            {o.gift_wrapping && <div className="flex justify-between"><span className="text-muted-foreground">Gift wrapping</span><span>{fmt(o.gift_wrap_fee || 0)}</span></div>}
             {(o.discount_amount || 0) > 0 && <div className="flex justify-between text-green-600"><span>Coupon Discount</span><span>-{fmt(o.discount_amount)}</span></div>}
             {(o.spend_discount_amount || 0) > 0 && <div className="flex justify-between text-green-600"><span>Spend Discount ({o.spend_discount_percent}%)</span><span>-{fmt(o.spend_discount_amount)}</span></div>}
             <div className="flex justify-between font-bold text-sm pt-2 border-t border-border"><span>Total</span><span>{fmt(o.total || 0)}</span></div>
@@ -2235,7 +2236,9 @@ function EditOrderCard({
     if (error) { toast.error(error.message); return; }
     const subtotal = (latest || []).reduce((s: number, r: any) => s + Number(r.line_total || 0), 0);
     const discount = Number(o.discount_amount || 0) + Number(o.spend_discount_amount || 0);
-    const total = subtotal + Number(o.delivery_fee || 0) + Number(o.service_fee || 0) - discount;
+    // Include gift_wrap_fee so editing line items on a gift-wrapped order
+    // doesn't write a total that omits the wrap charge.
+    const total = subtotal + Number(o.delivery_fee || 0) + Number(o.service_fee || 0) + Number(o.gift_wrap_fee || 0) - discount;
     const { error: upErr } = await supabase
       .from("orders")
       .update({

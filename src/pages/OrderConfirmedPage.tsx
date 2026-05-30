@@ -137,7 +137,9 @@ export default function OrderConfirmedPage() {
       `Items:`,
       ...items.map((i: any) => `  ${i.bundle_name ? `[${i.bundle_name}] ` : ""}${i.product_name} × ${i.quantity} — ${fmt(i.line_total)}${i.brand_name ? ` (${i.brand_name})` : ""}${i.size ? ` Size: ${i.size}` : ""}`),
       ``, `Subtotal: ${fmt(order.subtotal)}`, `Delivery: ${order.is_express_order ? "Will be communicated" : (order.delivery_fee === 0 ? "FREE" : fmt(order.delivery_fee))}`,
-      `Service & Packaging: ${fmt(order.service_fee)}`, `Total: ${fmt(order.total)}`, ``, `Payment: ${payLabels[order.payment_method] || ""}`,
+      `Service & Packaging: ${fmt(order.service_fee)}`,
+      ...(order.gift_wrapping ? [`Gift wrapping: ${fmt(order.gift_wrap_fee || 0)}`] : []),
+      `Total: ${fmt(order.total)}`, ``, `Payment: ${payLabels[order.payment_method] || ""}`,
     ].filter(Boolean);
     const blob = new Blob([lines.join("\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -264,6 +266,9 @@ export default function OrderConfirmedPage() {
                 )}
               </div>
               <div className="flex justify-between"><span className="text-text-med">Service & Packaging</span><span>{fmt(order.service_fee)}</span></div>
+              {order.gift_wrapping && (
+                <div className="flex justify-between"><span className="text-text-med">Gift wrapping</span><span>{fmt(order.gift_wrap_fee || 0)}</span></div>
+              )}
               <div className="flex justify-between pt-2 border-t border-border font-bold text-base"><span>Total</span><span className="text-forest">{fmt(order.total)}</span></div>
             </div>
           </div>

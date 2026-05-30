@@ -118,6 +118,9 @@ export default function TrackOrderPage() {
                 )}
               </div>
               <div className="flex justify-between"><span className="text-text-med">Service Fee</span><span>{fmt(order.service_fee)}</span></div>
+              {order.gift_wrapping && (
+                <div className="flex justify-between"><span className="text-text-med">Gift wrapping</span><span>{fmt(order.gift_wrap_fee || 0)}</span></div>
+              )}
               <div className="flex justify-between font-bold pt-1 border-t border-border"><span>Total</span><span className="text-forest">{fmt(order.total)}</span></div>
             </div>
           </div>
