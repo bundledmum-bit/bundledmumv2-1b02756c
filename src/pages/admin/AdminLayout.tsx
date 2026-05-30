@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdmin } from "@/hooks/useAdmin";
 import { AdminPermissionsProvider, usePermissions } from "@/hooks/useAdminPermissionsContext";
-import { useIdleTimeout } from "@/hooks/useIdleTimeout";
+import IdleTimeoutGuard from "@/components/admin/IdleTimeoutGuard";
 import { useQuery } from "@tanstack/react-query";
 import { usePendingApprovalsCount } from "@/hooks/useApprovals";
 import {
@@ -60,7 +60,7 @@ function AdminLayoutInner() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  useIdleTimeout();
+  
   const isSuperAdmin = adminUser?.role === "super_admin";
   const { data: pendingApprovalsCount } = usePendingApprovalsCount(isSuperAdmin);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -270,6 +270,7 @@ function AdminLayoutInner() {
 
   return (
     <div className="min-h-screen flex bg-muted/30">
+      <IdleTimeoutGuard />
       <Helmet>
         <link rel="manifest" href="/admin-manifest.webmanifest" />
         <meta name="theme-color" content="#2D6A4F" />
