@@ -47,11 +47,17 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
       // 1. brands joined to products (inner). We no longer filter to
       // is_active=true here so the page's Active/Inactive filter can
       // toggle between them. is_active and tier are exposed on the row.
+      // Supabase's implicit 1000-row cap was silently clipping the SKU
+      // table (1,358 brands existed; only 1,000 were rendered). 9999 is
+      // the PostgREST single-call max and gives ~7x headroom; if the
+      // catalog ever exceeds that, this becomes a paginate-or-virtualize
+      // problem.
       const { data: brandRows, error: be } = await supabase
         .from("brands")
         .select(
           "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, tier, products!inner(id, name, category, subcategory, is_active)",
-        );
+        )
+        .range(0, 9999);
       if (be) throw be;
 
       // 2. Bundle membership map: product_id → set of tiers.
