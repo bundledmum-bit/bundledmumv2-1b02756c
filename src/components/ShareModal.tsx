@@ -192,9 +192,9 @@ export default function ShareModal({ onClose, title, subtitle, items, totalPrice
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
       <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" />
-      <div className="relative bg-card rounded-[20px] shadow-2xl max-w-[420px] w-full max-h-[90vh] overflow-y-auto animate-fade-in p-5" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-card rounded-[20px] shadow-2xl max-w-[420px] w-full max-h-[90vh] overflow-y-auto animate-fade-in p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center hover:bg-foreground/20">
           <X className="h-4 w-4" />
         </button>

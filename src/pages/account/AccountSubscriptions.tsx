@@ -337,8 +337,8 @@ function ChangeDeliveryDayModal({ row, onClose }: { row: SubscriptionRow; onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-bold text-sm">Change delivery day</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
@@ -406,8 +406,8 @@ function CancelModal({ row, onClose }: { row: SubscriptionRow; onClose: () => vo
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-bold text-sm inline-flex items-center gap-1.5"><XCircle className="w-4 h-4 text-destructive" /> Cancel subscription</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
@@ -483,8 +483,8 @@ function ChangeBrandModal({ item, onClose }: { item: SubscriptionItemRow & { pro
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-bold text-sm">Change brand</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
@@ -614,8 +614,8 @@ function AddProductsModal({ row, onClose }: { row: SubscriptionRow; onClose: () 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92svh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92svh] flex flex-col max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
           <h3 className="font-bold text-sm">Add products to next cycle</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>

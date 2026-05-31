@@ -186,8 +186,8 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
   const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }));
 
   return (
-    <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-bold">{coupon.id ? "Edit Coupon" : "Create Coupon"}</h3>
           <button onClick={onClose}><X className="w-5 h-5" /></button>

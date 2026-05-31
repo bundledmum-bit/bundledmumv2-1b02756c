@@ -376,13 +376,13 @@ export default function GiftResultsPage() {
           Checkout CTA navigates away and dismisses the modal. */}
       {modalBundle && (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 max-md:items-end max-md:p-0"
           onClick={closeBundleModal}
           role="dialog"
           aria-modal="true"
         >
           <div
-            className="relative max-w-2xl w-full bg-card rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            className="relative max-w-2xl w-full bg-card rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Sticky header — close button always visible regardless

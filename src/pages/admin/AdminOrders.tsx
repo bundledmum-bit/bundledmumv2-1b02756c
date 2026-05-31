@@ -961,8 +961,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
 
       {/* Cancel Modal */}
       {showCancel && (
-        <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center" onClick={() => setShowCancel(false)}>
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => setShowCancel(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-sm mb-4">Cancel Order</h3>
             <label className="text-xs font-semibold text-muted-foreground">Reason</label>
             <select value={cancelReason} onChange={e => setCancelReason(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mb-3 capitalize">
@@ -998,8 +998,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
 
       {/* Return Modal */}
       {showReturn && (
-        <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center" onClick={() => setShowReturn(false)}>
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => setShowReturn(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-sm mb-4">Process Return</h3>
             <label className="text-xs font-semibold text-muted-foreground">Reason</label>
             <select value={returnReason} onChange={e => setReturnReason(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mb-3 capitalize">
@@ -1176,8 +1176,8 @@ function PaymentStatusControl({
           </button>
         </div>
         {showTransferDlg && (
-          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => !submitting && setShowTransferDlg(false)}>
-            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !submitting && setShowTransferDlg(false)}>
+            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
               <h3 className="text-base font-bold mb-2">Confirm Bank Transfer Payment</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Confirm you have received <span className="font-semibold text-foreground">{formatNaira(o.total)}</span> into your <span className="font-semibold">{bank.name}</span> account (<span className="font-mono">{bank.account}</span>) before marking this order as paid.
@@ -1235,8 +1235,8 @@ function PaymentStatusControl({
           )}
         </div>
         {showOverrideDlg && (
-          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => !submitting && setShowOverrideDlg(false)}>
-            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !submitting && setShowOverrideDlg(false)}>
+            <div className="bg-card border border-border rounded-xl w-full max-w-md p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
               <h3 className="text-base font-bold mb-3 flex items-center gap-2 text-destructive">
                 <XIcon className="w-5 h-5" /> Override Card Payment Status
               </h3>
@@ -1558,8 +1558,8 @@ function InitiateReturnModal({ order: o, onClose, onSubmitted }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-lg max-h-[90svh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-lg max-h-[90svh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <h3 className="font-bold text-sm flex items-center gap-1.5"><RotateCcw className="w-4 h-4" /> Initiate Return — {o.order_number}</h3>
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center"><XIcon className="w-4 h-4" /></button>
@@ -2507,8 +2507,8 @@ function NotifyConfirmModal({
 }: { variant: "updated" | "removed"; pending: boolean; onClose: () => void; onConfirm: () => void }) {
   const isRemoved = variant === "removed";
   return (
-    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4" onClick={() => !pending && onClose()}>
-      <div className="bg-card border border-border rounded-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !pending && onClose()}>
+      <div className="bg-card border border-border rounded-xl max-w-md w-full p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-base mb-2">
           {isRemoved ? "Notify customer about refund?" : "Notify customer about updated order?"}
         </h3>
@@ -2600,8 +2600,8 @@ function AddItemDialog({
   };
 
   return (
-    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4" onClick={() => !adding && onClose()}>
-      <div className="bg-card border border-border rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !adding && onClose()}>
+      <div className="bg-card border border-border rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-base">Add Item to Order</h3>
           <button onClick={onClose} className="p-1 hover:bg-muted rounded"><XIcon className="w-4 h-4" /></button>

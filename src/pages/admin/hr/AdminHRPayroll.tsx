@@ -438,8 +438,8 @@ function PayrollEntryModal({ employee, run, year, month, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92svh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-2xl max-h-[92svh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <div>
             <h3 className="font-bold text-sm">{isEdit ? "Edit" : "Create"} payroll run</h3>
@@ -563,8 +563,8 @@ function MarkPaidModal({ run, onClose, onConfirm, busy }: {
   const [ref, setRef] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-bold text-sm">Mark as paid</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>

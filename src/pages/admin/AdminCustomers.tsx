@@ -111,8 +111,8 @@ export default function AdminCustomers() {
       )}
 
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center" onClick={() => setSelectedCustomer(null)}>
-          <div className="bg-card border border-border rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => setSelectedCustomer(null)}>
+          <div className="bg-card border border-border rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-bold">{selectedCustomer.full_name || selectedCustomer.email}</h3>
               <button onClick={() => setSelectedCustomer(null)}><X className="w-5 h-5" /></button>

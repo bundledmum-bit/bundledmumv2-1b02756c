@@ -113,10 +113,10 @@ export default function ExitIntentPopup({ stepsCompleted, totalSteps, onContinue
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 max-md:items-end max-md:p-0">
       <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" onClick={() => setShow(false)} />
       <div
-        className="relative rounded-[22px] shadow-2xl max-w-[420px] w-full p-6 md:p-8 animate-fade-in text-center"
+        className="relative rounded-[22px] shadow-2xl max-w-[420px] w-full p-6 md:p-8 animate-fade-in text-center max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
         style={{
           backgroundColor: s.quiz_exit_popup_bg_color,
           color: s.quiz_exit_popup_text_color,

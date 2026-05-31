@@ -20,14 +20,14 @@ export default function SkipGiftWrapConfirmModal({ onKeep, onSkip }: Props) {
   }, [onKeep]);
   return (
     <div
-      className="fixed inset-0 z-[200] bg-foreground/60 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[200] bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0"
       onClick={onKeep}
       role="dialog"
       aria-modal="true"
       aria-labelledby="skip-gift-wrap-title"
     >
       <div
-        className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5"
+        className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 id="skip-gift-wrap-title" className="font-bold text-base mb-2">Skip gift wrapping?</h3>

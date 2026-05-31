@@ -533,8 +533,8 @@ function CalendarTab() {
       </div>
 
       {popover && (
-        <div className="fixed inset-0 z-40 bg-foreground/40 flex items-center justify-center p-4" onClick={() => setPopover(null)}>
-          <div className="bg-card border border-border rounded-xl max-w-sm w-full p-4 space-y-1 text-sm" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 bg-foreground/40 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setPopover(null)}>
+          <div className="bg-card border border-border rounded-xl max-w-sm w-full p-4 space-y-1 text-sm max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <div className="font-bold">{popover.hr_employees?.full_name}</div>
             <div className="text-xs text-text-med">{popover.hr_leave_types?.name || "Leave"}</div>
             <div className="text-xs">{popover.start_date} → {popover.end_date}</div>

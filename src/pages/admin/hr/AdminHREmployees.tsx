@@ -218,8 +218,8 @@ function EmployeeFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <h3 className="font-bold text-sm">{isEdit ? `Edit ${editing?.full_name}` : "Add employee"}</h3>
           <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
@@ -590,8 +590,8 @@ function EmployeeDetailPanel({ employee: e, onClose, onEdit }: { employee: HREmp
       {letterOpen && <EmploymentLetterModal employeeId={e.id} onClose={() => setLetterOpen(false)} />}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-[60] bg-foreground/60 flex items-center justify-center p-4" onClick={closeDeleteModal}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-md p-5 space-y-3" onClick={ev => ev.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={closeDeleteModal}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-md p-5 space-y-3 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={ev => ev.stopPropagation()}>
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-destructive" />
               <h3 className="font-bold text-sm">Delete Employee</h3>
@@ -851,8 +851,8 @@ function EmploymentLetterModal({ employeeId, onClose }: { employeeId: string; on
   }, [employeeId]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10 print:hidden">
           <h3 className="font-bold text-sm inline-flex items-center gap-1.5"><FileText className="w-4 h-4" /> Employment confirmation letter</h3>
           <div className="flex items-center gap-2">

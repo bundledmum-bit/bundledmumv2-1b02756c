@@ -295,14 +295,14 @@ export default function AnnouncementEngine({ topOffset = 0 }: Props) {
       {/* Popup modal */}
       {activePopup && (
         <div
-          className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 max-md:items-end max-md:p-0"
           onClick={closePopup}
           role="dialog"
           aria-modal="true"
           aria-label={activePopup.title || "Announcement"}
         >
           <div
-            className="relative max-w-md w-full rounded-xl shadow-2xl p-6 pt-8"
+            className="relative max-w-md w-full rounded-xl shadow-2xl p-6 pt-8 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
             style={{
               backgroundColor: activePopup.bg_color || "#ffffff",
               color: activePopup.text_color || "#111827",

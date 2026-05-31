@@ -753,8 +753,8 @@ function FreeDeliveryThresholdsTab() {
       )}
 
       {deletePrompt && (
-        <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4" onClick={() => setDeletePrompt(null)}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setDeletePrompt(null)}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-base mb-1">Delete "{deletePrompt.name}"?</h3>
             <p className="text-xs text-text-med">
               Are you sure you want to delete "{deletePrompt.name}"? This will hide it from customers immediately.

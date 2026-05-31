@@ -818,11 +818,11 @@ export default function CartPage() {
       {/* Share-cart modal — WhatsApp deep-link + clipboard copy */}
       {shareOpen && (
         <div
-          className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
+          className="fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4 max-md:items-end max-md:p-0"
           onClick={() => { setShareOpen(false); setShowManualCopy(false); }}
         >
           <div
-            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
+            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-3 mb-3">

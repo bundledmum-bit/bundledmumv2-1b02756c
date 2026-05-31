@@ -556,8 +556,8 @@ function ConfirmToggleModal({ template, onCancel, onConfirm, busy }: {
 }) {
   const pausing = template.is_active !== false;
   return (
-    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onCancel}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start gap-3">
           <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${pausing ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
             <Power className="w-4 h-4" />
@@ -652,8 +652,8 @@ function SendTestModal({ template, defaultEmail, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-sm">Send test — {template.name}</h3>
           <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>

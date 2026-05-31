@@ -181,8 +181,8 @@ function RequestLetterSection({ employeeId }: { employeeId: string }) {
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 print:bg-transparent print:p-0" onClick={() => setOpen(false)}>
-          <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto print:max-w-none print:border-0" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 print:bg-transparent print:p-0 max-md:items-end max-md:p-0" onClick={() => setOpen(false)}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-3xl max-h-[92svh] overflow-y-auto print:max-w-none print:border-0 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10 print:hidden">
               <h3 className="font-bold text-sm inline-flex items-center gap-1.5"><FileText className="w-4 h-4" /> Employment confirmation letter</h3>
               <div className="flex items-center gap-2">

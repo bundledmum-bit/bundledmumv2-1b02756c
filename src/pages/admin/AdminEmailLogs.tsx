@@ -317,8 +317,8 @@ function EmailLogDetail({ row, onClose }: { row: EmailLogRow; onClose: () => voi
   const typeMeta = TYPE_BADGE[row.send_to_type || ""] || { label: row.send_to_type || "—", cls: "bg-muted text-text-med" };
   const statusMeta = STATUS_BADGE[row.status || ""] || { label: row.status || "—", cls: "bg-muted text-text-med" };
   return (
-    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <header className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <div>
             <h2 className="font-bold text-sm">Email log</h2>

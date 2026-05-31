@@ -1846,8 +1846,8 @@ function QuoteEditor({
 
       {/* Size picker modal */}
       {pendingSizeProduct && (
-        <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4" onClick={() => setPendingSizeProduct(null)}>
-          <div className="bg-card border border-border rounded-xl max-w-md w-full p-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setPendingSizeProduct(null)}>
+          <div className="bg-card border border-border rounded-xl max-w-md w-full p-4 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-sm">Select a size</h3>
               <button onClick={() => setPendingSizeProduct(null)}><X className="w-4 h-4" /></button>
@@ -2139,8 +2139,8 @@ function SendQuoteDialog({
   };
 
   return (
-    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4" onClick={() => !sending && onClose()}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !sending && onClose()}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-[440px] p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">Send Quote</h3>
           <button onClick={onClose}><X className="w-4 h-4" /></button>
@@ -2238,8 +2238,8 @@ function ConvertQuoteDialog({
   };
 
   return (
-    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4" onClick={() => !placing && onClose()}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-foreground/60 z-[160] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => !placing && onClose()}>
+      <div className="bg-card border border-border rounded-xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold">Place Order for {quote?.customer_name || "this quote"}</h3>
           <button onClick={onClose}><X className="w-4 h-4" /></button>

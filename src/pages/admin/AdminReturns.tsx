@@ -541,8 +541,8 @@ function ReturnDetailSheet({
 
       {/* Reject modal */}
       {rejectOpen && (
-        <div className="fixed inset-0 z-[60] bg-foreground/50 flex items-center justify-center p-4" onClick={() => setRejectOpen(false)}>
-          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setRejectOpen(false)}>
+          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-sm mb-3">Reject return</h3>
             <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Reason (required)</label>
             <textarea
@@ -564,8 +564,8 @@ function ReturnDetailSheet({
 
       {/* Refund confirm modal */}
       {refundConfirmOpen && (
-        <div className="fixed inset-0 z-[60] bg-foreground/50 flex items-center justify-center p-4" onClick={() => setRefundConfirmOpen(false)}>
-          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[60] bg-foreground/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setRefundConfirmOpen(false)}>
+          <div className="bg-card border border-border rounded-xl p-5 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-sm mb-2">Mark refund issued</h3>
             <p className="text-xs text-text-med mb-3">
               Recording a refund of <b>{fmt(refundAmount)}</b> to <b>{row.customer_name || "customer"}</b>.

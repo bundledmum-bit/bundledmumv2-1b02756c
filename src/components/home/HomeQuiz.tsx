@@ -1181,11 +1181,11 @@ function FloorWarningModal({
 }) {
   return createPortal(
     <div
-      className="fixed inset-0 z-[600] bg-black/50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[600] bg-black/50 flex items-center justify-center p-4 max-md:items-end max-md:p-0"
       onClick={onClose}
     >
       <div
-        className="bg-card rounded-2xl max-w-sm w-full p-5 shadow-xl"
+        className="bg-card rounded-2xl max-w-sm w-full p-5 shadow-xl max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3 mb-3">

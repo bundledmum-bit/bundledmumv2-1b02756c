@@ -148,11 +148,11 @@ export default function EditCartItemModal({
 
   return (
     <div
-      className="fixed inset-0 bg-foreground/60 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 bg-foreground/60 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0"
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto"
+        className="bg-card border border-border rounded-xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">

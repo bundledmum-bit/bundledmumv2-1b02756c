@@ -411,11 +411,11 @@ export default function QuotePage() {
       {/* Confirmation modal */}
       {confirmReplace && (
         <div
-          className="quote-print-hide fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4"
+          className="quote-print-hide fixed inset-0 bg-foreground/60 z-[150] flex items-center justify-center p-4 max-md:items-end max-md:p-0"
           onClick={() => !loadingCart && setConfirmReplace(false)}
         >
           <div
-            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5"
+            className="bg-card border border-border rounded-xl w-full max-w-[420px] p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="font-bold text-base mb-1">Replace your cart?</h3>
