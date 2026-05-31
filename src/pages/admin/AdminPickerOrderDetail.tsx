@@ -174,7 +174,7 @@ export default function AdminPickerOrderDetail() {
     return (
       <div className="p-4 md:p-6 max-w-[720px] mx-auto space-y-3">
         <p className="text-sm text-text-med">Order unavailable.</p>
-        <Button size="sm" variant="outline" onClick={() => navigate("/admin/picking")}>
+        <Button className="h-10" size="sm" variant="outline" onClick={() => navigate("/admin/picking")}>
           Back to queue
         </Button>
       </div>
@@ -189,7 +189,7 @@ export default function AdminPickerOrderDetail() {
     return (
       <div className="p-4 md:p-6 max-w-[720px] mx-auto space-y-3">
         <p className="text-sm text-text-med">Already assigned to another picker.</p>
-        <Button size="sm" variant="outline" onClick={() => navigate("/admin/picking")}>
+        <Button className="h-10" size="sm" variant="outline" onClick={() => navigate("/admin/picking")}>
           Back to queue
         </Button>
       </div>

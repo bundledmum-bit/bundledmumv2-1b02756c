@@ -227,7 +227,7 @@ export default function AdminEmailLogs() {
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-widest font-semibold text-text-med">
+            <thead className="bg-muted/40 text-[10px] uppercase tracking-widest font-semibold text-text-med sticky top-0 z-10">
               <tr>
                 <th className="text-left px-3 py-2">Sent at</th>
                 <th className="text-left px-3 py-2">Recipient</th>

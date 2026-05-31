@@ -200,14 +200,14 @@ export default function OrderLinesReportTab() {
           <select value={orderStatusFilter} onChange={e => setOrderStatusFilter(e.target.value)} className={selCls}><option>All</option><option>delivered</option><option>cancelled</option><option>returned</option></select></div>
         <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} placeholder="Search Order/Customer/SKU..." className={`${selCls} w-48`} />
         <div className="ml-auto flex gap-1">
-          <Button variant="outline" size="sm" onClick={exportCSV} className="text-xs"><Download className="w-3 h-3 mr-1" />CSV</Button>
-          <Button variant="outline" size="sm" onClick={exportExcel} className="text-xs"><Download className="w-3 h-3 mr-1" />Excel</Button>
+          <Button variant="outline" size="sm" onClick={exportCSV} className="text-xs h-10"><Download className="w-3 h-3 mr-1" />CSV</Button>
+          <Button variant="outline" size="sm" onClick={exportExcel} className="text-xs h-10"><Download className="w-3 h-3 mr-1" />Excel</Button>
         </div>
       </div>
 
       <div className="overflow-x-auto bg-card border border-border rounded-xl">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-background">
             <tr className="text-muted-foreground border-b border-border bg-muted/30">
               {[
                 { key: "Order_ID", label: "Order ID" }, { key: "Order_Date", label: "Order Date" },

@@ -259,7 +259,7 @@ function FeaturedBestsellerPicker() {
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Product</th>
               <th className="px-3 py-2">Category</th>

@@ -68,7 +68,7 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
   if (!session) {
     return (
       <div className="space-y-3">
-        <Button variant="outline" size="sm" onClick={() => navigate("/admin/picking")}>
+        <Button className="h-10" variant="outline" size="sm" onClick={() => navigate("/admin/picking")}>
           <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to queue
         </Button>
         <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
@@ -83,7 +83,7 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
   if (items.length === 0) {
     return (
       <div className="space-y-3">
-        <Button variant="outline" size="sm" onClick={() => navigate("/admin/picking")}>
+        <Button className="h-10" variant="outline" size="sm" onClick={() => navigate("/admin/picking")}>
           <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to queue
         </Button>
         <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
@@ -116,7 +116,7 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/admin/picking")}>
+          <Button className="h-10" variant="ghost" size="sm" onClick={() => navigate("/admin/picking")}>
             <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to queue
           </Button>
           <h1 className="text-xl font-bold mt-1">Picking Order #{orderNumber}</h1>
@@ -184,7 +184,7 @@ export default function PickingDetail({ sessionId, orderId, fresh }: Props) {
                     </div>
                     <div className="text-sm font-semibold whitespace-nowrap">× {oi.quantity || 1}</div>
                     {!it.is_picked ? (
-                      <Button
+                      <Button className="h-10"
                         size="sm"
                         variant="outline"
                         onClick={() => mark.mutate({ itemId: it.id, sessionId: (session as any).id })}

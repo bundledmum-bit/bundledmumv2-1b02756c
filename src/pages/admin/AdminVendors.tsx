@@ -135,7 +135,7 @@ export default function AdminVendors() {
           ) : (
             <div className="overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm">
-                <thead className="bg-muted/30">
+                <thead className="bg-muted/30 sticky top-0 z-10">
                   <tr className="text-left text-xs text-muted-foreground">
                     <th className="p-2">Name</th>
                     <th className="p-2">Contact Person</th>
@@ -284,7 +284,7 @@ function ProductsPerVendorTab({
       ) : (
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-sm">
-            <thead className="bg-muted/30">
+            <thead className="bg-muted/30 sticky top-0 z-10">
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="p-2">SKU</th>
                 <th className="p-2">Product</th>
@@ -399,7 +399,7 @@ function OrdersPerVendorTab({
       ) : (
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-sm">
-            <thead className="bg-muted/30">
+            <thead className="bg-muted/30 sticky top-0 z-10">
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="p-2">Order #</th>
                 <th className="p-2">Date</th>

@@ -286,7 +286,7 @@ export default function AdminComingSoon() {
           <div className="overflow-hidden border border-border rounded-lg">
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="bg-muted/50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-semibold text-text-med text-xs">WhatsApp number</th>
                   <th className="px-4 py-2.5 text-left font-semibold text-text-med text-xs">Date signed up</th>
@@ -402,7 +402,7 @@ function PreviewTokensSection() {
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Label</th>
               <th className="px-3 py-2">Link</th>

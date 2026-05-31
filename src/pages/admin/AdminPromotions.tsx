@@ -236,7 +236,7 @@ function SpendThresholdsTab() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b border-border bg-muted/50">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-med">Name</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-med">Threshold</th>
@@ -692,7 +692,7 @@ function FreeDeliveryThresholdsTab() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-med">Name</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-med">Scope</th>

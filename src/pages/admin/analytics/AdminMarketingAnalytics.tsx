@@ -413,7 +413,7 @@ function TrafficSourcesView() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Source</th>
               <th className="px-3 py-2">Medium</th>
@@ -457,7 +457,7 @@ function UtmView() {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
-        <thead className="bg-muted/40">
+        <thead className="bg-muted/40 sticky top-0 z-10">
           <tr className="text-left">
             <th className="px-3 py-2">Campaign</th>
             <th className="px-3 py-2">Source</th>
@@ -555,7 +555,7 @@ function ReferralView() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Code</th>
               <th className="px-3 py-2">Referrer</th>

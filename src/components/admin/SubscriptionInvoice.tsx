@@ -130,7 +130,7 @@ export default function SubscriptionInvoice({
       <section>
         <div className="overflow-x-auto">
         <table className="w-full text-xs border-t border-black/20">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-background">
             <tr className="bg-black/5 text-left">
               <th className="px-2 py-1.5 w-8">#</th>
               <th className="px-2 py-1.5">Product</th>

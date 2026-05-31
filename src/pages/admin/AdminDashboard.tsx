@@ -216,7 +216,7 @@ export default function AdminDashboard() {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Refreshes every 5 min</span>
-          <Button
+          <Button className="h-10"
             variant="outline"
             size="sm"
             onClick={() => refetch()}
@@ -532,7 +532,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-background">
                       <tr className="border-b border-border text-left text-xs text-muted-foreground">
                         <th className="py-2 pr-2 font-semibold">Rank</th>
                         <th className="py-2 pr-2 font-semibold">Product</th>
@@ -641,7 +641,7 @@ function DashboardSkeleton({ todayLabel }: { todayLabel: string }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-muted-foreground">Refreshes every 5 min</span>
-          <Button variant="outline" size="sm" disabled>
+          <Button className="h-10" variant="outline" size="sm" disabled>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
             Refresh now
           </Button>

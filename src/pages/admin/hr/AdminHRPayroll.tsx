@@ -129,7 +129,7 @@ function MonthlyRunView({ year, month, activeEmployees, runs }: {
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-muted/40">
+            <thead className="bg-muted/40 sticky top-0 z-10">
               <tr className="text-left">
                 <th className="px-3 py-2">ID</th>
                 <th className="px-3 py-2">Employee</th>
@@ -262,7 +262,7 @@ function HistoryView({ runs, employees }: { runs: HRPayrollRun[]; employees: HRE
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2">Period</th>

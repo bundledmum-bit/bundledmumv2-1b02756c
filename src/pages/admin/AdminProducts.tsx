@@ -243,7 +243,7 @@ export default function AdminProducts() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/50">
+            <thead className="bg-muted/50 sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-3 w-8">
                   <Checkbox checked={allSelected} onCheckedChange={c => c ? setSelected(new Set(filtered.map((p: any) => p.id))) : setSelected(new Set())} />

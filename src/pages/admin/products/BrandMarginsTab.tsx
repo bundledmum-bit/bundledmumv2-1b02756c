@@ -423,7 +423,7 @@ export default function BrandMarginsTab() {
 
       {/* Bulk actions */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
+        <Button className="h-10"
           variant="default"
           size="sm"
           disabled={selected.size === 0}
@@ -431,10 +431,10 @@ export default function BrandMarginsTab() {
         >
           Apply to selected ({selected.size})
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setBulkScope("category")}>
+        <Button className="h-10" variant="outline" size="sm" onClick={() => setBulkScope("category")}>
           Apply to category
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setBulkScope("tier")}>
+        <Button className="h-10" variant="outline" size="sm" onClick={() => setBulkScope("tier")}>
           Apply to bundle tier
         </Button>
         <span className="text-xs text-muted-foreground ml-auto">

@@ -454,7 +454,7 @@ export default function AdminOrders() {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="text-xs text-muted-foreground border-b border-border">
                 <th className="p-2 text-left w-8"><Checkbox checked={allSelected} onCheckedChange={() => allSelected ? setSelected(new Set()) : setSelected(new Set(filtered.map((o:any)=>o.id)))} /></th>
                 <th className="p-2 text-left">Order</th>
@@ -1828,7 +1828,7 @@ async function buildSubscriptionInvoiceHtml(order: any): Promise<string> {
   </div>
 
   <table>
-    <thead><tr><th style="width:24px">#</th><th>Product</th><th>Brand</th><th style="text-align:right;width:50px">Qty</th><th style="text-align:right;width:90px">Unit Price</th><th style="text-align:right;width:90px">Line Total</th></tr></thead>
+    <thead className="sticky top-0 z-10 bg-background"><tr><th style="width:24px">#</th><th>Product</th><th>Brand</th><th style="text-align:right;width:50px">Qty</th><th style="text-align:right;width:90px">Unit Price</th><th style="text-align:right;width:90px">Line Total</th></tr></thead>
     <tbody>${rows || `<tr><td colSpan="6" style="padding:12px;text-align:center;color:#888">No items.</td></tr>`}</tbody>
   </table>
 
@@ -2380,7 +2380,7 @@ function EditOrderCard({
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[520px]">
-            <thead className="bg-muted/40 text-text-med">
+            <thead className="bg-muted/40 text-text-med sticky top-0 z-10">
               <tr>
                 <th className="text-left px-2 py-2 text-xs font-semibold">Product</th>
                 <th className="text-center px-2 py-2 text-xs font-semibold w-20">Qty</th>

@@ -456,7 +456,7 @@ function CourierCostsSection({ year }: { year?: number }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Month</th>
               <th className="px-3 py-2 text-right">Brain Express Orders</th>
@@ -628,7 +628,7 @@ function PLTab() {
               <col style={{ width: 160 }} />
               {compare && <col style={{ width: 140 }} />}
             </colgroup>
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="border-b border-border">
                 <th className="text-left py-2 text-[10px] uppercase tracking-widest text-text-light font-semibold">Account</th>
                 <th className="text-right py-2 text-[10px] uppercase tracking-widest text-text-light font-semibold">Current</th>
@@ -995,7 +995,7 @@ function ExpensesTab() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr className="text-left border-b border-border">
                   <th className="py-2 pr-2">Date</th>
                   <th className="py-2 pr-2">Category</th>
@@ -1414,7 +1414,7 @@ function CogsTab() {
           <h3 className="font-semibold text-sm mb-3">COGS entries ({cogs?.length || 0})</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr className="text-left border-b border-border">
                   <th className="py-2 pr-2">Date</th>
                   <th className="py-2 pr-2">Product</th>
@@ -1740,7 +1740,7 @@ function PayrollTab() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="text-left border-b border-border">
                 <th className="py-2 pr-2">Employee</th>
                 <th className="py-2 pr-2">Role</th>
@@ -2261,7 +2261,7 @@ function TaxTab() {
         <h3 className="font-semibold text-sm mb-3">Tax Calendar ({year})</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-background">
               <tr className="text-left border-b border-border">
                 <th className="py-2 pr-2">Month</th>
                 <th className="py-2 pr-2 text-right">PAYE Due</th>
@@ -2418,7 +2418,7 @@ function AssetsTab() {
           <h3 className="font-semibold text-sm mb-3">Asset Register ({assets?.length || 0})</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr className="text-left border-b border-border">
                   <th className="py-2 pr-2">Asset</th>
                   <th className="py-2 pr-2">Type</th>
@@ -2458,7 +2458,7 @@ function AssetsTab() {
               <div className={sectionCls}>Depreciation schedule — {selected.asset_name}</div>
               <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                   <tr className="text-left border-b border-border">
                     <th className="py-1 pr-2">Year</th>
                     <th className="py-1 pr-2 text-right">Depreciation</th>
@@ -2605,7 +2605,7 @@ function SettingsTab() {
         </div>
         <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-background">
             <tr className="text-left border-b border-border">
               <th className="py-2 pr-2">From (₦)</th>
               <th className="py-2 pr-2">To (₦)</th>

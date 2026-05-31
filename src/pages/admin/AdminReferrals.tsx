@@ -70,7 +70,7 @@ export default function AdminReferrals() {
         ) : (
           <div className="bg-card border border-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="bg-muted/50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-text-med">Code</th>
                   <th className="px-4 py-3 text-left font-semibold text-text-med">Referrer</th>
@@ -113,7 +113,7 @@ export default function AdminReferrals() {
         ) : (
           <div className="bg-card border border-border rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="bg-muted/50 sticky top-0 z-10">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-text-med">Referrer Email</th>
                   <th className="px-4 py-3 text-right font-semibold text-text-med">Credit</th>

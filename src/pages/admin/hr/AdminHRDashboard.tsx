@@ -73,7 +73,7 @@ export default function AdminHRDashboard() {
           <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2 flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Headcount by department</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead className="bg-muted/40">
+              <thead className="bg-muted/40 sticky top-0 z-10">
                 <tr className="text-left">
                   <th className="px-3 py-2">Department</th>
                   <th className="px-3 py-2 text-right">Active</th>
@@ -172,7 +172,7 @@ export default function AdminHRDashboard() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-muted/20">
+            <thead className="bg-muted/20 sticky top-0 z-10">
               <tr className="text-left">
                 <th className="px-3 py-2">Employee</th>
                 <th className="px-3 py-2">Leave type</th>

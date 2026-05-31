@@ -333,7 +333,7 @@ export default function AdminQuotes() {
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40">
+              <thead className="bg-muted/40 sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-text-med">Quote #</th>
                   <th className="text-left px-4 py-3 font-semibold text-text-med">Customer</th>

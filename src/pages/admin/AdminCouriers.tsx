@@ -439,7 +439,7 @@ function CourierCard({
               <h4 className={sectionCls}>Subscription Plans</h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
+                  <thead className="bg-muted/50 sticky top-0 z-10">
                     <tr>
                       <th className="px-2 py-2 text-left">Plan</th>
                       <th className="px-2 py-2 text-right">Cost (₦)</th>
@@ -556,7 +556,7 @@ function ZoneAssignmentsTab() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-muted/40">
+                <thead className="bg-muted/40 sticky top-0 z-10">
                   <tr className="text-left">
                     <th className="px-3 py-2 w-16">Priority</th>
                     <th className="px-3 py-2">Courier</th>
@@ -835,7 +835,7 @@ function RateCardsTab() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
-                <thead className="bg-muted/40">
+                <thead className="bg-muted/40 sticky top-0 z-10">
                   <tr className="text-left">
                     <th className="px-3 py-2">Courier</th>
                     <th className="px-3 py-2">Rate Type</th>
@@ -1194,7 +1194,7 @@ function InterstateZoneCard({
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2 w-16">Weight</th>
               <th className="px-3 py-2">Courier</th>
@@ -1241,7 +1241,7 @@ function InterstateZoneCard({
         <h4 className={sectionCls + " flex items-center gap-1"}><Calculator className="w-3.5 h-3.5" /> Bundle cost breakdown</h4>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-muted/40">
+            <thead className="bg-muted/40 sticky top-0 z-10">
               <tr className="text-left">
                 <th className="px-3 py-2">Bundle</th>
                 <th className="px-3 py-2">Weight</th>
@@ -1601,7 +1601,7 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Courier</th>
               <th className="px-3 py-2 text-right">Bookings</th>

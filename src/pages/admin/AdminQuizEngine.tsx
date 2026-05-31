@@ -331,7 +331,7 @@ function QuestionsEditor({ questions, onRefresh }: { questions: QuizQuestion[]; 
                   <Input defaultValue={String(q.step_order)} type="number" className="w-20 text-sm" onBlur={e => { q.step_order = Number(e.target.value); }} />
                 </div>
               </div>
-              <Button size="sm" onClick={() => saveQuestion(q)} disabled={saving === q.id}>
+              <Button className="h-10" size="sm" onClick={() => saveQuestion(q)} disabled={saving === q.id}>
                 {saving === q.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3 mr-1" />} Save Question
               </Button>
 
@@ -346,16 +346,16 @@ function QuestionsEditor({ questions, onRefresh }: { questions: QuizQuestion[]; 
                       <Badge variant="outline" className="font-mono text-[9px] shrink-0">{opt.option_value}</Badge>
                       <Input defaultValue={String(opt.price_modifier || 0)} className="w-20 text-sm" type="number" onBlur={e => { opt.price_modifier = Number(e.target.value) || null; }} />
                       <Switch checked={opt.is_active ?? true} onCheckedChange={v => { opt.is_active = v; saveOption(opt); }} />
-                      <Button size="sm" variant="ghost" onClick={() => saveOption(opt)}>
+                      <Button className="h-10" size="sm" variant="ghost" onClick={() => saveOption(opt)}>
                         <Save className="w-3 h-3" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => deleteOption(opt.id)}>
+                      <Button className="h-10" size="sm" variant="ghost" onClick={() => deleteOption(opt.id)}>
                         <Trash2 className="w-3 h-3 text-destructive" />
                       </Button>
                     </div>
                   ))}
                 </div>
-                <Button size="sm" variant="outline" className="mt-2" onClick={() => addOption(q.id, q.step_id)}>
+                <Button size="sm" variant="outline" className="mt-2 h-10" onClick={() => addOption(q.id, q.step_id)}>
                   <Plus className="w-3 h-3 mr-1" /> Add Option
                 </Button>
               </div>
@@ -406,7 +406,7 @@ function RoutingRulesEditor({ rules, questions, onRefresh }: { rules: QuizRoutin
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Routing Rules ({rules.length})</h3>
-        <Button size="sm" onClick={addRule}><Plus className="w-3 h-3 mr-1" /> Add Rule</Button>
+        <Button className="h-10" size="sm" onClick={addRule}><Plus className="w-3 h-3 mr-1" /> Add Rule</Button>
       </div>
       <div className="overflow-auto">
         <Table>
@@ -443,8 +443,8 @@ function RoutingRulesEditor({ rules, questions, onRefresh }: { rules: QuizRoutin
                 <TableCell><Input defaultValue={String(rule.priority || 0)} type="number" className="w-16 text-xs" onBlur={e => { rule.priority = Number(e.target.value); }} /></TableCell>
                 <TableCell><Switch checked={rule.is_active ?? true} onCheckedChange={v => { rule.is_active = v; saveRule(rule); }} /></TableCell>
                 <TableCell className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => saveRule(rule)}><Save className="w-3 h-3" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => deleteRule(rule.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
+                  <Button className="h-10" size="sm" variant="ghost" onClick={() => saveRule(rule)}><Save className="w-3 h-3" /></Button>
+                  <Button className="h-10" size="sm" variant="ghost" onClick={() => deleteRule(rule.id)}><Trash2 className="w-3 h-3 text-destructive" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -490,7 +490,7 @@ function AdjustmentRulesEditor({ rules, onRefresh }: { rules: QuizAdjustmentRule
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Adjustment Rules ({rules.length})</h3>
-        <Button size="sm" onClick={addRule}><Plus className="w-3 h-3 mr-1" /> Add Rule</Button>
+        <Button className="h-10" size="sm" onClick={addRule}><Plus className="w-3 h-3 mr-1" /> Add Rule</Button>
       </div>
       <div className="overflow-auto">
         <Table>
@@ -516,7 +516,7 @@ function AdjustmentRulesEditor({ rules, onRefresh }: { rules: QuizAdjustmentRule
                 <TableCell><Input defaultValue={rule.action} className="w-24 text-xs" onBlur={e => { rule.action = e.target.value; }} /></TableCell>
                 <TableCell><Input defaultValue={rule.action_value || ""} className="w-24 text-xs" onBlur={e => { rule.action_value = e.target.value; }} /></TableCell>
                 <TableCell><Switch checked={rule.is_active ?? true} onCheckedChange={v => { rule.is_active = v; saveRule(rule); }} /></TableCell>
-                <TableCell><Button size="sm" variant="ghost" onClick={() => saveRule(rule)}><Save className="w-3 h-3" /></Button></TableCell>
+                <TableCell><Button className="h-10" size="sm" variant="ghost" onClick={() => saveRule(rule)}><Save className="w-3 h-3" /></Button></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -558,7 +558,7 @@ function TargetCountsEditor({ counts, onRefresh }: { counts: QuizTargetCount[]; 
               <TableCell><Input defaultValue={String(c.target_count)} type="number" className="w-20 text-sm" onBlur={e => { c.target_count = Number(e.target.value); }} /></TableCell>
               <TableCell><Input defaultValue={String(c.min_count)} type="number" className="w-20 text-sm" onBlur={e => { c.min_count = Number(e.target.value); }} /></TableCell>
               <TableCell><Input defaultValue={String(c.max_count)} type="number" className="w-20 text-sm" onBlur={e => { c.max_count = Number(e.target.value); }} /></TableCell>
-              <TableCell><Button size="sm" onClick={() => saveCount(c)}><Save className="w-3 h-3 mr-1" /> Save</Button></TableCell>
+              <TableCell><Button className="h-10" size="sm" onClick={() => saveCount(c)}><Save className="w-3 h-3 mr-1" /> Save</Button></TableCell>
             </TableRow>
           ))}
         </TableBody>

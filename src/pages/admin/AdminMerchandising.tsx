@@ -534,7 +534,7 @@ function SectionProductsEditor({ shop, section }: { shop: ShopVariant; section: 
       )}
 
       <div className="pt-1">
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+        <Button className="h-10" size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1.5" /> Add product
         </Button>
       </div>
@@ -796,7 +796,7 @@ function CategoryPinsEditor({ categorySlug }: { categorySlug: string }) {
       )}
 
       <div className="pt-1">
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+        <Button className="h-10" size="sm" variant="outline" onClick={() => setAddOpen(true)}>
           <Plus className="w-3.5 h-3.5 mr-1.5" /> Add product
         </Button>
       </div>
@@ -951,7 +951,7 @@ function BundleOrderPanel({ family }: { family: { key: BundleFamily; label: stri
         <p className="text-text-med text-sm max-w-2xl">
           Drag the order using the up/down arrows. Position 1 appears first in this section on the storefront.
         </p>
-        <Button
+        <Button className="h-10"
           size="sm"
           disabled={!dirty || saving.isPending}
           onClick={() => saving.mutate()}
@@ -1139,7 +1139,7 @@ function ShopSectionsPanel() {
           Use the per-shop checkboxes to control which shop pages each section appears on. The eye toggle is the master
           switch — when off, the section is invisible everywhere regardless of per-shop flags.
         </p>
-        <Button
+        <Button className="h-10"
           size="sm"
           disabled={!dirty || saveOrder.isPending}
           onClick={() => saveOrder.mutate()}
@@ -1201,8 +1201,8 @@ function ShopSectionsPanel() {
                         className="h-8 text-sm"
                       />
                       <div className="flex gap-1.5">
-                        <Button size="sm" onClick={() => saveEdit(s)}>Save</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                        <Button className="h-10" size="sm" onClick={() => saveEdit(s)}>Save</Button>
+                        <Button className="h-10" size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
                       </div>
                     </div>
                   ) : (
@@ -1370,7 +1370,7 @@ function BundlesPageSectionsPanel() {
           Control how bundle sections appear on the <strong>/bundles</strong> page only. This
           ordering is independent of the Shop Sections tab (which controls /shop).
         </p>
-        <Button
+        <Button className="h-10"
           size="sm"
           disabled={!dirty || saveOrder.isPending}
           onClick={() => saveOrder.mutate()}

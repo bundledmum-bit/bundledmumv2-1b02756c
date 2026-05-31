@@ -26,7 +26,7 @@ export default function AdminPickingHistory() {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Link to="/admin/picking">
-          <Button variant="ghost" size="sm">
+          <Button className="h-10" variant="ghost" size="sm">
             <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
           </Button>
         </Link>
@@ -45,7 +45,7 @@ export default function AdminPickingHistory() {
       ) : (
         <div className="overflow-x-auto border border-border rounded-lg">
           <table className="w-full text-sm">
-            <thead className="bg-muted/30">
+            <thead className="bg-muted/30 sticky top-0 z-10">
               <tr className="text-left text-xs text-muted-foreground">
                 <th className="p-2 w-6"></th>
                 <th className="p-2">Order #</th>

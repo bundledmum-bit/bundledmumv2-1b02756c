@@ -117,7 +117,7 @@ export default function AdminPickingQueue() {
           <p className="text-sm text-text-med">Claim and pick paid orders.</p>
         </div>
         <Link to="/admin/picking/history">
-          <Button variant="outline" size="sm">
+          <Button className="h-10" variant="outline" size="sm">
             <History className="w-4 h-4 mr-1.5" /> History
           </Button>
         </Link>
@@ -155,7 +155,7 @@ export default function AdminPickingQueue() {
                     <div className="text-xs text-text-med">
                       {itemCount} item{itemCount === 1 ? "" : "s"} · {relTime(o.created_at)}
                     </div>
-                    <Button size="sm" onClick={() => onAccept(o.id)}>
+                    <Button className="h-10" size="sm" onClick={() => onAccept(o.id)}>
                       Accept
                     </Button>
                   </div>

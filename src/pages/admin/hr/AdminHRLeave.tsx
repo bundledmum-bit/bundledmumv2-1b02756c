@@ -167,7 +167,7 @@ function AllRequestsTab() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2">Type</th>
@@ -256,7 +256,7 @@ function BalancesTab() {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2">Leave type</th>
@@ -360,7 +360,7 @@ function CarryoverPanel({ fromYear, data }: { fromYear: number; data: ReturnType
       </div>
       <div className="overflow-x-auto bg-background rounded-lg border border-border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2 text-right">Unused days</th>

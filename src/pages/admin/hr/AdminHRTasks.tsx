@@ -223,7 +223,7 @@ function ListView({ tasks, today, onOpen }: { tasks: HRTask[]; today: string; on
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Task</th>
               <th className="px-3 py-2">Assignee</th>
@@ -274,7 +274,7 @@ function PerformanceTab({ onOpenEmployee }: { onOpenEmployee: (empId: string) =>
       <div className="px-3 py-2 border-b border-border text-[10px] uppercase tracking-widest font-bold text-text-med inline-flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5" /> Employee performance</div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="bg-muted/40">
+          <thead className="bg-muted/40 sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2">Employee</th>
               <th className="px-3 py-2 w-40">Completion rate</th>

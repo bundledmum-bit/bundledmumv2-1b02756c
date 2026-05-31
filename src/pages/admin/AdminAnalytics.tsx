@@ -103,7 +103,7 @@ function DataTable({ columns, data, pageSize = 25, preserveOrder = false }: { co
         className="mb-3 border border-input rounded-lg px-3 py-1.5 text-xs bg-background w-full max-w-xs" />
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-background">
             <tr className="text-muted-foreground border-b border-border">
               {columns.map(c => (
                 <th key={c.key} className="p-2 text-left cursor-pointer hover:text-foreground" onClick={() => { setSortKey(c.key); setSortAsc(sortKey === c.key ? !sortAsc : false); }}>
@@ -313,8 +313,8 @@ export default function AdminAnalytics() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Analytics</h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={downloadPDF} className="text-xs"><Download className="w-3 h-3 mr-1" />PDF</Button>
-          <Button variant="outline" size="sm" onClick={downloadExcel} className="text-xs"><Download className="w-3 h-3 mr-1" />Excel</Button>
+          <Button variant="outline" size="sm" onClick={downloadPDF} className="text-xs h-10"><Download className="w-3 h-3 mr-1" />PDF</Button>
+          <Button variant="outline" size="sm" onClick={downloadExcel} className="text-xs h-10"><Download className="w-3 h-3 mr-1" />Excel</Button>
         </div>
       </div>
 
@@ -688,7 +688,7 @@ export default function AdminAnalytics() {
               <ChartCard title="Monthly Cohort Retention" empty={cohortData.length === 0}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-background">
                       <tr className="text-muted-foreground">
                         <th className="p-2 text-left">Cohort</th>
                         <th className="p-2 text-center">Size</th>

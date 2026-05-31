@@ -382,7 +382,7 @@ export default function AdminProfitPerOrder() {
       <section className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[820px]">
-            <thead className="bg-muted/40 text-[11px] font-semibold text-text-med uppercase tracking-wide">
+            <thead className="bg-muted/40 text-[11px] font-semibold text-text-med uppercase tracking-wide sticky top-0 z-10">
               <tr>
                 <th className="w-8 px-2 py-2"></th>
                 <th className="text-left px-2 py-2">Order / Customer</th>
@@ -574,7 +574,7 @@ function RowGroup({
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead className="text-[10px] font-semibold text-text-med uppercase tracking-wide">
+                  <thead className="text-[10px] font-semibold text-text-med uppercase tracking-wide sticky top-0 z-10 bg-background">
                     <tr>
                       <th className="text-left px-2 py-1">Product / Brand</th>
                       <th className="text-left px-2 py-1">Variant</th>
