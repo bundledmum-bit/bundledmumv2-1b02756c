@@ -274,7 +274,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
 
           <div className="p-4 max-h-[65vh] overflow-y-auto">
             <TabsContent value="general" className="space-y-3 mt-0">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={labelCls}>Name *</label>
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: f.slug || autoSlug(e.target.value) }))} className={inputCls} /></div>
                 <div><label className={labelCls}>Slug</label>
@@ -282,7 +282,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
               </div>
               <div><label className={labelCls}>Description *</label>
                 <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} className={inputCls} /></div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div><label className={labelCls}>Category</label>
                   <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value, subcategory: "" }))} className={inputCls}>
                     {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -310,7 +310,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                     {BADGES.map(b => <option key={b} value={b}>{b}</option>)}
                   </select></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={labelCls}>Display Order</label>
                   <input type="number" value={form.display_order} onChange={e => setForm(f => ({ ...f, display_order: parseInt(e.target.value) || 0 }))} className={inputCls} /></div>
                 <div>
@@ -385,7 +385,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                     <button type="button" onClick={() => setBrands(bs => bs.filter((_, idx) => idx !== i))}
                       className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3" /></button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Brand Name</label>
                       <input placeholder="e.g. Molfix" value={b.brand_name}
                         onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, brand_name: e.target.value } : br))}
@@ -396,7 +396,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                         {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select></div>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Selling Price (₦)</label>
                       <input type="number" value={b.price} onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, price: parseInt(e.target.value) || 0 } : br))}
                         className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background" /></div>
@@ -426,7 +426,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                       diapers-nappies but always allowed (admins may want
                       to surface pack count for any product). */}
                   {form.subcategory === "diapers-nappies" && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                       <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Diaper Type</label>
                         <select value={b.diaper_type || ""}
                           onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, diaper_type: e.target.value || null } : br))}
@@ -472,7 +472,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                     />
                     <p className="text-[10px] text-text-light mt-0.5">Shipping weight per single unit/pack as sold</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Size Variant</label>
                       <input value={b.size_variant || ""} placeholder="e.g. ×10, 40ml"
                         onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, size_variant: e.target.value } : br))}
@@ -571,7 +571,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
             </TabsContent>
 
             <TabsContent value="ratings" className="space-y-3 mt-0">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={labelCls}>Rating (0–5)</label>
                   <input type="number" step="0.1" min="0" max="5" value={form.rating}
                     onChange={e => setForm(f => ({ ...f, rating: parseFloat(e.target.value) || 0 }))} className={inputCls} /></div>
@@ -579,7 +579,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                   <input type="number" value={form.review_count}
                     onChange={e => setForm(f => ({ ...f, review_count: parseInt(e.target.value) || 0 }))} className={inputCls} /></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={labelCls}>Multiples Bump</label>
                   <input type="number" step="0.1" value={form.multiples_bump}
                     onChange={e => setForm(f => ({ ...f, multiples_bump: parseFloat(e.target.value) || 1 }))} className={inputCls} /></div>

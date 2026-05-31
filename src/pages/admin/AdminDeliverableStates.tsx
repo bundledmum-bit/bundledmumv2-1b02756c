@@ -136,7 +136,7 @@ export default function AdminDeliverableStates() {
 
       {/* Summary card — at-a-glance counts that re-render with the table. */}
       {!isLoading && states && states.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-3">
           <div className="bg-card border border-border rounded-xl px-4 py-3">
             <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med">Total active states</p>
             <p className="text-2xl font-bold mt-1">{states.filter((s) => s.is_active).length}</p>
@@ -425,7 +425,7 @@ function AddStateModal({
           {duplicate && <p className="text-[11px] text-destructive mt-1">A state with this name already exists.</p>}
           {tooLong && <p className="text-[11px] text-destructive mt-1">Max 80 characters.</p>}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex items-center gap-2 text-sm">
             <ToggleSwitch checked={isActive} onChange={() => setIsActive((v) => !v)} />
             <span>Active</span>
@@ -533,7 +533,7 @@ function EditStateModal({
           {duplicate && <p className="text-[11px] text-destructive mt-1">Another state already uses this name.</p>}
           {tooLong && <p className="text-[11px] text-destructive mt-1">Max 80 characters.</p>}
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex items-center gap-2 text-sm">
             <ToggleSwitch checked={isActive} onChange={() => setIsActive((v) => !v)} />
             <span>Active</span>

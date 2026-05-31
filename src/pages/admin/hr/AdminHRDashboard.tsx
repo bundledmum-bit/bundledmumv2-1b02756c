@@ -59,7 +59,7 @@ export default function AdminHRDashboard() {
 
   return (
     <div className="space-y-4">
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={<Users className="w-4 h-4" />} label="Active staff"       value={`${stats?.active_headcount ?? "—"} people`} />
         <Kpi icon={<CalendarClock className="w-4 h-4" />} label="On leave now" value={`${stats?.on_leave_count ?? "—"} people`} />
         <Kpi icon={<AlertTriangle className="w-4 h-4" />} label="Pending approvals" value={
@@ -119,7 +119,7 @@ export default function AdminHRDashboard() {
       <section className="grid md:grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-xl p-3">
           <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2 flex items-center gap-1.5"><ListChecks className="w-3.5 h-3.5" /> Task overview</h2>
-          <dl className="grid grid-cols-3 gap-2">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             <div className="rounded-lg border border-border p-2">
               <dt className="text-[10px] uppercase tracking-widest font-semibold text-text-light">Total open</dt>
               <dd className="text-xl font-bold tabular-nums mt-0.5">{taskSummary.openTasks}</dd>

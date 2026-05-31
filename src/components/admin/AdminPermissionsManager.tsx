@@ -201,7 +201,7 @@ export default function AdminPermissionsManager({ users }: Props) {
               return (
                 <div key={mod} className="bg-card border border-border rounded-xl p-4">
                   <h3 className="text-sm font-bold capitalize mb-3">{mod.replace(/_/g, " ")}</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
                     {actions.map((a: any) => {
                       const override = getUserOverride(a.module, a.action);
                       const effective = getEffective(a.module, a.action);

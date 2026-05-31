@@ -112,6 +112,7 @@ export default function AdminInventory() {
         <div className="text-center py-10 text-text-med">Loading...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -173,6 +174,7 @@ export default function AdminInventory() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

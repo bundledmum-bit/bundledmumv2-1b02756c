@@ -363,7 +363,7 @@ export default function AdminProfitPerOrder() {
       </section>
 
       {/* Aggregate cards — refund-aware + extra costs */}
-      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+      <section className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         <AggCard label="Revenue" value={fmt(aggregates?.revenue)} sub={`${aggregates?.count ?? 0} orders`} />
         <AggCard label="COGS" value={fmt(aggregates?.cogs)} />
         <AggCard label="Refunded revenue" value={fmt(aggregates?.refunded)} />

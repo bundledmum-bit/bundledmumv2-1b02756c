@@ -305,7 +305,7 @@ function QuestionsEditor({ questions, onRefresh }: { questions: QuizQuestion[]; 
           </button>
           {expandedId === q.id && (
             <div className="p-4 pt-0 border-t border-border space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground">Question Text</label>
                   <Input defaultValue={q.question_text} className="text-sm" onBlur={e => { q.question_text = e.target.value; }} />
@@ -315,7 +315,7 @@ function QuestionsEditor({ questions, onRefresh }: { questions: QuizQuestion[]; 
                   <Input defaultValue={q.sub_text || ""} className="text-sm" onBlur={e => { q.sub_text = e.target.value; }} />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[11px] font-semibold text-muted-foreground">Type</label>
                   <Badge variant="outline" className="text-[10px]">{q.input_type}</Badge>
@@ -705,7 +705,7 @@ function EngineTestPanel() {
         {/* Other fields — overridable advanced knobs */}
         <details className="border border-border rounded-lg p-3">
           <summary className="text-xs font-semibold cursor-pointer text-muted-foreground">Advanced overrides (scope, stage, hospital, delivery, gender, multiples, first baby, is-gift)</summary>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mt-3">
             {[
               { key: "p_scope", label: "Scope", options: ["hospital-bag", "hospital-bag+general", "general-baby-prep"] },
               { key: "p_stage", label: "Stage", options: ["expecting", "newborn", "0-3m", "3-6m", "6-12m"] },
@@ -750,7 +750,7 @@ function EngineTestPanel() {
 
         {result && (
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div className="bg-muted rounded-lg p-3 text-center">
                 <div className="text-xs text-muted-foreground">Products</div>
                 <div className="text-xl font-bold">{result.product_count}</div>
@@ -765,7 +765,7 @@ function EngineTestPanel() {
               </div>
             </div>
             {result.products?.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
                 {result.products.map((p: any) => (
                   <div key={p.product_id} className="border rounded-lg p-2 text-xs">
                     <div className="font-semibold">{p.name}</div>

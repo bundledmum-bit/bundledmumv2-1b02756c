@@ -128,6 +128,7 @@ export default function SubscriptionInvoice({
 
       {/* Items */}
       <section>
+        <div className="overflow-x-auto">
         <table className="w-full text-xs border-t border-black/20">
           <thead>
             <tr className="bg-black/5 text-left">
@@ -152,6 +153,7 @@ export default function SubscriptionInvoice({
             ))}
           </tbody>
         </table>
+        </div>
 
         <div className="flex justify-end mt-3">
           <dl className="text-xs space-y-0.5 w-[280px]">

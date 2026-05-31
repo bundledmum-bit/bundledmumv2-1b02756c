@@ -311,7 +311,7 @@ export default function AdminBundleForm({ bundle, onClose, onSaved }: Props) {
           <div className="p-4 max-h-[65vh] overflow-y-auto">
             {/* General Tab */}
             <TabsContent value="general" className="space-y-3 mt-0">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={labelCls}>Bundle Name *</label>
                   <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value, slug: f.slug || autoSlug(e.target.value) }))} className={inputCls} /></div>
                 <div><label className={labelCls}>Slug</label>
@@ -343,7 +343,7 @@ export default function AdminBundleForm({ bundle, onClose, onSaved }: Props) {
                     <input type="number" min={0} max={100} value={form.discount_percent} onChange={e => setForm(f => ({ ...f, discount_percent: parseFloat(e.target.value) || 0 }))} className={inputCls} /></div>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div><label className={labelCls}>Display Order</label>
                   <input type="number" value={form.display_order} onChange={e => setForm(f => ({ ...f, display_order: parseInt(e.target.value) || 0 }))} className={inputCls} /></div>
                 <div><label className={labelCls}>Emoji</label>

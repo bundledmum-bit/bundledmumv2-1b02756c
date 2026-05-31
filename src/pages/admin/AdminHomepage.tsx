@@ -160,7 +160,7 @@ function SectionRow({
           </div>
 
           {/* Known settings per section_key — keeps the admin from editing raw JSON */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {"max_items" in settings || ["featured_products", "most_loved", "testimonials"].includes(draft.section_key) ? (
               <div>
                 <label className={labelCls}>Max items</label>

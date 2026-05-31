@@ -116,6 +116,7 @@ export default function AdminCoupons() {
         <div className="text-center py-10 text-text-med">Loading...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -169,6 +170,7 @@ export default function AdminCoupons() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -199,7 +201,7 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
             <label className="text-xs font-semibold text-text-med block mb-1">Description</label>
             <input value={form.description || ""} onChange={e => set("description", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" placeholder="10% off for new customers" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Type *</label>
               <select value={form.discount_type} onChange={e => set("discount_type", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background">
@@ -211,7 +213,7 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
               <input type="number" value={form.discount_value} onChange={e => set("discount_value", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Min Order (₦)</label>
               <input type="number" value={form.minimum_order_amount || ""} onChange={e => set("minimum_order_amount", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
@@ -221,7 +223,7 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
               <input type="number" value={form.maximum_discount_amount || ""} onChange={e => set("maximum_discount_amount", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Usage Limit</label>
               <input type="number" value={form.usage_limit || ""} onChange={e => set("usage_limit", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
@@ -231,7 +233,7 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
               <input type="number" value={form.usage_limit_per_customer} onChange={e => set("usage_limit_per_customer", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Start Date</label>
               <input type="datetime-local" value={form.start_date ? form.start_date.slice(0, 16) : ""} onChange={e => set("start_date", e.target.value || null)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />

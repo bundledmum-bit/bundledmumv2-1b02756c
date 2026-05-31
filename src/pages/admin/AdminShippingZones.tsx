@@ -284,7 +284,7 @@ export default function AdminShippingZones() {
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-xs">
                 <div>
                   <span className="text-text-light block">Flat Rate</span>
                   <span className="font-semibold">{fmtN(z.flat_rate)}</span>
@@ -484,7 +484,7 @@ function ZoneEditorModal({
           </div>
 
           {/* Flat rate + free delivery */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Flat Rate * (₦)</label>
               <div className="relative">
@@ -519,7 +519,7 @@ function ZoneEditorModal({
           </div>
 
           {/* Estimated days */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Min Days</label>
               <input
@@ -543,7 +543,7 @@ function ZoneEditorModal({
           </div>
 
           {/* Display order + is_active */}
-          <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
             <div>
               <label className={labelCls}>Display Order</label>
               <input

@@ -229,7 +229,7 @@ export default function OrdersReportTab() {
   return (
     <div className="space-y-4">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-9 gap-2">
         <StatCard label="Total Orders" value={stats.totalOrders.toLocaleString()} change={pctChg(stats.totalOrders, prevStats.totalOrders)} />
         <StatCard label="Gross Sales" value={fmt(stats.totalGross)} change={pctChg(stats.totalGross, prevStats.totalGross)} />
         <StatCard label="Net Sales" value={fmt(stats.totalNet)} change={pctChg(stats.totalNet, prevStats.totalNet)} />

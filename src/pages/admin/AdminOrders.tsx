@@ -334,7 +334,7 @@ export default function AdminOrders() {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-9 gap-2 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 md:grid-cols-9 gap-2 mb-4">
         {statCards.map(c => (
           <div key={c.label} className="bg-card border border-border rounded-xl p-3 text-center">
             <div className="text-lg font-bold pf">{c.value}</div>
@@ -1566,7 +1566,7 @@ function InitiateReturnModal({ order: o, onClose, onSubmitted }: {
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground block mb-1">Return type</label>
               <select

@@ -168,7 +168,7 @@ export default function OrderLinesReportTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
         <StatCard label="Gross Sales" value={fmt(stats.totalGross)} change={pctChg(stats.totalGross, prevStats.totalGross)} />
         <StatCard label="Net Sales" value={fmt(stats.totalNet)} change={pctChg(stats.totalNet, prevStats.totalNet)} />
         <StatCard label="Discounts" value={fmt(stats.totalDisc)} sub={`${stats.totalGross ? ((stats.totalDisc/stats.totalGross)*100).toFixed(1) : 0}% of Gross`} change={pctChg(stats.totalDisc, prevStats.totalDisc)} />

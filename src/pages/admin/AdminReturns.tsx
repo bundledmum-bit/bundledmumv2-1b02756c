@@ -164,7 +164,7 @@ export default function AdminReturns() {
       </header>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard icon={<ClipboardCheck className="w-4 h-4" />} label="Total this month" value={String(stats.total)} />
         <StatCard icon={<RotateCcw className="w-4 h-4" />}      label="Pending approval" value={String(stats.pending)} highlight={stats.pending > 0} />
         <StatCard icon={<Wallet className="w-4 h-4" />}         label="Refunds this month" value={fmt(stats.refundsAmount)} />

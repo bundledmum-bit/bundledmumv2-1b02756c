@@ -101,7 +101,7 @@ export default function TaskDetailDrawer({
             <textarea rows={3} className={inputCls} value={description} onChange={e => setDescription(e.target.value)} readOnly={readOnly} />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Status</label>
               <select value={status} onChange={e => setStatus(e.target.value as TaskStatus)} disabled={readOnly} className={inputCls}>

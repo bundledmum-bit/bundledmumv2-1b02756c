@@ -229,7 +229,7 @@ function MaternityBundlePanel({ bundle, snapshot }: { bundle: MatBundleRow; snap
       ) : (
         <>
           {/* Pricing */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 mb-4">
             <div className="bg-muted/30 rounded-lg p-2">
               <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light">Retail Total</div>
               <div className="text-sm font-bold">{fmt(retail)}</div>

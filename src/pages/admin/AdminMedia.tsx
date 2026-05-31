@@ -104,7 +104,7 @@ export default function AdminMedia() {
       {isLoading ? (
         <div className="text-center py-10 text-text-med">Loading media...</div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
           {filtered.map(f => (
             <div key={`${f.bucket}-${f.name}`} onClick={() => setSelectedFile(f)}
               className="bg-card border border-border rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-forest group">
@@ -120,6 +120,7 @@ export default function AdminMedia() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -148,6 +149,7 @@ export default function AdminMedia() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

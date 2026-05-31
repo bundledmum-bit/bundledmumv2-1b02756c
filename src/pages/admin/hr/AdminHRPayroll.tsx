@@ -457,7 +457,7 @@ function PayrollEntryModal({ employee, run, year, month, onClose, onSaved }: {
 
           <section>
             <h4 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2">Income (₦) — from employee salary defaults + bonus</h4>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
               <Num label="Basic"     fieldKey="basic"     v={v.basic}     overridden={overrides.has("basic")}     onChange={x => setField("basic", x)} />
               <Num label="Housing"   fieldKey="housing"   v={v.housing}   overridden={overrides.has("housing")}   onChange={x => setField("housing", x)} />
               <Num label="Transport" fieldKey="transport" v={v.transport} overridden={overrides.has("transport")} onChange={x => setField("transport", x)} />
@@ -472,7 +472,7 @@ function PayrollEntryModal({ employee, run, year, month, onClose, onSaved }: {
 
           <section>
             <h4 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2">Deductions (₦) — Nigerian PAYE / pension / NHF</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               <Num label="PAYE tax"          fieldKey="paye"        v={v.paye}        overridden={overrides.has("paye")}        onChange={x => setField("paye", x)} />
               <Num label="Employee pension" fieldKey="emp_pension"  v={v.emp_pension} overridden={overrides.has("emp_pension")} onChange={x => setField("emp_pension", x)} />
               <Num label="NHF"              fieldKey="nhf"          v={v.nhf}         overridden={overrides.has("nhf")}         onChange={x => setField("nhf", x)} />
@@ -485,7 +485,7 @@ function PayrollEntryModal({ employee, run, year, month, onClose, onSaved }: {
 
           <section>
             <h4 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2">Employer costs (₦)</h4>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
               <Num label="Employer pension" fieldKey="er_pension" v={v.er_pension} overridden={overrides.has("er_pension")} onChange={x => setField("er_pension", x)} />
               <Num label="NSITF"            fieldKey="nsitf"      v={v.nsitf}      overridden={overrides.has("nsitf")}      onChange={x => setField("nsitf", x)} />
               <Num label="ITF"              fieldKey="itf"        v={v.itf}        overridden={overrides.has("itf")}        onChange={x => setField("itf", x)} />
@@ -502,7 +502,7 @@ function PayrollEntryModal({ employee, run, year, month, onClose, onSaved }: {
                 <span>Effective rate: <b className="tabular-nums text-foreground">{Number(calc.effective_tax_rate_pct).toFixed(2)}%</b></span>
               </button>
               {showBreakdown && (
-                <dl className="px-3 pb-3 text-xs grid grid-cols-2 gap-x-4 gap-y-1">
+                <dl className="px-3 pb-3 text-xs grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                   <Row label="Annual gross"            v={`₦${Math.round(calc.annual_gross).toLocaleString()}`} />
                   <Row label="Consolidated Relief (CRA)" v={`₦${Math.round(calc.cra).toLocaleString()}`} />
                   <Row label="Annual taxable income"   v={`₦${Math.round(calc.annual_taxable_income).toLocaleString()}`} />

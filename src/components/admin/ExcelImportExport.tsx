@@ -293,6 +293,7 @@ export function ImportButton() {
                   )}
                 </div>
                 <div className="max-h-[400px] overflow-y-auto border border-border rounded-lg">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-muted/50 sticky top-0">
                       <tr>
@@ -319,6 +320,7 @@ export function ImportButton() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
                 <div className="flex gap-2 mt-4">
                   <button onClick={reset} className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-semibold">Cancel</button>

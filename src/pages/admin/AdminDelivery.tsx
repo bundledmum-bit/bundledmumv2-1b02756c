@@ -65,7 +65,7 @@ export default function AdminDelivery() {
                   <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-primary-foreground shadow transition-transform ${z.is_active ? "left-5" : "left-0.5"}`} />
                 </button>
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Fee (₦)</label>
                   <input type="number" defaultValue={z.delivery_fee}

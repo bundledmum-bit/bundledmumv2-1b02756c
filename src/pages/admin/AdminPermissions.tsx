@@ -296,6 +296,7 @@ export default function AdminPermissions() {
                   <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                 </div>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -356,6 +357,7 @@ export default function AdminPermissions() {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
 
               <div className="px-5 py-3 border-t border-border bg-muted/30">

@@ -284,6 +284,7 @@ export default function AdminComingSoon() {
           <div className="text-center py-6 text-text-med text-sm">No signups yet.</div>
         ) : (
           <div className="overflow-hidden border border-border rounded-lg">
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
@@ -302,6 +303,7 @@ export default function AdminComingSoon() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

@@ -76,7 +76,7 @@ export default function CreateTaskModal({
               {assignableEmployees.map(x => <option key={x.id} value={x.id}>{x.full_name} ({x.employee_id})</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Priority</label>
               <select className={inputCls} value={priority} onChange={e => setPriority(e.target.value as TaskPriority)}>

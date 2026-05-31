@@ -106,7 +106,7 @@ export default function VendorEditDialog({ open, onOpenChange, vendor }: Props) 
         <DialogHeader>
           <DialogTitle>{vendor?.id ? "Edit Vendor" : "Add Vendor"}</DialogTitle>
         </DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-semibold text-muted-foreground">Name *</label>
             <Input value={form.name} onChange={upd("name")} placeholder="Vendor company name" />

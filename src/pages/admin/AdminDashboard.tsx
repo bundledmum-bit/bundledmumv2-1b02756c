@@ -250,7 +250,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* 4 metric cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-semibold text-muted-foreground">GMV Today</CardTitle>
@@ -430,7 +430,7 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Fulfillment */}
             <Card>
               <CardHeader className="pb-2">
@@ -652,7 +652,7 @@ function DashboardSkeleton({ todayLabel }: { todayLabel: string }) {
         <section className="space-y-4">
           <Skeleton className="h-6 w-40" />
           <Skeleton className="h-32 w-full bg-muted-foreground/30 rounded-xl" />
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-xl" />
             ))}
@@ -689,7 +689,7 @@ function DashboardSkeleton({ todayLabel }: { todayLabel: string }) {
         {/* Block 4 */}
         <section className="space-y-3">
           <Skeleton className="h-6 w-44" />
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-xl" />
             ))}

@@ -799,7 +799,7 @@ function EmployeeHistoryTab({ employeeId, canEdit, adminId }: { employeeId: stri
 
       {recording && (
         <div className="border border-border rounded-lg p-3 space-y-2 bg-muted/20">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Change type</label>
               <select value={form.change_type} onChange={e => setForm(f => ({ ...f, change_type: e.target.value as JobHistoryChangeType }))} className={inputCls}>

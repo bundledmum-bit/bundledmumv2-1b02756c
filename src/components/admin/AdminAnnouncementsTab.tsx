@@ -163,7 +163,7 @@ function AnnouncementForm({
       </div>
 
       {/* Emoji + Colors */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
           <label className="text-xs font-semibold text-text-med block mb-1">Emoji</label>
           <input
@@ -702,7 +702,7 @@ export default function AdminAnnouncementsTab() {
 
               {/* Expanded details (read-only summary) */}
               {expanded.has(a.id) && !editingId && (
-                <div className="px-4 pb-3 pt-0 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 border-t border-border text-[11px] text-text-light bg-muted/20">
+                <div className="px-4 pb-3 pt-0 grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 border-t border-border text-[11px] text-text-light bg-muted/20">
                   <div><span className="font-semibold text-text-med">Audience:</span> {a.target_audience || "all"}</div>
                   <div><span className="font-semibold text-text-med">Pages:</span> {(a.target_pages || []).join(", ") || "all"}</div>
                   <div><span className="font-semibold text-text-med">Priority:</span> {a.priority ?? 0}</div>

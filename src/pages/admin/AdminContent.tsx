@@ -261,7 +261,7 @@ export default function AdminContent() {
               <button onClick={() => setEditingTestimonial(null)}><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Customer Name *</label>
                   <input value={editingTestimonial.customer_name} onChange={e => setEditingTestimonial((p: any) => ({ ...p, customer_name: e.target.value }))}
@@ -273,7 +273,7 @@ export default function AdminContent() {
                     className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Initial</label>
                   <input maxLength={2} value={editingTestimonial.customer_initial || ""} onChange={e => setEditingTestimonial((p: any) => ({ ...p, customer_initial: e.target.value.toUpperCase() }))}
@@ -317,7 +317,7 @@ export default function AdminContent() {
               <button onClick={() => setEditingFaq(null)}><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Category</label>
                   <input value={editingFaq.category || ""} onChange={e => setEditingFaq((p: any) => ({ ...p, category: e.target.value }))}

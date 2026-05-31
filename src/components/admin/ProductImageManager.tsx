@@ -86,7 +86,7 @@ export default function ProductImageManager({ productId }: Props) {
       {isLoading ? (
         <div className="text-xs text-text-light">Loading images...</div>
       ) : (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {(images || []).map((img: any) => (
             <div key={img.id} className={`relative group rounded-lg overflow-hidden border-2 ${img.is_primary ? "border-coral" : "border-border"}`}>
               <img src={img.image_url} alt={img.alt_text || ""} className="w-full aspect-square object-cover" />

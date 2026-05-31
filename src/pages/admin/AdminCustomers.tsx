@@ -77,6 +77,7 @@ export default function AdminCustomers() {
         <div className="text-center py-10 text-text-med">Loading...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -105,6 +106,7 @@ export default function AdminCustomers() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -116,7 +118,7 @@ export default function AdminCustomers() {
               <button onClick={() => setSelectedCustomer(null)}><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-muted/30 rounded-lg p-3 text-center">
                   <div className="text-xl font-bold pf">{selectedCustomer.total_orders}</div>
                   <div className="text-[10px] text-text-light">Orders</div>

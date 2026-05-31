@@ -227,7 +227,7 @@ export default function AdminQuizExitPopupTab() {
               onChange={v => set("quiz_exit_popup_message", v)}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ColorField
                 label="Background color"
                 value={effective.quiz_exit_popup_bg_color}
@@ -248,7 +248,7 @@ export default function AdminQuizExitPopupTab() {
               value={effective.quiz_exit_popup_primary_cta_text}
               onChange={v => set("quiz_exit_popup_primary_cta_text", v)}
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <ColorField
                 label="Button background"
                 value={effective.quiz_exit_popup_primary_cta_bg}

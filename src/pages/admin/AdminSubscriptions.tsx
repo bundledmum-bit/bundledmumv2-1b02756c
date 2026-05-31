@@ -155,7 +155,7 @@ export default function AdminSubscriptions() {
         <p className="text-xs text-text-light mt-0.5">Manage recurring customer subscriptions, delivery schedules, and cancellations.</p>
       </header>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Active subscriptions" value={stats.active} tone="emerald" />
         <Stat label="Cancelled" value={stats.cancelled} />
         <Stat label="Payment failed" value={stats.payment_failed} tone={stats.payment_failed > 0 ? "red" : undefined} />
@@ -537,7 +537,7 @@ function CourierAssignPanel({ orderId, onClose }: { orderId: string; onClose: ()
   return (
     <div className="border border-border rounded-lg p-3 space-y-2 bg-muted/20">
       <h4 className="text-[10px] uppercase tracking-widest font-bold text-text-med">Assign courier (next delivery)</h4>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-0.5">Courier</label>
           <input list="sub-courier-options" value={partner} onChange={e => setPartner(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-xs bg-background" placeholder="Unassigned" />

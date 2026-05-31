@@ -88,6 +88,7 @@ export default function AdminPagesTab() {
         <div className="text-center py-10 text-text-med">Loading...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -126,6 +127,7 @@ export default function AdminPagesTab() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -137,7 +139,7 @@ export default function AdminPagesTab() {
               <button onClick={() => setEditing(null)}><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Title *</label>
                   <input value={editing.title}
@@ -163,7 +165,7 @@ export default function AdminPagesTab() {
                   className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background font-mono" />
                 <p className="text-[10px] text-text-light mt-1">HTML allowed. Use &lt;h2&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;ol&gt;, &lt;strong&gt;, &lt;a&gt;, &lt;em&gt;.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Meta Title (SEO)</label>
                   <input value={editing.meta_title || ""} onChange={e => setEditing((p: any) => ({ ...p, meta_title: e.target.value }))}

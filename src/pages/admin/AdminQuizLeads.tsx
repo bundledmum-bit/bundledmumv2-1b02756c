@@ -168,7 +168,7 @@ export default function AdminQuizLeads() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2 mb-1">

@@ -303,7 +303,7 @@ export default function AdminAnalytics() {
   if (ordersLoading) return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Analytics</h1>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">{Array.from({length:5}).map((_,i)=><Skeleton key={i} className="h-20 rounded-xl" />)}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">{Array.from({length:5}).map((_,i)=><Skeleton key={i} className="h-20 rounded-xl" />)}</div>
     </div>
   );
 
@@ -364,7 +364,7 @@ export default function AdminAnalytics() {
 
         {/* ═══ TAB 1: BUSINESS ═══ */}
         <TabsContent value="business">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-6">
             <StatCard label="Revenue" value={fmt(revenue)} change={pctChange(revenue, prevRevenue)} showChange={compareEnabled} />
             <StatCard label="GMV" value={fmt(gmv)} change={pctChange(gmv, prevGmv)} showChange={compareEnabled} />
             <StatCard label="Orders" value={o.length} change={pctChange(o.length, po.length)} showChange={compareEnabled} />
@@ -480,7 +480,7 @@ export default function AdminAnalytics() {
             const leadsOverTime = groupByDay(leads, items => items.length);
             return (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-6">
                   <StatCard label="Quiz Starts" value={quizStarts} />
                   <StatCard label="Quiz Completions" value={quizCompletes} />
                   <StatCard label="Completion Rate" value={`${completionRate}%`} />
@@ -605,7 +605,7 @@ export default function AdminAnalytics() {
             ];
             return (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
                   <StatCard label="Cart Abandonment" value={`${abandonRate}%`} />
                   <StatCard label="Conversion Rate" value={`${convRate}%`} />
                   <StatCard label="Sessions" value={Object.values(sessionsByDay).reduce((s, set) => s + set.size, 0)} />

@@ -122,6 +122,7 @@ export default function AdminPages() {
         <div className="text-center py-10 text-text-med">Loading...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -162,6 +163,7 @@ export default function AdminPages() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -211,7 +213,7 @@ function PageEditorModal({
         </div>
         <div className="p-4 space-y-4">
           {/* Common fields (title/slug/meta/published) */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Title *</label>
               <input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value, slug: editing.id ? editing.slug : e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") })}
@@ -230,7 +232,7 @@ function PageEditorModal({
             <LegalEditor editing={editing} setEditing={setEditing} />
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Meta Title</label>
               <input value={editing.meta_title || ""} onChange={e => setEditing({ ...editing, meta_title: e.target.value })}
@@ -417,7 +419,7 @@ function AboutEditor({
           <textarea value={blocks.cta.body} onChange={e => update({ ...blocks, cta: { ...blocks.cta, body: e.target.value } })}
             rows={2} placeholder="Body"
             className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input value={blocks.cta.button_label} onChange={e => update({ ...blocks, cta: { ...blocks.cta, button_label: e.target.value } })}
               placeholder="Button label" className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
             <input value={blocks.cta.button_link} onChange={e => update({ ...blocks, cta: { ...blocks.cta, button_link: e.target.value } })}

@@ -120,6 +120,7 @@ export default function AdminBundles() {
         <div className="text-center py-10 text-text-med">Loading bundles...</div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -175,6 +176,7 @@ export default function AdminBundles() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

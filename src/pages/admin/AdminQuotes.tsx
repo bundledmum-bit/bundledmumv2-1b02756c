@@ -1703,7 +1703,7 @@ function QuoteEditor({
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3 text-[11px] text-text-med">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-[11px] text-text-med">
                 <div>Views: <span className="font-semibold text-foreground">{quoteData.view_count ?? 0}</span></div>
                 {quoteData.last_viewed_at && (
                   <div>Last viewed: <span className="font-semibold text-foreground">{new Date(quoteData.last_viewed_at).toLocaleString()}</span></div>

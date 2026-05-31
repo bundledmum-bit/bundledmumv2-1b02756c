@@ -870,7 +870,7 @@ function ExpensesTab() {
         <PeriodSelector p={p} />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
         {(["fixed","variable","payroll","tax","cogs"] as const).map(t => (
           <div key={t} className={`rounded-xl border border-border p-3 ${TYPE_BG[t]}`}>
             <div className="text-[10px] uppercase tracking-widest font-semibold text-text-med">{t}</div>
@@ -1382,7 +1382,7 @@ function CogsTab() {
               <label className={labelCls}>Supplier</label>
               <input value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} className={inputCls} />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className={labelCls}>Unit Cost (₦)</label>
                 <input type="number" min="0" step="0.01" value={form.unit_cost} onChange={e => setForm({ ...form, unit_cost: e.target.value })} className={inputCls} />
@@ -1605,7 +1605,7 @@ function PayrollTab() {
           <h3 className="font-semibold text-sm mb-3 flex items-center gap-1.5"><Plus className="w-4 h-4" /> Add payroll entry</h3>
           <div className="space-y-3">
             {/* Employee + period */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className={labelCls}>Employee Name</label>
                 <input value={form.employee_name} onChange={e => setForm({ ...form, employee_name: e.target.value })} className={inputCls} />
@@ -2387,7 +2387,7 @@ function AssetsTab() {
               <label className={labelCls}>Purchase Cost (₦)</label>
               <input type="number" min="0" value={form.purchase_cost} onChange={e => setForm({ ...form, purchase_cost: e.target.value })} className={inputCls} />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className={labelCls}>Useful Life (yrs)</label>
                 <input type="number" min="1" value={form.useful_life_years} onChange={e => setForm({ ...form, useful_life_years: e.target.value })} className={inputCls} />
@@ -2456,6 +2456,7 @@ function AssetsTab() {
           {selected && (
             <div className="mt-4">
               <div className={sectionCls}>Depreciation schedule — {selected.asset_name}</div>
+              <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left border-b border-border">
@@ -2474,6 +2475,7 @@ function AssetsTab() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
@@ -2569,7 +2571,7 @@ function SettingsTab() {
 
       <div className={cardCls}>
         <h3 className="font-semibold text-sm mb-3">Payroll Rates</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className={labelCls}>Employee Pension (%)</label>
             <input type="number" step="0.01" value={Number(draft.employee_pension_rate)} onChange={e => setDraft({ ...draft, employee_pension_rate: Number(e.target.value) })} className={inputCls} />
@@ -2601,6 +2603,7 @@ function SettingsTab() {
             <button onClick={addBand} className={btnGhost}><Plus className="w-3.5 h-3.5" /> Add band</button>
           </div>
         </div>
+        <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left border-b border-border">
@@ -2642,6 +2645,7 @@ function SettingsTab() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className={cardCls}>
@@ -2824,7 +2828,7 @@ function ComplianceTab() {
       )}
 
       {/* Summary bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         <SummaryPill label="Filed" value={String(summary.filed)} tone="green" />
         <SummaryPill label="Pending" value={String(summary.pending)} tone="amber" />
         <SummaryPill

@@ -234,6 +234,7 @@ function SpendThresholdsTab() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/50">
@@ -272,6 +273,7 @@ function SpendThresholdsTab() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
