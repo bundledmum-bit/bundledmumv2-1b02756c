@@ -128,6 +128,29 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const { slug } = useParams<{ slug: string }>();
   const skuParam = searchParams.get("sku");
 
+  // Maternity-bundle snapshot query + customise toggle (moved from
+  // ProductPage so refs inside this component resolve).
+  const isMaternityBundleProductForQuery =
+    raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
+  const maternitySnapshotQuery = useQuery({
+    queryKey: ["maternity-bundle-snapshot", raw?.id],
+    enabled: isMaternityBundleProductForQuery && !!raw?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("maternity_bundle_snapshots")
+        .select("items_snapshot, item_count, sell_price")
+        .eq("bundle_id", raw.id)
+        .order("snapped_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { items_snapshot?: MaternityBundleSnapshotItem[]; item_count?: number; sell_price?: number } | null;
+    },
+  });
+  const [customiseOpenBundle, setCustomiseOpenBundle] = useState(false);
+
+
   // ── Variant axis (age_range / size) ─────────────────────────────────
   // Eligible products (baby bouncer ages, bedding-set sizes, etc.) ship
   // multiple brands grouped by an age or size axis. We surface a variant
