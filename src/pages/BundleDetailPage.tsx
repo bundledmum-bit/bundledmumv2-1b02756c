@@ -35,6 +35,10 @@ export default function BundleDetailPage() {
   const [pickerBrandId, setPickerBrandId] = useState<string>("");
   const [pickerSize, setPickerSize] = useState<string>("");
   const [showShare, setShowShare] = useState(false);
+  // Standard-bundle minimalist redesign: customise editor is hidden by
+  // default and revealed via the "Or customise this bundle →" link so the
+  // initial view stays quiet. All swap/remove/add handlers below are reused.
+  const [customiseOpen, setCustomiseOpen] = useState(false);
 
   useEffect(() => {
     if (bundle && !customBabyItems) {
@@ -259,6 +263,445 @@ export default function BundleDetailPage() {
   const pickerProduct = attrPicker?.item.productId ? productMap.get(attrPicker.item.productId) : null;
   const pickerSelectedBrand = pickerProduct?.brands?.find((b: any) => b.id === pickerBrandId)
     || pickerProduct?.brands?.[0];
+
+  // ───────────────────────────────────────────────────────────────────
+  // STANDARD BUNDLE — premium minimalist redesign.
+  //
+  // Scoped to the Maternity List Standard slug only; Starter and Premium
+  // fall through to the existing render below. All CTA handlers and modals
+  // (handleAdd, handleSwap/Remove/AddNew, attrPicker, BundleItemSwapPopup,
+  // ShareModal) are reused unchanged — this branch only re-renders the
+  // same data with a quieter visual hierarchy.
+  // ───────────────────────────────────────────────────────────────────
+  if (bundle.slug === "maternity-list-standard") {
+    const groups = [
+      { key: "mum" as const, label: "For Mum", items: mumItems },
+      { key: "baby" as const, label: "For Baby", items: babyItems },
+      { key: "hospital" as const, label: "Hospital Consumables", items: hospitalItems },
+      { key: "convenience" as const, label: "Convenience Extras", items: convenienceItems },
+    ].filter((g) => g.items.length > 0);
+
+    // Hero image: first product in the bundle that has an imageUrl.
+    const heroImageItem = allItems.find((i) => i.imageUrl);
+
+    return (
+      <div className="min-h-screen bg-background pb-24 md:pb-0 animate-in fade-in duration-700">
+        {/* Top utility row */}
+        <div className="px-6 md:px-12 lg:px-16 pt-8 md:pt-10">
+          <div className="max-w-[1120px] mx-auto flex items-center justify-between">
+            <Link
+              to="/bundles"
+              className="text-text-med text-xs uppercase tracking-[0.18em] hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+            >
+              <ArrowLeft className="h-3 w-3" /> All bundles
+            </Link>
+            <button
+              onClick={() => setShowShare(true)}
+              className="text-text-med hover:text-foreground transition-colors p-2 -m-2"
+              aria-label="Share bundle"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* HERO */}
+        <section className="px-6 md:px-12 lg:px-16 pt-12 md:pt-24 pb-16 md:pb-28">
+          <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-12 md:gap-16 lg:gap-20 items-center">
+            <div>
+              <h1 className="pf text-[44px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight mb-6">
+                {bundle.name}
+              </h1>
+              <p className="text-text-med text-base md:text-lg leading-relaxed mb-10 max-w-[42ch]">
+                {bundle.tagline}
+              </p>
+              <p className="text-foreground text-sm mb-8">
+                {fmt(displayPrice)}
+                {savings > 0 && !isCustomized && (
+                  <span className="text-text-light ml-3">
+                    Save {fmt(savings)} vs buying separately.
+                  </span>
+                )}
+              </p>
+              {isInCart ? (
+                <Link
+                  to="/cart"
+                  className="inline-block bg-foreground text-background px-8 py-4 text-sm font-medium hover:bg-foreground/90 transition-colors"
+                >
+                  In cart — View cart
+                </Link>
+              ) : (
+                <button
+                  onClick={handleAdd}
+                  className="bg-coral text-primary-foreground px-8 py-4 text-sm font-medium hover:bg-coral-dark transition-colors"
+                >
+                  Add bundle — {fmt(displayPrice)}
+                </button>
+              )}
+              <div className="mt-6">
+                <button
+                  onClick={() => {
+                    setCustomiseOpen(true);
+                    // Defer so the panel mounts before we scroll to it.
+                    requestAnimationFrame(() => {
+                      document.getElementById("customise")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
+                  className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60"
+                >
+                  Or customise this bundle →
+                </button>
+              </div>
+            </div>
+
+            {/* Hero image — single considered shot, no carousel. */}
+            <div className="aspect-[4/5] md:aspect-square overflow-hidden bg-warm-cream order-first md:order-last">
+              {heroImageItem?.imageUrl ? (
+                <img
+                  src={heroImageItem.imageUrl}
+                  alt={bundle.name}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="w-full h-full bg-forest-light" />
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* PRODUCT GRID — cards, no per-item price, no per-item CTA */}
+        <section className="px-6 md:px-12 lg:px-16 py-14 md:py-24 border-t border-border/40">
+          <div className="max-w-[1120px] mx-auto">
+            {groups.map((group, gi) => (
+              <div key={group.key} className={gi > 0 ? "mt-16 md:mt-24" : ""}>
+                <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8 md:mb-10">
+                  {group.label} — {group.items.length}
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                  {group.items.map((item, i) => (
+                    <div key={`${group.key}-${i}`} className="group">
+                      <div className="aspect-[3/4] overflow-hidden bg-warm-cream mb-3 md:mb-4">
+                        <ProductImage
+                          imageUrl={item.imageUrl}
+                          emoji={item.emoji}
+                          alt={item.name}
+                          className="w-full h-full transition-transform duration-700 group-hover:scale-[1.02]"
+                          emojiClassName="text-5xl"
+                        />
+                      </div>
+                      <p className="text-foreground text-sm leading-snug line-clamp-2">{item.name}</p>
+                      {item.brand && (
+                        <p className="text-text-light text-xs mt-1 line-clamp-1">{item.brand}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* CTA REPEAT — quiet, part of the page rhythm */}
+        <section className="px-6 py-14 md:py-24 text-center">
+          <p className="pf text-2xl md:text-3xl font-light text-foreground mb-10">
+            Ready when you are.
+          </p>
+          {isInCart ? (
+            <Link
+              to="/cart"
+              className="inline-block bg-foreground text-background px-8 py-4 text-sm font-medium hover:bg-foreground/90 transition-colors"
+            >
+              View cart
+            </Link>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className="bg-coral text-primary-foreground px-8 py-4 text-sm font-medium hover:bg-coral-dark transition-colors"
+            >
+              Add bundle — {fmt(displayPrice)}
+            </button>
+          )}
+          <div className="mt-6">
+            <button
+              onClick={() => {
+                setCustomiseOpen(true);
+                requestAnimationFrame(() => {
+                  document.getElementById("customise")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+              }}
+              className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60"
+            >
+              Or customise this bundle →
+            </button>
+          </div>
+        </section>
+
+        {/* WHY WE BUILT THIS — locked editorial copy */}
+        <section className="px-6 pt-14 md:pt-20 pb-24 md:pb-32">
+          <div className="max-w-[640px] mx-auto text-center">
+            <div className="h-px w-12 bg-border mx-auto mb-8" />
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-10">
+              Why we built this
+            </p>
+            <p className="text-text-med text-base leading-[1.7] mb-6">
+              Standard is the bundle we recommend most. Not because it&rsquo;s the cheapest
+              or the most expensive — because it&rsquo;s the most considered.
+            </p>
+            <p className="text-text-med text-base leading-[1.7] mb-6">
+              We started BundledMum after watching too many friends spend their last
+              trimester googling whether &ldquo;maternity pad&rdquo; and &ldquo;sanitary pad&rdquo; are the
+              same thing (they&rsquo;re not). They shouldn&rsquo;t have to. You shouldn&rsquo;t have to.
+            </p>
+            <p className="text-text-med text-base leading-[1.7]">
+              Inside this bundle: every item a Nigerian mum actually uses in her first
+              six weeks. Curated by mums. Quality-checked. Delivered before you go
+              into labour.
+            </p>
+          </div>
+        </section>
+
+        {/* CUSTOMISE PANEL — toggled in, reuses the existing per-item
+            editor (renderItemRow, handleSwap/Remove/AddNew, attrPicker). */}
+        {customiseOpen && (
+          <section
+            id="customise"
+            className="px-6 md:px-12 lg:px-16 py-14 md:py-20 border-t border-border bg-warm-cream/30 animate-in fade-in duration-500"
+          >
+            <div className="max-w-[1120px] mx-auto">
+              <div className="flex items-center justify-between mb-8 md:mb-10">
+                <h2 className="pf text-2xl md:text-3xl font-light">Customise your bundle</h2>
+                <button
+                  onClick={() => setCustomiseOpen(false)}
+                  className="text-text-med text-sm hover:text-foreground underline underline-offset-4"
+                >
+                  Done
+                </button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  { key: "baby" as const, label: "👶 For Baby", items: babyItems },
+                  { key: "mum" as const, label: "💛 For Mum", items: mumItems },
+                  ...(hospitalItems.length > 0
+                    ? [{ key: "hospital" as const, label: "🏥 Hospital Consumables", items: hospitalItems }]
+                    : []),
+                  ...(convenienceItems.length > 0
+                    ? [{ key: "convenience" as const, label: "✨ Convenience Extras", items: convenienceItems }]
+                    : []),
+                ].map((g) => (
+                  <div key={g.key} className="bg-card rounded-card shadow-card overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
+                      <h3 className="pf text-base text-forest">{g.label} ({g.items.length})</h3>
+                      <button
+                        onClick={() => handleAddNew(g.key)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-forest bg-forest-light hover:bg-forest/20 rounded-pill px-3 py-1.5 transition-colors"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add
+                      </button>
+                    </div>
+                    <div className="px-4">
+                      {g.items.map((item, i) => renderItemRow(item, i, g.key))}
+                      {g.items.length === 0 && (
+                        <p className="text-muted-foreground text-sm text-center py-6">No items yet — tap &ldquo;Add&rdquo; above</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Customise total + reset */}
+              <div className="bg-forest-light rounded-card p-4 mt-6 text-center">
+                <p className="text-forest text-sm font-semibold">
+                  {isCustomized ? "Custom bundle" : "Bundle"} total:{" "}
+                  <span className="text-lg font-bold">{fmt(displayPrice)}</span>
+                  {savings > 0 && !isCustomized && (
+                    <span className="text-muted-foreground text-xs ml-2">
+                      (Save <span className="text-forest font-bold">{fmt(savings)}</span>)
+                    </span>
+                  )}
+                </p>
+                {isCustomized && (
+                  <button
+                    onClick={() => {
+                      setCustomBabyItems([...bundle.babyItems]);
+                      setCustomMumItems([...bundle.mumItems]);
+                      setCustomHospitalItems([...bundle.hospitalItems]);
+                      setCustomConvenienceItems([...bundle.convenienceItems]);
+                    }}
+                    className="text-xs text-forest hover:underline mt-1.5"
+                  >
+                    Reset to original bundle
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Modals — reused with identical props */}
+        {showShare && (
+          <ShareModal
+            onClose={() => setShowShare(false)}
+            title={bundle.name}
+            subtitle={`${totalItems} items · ${bundle.tier}`}
+            items={allItems.map((i) => ({ name: i.name, price: i.price }))}
+            totalPrice={displayPrice}
+            badge={isCustomized ? "✨ Customized Bundle" : bundle.tier}
+            shareUrl={shareUrl}
+            shareText={shareText}
+            hospitalType={bundle.hospitalType}
+            itemCount={totalItems}
+          />
+        )}
+
+        {swapPopup?.open && (
+          <BundleItemSwapPopup
+            open
+            onClose={() => setSwapPopup(null)}
+            section={swapPopup.section}
+            swappingItem={swapPopup.swapIndex !== undefined
+              ? (swapPopup.section === "baby"
+                  ? babyItems[swapPopup.swapIndex]
+                  : swapPopup.section === "hospital"
+                    ? hospitalItems[swapPopup.swapIndex]
+                    : swapPopup.section === "convenience"
+                      ? convenienceItems[swapPopup.swapIndex]
+                      : mumItems[swapPopup.swapIndex])
+              : null}
+            existingNames={existingNames}
+            onSelect={handleSwapSelect}
+          />
+        )}
+
+        {/* Attribute picker — re-uses the existing in-place dialog markup
+            via a portal-like fixed overlay. Kept identical to the legacy
+            render so brand/size/colour edits behave the same. */}
+        {attrPicker && (
+          <div
+            className="fixed inset-0 z-[950] flex items-end sm:items-center justify-center"
+            onClick={() => setAttrPicker(null)}
+          >
+            <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
+            <div
+              className="relative bg-card rounded-t-[20px] sm:rounded-[20px] shadow-2xl w-full sm:max-w-[480px] max-h-[85vh] flex flex-col animate-fade-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between p-4 border-b border-border">
+                <div className="flex-1 min-w-0 pr-3">
+                  <h3 className="pf text-lg font-bold leading-tight">{attrPicker.item.name}</h3>
+                  <p className="text-muted-foreground text-xs mt-0.5">Change brand, size or colour</p>
+                </div>
+                <button
+                  onClick={() => setAttrPicker(null)}
+                  className="w-9 h-9 rounded-full bg-foreground/10 flex items-center justify-center hover:bg-foreground/20 flex-shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {!pickerProduct ? (
+                <div className="p-6 text-center text-muted-foreground text-sm">
+                  Product details not available
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                  {pickerProduct.brands?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Brand</p>
+                      <div className="flex flex-wrap gap-2">
+                        {pickerProduct.brands.map((b: any) => {
+                          const selected = pickerBrandId === b.id;
+                          const oos = !b.inStock;
+                          return (
+                            <button
+                              key={b.id}
+                              onClick={() => !oos && setPickerBrandId(b.id)}
+                              disabled={oos}
+                              className={`px-3 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
+                                selected
+                                  ? "border-forest bg-forest text-primary-foreground"
+                                  : oos
+                                    ? "border-border bg-muted/30 text-muted-foreground line-through opacity-60 cursor-not-allowed"
+                                    : "border-border bg-card hover:border-forest text-foreground"
+                              }`}
+                            >
+                              {b.label} · {fmt(b.price)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {pickerProduct.sizes?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">Size</p>
+                      <div className="flex flex-wrap gap-2">
+                        {pickerProduct.sizes.map((sz: string) => {
+                          const selected = pickerSize === sz;
+                          return (
+                            <button
+                              key={sz}
+                              onClick={() => setPickerSize(sz)}
+                              className={`px-3 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
+                                selected
+                                  ? "border-forest bg-forest text-primary-foreground"
+                                  : "border-border bg-card hover:border-forest text-foreground"
+                              }`}
+                            >
+                              {sz}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {pickerProduct && pickerSelectedBrand && (
+                <div className="p-4 border-t border-border">
+                  <button
+                    onClick={() => handleAttrConfirm(
+                      {
+                        id: pickerSelectedBrand.id,
+                        label: pickerSelectedBrand.label,
+                        price: pickerSelectedBrand.price,
+                        imageUrl: pickerSelectedBrand.imageUrl,
+                      },
+                      pickerSize || undefined,
+                    )}
+                    className="w-full rounded-full bg-coral py-3 text-sm font-semibold text-primary-foreground hover:bg-coral-dark transition-colors"
+                  >
+                    Save changes — {fmt(pickerSelectedBrand.price)}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Mobile sticky bottom CTA */}
+        <div className="fixed bottom-[56px] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3 safe-area-bottom">
+          {isInCart ? (
+            <Link
+              to="/cart"
+              className="block w-full bg-foreground text-background text-center py-3 text-sm font-medium"
+            >
+              View cart
+            </Link>
+          ) : (
+            <button
+              onClick={handleAdd}
+              className="w-full bg-coral text-primary-foreground py-3 text-sm font-medium hover:bg-coral-dark transition-colors"
+            >
+              Add bundle — {fmt(displayPrice)}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24 md:pb-8">
