@@ -17,7 +17,8 @@ import { useSubscriptionSettings } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
 import BundleCustomiser from "@/components/BundleCustomiser";
-import MaternityBundleItemsGrid, { type MaternityBundleSnapshotItem } from "@/components/MaternityBundleItemsGrid";
+import MaternityBundleItemsEditor from "@/components/MaternityBundleItemsEditor";
+import { useBundleItemsEdit } from "@/hooks/useBundleItemsEdit";
 import { buildWhatsAppOrderHref } from "@/lib/whatsapp";
 
 function useProduct(slug: string) {
@@ -521,6 +522,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const isMaternityBundleProduct =
     raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
 
+  // Bundle-edit state — single source of truth for the inline grid AND
+  // the customiser-toggle mount below. Called unconditionally per React
+  // hook rules; queries inside are gated by productId so non-bundle
+  // products incur zero data cost beyond the hook call. React Query
+  // dedupes by key with BundleCustomiser's internal call (same product)
+  // so a single network fetch backs both.
+  const editApi = useBundleItemsEdit(product.id, product.name);
+
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
       <Seo
@@ -550,25 +559,27 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           /products/maternity-bundle-* slugs. Postpartum/Baby-Shower
           gift_boxes fall through to the legacy block below. */}
       {isMaternityBundleProduct && (() => {
-        const snapItems: MaternityBundleSnapshotItem[] = Array.isArray(maternitySnapshotQuery.data?.items_snapshot)
-          ? (maternitySnapshotQuery.data!.items_snapshot as MaternityBundleSnapshotItem[])
-          : [];
-        const heroPrice = selectedBrand?.price ?? maternitySnapshotQuery.data?.sell_price ?? 0;
+        // Hero price + WhatsApp + cart all read from editApi so any
+        // inline-card or customiser edit propagates instantly (fixes the
+        // 4eefb74 cart-shape bug where color was always null).
+        const fallbackHeroPrice = selectedBrand?.price ?? maternitySnapshotQuery.data?.sell_price ?? 0;
+        const heroPrice = editApi.currentTotalPrice > 0 ? editApi.currentTotalPrice : fallbackHeroPrice;
         const tierFromSlug = (slug || "").replace(/^maternity-bundle-/i, "").trim();
         const whatsappHref = buildWhatsAppOrderHref({
           title: product.name,
           tier: tierFromSlug,
-          currentItems: snapItems.map((it) => ({
-            name: it.name || "—",
-            brand: it.brand?.brand_name || null,
+          currentItems: editApi.includedItems.map((it) => ({
+            name: it.product_name,
+            brand: it.selected_brand?.brand_name || null,
           })),
           currentTotalPrice: heroPrice,
         });
 
-        // Add the snapshot's default composition to cart as a single
-        // typed bundle row — same shape BundleCustomiser produces.
+        // Build the cart row from the live editApi composition. Same
+        // shape BundleCustomiser.handleProceedToCheckout produces, so
+        // both surfaces yield identical cart rows.
         const handleAddMaternityBundleToCart = () => {
-          if (snapItems.length === 0) {
+          if (editApi.includedItems.length === 0) {
             toast.error("Bundle items not loaded yet — please try again in a moment.");
             return;
           }
@@ -579,25 +590,23 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             bundleName: product.name,
             bundleLabel: raw?.bundle_label || "",
             bundleSku: selectedBrand?.sku || "",
-            bundlePrice: heroPrice,
-            price: heroPrice,
+            bundlePrice: editApi.currentTotalPrice,
+            price: editApi.currentTotalPrice,
             name: product.name,
-            bundleItems: snapItems
-              .filter((it) => it.brand && it.brand.id)
-              .map((it) => ({
-                productId: it.product_id,
-                productName: it.name || "",
-                brandId: it.brand!.id || "",
-                brandName: it.brand!.brand_name || "",
-                sku: (it.brand as any)?.sku ?? null,
-                price: Number(it.brand!.price || 0),
-                quantity: Number(it.quantity || 1),
-                lineTotal: Number(it.brand!.price || 0) * Number(it.quantity || 1),
-                isDefault: true,
-                color: null,
-                size: (it.brand as any)?.size_variant ?? null,
-              })),
-            removedDefaultCount: 0,
+            bundleItems: editApi.includedItems.map((i) => ({
+              productId: i.product_id,
+              productName: i.product_name,
+              brandId: i.selected_brand.id,
+              brandName: i.selected_brand.brand_name,
+              sku: i.selected_brand.sku ?? null,
+              price: i.selected_brand.price,
+              quantity: i.quantity,
+              lineTotal: i.selected_brand.price * i.quantity,
+              isDefault: i.is_default,
+              color: i.selected_gender ?? null,
+              size: i.selected_brand.size_variant ?? null,
+            })),
+            removedDefaultCount: editApi.removedDefaultCount,
           } as any);
           toast.success(`✓ ${product.name} added to cart!`, {
             action: { label: "View Cart →", onClick: () => navigate("/cart") },
@@ -688,8 +697,16 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             </section>
 
-            {/* Read-only items grid sourced from the latest snapshot */}
-            <MaternityBundleItemsGrid bundleId={product.id} />
+            {/* Inline editable items grid — shares editApi state with
+                the customiser-toggle mount below. */}
+            <section className="px-6 md:px-12 lg:px-16 py-10 md:py-16 border-t border-border/40">
+              <div className="max-w-[1120px] mx-auto">
+                <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8 md:mb-10">
+                  What&rsquo;s inside — tap to customise
+                </p>
+                <MaternityBundleItemsEditor editApi={editApi} />
+              </div>
+            </section>
 
             {/* CTA REPEAT */}
             <section className="px-6 py-10 md:py-16 text-center">
@@ -769,6 +786,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                     productName={product.name}
                     bundleLabel={raw?.bundle_label || null}
                     bundleSku={selectedBrand?.sku || null}
+                    editApi={editApi}
                   />
                 </div>
               </section>
@@ -1142,7 +1160,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               and add the customised bundle to cart from inside this
               component. The stock Add-to-Cart button above is hidden for
               bundles so there's a single source-of-truth control. */}
-          {raw?.is_gift_box && (
+          {/* Legacy mount: ONLY for non-maternity gift boxes
+              (Postpartum / Baby Shower). The maternity-bundle redesign
+              owns its own customiser mount above with editApi.
+              Without this gate, maternity-bundle pages would render
+              the customiser twice — the bug introduced by 4eefb74. */}
+          {raw?.is_gift_box && !isMaternityBundleProduct && (
             <BundleCustomiser
               productId={product.id}
               productName={product.name}

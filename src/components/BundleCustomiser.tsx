@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,279 +7,96 @@ import { ShoppingBag, X, RotateCcw, Plus } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
 import { analytics } from "@/lib/ga";
 import { getBrandImage } from "@/lib/brandImage";
+import {
+  useBundleItemsEdit,
+  type BrandRow,
+  type BundleEditApi,
+} from "@/hooks/useBundleItemsEdit";
 
 /**
  * Interactive customisation UI for bundle product pages.
  *
- * - Loads the default bundle item list (gift-box RPC or maternity
- *   snapshot depending on product name).
- * - Loads all in-stock brand options for every item product so the
- *   customer can switch variants.
- * - Lets the customer uncheck items, swap brands, add catalogue
- *   products, and reset to the original bundle. Price recomputes
- *   live, client-side, from the included items.
- * - Adds the customised result to the cart as a single bundle row.
+ * State ownership: bundle-edit state (items, brands, gender, mutators)
+ * lives in useBundleItemsEdit. This component is a CONSUMER:
  *
- * Customised state is React-only — nothing is persisted to the DB
- * until checkout writes it through the order_items pipeline.
+ *   - When the parent passes `editApi`, we use that — the parent and
+ *     this component share state. This is how /products/maternity-bundle-*
+ *     keeps the inline grid and the customiser in sync.
+ *   - When no `editApi` is provided, we call useBundleItemsEdit
+ *     internally (uncontrolled mode). This is how legacy Postpartum
+ *     and Baby Shower gift-box product pages mount the customiser.
+ *
+ * Keeps the catalogue-search input, the image-zoom lightbox, the
+ * WhatsApp pre-fill, and the "Proceed to Checkout" action local —
+ * those are customiser-specific UI.
  */
-interface BundleCustomiserProps {
+
+interface Props {
   productId: string;
   productName: string;
   bundleLabel: string | null;
   bundleSku: string | null;
+  /** Provided in controlled mode (maternity-bundle product pages). */
+  editApi?: BundleEditApi;
 }
 
-interface BrandRow {
-  id: string;
-  product_id?: string;
-  sku?: string | null;
-  brand_name: string;
-  price: number;
-  tier: string | null;
-  image_url?: string | null;
-  stored_image_url?: string | null;
-  size_variant: string | null;
-  variant_type?: string | null;
-  in_stock: boolean;
-}
-
-interface DefaultItem {
-  product_id: string;
-  product_name: string;
-  brand_id: string | null;
-  brand_name: string | null;
-  brand_sku?: string | null;
-  brand_image_url?: string | null;
-  brand_size_variant?: string | null;
-  unit_price: number;
-  quantity: number;
-  is_enabled?: boolean;
-}
-
-interface BundleItem {
-  product_id: string;
-  product_name: string;
-  selected_brand: BrandRow;
-  available_brands: BrandRow[];
-  quantity: number;
-  is_included: boolean;
-  is_default: boolean;
-  // Optional gender axis — only populated for products where
-  // gender_relevant === true. Stored per-item so the cart payload can
-  // carry the choice through to the order.
-  selected_gender: string | null;
-}
-
-interface GenderInfo {
-  gender_relevant: boolean;
-  gender_colors: Record<string, string> | null;
-}
-
-export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku }: BundleCustomiserProps) {
-  const isMaternityBundle = /^Maternity( \+ Baby Items)? Bundle/i.test(productName || "");
+export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku, editApi }: Props) {
   const { addToCart } = useCart();
   const navigate = useNavigate();
 
-  // ── Load default items + the original "sell price" reference ──────
-  const defaultsQuery = useQuery({
-    queryKey: ["bundle-customiser-defaults", productId],
-    queryFn: async () => {
-      if (isMaternityBundle) {
-        const { data, error } = await (supabase as any)
-          .from("maternity_bundle_snapshots")
-          .select("items_snapshot, retail_total, sell_price")
-          .eq("bundle_id", productId)
-          .order("snapped_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (error) throw error;
-        const snap = data as any;
-        const items: DefaultItem[] = ((snap?.items_snapshot || []) as any[]).map(it => ({
-          product_id: String(it?.product_id ?? ""),
-          product_name: it?.name || "—",
-          brand_id: it?.brand?.id ?? null,
-          brand_name: it?.brand?.brand_name ?? null,
-          brand_sku: it?.brand?.sku ?? null,
-          brand_image_url: it?.brand?.image_url ?? null,
-          brand_size_variant: it?.brand?.size_variant ?? null,
-          unit_price: Number(it?.brand?.price ?? 0),
-          quantity: Number(it?.quantity ?? 1),
-          is_enabled: true,
-        }));
-        return {
-          items,
-          sell_price: Number(snap?.sell_price ?? 0),
-          retail_total: Number(snap?.retail_total ?? 0),
-        };
-      }
-      const { data, error } = await (supabase as any)
-        .rpc("get_gift_box_price", { p_gift_box_id: productId });
-      if (error) throw error;
-      const raw = data as any;
-      const items: DefaultItem[] = (Array.isArray(raw?.items) ? raw.items : []).map((it: any) => ({
-        product_id: String(it.product_id),
-        product_name: it.product_name,
-        brand_id: it.brand_id,
-        brand_name: it.brand_name,
-        brand_sku: it.brand_sku ?? null,
-        // get_gift_box_price emits image_url + size_variant on the
-        // item row when the brand row carries them, but older callers
-        // emit them nested under brand. Cover both shapes.
-        brand_image_url: it.image_url ?? it.brand?.image_url ?? null,
-        brand_size_variant: it.size_variant ?? it.brand?.size_variant ?? null,
-        unit_price: Number(it.unit_price ?? 0),
-        quantity: Number(it.quantity ?? 1),
-        is_enabled: it.is_enabled !== false,
-      }));
-      return {
-        items,
-        sell_price: Number(raw?.sell_price ?? 0),
-        retail_total: Number(raw?.retail_total ?? 0),
-      };
-    },
-    staleTime: 60_000,
-  });
+  // Hooks must be called unconditionally. When editApi is provided we
+  // call useBundleItemsEdit with the same productId/Name — React Query
+  // dedupes via shared keys so this is one network fetch, not two.
+  // The local result is only used as a fallback when editApi is absent.
+  const localApi = useBundleItemsEdit(productId, productName);
+  const api: BundleEditApi = editApi ?? localApi;
 
-  const productIds = (defaultsQuery.data?.items || []).map(i => i.product_id);
-  const productIdsKey = productIds.join(",");
+  const {
+    isLoading,
+    bundleItems,
+    includedItems,
+    currentTotalPrice,
+    defaultPrice,
+    removedDefaultCount,
+    genderMap,
+    toggleInclude,
+    selectBrand,
+    setItemGender,
+    updateQuantity,
+    removeCustomItem,
+    resetToDefault,
+    addCatalogItem,
+  } = api;
 
-  // ── Load gender flags for every item product ──────────────────────
-  const genderQuery = useQuery({
-    queryKey: ["bundle-customiser-gender", productIdsKey],
-    enabled: productIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("products")
-        .select("id, gender_relevant, gender_colors")
-        .in("id", productIds);
-      if (error) throw error;
-      const map: Record<string, GenderInfo> = {};
-      ((data || []) as any[]).forEach(p => {
-        map[p.id] = {
-          gender_relevant: !!p.gender_relevant,
-          gender_colors: p.gender_colors || null,
-        };
-      });
-      return map;
-    },
-    staleTime: 60_000,
-  });
-
-  // ── Load available brands for every item product ──────────────────
-  const brandsQuery = useQuery({
-    queryKey: ["bundle-customiser-brands", productIdsKey],
-    enabled: productIds.length > 0,
-    queryFn: async () => {
-      // brands has no anon SELECT policy — read via the public view
-      // (same pattern ProductPage / BundleSections use).
-      const { data, error } = await (supabase as any)
-        .from("brands_public")
-        .select("id, product_id, sku, brand_name, price, tier, image_url, stored_image_url, size_variant, variant_type, in_stock")
-        .in("product_id", productIds)
-        .eq("in_stock", true)
-        .gt("price", 0)
-        .order("price");
-      if (error) throw error;
-      const map: Record<string, BrandRow[]> = {};
-      ((data || []) as BrandRow[]).forEach(b => {
-        const k = (b as any).product_id as string;
-        if (!map[k]) map[k] = [];
-        map[k].push(b);
-      });
-      return map;
-    },
-    staleTime: 60_000,
-  });
-
-  // ── Build initial bundle state once data is ready ─────────────────
-  const [bundleItems, setBundleItems] = useState<BundleItem[]>([]);
-  const [initialised, setInitialised] = useState(false);
-
-  const buildInitialItems = useMemo(() => {
-    if (!defaultsQuery.data) return null;
-    const brandsMap = brandsQuery.data || {};
-    const genderMap = genderQuery.data || {};
-    return defaultsQuery.data.items
-      .filter(it => it.is_enabled !== false)
-      .map<BundleItem>(it => {
-        const pool = brandsMap[it.product_id] || [];
-        const seeded: BrandRow = pool.find(b => b.id === it.brand_id) || {
-          id: it.brand_id || `${it.product_id}-default`,
-          sku: it.brand_sku ?? null,
-          brand_name: it.brand_name || "—",
-          price: it.unit_price,
-          tier: null,
-          image_url: it.brand_image_url ?? null,
-          size_variant: it.brand_size_variant ?? null,
-          in_stock: true,
-        };
-        const gender = genderMap[it.product_id];
-        const seedGender = gender?.gender_relevant && gender?.gender_colors
-          ? (Object.keys(gender.gender_colors).find(k => k === "neutral") || Object.keys(gender.gender_colors)[0] || null)
-          : null;
-        return {
-          product_id: it.product_id,
-          product_name: it.product_name,
-          selected_brand: seeded,
-          available_brands: pool,
-          quantity: it.quantity || 1,
-          is_included: true,
-          is_default: true,
-          selected_gender: seedGender,
-        };
-      });
-  }, [defaultsQuery.data, brandsQuery.data, genderQuery.data]);
-
-  useEffect(() => {
-    // Gate on BOTH the bundle defaults AND the brand pool resolving so
-    // each item's selected_brand inherits the real brand row (with
-    // image_url, size_variant, etc.) instead of the synthetic
-    // fallback. Otherwise the thumbnail + brand-switcher both miss data
-    // when brandsQuery resolves a tick later than defaultsQuery.
-    if (initialised) return;
-    if (!buildInitialItems) return;
-    if (productIds.length > 0 && !brandsQuery.data) return;
-    setBundleItems(buildInitialItems);
-    setInitialised(true);
-  }, [buildInitialItems, initialised, brandsQuery.data, productIds.length]);
-
-  // ── Live price ──────────────────────────────────────────────────────
-  const bundlePrice = useMemo(() => bundleItems
-    .filter(i => i.is_included)
-    .reduce((sum, i) => sum + (i.selected_brand.price * i.quantity), 0),
-    [bundleItems]);
+  const priceDelta = currentTotalPrice - defaultPrice;
 
   // ── WhatsApp order link ────────────────────────────────────────────
   // Reactive to every customiser tweak (qty +/-, brand swap, include/
   // exclude, gender) so the pre-filled message always reflects what
   // the customer sees on screen.
-  const whatsappUrl = useMemo(() => {
-    const included = bundleItems.filter(i => i.is_included);
-    const lines = included.map(item => {
+  const whatsappUrl = (() => {
+    const lines = includedItems.map((item) => {
       const rawBrand = item.selected_brand?.brand_name || "";
-      const brand = rawBrand && rawBrand !== "BundledMum" && rawBrand !== "Generic"
-        ? ` (${rawBrand})`
-        : "";
+      const brand = rawBrand && rawBrand !== "BundledMum" && rawBrand !== "Generic" ? ` (${rawBrand})` : "";
       const qty = item.quantity > 1 ? ` x${item.quantity}` : "";
       const colour = item.selected_gender
         ? ` — ${item.selected_gender === "boy" ? "Boy (Blue)" : item.selected_gender === "girl" ? "Girl (Pink)" : "Neutral (White)"}`
         : "";
       return `  • ${item.product_name}${brand}${qty}${colour}`;
     }).join("\n");
-    const priceFormatted = `₦${bundlePrice.toLocaleString("en-NG")}`;
+    const priceFormatted = `₦${currentTotalPrice.toLocaleString("en-NG")}`;
     const labelSuffix = bundleLabel ? ` — ${bundleLabel}` : "";
     const message = `Hi BundledMum! 👋
 
 I'd like to order the *${productName}*${labelSuffix}
 
 *Bundle Price:* ${priceFormatted}
-*Items included (${included.length}):*
+*Items included (${includedItems.length}):*
 ${lines}
 
 Please let me know the next steps to complete my order. Thank you! 🛍️`;
     return `https://wa.me/2347040667424?text=${encodeURIComponent(message)}`;
-  }, [productName, bundleLabel, bundlePrice, bundleItems]);
+  })();
 
   const trackWhatsAppClick = () => {
     try {
@@ -288,27 +105,11 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         click_location: "bundle_product_page",
         click_type: "bundle_order",
       });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
-  const defaultPrice = defaultsQuery.data?.sell_price || 0;
-  const priceDelta = bundlePrice - defaultPrice;
-
-  // ── Item mutations ──────────────────────────────────────────────────
-  const toggleInclude = (productId: string) => {
-    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, is_included: !i.is_included } : i));
-  };
-  const selectBrand = (productId: string, brand: BrandRow) => {
-    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, selected_brand: brand } : i));
-  };
-  const setItemGender = (productId: string, key: string) => {
-    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, selected_gender: key } : i));
-  };
-  // Min qty 1; no upper bound. bundlePrice recomputes via useMemo.
-  const updateQuantity = (productId: string, newQty: number) => {
-    if (newQty < 1) return;
-    setBundleItems(items => items.map(i => i.product_id === productId ? { ...i, quantity: newQty } : i));
-  };
   // ── Per-item image zoom ────────────────────────────────────────────
   const [zoomImage, setZoomImage] = useState<{ url: string; name: string } | null>(null);
   const openImageZoom = (url: string | null | undefined, name: string) => {
@@ -322,13 +123,6 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [zoomImage]);
-
-  const removeCustomItem = (productId: string) => {
-    setBundleItems(items => items.filter(i => !(i.product_id === productId && !i.is_default)));
-  };
-  const resetToDefault = () => {
-    if (buildInitialItems) setBundleItems(buildInitialItems);
-  };
 
   // ── Add-from-catalogue search ───────────────────────────────────────
   const [addSearch, setAddSearch] = useState("");
@@ -357,27 +151,14 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
   });
 
   const addCatalogueProduct = (p: { id: string; name: string; brands: BrandRow[] }) => {
-    const shoppable = (p.brands || []).filter(b => b.in_stock && b.price > 0);
-    if (shoppable.length === 0) { toast.error("This product has no shoppable brands."); return; }
-    const existing = bundleItems.find(i => i.product_id === p.id);
-    if (existing) {
-      // Just re-check it
-      if (!existing.is_included) toggleInclude(p.id);
-      else toast("Already in your bundle.");
-      setAddSearch("");
+    const result = addCatalogItem(p);
+    if (result === "no-brands") {
+      toast.error("This product has no shoppable brands.");
       return;
     }
-    const cheapest = shoppable[0];
-    setBundleItems(prev => [...prev, {
-      product_id: p.id,
-      product_name: p.name,
-      selected_brand: cheapest,
-      available_brands: shoppable,
-      quantity: 1,
-      is_included: true,
-      is_default: false,
-      selected_gender: null,
-    }]);
+    if (result === "already") {
+      toast("Already in your bundle.");
+    }
     setAddSearch("");
   };
 
@@ -386,8 +167,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
   // page — the customer has already specified everything they need on
   // the customiser, so the intermediate /cart trip is friction.
   const handleProceedToCheckout = () => {
-    const included = bundleItems.filter(i => i.is_included);
-    if (included.length === 0) {
+    if (includedItems.length === 0) {
       toast.error("Bundle is empty — include at least one item.");
       return;
     }
@@ -398,12 +178,12 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
       bundleName: productName,
       bundleLabel: bundleLabel || "",
       bundleSku: bundleSku || "",
-      bundlePrice,
+      bundlePrice: currentTotalPrice,
       // Cart context expects price + qty for subtotal sums. The bundle
       // row is a single line at the customised price.
-      price: bundlePrice,
+      price: currentTotalPrice,
       name: `${productName}${bundleLabel ? ` — ${bundleLabel}` : ""}`,
-      bundleItems: included.map(i => ({
+      bundleItems: includedItems.map((i) => ({
         productId: i.product_id,
         productName: i.product_name,
         brandId: i.selected_brand.id,
@@ -416,22 +196,21 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         color: i.selected_gender ?? null,
         size: i.selected_brand.size_variant ?? null,
       })),
-      removedDefaultCount: bundleItems.filter(i => i.is_default && !i.is_included).length,
+      removedDefaultCount,
     } as any);
     navigate("/checkout");
   };
 
-  if (defaultsQuery.isLoading || (productIds.length > 0 && brandsQuery.isLoading && !initialised)) {
+  if (isLoading) {
     return (
       <section className="mt-8 bg-card border border-border rounded-card p-5">
         <div className="text-sm text-text-light">Loading bundle contents…</div>
       </section>
     );
   }
-  if (!defaultsQuery.data || defaultsQuery.data.items.length === 0) return null;
+  if (bundleItems.length === 0) return null;
 
-  const includedCount = bundleItems.filter(i => i.is_included).length;
-  const removedDefaultCount = bundleItems.filter(i => i.is_default && !i.is_included).length;
+  const includedCount = includedItems.length;
 
   return (
     <section className="mt-8 bg-card border border-border rounded-card p-5 md:p-6">
@@ -448,7 +227,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         </div>
         <div className="text-base">
           <span className="text-text-med">Your bundle: </span>
-          <span className="pf font-bold text-forest">{fmt(bundlePrice)}</span>
+          <span className="pf font-bold text-forest">{fmt(currentTotalPrice)}</span>
         </div>
         {priceDelta < 0 && (
           <span className="text-xs font-semibold text-emerald-700">You saved {fmt(Math.abs(priceDelta))}</span>
@@ -466,26 +245,26 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
 
       {/* Items list */}
       <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden mb-4">
-        {bundleItems.map(item => {
+        {bundleItems.map((item) => {
           const lineTotal = item.selected_brand.price * item.quantity;
           // ── Level 1: variant axis (age range / size) ───────────────
-          const hasVariants = item.available_brands.some(b => !!b.variant_type);
+          const hasVariants = item.available_brands.some((b) => !!b.variant_type);
           const variantOptions = hasVariants
-            ? Array.from(new Set(item.available_brands.filter(b => !!b.size_variant).map(b => b.size_variant as string)))
+            ? Array.from(new Set(item.available_brands.filter((b) => !!b.size_variant).map((b) => b.size_variant as string)))
             : [];
-          const variantLabel = item.available_brands.find(b => b.variant_type === "age_range")
+          const variantLabel = item.available_brands.find((b) => b.variant_type === "age_range")
             ? "Age Range"
-            : item.available_brands.find(b => b.variant_type === "size")
+            : item.available_brands.find((b) => b.variant_type === "size")
               ? "Size"
               : "Variant";
           // ── Level 2: brand pool filtered by selected variant ───────
           const brandsToShow = hasVariants
-            ? item.available_brands.filter(b => b.size_variant === item.selected_brand.size_variant)
+            ? item.available_brands.filter((b) => b.size_variant === item.selected_brand.size_variant)
             : item.available_brands;
           const hasBrandChoice = brandsToShow.length > 1;
           const useDropdown = brandsToShow.length > 3;
           // ── Level 3: gender / colour ───────────────────────────────
-          const gender = genderQuery.data?.[item.product_id];
+          const gender = genderMap[item.product_id];
           const colorOptions = gender?.gender_relevant && gender.gender_colors
             ? Object.entries(gender.gender_colors).map(([key, color]) => ({
                 key,
@@ -547,12 +326,12 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                         <div>
                           <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-0.5">{variantLabel}</div>
                           <div className="flex flex-wrap gap-1">
-                            {variantOptions.map(v => (
+                            {variantOptions.map((v) => (
                               <button
                                 key={v}
                                 onClick={() => {
-                                  // Snap brand to first match for the new variant
-                                  const firstMatch = item.available_brands.find(b => b.size_variant === v);
+                                  // Snap brand to first match for the new variant.
+                                  const firstMatch = item.available_brands.find((b) => b.size_variant === v);
                                   if (firstMatch) selectBrand(item.product_id, firstMatch);
                                 }}
                                 className={`text-[11px] px-2 py-0.5 rounded-pill border ${item.selected_brand.size_variant === v ? "border-forest bg-forest-light text-forest font-semibold" : "border-border bg-card text-text-med"}`}
@@ -571,13 +350,13 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                           {useDropdown ? (
                             <select
                               value={item.selected_brand.id}
-                              onChange={e => {
-                                const b = item.available_brands.find(x => x.id === e.target.value);
+                              onChange={(e) => {
+                                const b = item.available_brands.find((x) => x.id === e.target.value);
                                 if (b) selectBrand(item.product_id, b);
                               }}
                               className="text-[11px] border border-input rounded-md px-2 py-1 bg-background w-full"
                             >
-                              {brandsToShow.map(b => (
+                              {brandsToShow.map((b) => (
                                 <option key={b.id} value={b.id}>
                                   {b.brand_name} — {fmt(b.price)}
                                 </option>
@@ -585,7 +364,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                             </select>
                           ) : (
                             <div className="flex flex-wrap gap-1">
-                              {brandsToShow.map(b => (
+                              {brandsToShow.map((b) => (
                                 <button
                                   key={b.id}
                                   onClick={() => selectBrand(item.product_id, b)}
@@ -598,7 +377,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                           )}
                         </div>
                       ) : (
-                        // Single-brand product — show the name as static text
+                        // Single-brand product — show the name as static text.
                         <div className="text-[11px] text-text-med">{item.selected_brand.brand_name || "—"}</div>
                       )}
 
@@ -607,7 +386,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
                         <div>
                           <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light mb-0.5">Colour</div>
                           <div className="flex flex-wrap gap-1">
-                            {colorOptions.map(opt => (
+                            {colorOptions.map((opt) => (
                               <button
                                 key={opt.key}
                                 onClick={() => setItemGender(item.product_id, opt.key)}
@@ -665,7 +444,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         <input
           type="text"
           value={addSearch}
-          onChange={e => setAddSearch(e.target.value)}
+          onChange={(e) => setAddSearch(e.target.value)}
           placeholder="Search products by name…"
           className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
         />
@@ -676,8 +455,8 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
             ) : (searchQuery.data || []).length === 0 ? (
               <div className="px-3 py-2 text-xs text-text-light">No products match.</div>
             ) : (
-              (searchQuery.data || []).map(p => {
-                const shoppable = (p.brands || []).filter(b => b.in_stock && b.price > 0).sort((a, b) => a.price - b.price);
+              (searchQuery.data || []).map((p) => {
+                const shoppable = (p.brands || []).filter((b) => b.in_stock && b.price > 0).sort((a, b) => a.price - b.price);
                 const cheapest = shoppable[0];
                 return (
                   <button
@@ -709,13 +488,11 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         className="w-full rounded-pill bg-coral px-6 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark inline-flex items-center justify-center gap-2"
       >
         <ShoppingBag className="w-4 h-4" />
-        Proceed to Checkout — {fmt(bundlePrice)}
+        Proceed to Checkout — {fmt(currentTotalPrice)}
       </button>
 
       {/* WhatsApp order — opens wa.me with a pre-filled message that
-          mirrors the current customisation state. Reactive via the
-          whatsappUrl memo, so brand swaps / qty changes / item toggles
-          propagate before the customer taps the link. */}
+          mirrors the current customisation state. */}
       <a
         href={whatsappUrl}
         target="_blank"
@@ -738,7 +515,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         >
           <div
             className="relative max-w-lg w-full bg-card rounded-2xl overflow-hidden shadow-2xl"
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={closeImageZoom}
