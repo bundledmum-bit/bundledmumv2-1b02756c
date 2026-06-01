@@ -821,6 +821,57 @@ export type Database = {
           },
         ]
       }
+      brands_price_snapshots: {
+        Row: {
+          brand_id: string
+          cost_price: number
+          id: string
+          new_margin_pct: number | null
+          new_price: number
+          old_margin_pct: number | null
+          old_price: number
+          reason: string
+          snapshotted_at: string
+        }
+        Insert: {
+          brand_id: string
+          cost_price: number
+          id?: string
+          new_margin_pct?: number | null
+          new_price: number
+          old_margin_pct?: number | null
+          old_price: number
+          reason: string
+          snapshotted_at?: string
+        }
+        Update: {
+          brand_id?: string
+          cost_price?: number
+          id?: string
+          new_margin_pct?: number | null
+          new_price?: number
+          old_margin_pct?: number | null
+          old_price?: number
+          reason?: string
+          snapshotted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brands_price_snapshots_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brands_price_snapshots_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bundle_items: {
         Row: {
           brand_id: string | null
@@ -887,6 +938,7 @@ export type Database = {
           delivery_method: string | null
           description: string | null
           discount_percent: number | null
+          display_name: string | null
           display_order: number | null
           emoji: string | null
           hospital_type: string
@@ -912,6 +964,7 @@ export type Database = {
           delivery_method?: string | null
           description?: string | null
           discount_percent?: number | null
+          display_name?: string | null
           display_order?: number | null
           emoji?: string | null
           hospital_type: string
@@ -937,6 +990,7 @@ export type Database = {
           delivery_method?: string | null
           description?: string | null
           discount_percent?: number | null
+          display_name?: string | null
           display_order?: number | null
           emoji?: string | null
           hospital_type?: string
@@ -5487,6 +5541,7 @@ export type Database = {
           product_slot: string | null
           push_gift_categories: string[] | null
           quiz_priority: string | null
+          quiz_section: string | null
           rating: number | null
           reorder_days: number | null
           reorder_label: string | null
@@ -5551,6 +5606,7 @@ export type Database = {
           product_slot?: string | null
           push_gift_categories?: string[] | null
           quiz_priority?: string | null
+          quiz_section?: string | null
           rating?: number | null
           reorder_days?: number | null
           reorder_label?: string | null
@@ -5615,6 +5671,7 @@ export type Database = {
           product_slot?: string | null
           push_gift_categories?: string[] | null
           quiz_priority?: string | null
+          quiz_section?: string | null
           rating?: number | null
           reorder_days?: number | null
           reorder_label?: string | null
