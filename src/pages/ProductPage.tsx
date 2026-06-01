@@ -11,12 +11,14 @@ import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat } from "lucide-react";
+import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
 import BundleCustomiser from "@/components/BundleCustomiser";
+import MaternityBundleItemsGrid, { type MaternityBundleSnapshotItem } from "@/components/MaternityBundleItemsGrid";
+import { buildWhatsAppOrderHref } from "@/lib/whatsapp";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -68,6 +70,38 @@ export default function ProductPage() {
   const { data, isLoading } = useProduct(slug || "");
   const product = data?.adapted || null;
   const raw = data?.raw;
+
+  // Maternity-bundle scope gate flag (also computed near the return for
+  // local readability; both reads stay in sync because they're pure
+  // derivations of slug + raw). The snapshot query below is gated on it
+  // via React Query's `enabled` so a regular SKU never hits the table.
+  const isMaternityBundleProductForQuery =
+    raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
+
+  // Latest maternity_bundle_snapshots row — the same source of truth
+  // that BundleCustomiser uses. Drives the read-only items grid, the
+  // hero "Add bundle to cart" CTA, and the WhatsApp pre-fill message.
+  // BundleCustomiser still owns the editor; this is read-only.
+  const maternitySnapshotQuery = useQuery({
+    queryKey: ["maternity-bundle-snapshot", raw?.id],
+    enabled: isMaternityBundleProductForQuery && !!raw?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("maternity_bundle_snapshots")
+        .select("items_snapshot, item_count, sell_price")
+        .eq("bundle_id", raw.id)
+        .order("snapped_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { items_snapshot?: MaternityBundleSnapshotItem[]; item_count?: number; sell_price?: number } | null;
+    },
+  });
+
+  // Customise editor toggle for the maternity-bundle redesign. Local
+  // session state — resets on navigation.
+  const [customiseOpenBundle, setCustomiseOpenBundle] = useState(false);
   const { data: settings } = useSiteSettings();
 
   useEffect(() => {
@@ -474,6 +508,17 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         : "https://schema.org/InStock",
     })),
   };
+
+  // ───────────────────────────────────────────────────────────────
+  // Maternity-bundle product scope gate (premium minimalist design).
+  // Fires for /products/maternity-bundle-* slugs only. Postpartum
+  // kits and Baby Shower gift boxes (also is_gift_box=true) keep the
+  // current generic ProductPage rendering until their copy/images
+  // ship.
+  // ───────────────────────────────────────────────────────────────
+  const isMaternityBundleProduct =
+    raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
+
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
       <Seo
@@ -485,17 +530,263 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}
 
-      {/* Breadcrumb */}
-      <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
-        <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Link to="/" className="hover:text-foreground">Home</Link>
-          <span>/</span>
-          <Link to="/shop" className="hover:text-foreground">Shop</Link>
-          <span>/</span>
-          <span className="text-foreground font-medium truncate max-w-[200px]">{product.name}</span>
-        </nav>
-      </div>
+      {/* Breadcrumb — hidden for the maternity-bundle redesign; that
+          surface has its own quiet utility row built into the new hero. */}
+      {!isMaternityBundleProduct && (
+        <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
+          <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Link to="/" className="hover:text-foreground">Home</Link>
+            <span>/</span>
+            <Link to="/shop" className="hover:text-foreground">Shop</Link>
+            <span>/</span>
+            <span className="text-foreground font-medium truncate max-w-[200px]">{product.name}</span>
+          </nav>
+        </div>
+      )}
 
+      {/* MATERNITY BUNDLE PREMIUM REDESIGN — only fires for
+          /products/maternity-bundle-* slugs. Postpartum/Baby-Shower
+          gift_boxes fall through to the legacy block below. */}
+      {isMaternityBundleProduct && (() => {
+        const snapItems: MaternityBundleSnapshotItem[] = Array.isArray(maternitySnapshotQuery.data?.items_snapshot)
+          ? (maternitySnapshotQuery.data!.items_snapshot as MaternityBundleSnapshotItem[])
+          : [];
+        const heroPrice = selectedBrand?.price ?? maternitySnapshotQuery.data?.sell_price ?? 0;
+        const tierFromSlug = (slug || "").replace(/^maternity-bundle-/i, "").trim();
+        const whatsappHref = buildWhatsAppOrderHref({
+          title: product.name,
+          tier: tierFromSlug,
+          currentItems: snapItems.map((it) => ({
+            name: it.name || "—",
+            brand: it.brand?.brand_name || null,
+          })),
+          currentTotalPrice: heroPrice,
+        });
+
+        // Add the snapshot's default composition to cart as a single
+        // typed bundle row — same shape BundleCustomiser produces.
+        const handleAddMaternityBundleToCart = () => {
+          if (snapItems.length === 0) {
+            toast.error("Bundle items not loaded yet — please try again in a moment.");
+            return;
+          }
+          addToCart({
+            type: "bundle",
+            id: product.id,
+            bundleId: product.id,
+            bundleName: product.name,
+            bundleLabel: raw?.bundle_label || "",
+            bundleSku: selectedBrand?.sku || "",
+            bundlePrice: heroPrice,
+            price: heroPrice,
+            name: product.name,
+            bundleItems: snapItems
+              .filter((it) => it.brand && it.brand.id)
+              .map((it) => ({
+                productId: it.product_id,
+                productName: it.name || "",
+                brandId: it.brand!.id || "",
+                brandName: it.brand!.brand_name || "",
+                sku: (it.brand as any)?.sku ?? null,
+                price: Number(it.brand!.price || 0),
+                quantity: Number(it.quantity || 1),
+                lineTotal: Number(it.brand!.price || 0) * Number(it.quantity || 1),
+                isDefault: true,
+                color: null,
+                size: (it.brand as any)?.size_variant ?? null,
+              })),
+            removedDefaultCount: 0,
+          } as any);
+          toast.success(`✓ ${product.name} added to cart!`, {
+            action: { label: "View Cart →", onClick: () => navigate("/cart") },
+          });
+        };
+
+        const revealCustomiser = () => {
+          setCustomiseOpenBundle(true);
+          requestAnimationFrame(() => {
+            document.getElementById("customise-bundle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        };
+
+        return (
+          <>
+            {/* Quiet utility row */}
+            <div className="px-6 md:px-12 lg:px-16 pt-8 md:pt-10">
+              <div className="max-w-[1120px] mx-auto flex items-center justify-between">
+                <Link
+                  to="/shop"
+                  className="text-text-med text-xs uppercase tracking-[0.18em] hover:text-foreground transition-colors inline-flex items-center gap-1.5"
+                >
+                  <ChevronLeft className="h-3 w-3" /> All bundles
+                </Link>
+                <button
+                  onClick={handleShare}
+                  className="text-text-med hover:text-foreground transition-colors p-2 -m-2"
+                  aria-label="Share bundle"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* HERO */}
+            <section className="px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16">
+              <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center">
+                <div>
+                  <h1 className="pf text-[40px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight mb-6">
+                    {product.name}
+                  </h1>
+                  {product.description && (
+                    <p className="text-text-med text-base md:text-lg leading-relaxed mb-8 max-w-[42ch]">
+                      {product.description}
+                    </p>
+                  )}
+                  <p className="text-foreground text-base mb-8">
+                    <span className="font-medium">{fmt(heroPrice)}</span>
+                  </p>
+                  <button
+                    onClick={handleAddMaternityBundleToCart}
+                    className="bg-coral text-primary-foreground px-8 py-4 text-sm font-medium hover:bg-coral-dark transition-colors"
+                  >
+                    Add bundle to cart
+                  </button>
+                  <div className="mt-5 flex flex-col gap-2.5 items-start">
+                    <button
+                      onClick={revealCustomiser}
+                      className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60"
+                    >
+                      Or customise this bundle →
+                    </button>
+                    <a
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Order Via WhatsApp
+                    </a>
+                  </div>
+                </div>
+
+                {/* Hero image — single considered shot (the carton). */}
+                <div className="aspect-[4/5] md:aspect-square overflow-hidden bg-warm-cream order-first md:order-last">
+                  {raw?.image_url ? (
+                    <img
+                      src={raw.image_url}
+                      alt={product.name}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-forest-light" />
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Read-only items grid sourced from the latest snapshot */}
+            <MaternityBundleItemsGrid bundleId={product.id} />
+
+            {/* CTA REPEAT */}
+            <section className="px-6 py-10 md:py-16 text-center">
+              <p className="pf text-2xl md:text-3xl font-light text-foreground mb-8">
+                Ready when you are.
+              </p>
+              <button
+                onClick={handleAddMaternityBundleToCart}
+                className="bg-coral text-primary-foreground px-8 py-4 text-sm font-medium hover:bg-coral-dark transition-colors"
+              >
+                Add bundle to cart
+              </button>
+              <div className="mt-5 flex flex-col gap-2.5 items-center">
+                <button
+                  onClick={revealCustomiser}
+                  className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60"
+                >
+                  Or customise this bundle →
+                </button>
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Order Via WhatsApp
+                </a>
+              </div>
+            </section>
+
+            {/* WHY WE BUILT THIS — locked editorial copy (sentence case) */}
+            <section className="px-6 pt-10 md:pt-16 pb-16 md:pb-24">
+              <div className="max-w-[640px] mx-auto text-center">
+                <div className="h-px w-12 bg-border mx-auto mb-8" />
+                <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8">
+                  Why we built this
+                </p>
+                <p className="text-text-med text-base leading-[1.7] mb-6">
+                  The Maternity + Baby Items Bundle covers every item a Nigerian mum
+                  actually uses in her first six weeks. Curated by mums. Quality-checked.
+                  Delivered before you go into labour.
+                </p>
+                <p className="text-text-med text-base leading-[1.7] mb-6">
+                  We started BundledMum after watching too many friends spend their last
+                  trimester googling whether &ldquo;maternity pad&rdquo; and &ldquo;sanitary pad&rdquo; are
+                  the same thing (they&rsquo;re not). They shouldn&rsquo;t have to. You shouldn&rsquo;t
+                  have to.
+                </p>
+                <p className="text-text-med text-base leading-[1.7]">
+                  Pick the price that fits your budget. The bundle scales — more items,
+                  better brands, every comfort — but the philosophy stays the same.
+                  Considered. Quality-checked. Nothing for show.
+                </p>
+              </div>
+            </section>
+
+            {/* Customise — hidden by default; toggled by the customise
+                links. Reuses BundleCustomiser unchanged. */}
+            {customiseOpenBundle && (
+              <section
+                id="customise-bundle"
+                className="px-6 md:px-12 lg:px-16 py-10 md:py-16 border-t border-border bg-warm-cream/30 animate-in fade-in duration-500"
+              >
+                <div className="max-w-[1120px] mx-auto">
+                  <div className="flex items-center justify-between mb-6 md:mb-8">
+                    <h2 className="pf text-2xl md:text-3xl font-light">Customise your bundle</h2>
+                    <button
+                      onClick={() => setCustomiseOpenBundle(false)}
+                      className="text-text-med text-sm hover:text-foreground underline underline-offset-4"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <BundleCustomiser
+                    productId={product.id}
+                    productName={product.name}
+                    bundleLabel={raw?.bundle_label || null}
+                    bundleSku={selectedBrand?.sku || null}
+                  />
+                </div>
+              </section>
+            )}
+
+            {/* Mobile sticky CTA — bundle-specific, since the page-level
+                sticky CTA is gated to non-bundles. */}
+            <div className="fixed bottom-[56px] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3 safe-area-bottom">
+              <button
+                onClick={handleAddMaternityBundleToCart}
+                className="w-full bg-coral text-primary-foreground py-3 text-sm font-medium hover:bg-coral-dark transition-colors"
+              >
+                Add bundle — {fmt(heroPrice)}
+              </button>
+            </div>
+          </>
+        );
+      })()}
+
+      {!isMaternityBundleProduct && (
       <div className="max-w-6xl mx-auto px-4">
         <div className="grid md:grid-cols-2 gap-6 md:gap-10">
           {/* LEFT: Image Gallery */}
@@ -927,6 +1218,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           </section>
         </div>
       </div>
+      )}
 
       {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own) */}
       {!raw?.is_gift_box && (
