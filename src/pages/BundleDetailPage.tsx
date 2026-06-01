@@ -5,7 +5,36 @@ import { ArrowLeft, Share2, ArrowLeftRight, Plus, Trash2, X, Pencil, MessageCirc
 
 // Customer WhatsApp number — same one used on QuotePage etc. Kept local
 // (not in site_settings) to mirror that page's pattern.
-const WHATSAPP_URL = "https://wa.me/2347040667424";
+const WHATSAPP_BASE = "https://wa.me/2347040667424";
+
+// Build the pre-filled WhatsApp message reflecting the customer's current
+// (possibly customised) bundle composition. `currentItems` should be a
+// flat array of all four section arrays in order (baby/mum/hospital/
+// convenience); `currentTotalPrice` is the displayPrice the page is
+// showing. Brand info comes already-merged with any variant the customer
+// picked (the attr picker rewrites item.brand to the selected label).
+function buildBundleWhatsAppMessage(args: {
+  title: string;
+  tier: string;
+  currentItems: { name: string; brand?: string | null }[];
+  currentTotalPrice: number;
+}): string {
+  const { title, tier, currentItems, currentTotalPrice } = args;
+  const lines: string[] = [];
+  lines.push("Hi BundledMum, I'd like to order this bundle:");
+  lines.push("");
+  lines.push(`*${title}*`);
+  lines.push(`${tier} tier — ₦${currentTotalPrice.toLocaleString()}`);
+  lines.push("");
+  lines.push(`Items (${currentItems.length}):`);
+  currentItems.forEach((it) => {
+    const brand = (it.brand || "").trim();
+    lines.push(brand ? `• ${it.name} (${brand})` : `• ${it.name}`);
+  });
+  lines.push("");
+  lines.push("Please let me know next steps.");
+  return lines.join("\n");
+}
 import { useState, useEffect, useMemo } from "react";
 import { useBundle, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
 import type { BundleItem } from "@/lib/supabaseAdapters";
@@ -288,6 +317,19 @@ export default function BundleDetailPage() {
     // Hero image: first product in the bundle that has an imageUrl.
     const heroImageItem = allItems.find((i) => i.imageUrl);
 
+    // Pre-fill the WhatsApp message with the CURRENT bundle composition
+    // (allItems reflects any customisations; displayPrice reflects the
+    // resulting total). Same href used by both the hero and CTA-repeat
+    // 'Order Via WhatsApp' links.
+    const whatsappOrderHref = `${WHATSAPP_BASE}?text=${encodeURIComponent(
+      buildBundleWhatsAppMessage({
+        title: bundle.displayName || bundle.name,
+        tier: bundle.tier,
+        currentItems: allItems,
+        currentTotalPrice: displayPrice,
+      }),
+    )}`;
+
     return (
       <div className="min-h-screen bg-background pb-24 md:pb-0 animate-in fade-in duration-700">
         {/* Top utility row */}
@@ -362,13 +404,13 @@ export default function BundleDetailPage() {
                   Or customise this bundle →
                 </button>
                 <a
-                  href={WHATSAPP_URL}
+                  href={whatsappOrderHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
                 >
                   <MessageCircle className="h-3.5 w-3.5" />
-                  Or chat with us on WhatsApp →
+                  Order Via WhatsApp
                 </a>
               </div>
             </div>
@@ -463,13 +505,13 @@ export default function BundleDetailPage() {
               Or customise this bundle →
             </button>
             <a
-              href={WHATSAPP_URL}
+              href={whatsappOrderHref}
               target="_blank"
               rel="noopener noreferrer"
               className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
             >
               <MessageCircle className="h-3.5 w-3.5" />
-              Or chat with us on WhatsApp →
+              Order Via WhatsApp
             </a>
           </div>
         </section>
