@@ -521,6 +521,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // ───────────────────────────────────────────────────────────────
   const isMaternityBundleProduct =
     raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
+  const isPostpartumBundleProduct =
+    raw?.is_gift_box === true && /^postpartum-recovery-kit-/i.test(slug || "");
+  // Single flag for any bundle that opts into the new minimalist
+  // design + inline editor. Hero image and Why-we-built-this copy
+  // still vary per category (driven by the specific flags above).
+  // Baby-Shower gift boxes remain on the legacy generic ProductPage
+  // until their copy + images land.
+  const isInlineEditableBundle = isMaternityBundleProduct || isPostpartumBundleProduct;
 
   // Bundle-edit state — single source of truth for the inline grid AND
   // the customiser-toggle mount below. Called unconditionally per React
@@ -541,9 +549,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}
 
-      {/* Breadcrumb — hidden for the maternity-bundle redesign; that
-          surface has its own quiet utility row built into the new hero. */}
-      {!isMaternityBundleProduct && (
+      {/* Breadcrumb — hidden for any bundle on the new minimalist
+          design; those surfaces have their own quiet utility row. */}
+      {!isInlineEditableBundle && (
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Link to="/" className="hover:text-foreground">Home</Link>
@@ -555,10 +563,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         </div>
       )}
 
-      {/* MATERNITY BUNDLE PREMIUM REDESIGN — only fires for
-          /products/maternity-bundle-* slugs. Postpartum/Baby-Shower
-          gift_boxes fall through to the legacy block below. */}
-      {isMaternityBundleProduct && (() => {
+      {/* PREMIUM MINIMALIST BUNDLE PAGE — fires for maternity-bundle-*
+          AND postpartum-recovery-kit-*. Baby-Shower gift boxes fall
+          through to the legacy block below until their copy/images
+          land. The hero image and Why-we-built-this copy still vary
+          per category (specific flags below). */}
+      {isInlineEditableBundle && (() => {
         // Hero price + WhatsApp + cart all read from editApi so any
         // inline-card or customiser edit propagates instantly (fixes the
         // 4eefb74 cart-shape bug where color was always null).
@@ -641,9 +651,25 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             </div>
 
-            {/* HERO */}
-            <section className="px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16">
-              <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center">
+            {/* HERO — two-column with carton on the right for Maternity
+                bundles; type-only single-column for Postpartum (image_url
+                is intentionally NULL for that category). Extra top/bottom
+                padding when type-only so the absence of the image reads
+                as deliberate rather than a missing asset. */}
+            <section
+              className={
+                isPostpartumBundleProduct
+                  ? "px-6 md:px-12 lg:px-16 pt-12 md:pt-24 pb-12 md:pb-24"
+                  : "px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16"
+              }
+            >
+              <div
+                className={
+                  isMaternityBundleProduct
+                    ? "max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center"
+                    : "max-w-[720px] mx-auto"
+                }
+              >
                 <div>
                   <h1 className="pf text-[40px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight mb-6">
                     {product.name}
@@ -681,7 +707,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   </div>
                 </div>
 
-                {/* Hero image — single considered shot (the carton). */}
+                {/* Hero image — Maternity only. Postpartum is type-only
+                    by design (its carton hasn't been shot yet, and the
+                    type-only treatment reads as intentional). */}
+                {isMaternityBundleProduct && (
                 <div className="aspect-[4/5] md:aspect-square overflow-hidden bg-warm-cream order-first md:order-last">
                   {raw?.image_url ? (
                     <img
@@ -694,6 +723,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                     <div className="w-full h-full bg-forest-light" />
                   )}
                 </div>
+                )}
               </div>
             </section>
 
@@ -745,22 +775,27 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8">
                   Why we built this
                 </p>
-                <p className="text-text-med text-base leading-[1.7] mb-6">
-                  The Maternity + Baby Items Bundle covers every item a Nigerian mum
-                  actually uses in her first six weeks. Curated by mums. Quality-checked.
-                  Delivered before you go into labour.
-                </p>
-                <p className="text-text-med text-base leading-[1.7] mb-6">
-                  We started BundledMum after watching too many friends spend their last
-                  trimester googling whether &ldquo;maternity pad&rdquo; and &ldquo;sanitary pad&rdquo; are
-                  the same thing (they&rsquo;re not). They shouldn&rsquo;t have to. You shouldn&rsquo;t
-                  have to.
-                </p>
-                <p className="text-text-med text-base leading-[1.7]">
-                  Pick the price that fits your budget. The bundle scales — more items,
-                  better brands, every comfort — but the philosophy stays the same.
-                  Considered. Quality-checked. Nothing for show.
-                </p>
+                {(isMaternityBundleProduct
+                  ? [
+                      "The Maternity + Baby Items Bundle covers every item a Nigerian mum actually uses in her first six weeks. Curated by mums. Quality-checked. Delivered before you go into labour.",
+                      "We started BundledMum after watching too many friends spend their last trimester googling whether “maternity pad” and “sanitary pad” are the same thing (they’re not). They shouldn’t have to. You shouldn’t have to.",
+                      "Pick the price that fits your budget. The bundle scales — more items, better brands, every comfort — but the philosophy stays the same. Considered. Quality-checked. Nothing for show.",
+                    ]
+                  : isPostpartumBundleProduct
+                    ? [
+                        "The first six weeks after a baby is born aren’t on Instagram. They’re at home, on a couch, with a bag of frozen peas and a list of things you wish someone had told you to buy.",
+                        "We built the Postpartum Recovery Kit for that period. Sitz bath, belly band, the right pads, the cream that actually helps. Everything in one box, delivered when you need it most.",
+                        "You don’t have to figure this out alone.",
+                      ]
+                    : []
+                ).map((para, i, arr) => (
+                  <p
+                    key={i}
+                    className={`text-text-med text-base leading-[1.7]${i < arr.length - 1 ? " mb-6" : ""}`}
+                  >
+                    {para}
+                  </p>
+                ))}
               </div>
             </section>
 
@@ -806,7 +841,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         );
       })()}
 
-      {!isMaternityBundleProduct && (
+      {!isInlineEditableBundle && (
       <div className="max-w-6xl mx-auto px-4">
         <div className="grid md:grid-cols-2 gap-6 md:gap-10">
           {/* LEFT: Image Gallery */}
@@ -1160,12 +1195,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               and add the customised bundle to cart from inside this
               component. The stock Add-to-Cart button above is hidden for
               bundles so there's a single source-of-truth control. */}
-          {/* Legacy mount: ONLY for non-maternity gift boxes
-              (Postpartum / Baby Shower). The maternity-bundle redesign
-              owns its own customiser mount above with editApi.
-              Without this gate, maternity-bundle pages would render
-              the customiser twice — the bug introduced by 4eefb74. */}
-          {raw?.is_gift_box && !isMaternityBundleProduct && (
+          {/* Legacy mount: ONLY for gift boxes that are NOT on the new
+              minimalist design (currently Baby-Shower only). Bundles on
+              the new design own their own customiser mount above with
+              editApi; gating here prevents a double-mount that would
+              break state sharing. */}
+          {raw?.is_gift_box && !isInlineEditableBundle && (
             <BundleCustomiser
               productId={product.id}
               productName={product.name}
