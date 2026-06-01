@@ -574,6 +574,22 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         // 4eefb74 cart-shape bug where color was always null).
         const fallbackHeroPrice = selectedBrand?.price ?? maternitySnapshotQuery.data?.sell_price ?? 0;
         const heroPrice = editApi.currentTotalPrice > 0 ? editApi.currentTotalPrice : fallbackHeroPrice;
+
+        // Unified hero-image source for every bundle category:
+        //   1. product_images flagged is_primary (ordered by display_order)
+        //   2. first product_images by display_order
+        //   3. products.image_url
+        //   4. null → type-only hero (the deliberate Postpartum
+        //      treatment before product_images existed for these SKUs).
+        // raw.product_images is already loaded as part of the existing
+        // product query — no new fetch needed.
+        const allProductImages: any[] = (raw?.product_images || [])
+          .slice()
+          .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+        const primaryImage = allProductImages.find((i) => i.is_primary && i.image_url);
+        const firstImage = allProductImages.find((i) => i.image_url);
+        const bundleHeroImage: string | null =
+          primaryImage?.image_url ?? firstImage?.image_url ?? raw?.image_url ?? null;
         const tierFromSlug = (slug || "").replace(/^maternity-bundle-/i, "").trim();
         const whatsappHref = buildWhatsAppOrderHref({
           title: product.name,
@@ -591,6 +607,25 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         const handleAddMaternityBundleToCart = () => {
           if (editApi.includedItems.length === 0) {
             toast.error("Bundle items not loaded yet — please try again in a moment.");
+            return;
+          }
+          // Variant-validation gate. Today the only required selection
+          // is gender on gender_relevant items; the predicate lives in
+          // useBundleItemsEdit so other surfaces (customiser checkout)
+          // stay in lockstep without duplicating logic.
+          if (editApi.hasUnmetRequirements) {
+            const n = editApi.unmetRequirementItems.length;
+            toast.error(
+              `Please choose gender for ${n} item${n === 1 ? "" : "s"} before adding to cart.`
+            );
+            const firstId = editApi.unmetRequirementItems[0]?.product_id;
+            if (firstId) {
+              requestAnimationFrame(() => {
+                document
+                  .getElementById(`bundle-item-${firstId}`)
+                  ?.scrollIntoView({ behavior: "smooth", block: "center" });
+              });
+            }
             return;
           }
           addToCart({
@@ -636,7 +671,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <div className="px-6 md:px-12 lg:px-16 pt-8 md:pt-10">
               <div className="max-w-[1120px] mx-auto flex items-center justify-between">
                 <Link
-                  to="/shop"
+                  to="/bundles"
                   className="text-text-med text-xs uppercase tracking-[0.18em] hover:text-foreground transition-colors inline-flex items-center gap-1.5"
                 >
                   <ChevronLeft className="h-3 w-3" /> All bundles
@@ -658,14 +693,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 as deliberate rather than a missing asset. */}
             <section
               className={
-                isPostpartumBundleProduct
-                  ? "px-6 md:px-12 lg:px-16 pt-12 md:pt-24 pb-12 md:pb-24"
-                  : "px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16"
+                bundleHeroImage
+                  ? "px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16"
+                  : "px-6 md:px-12 lg:px-16 pt-12 md:pt-24 pb-12 md:pb-24"
               }
             >
               <div
                 className={
-                  isMaternityBundleProduct
+                  bundleHeroImage
                     ? "max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center"
                     : "max-w-[720px] mx-auto"
                 }
@@ -707,21 +742,20 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   </div>
                 </div>
 
-                {/* Hero image — Maternity only. Postpartum is type-only
-                    by design (its carton hasn't been shot yet, and the
-                    type-only treatment reads as intentional). */}
-                {isMaternityBundleProduct && (
+                {/* Hero image — driven by the unified bundleHeroImage
+                    resolver above. Maternity hits products.image_url,
+                    Postpartum + Baby Shower hit product_images. If
+                    nothing resolves we drop the image block entirely
+                    (the parent grid collapses to single column) so the
+                    layout still reads deliberate. */}
+                {bundleHeroImage && (
                 <div className="aspect-[4/5] md:aspect-square overflow-hidden bg-warm-cream order-first md:order-last">
-                  {raw?.image_url ? (
-                    <img
-                      src={raw.image_url}
-                      alt={product.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-forest-light" />
-                  )}
+                  <img
+                    src={bundleHeroImage}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 </div>
                 )}
               </div>

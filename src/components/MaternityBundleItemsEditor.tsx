@@ -27,6 +27,7 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
     setItemGender,
     toggleInclude,
     removeCustomItem,
+    itemRequiresAttention,
   } = editApi;
 
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -53,15 +54,22 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
             : [];
           const hasBrandChoice = (item.available_brands || []).length > 1;
           const excluded = !item.is_included;
+          const needsAttention = itemRequiresAttention ? itemRequiresAttention(item) : false;
 
           return (
             <div
               key={item.product_id}
-              className={`group transition-opacity ${excluded ? "opacity-40" : ""}`}
+              id={`bundle-item-${item.product_id}`}
+              className={`group flex flex-col transition-opacity ${excluded ? "opacity-40" : ""} ${
+                needsAttention ? "ring-2 ring-coral ring-offset-2 ring-offset-background rounded-sm" : ""
+              }`}
             >
               {/* Image — tap zone for zoom. The × overlay sits inside but
-                  stops propagation so it never triggers zoom. */}
-              <div className="relative aspect-[3/4] overflow-hidden bg-warm-cream mb-3">
+                  stops propagation so it never triggers zoom.
+                  Mobile order: image sits BELOW the name; desktop keeps
+                  image-first. Margin lives on the name (mobile) /
+                  image (desktop) instead of always-bottom. */}
+              <div className="relative aspect-[3/4] overflow-hidden bg-warm-cream order-2 md:order-1 mb-0 md:mb-3">
                 <button
                   type="button"
                   onClick={() => selectedBrandImg && setZoom({ src: selectedBrandImg, alt: item.product_name })}
@@ -108,7 +116,7 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
               </div>
 
               {/* Product name */}
-              <p className="text-foreground text-sm leading-snug line-clamp-2 mb-1.5">
+              <p className="text-foreground text-sm leading-snug line-clamp-2 mb-2 md:mb-1.5 order-1 md:order-2">
                 {item.product_name}
                 {!item.is_default && (
                   <span className="ml-1.5 text-[9px] uppercase tracking-wider text-coral font-semibold align-middle">
@@ -117,33 +125,43 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                 )}
               </p>
 
-              {/* Brand — select when there are options, plain text when not */}
-              {hasBrandChoice ? (
-                <select
-                  value={item.selected_brand.id}
-                  onChange={(e) => {
-                    const next = item.available_brands.find((b) => b.id === e.target.value);
-                    if (next) selectBrand(item.product_id, next);
-                  }}
-                  disabled={excluded}
-                  className="block w-full text-text-light text-xs bg-transparent border-0 border-b border-border focus:border-foreground focus:outline-none focus:ring-0 py-1 disabled:cursor-not-allowed"
-                  aria-label={`Choose brand for ${item.product_name}`}
-                >
-                  {item.available_brands.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.brand_name}{b.size_variant ? ` — ${b.size_variant}` : ""}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-text-light text-xs line-clamp-1">
-                  {item.selected_brand.brand_name || "—"}
-                </p>
-              )}
+              {/* Brand block — hint above, then picker. order-3 keeps
+                  it last on both axes. The hint only renders when there
+                  are multiple brands to choose from (it would mislead
+                  on single-brand items). */}
+              <div className="order-3">
+                {hasBrandChoice && !excluded && (
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-text-light/80 mb-0.5">
+                    Tap to choose brand
+                  </p>
+                )}
+                {hasBrandChoice ? (
+                  <select
+                    value={item.selected_brand.id}
+                    onChange={(e) => {
+                      const next = item.available_brands.find((b) => b.id === e.target.value);
+                      if (next) selectBrand(item.product_id, next);
+                    }}
+                    disabled={excluded}
+                    className="block w-full text-text-light text-xs bg-transparent border-0 border-b border-border focus:border-foreground focus:outline-none focus:ring-0 py-1 disabled:cursor-not-allowed"
+                    aria-label={`Choose brand for ${item.product_name}`}
+                  >
+                    {item.available_brands.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.brand_name}{b.size_variant ? ` — ${b.size_variant}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-text-light text-xs line-clamp-1">
+                    {item.selected_brand.brand_name || "—"}
+                  </p>
+                )}
+              </div>
 
               {/* Gender pills — only when products.gender_relevant. */}
               {colorOptions.length > 0 && !excluded && (
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1 mt-2 order-4">
                   {colorOptions.map((opt) => {
                     const selected = item.selected_gender === opt.key;
                     return (
@@ -167,6 +185,15 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                     );
                   })}
                 </div>
+              )}
+
+              {/* Validation hint — coral micro-label when the item still
+                  needs a required selection. Driven by editApi so future
+                  required axes (size, colour) light up the same UI. */}
+              {needsAttention && (
+                <p className="order-5 mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
+                  Please choose
+                </p>
               )}
             </div>
           );

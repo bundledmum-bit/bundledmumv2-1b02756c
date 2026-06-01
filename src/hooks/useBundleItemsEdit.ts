@@ -73,6 +73,13 @@ export interface BundleEditApi {
   retailTotal: number;             // original retail sum for savings calc
   removedDefaultCount: number;     // default items the customer excluded
   genderMap: Record<string, GenderInfo>;
+  // Validation — see itemRequiresAttention for the predicate. The
+  // framework is intentionally extensible: future variant axes (real
+  // size pickers, real colour pickers) plug in by extending the
+  // predicate, not by re-architecting consumers.
+  itemRequiresAttention: (item: BundleItem) => boolean;
+  unmetRequirementItems: BundleItem[];
+  hasUnmetRequirements: boolean;
   // Mutators
   toggleInclude: (productId: string) => void;
   selectBrand: (productId: string, brand: BrandRow) => void;
@@ -259,6 +266,27 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     [bundleItems],
   );
 
+  // ── Variant-validation predicate ──────────────────────────────────
+  // Single source of truth for "this item needs a user selection
+  // before checkout". Today only gender_relevant items with a null
+  // selected_gender qualify; future required axes (size, colour) join
+  // here as additional || clauses. Consumers (the editor card, the
+  // hero CTAs, the customiser's checkout button) all read the same
+  // predicate so behaviour stays in lockstep.
+  const genderMapResolved = genderQuery.data || {};
+  const itemRequiresAttention = (item: BundleItem) => {
+    if (!item.is_included) return false;
+    const g = genderMapResolved[item.product_id];
+    if (g?.gender_relevant && !item.selected_gender) return true;
+    return false;
+  };
+  const unmetRequirementItems = useMemo(
+    () => bundleItems.filter((i) => itemRequiresAttention(i)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bundleItems, genderQuery.data],
+  );
+  const hasUnmetRequirements = unmetRequirementItems.length > 0;
+
   // ── Mutators ──────────────────────────────────────────────────────
   const toggleInclude = (pid: string) =>
     setBundleItems((items) => items.map((i) => (i.product_id === pid ? { ...i, is_included: !i.is_included } : i)));
@@ -317,6 +345,9 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     retailTotal: defaultsQuery.data?.retail_total || 0,
     removedDefaultCount,
     genderMap: genderQuery.data || {},
+    itemRequiresAttention,
+    unmetRequirementItems,
+    hasUnmetRequirements,
     toggleInclude,
     selectBrand,
     setItemGender,

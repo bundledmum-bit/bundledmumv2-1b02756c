@@ -171,6 +171,24 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
       toast.error("Bundle is empty — include at least one item.");
       return;
     }
+    // Same validation gate as the product-page hero CTA. Reads from the
+    // shared editApi so a coral-flagged card on the inline grid will
+    // also block checkout from the customiser.
+    if (api.hasUnmetRequirements) {
+      const n = api.unmetRequirementItems.length;
+      toast.error(
+        `Please choose gender for ${n} item${n === 1 ? "" : "s"} before checking out.`
+      );
+      const firstId = api.unmetRequirementItems[0]?.product_id;
+      if (firstId) {
+        requestAnimationFrame(() => {
+          document
+            .getElementById(`bundle-item-${firstId}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      }
+      return;
+    }
     addToCart({
       type: "bundle",
       id: productId,
