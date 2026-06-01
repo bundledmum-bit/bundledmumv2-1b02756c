@@ -71,33 +71,8 @@ export default function ProductPage() {
   const product = data?.adapted || null;
   const raw = data?.raw;
 
-  // Maternity-bundle scope gate flag (also computed near the return for
-  // local readability; both reads stay in sync because they're pure
-  // derivations of slug + raw). The snapshot query below is gated on it
-  // via React Query's `enabled` so a regular SKU never hits the table.
-  const isMaternityBundleProductForQuery =
-    raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
 
-  // Latest maternity_bundle_snapshots row — the same source of truth
-  // that BundleCustomiser uses. Drives the read-only items grid, the
-  // hero "Add bundle to cart" CTA, and the WhatsApp pre-fill message.
-  // BundleCustomiser still owns the editor; this is read-only.
-  const maternitySnapshotQuery = useQuery({
-    queryKey: ["maternity-bundle-snapshot", raw?.id],
-    enabled: isMaternityBundleProductForQuery && !!raw?.id,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("maternity_bundle_snapshots")
-        .select("items_snapshot, item_count, sell_price")
-        .eq("bundle_id", raw.id)
-        .order("snapped_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data as { items_snapshot?: MaternityBundleSnapshotItem[]; item_count?: number; sell_price?: number } | null;
-    },
-  });
+
 
   // Customise editor toggle for the maternity-bundle redesign. Local
   // session state — resets on navigation.
@@ -152,6 +127,29 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // as a prop to ProductPageContent, so useParams is the cleanest pickup.
   const { slug } = useParams<{ slug: string }>();
   const skuParam = searchParams.get("sku");
+
+  // Maternity-bundle snapshot query + customise toggle (moved from
+  // ProductPage so refs inside this component resolve).
+  const isMaternityBundleProductForQuery =
+    raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
+  const maternitySnapshotQuery = useQuery({
+    queryKey: ["maternity-bundle-snapshot", raw?.id],
+    enabled: isMaternityBundleProductForQuery && !!raw?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("maternity_bundle_snapshots")
+        .select("items_snapshot, item_count, sell_price")
+        .eq("bundle_id", raw.id)
+        .order("snapped_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as { items_snapshot?: MaternityBundleSnapshotItem[]; item_count?: number; sell_price?: number } | null;
+    },
+  });
+  const [customiseOpenBundle, setCustomiseOpenBundle] = useState(false);
+
 
   // ── Variant axis (age_range / size) ─────────────────────────────────
   // Eligible products (baby bouncer ages, bedding-set sizes, etc.) ship
