@@ -147,6 +147,10 @@ export default function ProductPage() {
 function ProductPageContent({ product, raw, settings }: { product: Product; raw: any; settings: any }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  // Re-derive slug here so the maternity-bundle scope gate (added in
+  // commit 4eefb74) can reference it. ProductPage's slug isn't passed
+  // as a prop to ProductPageContent, so useParams is the cleanest pickup.
+  const { slug } = useParams<{ slug: string }>();
   const skuParam = searchParams.get("sku");
 
   // ── Variant axis (age_range / size) ─────────────────────────────────
