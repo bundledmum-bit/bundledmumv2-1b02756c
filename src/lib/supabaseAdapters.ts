@@ -117,6 +117,10 @@ export interface BundleItem {
 export interface Bundle {
   id: string;
   name: string;
+  // Customer-facing title (DB column bundles.display_name). Internal `name`
+  // stays the source of truth for admin/orders; pages render displayName
+  // when present and fall back to name.
+  displayName?: string | null;
   price: number;
   separateTotal: number;
   icon: string;
@@ -368,6 +372,7 @@ export function adaptBundle(row: any): Bundle {
   return {
     id: row.slug || row.id,
     name: row.name,
+    displayName: row.display_name ?? null,
     price: effectivePrice,
     separateTotal: separateTotal || Math.round(effectivePrice * 1.2),
     icon: row.emoji || "📦",

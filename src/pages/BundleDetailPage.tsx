@@ -1,7 +1,11 @@
 import { useParams, Link } from "react-router-dom";
 import { useCart, fmt } from "@/lib/cart";
 import { toast } from "sonner";
-import { ArrowLeft, Share2, ArrowLeftRight, Plus, Trash2, X, Pencil } from "lucide-react";
+import { ArrowLeft, Share2, ArrowLeftRight, Plus, Trash2, X, Pencil, MessageCircle } from "lucide-react";
+
+// Customer WhatsApp number — same one used on QuotePage etc. Kept local
+// (not in site_settings) to mirror that page's pattern.
+const WHATSAPP_URL = "https://wa.me/2347040667424";
 import { useState, useEffect, useMemo } from "react";
 import { useBundle, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
 import type { BundleItem } from "@/lib/supabaseAdapters";
@@ -306,20 +310,27 @@ export default function BundleDetailPage() {
         </div>
 
         {/* HERO */}
-        <section className="px-6 md:px-12 lg:px-16 pt-12 md:pt-24 pb-16 md:pb-28">
-          <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-12 md:gap-16 lg:gap-20 items-center">
+        <section className="px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16">
+          <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center">
             <div>
+              {/* Tier eyebrow — small caps + wide tracking; muted */}
+              <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-text-med mb-4">
+                {bundle.tier.toUpperCase()}
+              </p>
+              {/* Display name (customer-facing) with internal-name fallback */}
               <h1 className="pf text-[44px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight mb-6">
-                {bundle.name}
+                {bundle.displayName || bundle.name}
               </h1>
-              <p className="text-text-med text-base md:text-lg leading-relaxed mb-10 max-w-[42ch]">
+              <p className="text-text-med text-base md:text-lg leading-relaxed mb-8 max-w-[42ch]">
                 {bundle.tagline}
               </p>
-              <p className="text-foreground text-sm mb-8">
-                {fmt(displayPrice)}
-                {savings > 0 && !isCustomized && (
-                  <span className="text-text-light ml-3">
-                    Save {fmt(savings)} vs buying separately.
+              {/* Price — bundle.price prominent, separateTotal as optional
+                  small strikethrough beside it (skipped when customised). */}
+              <p className="text-foreground text-base mb-8">
+                <span className="font-medium">{fmt(displayPrice)}</span>
+                {separateTotal > displayPrice && !isCustomized && (
+                  <span className="text-text-light text-sm line-through ml-3">
+                    {fmt(separateTotal)}
                   </span>
                 )}
               </p>
@@ -338,11 +349,10 @@ export default function BundleDetailPage() {
                   Add bundle — {fmt(displayPrice)}
                 </button>
               )}
-              <div className="mt-6">
+              <div className="mt-5 flex flex-col gap-2.5 items-start">
                 <button
                   onClick={() => {
                     setCustomiseOpen(true);
-                    // Defer so the panel mounts before we scroll to it.
                     requestAnimationFrame(() => {
                       document.getElementById("customise")?.scrollIntoView({ behavior: "smooth", block: "start" });
                     });
@@ -351,15 +361,33 @@ export default function BundleDetailPage() {
                 >
                   Or customise this bundle →
                 </button>
+                <a
+                  href={WHATSAPP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  Or chat with us on WhatsApp →
+                </a>
               </div>
             </div>
 
-            {/* Hero image — single considered shot, no carousel. */}
+            {/* Hero image — the bundle carton. Fallback chain:
+                  bundle.imageUrl (carton) → first product with an image →
+                  forest-light placeholder. */}
             <div className="aspect-[4/5] md:aspect-square overflow-hidden bg-warm-cream order-first md:order-last">
-              {heroImageItem?.imageUrl ? (
+              {bundle.imageUrl ? (
+                <img
+                  src={bundle.imageUrl}
+                  alt={bundle.displayName || bundle.name}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              ) : heroImageItem?.imageUrl ? (
                 <img
                   src={heroImageItem.imageUrl}
-                  alt={bundle.name}
+                  alt={bundle.displayName || bundle.name}
                   className="w-full h-full object-cover"
                   loading="lazy"
                 />
@@ -371,10 +399,10 @@ export default function BundleDetailPage() {
         </section>
 
         {/* PRODUCT GRID — cards, no per-item price, no per-item CTA */}
-        <section className="px-6 md:px-12 lg:px-16 py-14 md:py-24 border-t border-border/40">
+        <section className="px-6 md:px-12 lg:px-16 py-10 md:py-16 border-t border-border/40">
           <div className="max-w-[1120px] mx-auto">
             {groups.map((group, gi) => (
-              <div key={group.key} className={gi > 0 ? "mt-16 md:mt-24" : ""}>
+              <div key={group.key} className={gi > 0 ? "mt-10 md:mt-16" : ""}>
                 <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8 md:mb-10">
                   {group.label} — {group.items.length}
                 </p>
@@ -403,8 +431,8 @@ export default function BundleDetailPage() {
         </section>
 
         {/* CTA REPEAT — quiet, part of the page rhythm */}
-        <section className="px-6 py-14 md:py-24 text-center">
-          <p className="pf text-2xl md:text-3xl font-light text-foreground mb-10">
+        <section className="px-6 py-10 md:py-16 text-center">
+          <p className="pf text-2xl md:text-3xl font-light text-foreground mb-8">
             Ready when you are.
           </p>
           {isInCart ? (
@@ -422,7 +450,7 @@ export default function BundleDetailPage() {
               Add bundle — {fmt(displayPrice)}
             </button>
           )}
-          <div className="mt-6">
+          <div className="mt-5 flex flex-col gap-2.5 items-center">
             <button
               onClick={() => {
                 setCustomiseOpen(true);
@@ -434,14 +462,23 @@ export default function BundleDetailPage() {
             >
               Or customise this bundle →
             </button>
+            <a
+              href={WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-text-med text-sm hover:text-foreground underline underline-offset-4 decoration-text-light/60 inline-flex items-center gap-1.5"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              Or chat with us on WhatsApp →
+            </a>
           </div>
         </section>
 
         {/* WHY WE BUILT THIS — locked editorial copy */}
-        <section className="px-6 pt-14 md:pt-20 pb-24 md:pb-32">
+        <section className="px-6 pt-10 md:pt-16 pb-16 md:pb-24">
           <div className="max-w-[640px] mx-auto text-center">
             <div className="h-px w-12 bg-border mx-auto mb-8" />
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-10">
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-med mb-8">
               Why we built this
             </p>
             <p className="text-text-med text-base leading-[1.7] mb-6">
