@@ -523,12 +523,17 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     raw?.is_gift_box === true && /^maternity-bundle-/i.test(slug || "");
   const isPostpartumBundleProduct =
     raw?.is_gift_box === true && /^postpartum-recovery-kit-/i.test(slug || "");
+  // Trailing dash is load-bearing: it ensures only the suffixed
+  // -basic / -standard / -premium slugs match. The parent
+  // "baby-shower-gift-box" slug (is_gift_box=false, 0 items) stays on
+  // the legacy generic ProductPage.
+  const isBabyShowerBundleProduct =
+    raw?.is_gift_box === true && /^baby-shower-gift-box-/i.test(slug || "");
   // Single flag for any bundle that opts into the new minimalist
   // design + inline editor. Hero image and Why-we-built-this copy
   // still vary per category (driven by the specific flags above).
-  // Baby-Shower gift boxes remain on the legacy generic ProductPage
-  // until their copy + images land.
-  const isInlineEditableBundle = isMaternityBundleProduct || isPostpartumBundleProduct;
+  const isInlineEditableBundle =
+    isMaternityBundleProduct || isPostpartumBundleProduct || isBabyShowerBundleProduct;
 
   // Bundle-edit state — single source of truth for the inline grid AND
   // the customiser-toggle mount below. Called unconditionally per React
@@ -838,7 +843,13 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                         "We built the Postpartum Recovery Kit for that period. Sitz bath, belly band, the right pads, the cream that actually helps. Everything in one box, delivered when you need it most.",
                         "You don’t have to figure this out alone.",
                       ]
-                    : []
+                    : isBabyShowerBundleProduct
+                      ? [
+                          "Every mum has the same list of items she wished someone had bought her instead of another stuffed animal. We built the Baby Shower Gift Box from that list.",
+                          "Inside: the things she'll actually reach for. Diapers, wipes, soft onesies, a receiving blanket. Curated by mums, picked carefully, wrapped well.",
+                          "The gift that says you paid attention.",
+                        ]
+                      : []
                 ).map((para, i, arr) => (
                   <p
                     key={i}
