@@ -618,8 +618,16 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             const n = unmet.length;
             const anyGender = unmet.some((i) => editApi.itemNeedsGender(i));
             const anySize = unmet.some((i) => editApi.itemNeedsSize(i));
+            const anyColor = unmet.some((i) => editApi.itemNeedsColor(i));
             const fieldCopy =
-              anyGender && anySize ? "options" : anySize ? "size" : "gender";
+              anySize && anyGender && anyColor ? "options"
+              : anySize && anyGender ? "size and gender"
+              : anySize && anyColor ? "size and colour"
+              : anyGender && anyColor ? "gender and colour"
+              : anySize ? "size"
+              : anyColor ? "colour"
+              : anyGender ? "gender"
+              : "options";
             toast.error(
               `Please choose ${fieldCopy} for ${n} item${n === 1 ? "" : "s"} before adding to cart.`
             );
@@ -653,8 +661,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               quantity: i.quantity,
               lineTotal: i.selected_brand.price * i.quantity,
               isDefault: i.is_default,
-              color: i.selected_gender ?? null,
-              size: i.selected_brand.size_variant ?? null,
+              // Cart row carries explicit selections from the new
+              // product_sizes / product_colors pickers first; falls
+              // back to the legacy axes (selected_gender / brand
+              // size_variant) so older cart rows still parse.
+              color: i.selected_color_name ?? i.selected_gender ?? null,
+              size: i.selected_size_label ?? i.selected_brand.size_variant ?? null,
             })),
             removedDefaultCount: editApi.removedDefaultCount,
           } as any);

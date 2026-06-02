@@ -30,6 +30,9 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
     itemRequiresAttention,
     itemNeedsGender,
     itemNeedsSize,
+    itemNeedsColor,
+    selectSize,
+    selectColor,
   } = editApi;
 
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -59,6 +62,9 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
           const needsAttention = itemRequiresAttention ? itemRequiresAttention(item) : false;
           const needsSize = itemNeedsSize ? itemNeedsSize(item) : false;
           const needsGender = itemNeedsGender ? itemNeedsGender(item) : false;
+          const needsColor = itemNeedsColor ? itemNeedsColor(item) : false;
+          const hasSizes = (item.available_sizes || []).length > 0;
+          const hasColors = (item.available_colors || []).length > 0;
 
           return (
             <div
@@ -136,7 +142,7 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
               <div className="order-3">
                 {hasBrandChoice && !excluded && (
                   <p className="text-[10px] uppercase tracking-[0.18em] text-text-light/80 mb-0.5">
-                    {needsSize ? "Tap to choose size and brand" : "Tap to choose brand"}
+                    Tap to choose brand
                   </p>
                 )}
                 {hasBrandChoice ? (
@@ -161,16 +167,43 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                     {item.selected_brand.brand_name || "—"}
                   </p>
                 )}
-                {needsSize && (
-                  <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
-                    Please choose size
-                  </p>
-                )}
               </div>
+
+              {/* Size picker — only when product_sizes has rows for
+                  this product. Independent of brand picker; size is
+                  its own axis. Per user directive there is no default
+                  pre-selection. */}
+              {hasSizes && !excluded && (
+                <div className="order-4 mt-2">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-text-light/80 mb-0.5">
+                    Tap to choose size
+                  </p>
+                  <select
+                    value={item.selected_size_id ?? ""}
+                    onChange={(e) => selectSize(item.product_id, e.target.value)}
+                    className="block w-full text-text-light text-xs bg-transparent border-0 border-b border-border focus:border-foreground focus:outline-none focus:ring-0 py-1"
+                    aria-label={`Choose size for ${item.product_name}`}
+                  >
+                    <option value="" disabled>
+                      Choose size
+                    </option>
+                    {item.available_sizes.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.size_label}
+                      </option>
+                    ))}
+                  </select>
+                  {needsSize && (
+                    <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
+                      Please choose size
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Gender pills — only when products.gender_relevant. */}
               {colorOptions.length > 0 && !excluded && (
-                <div className="flex flex-wrap gap-1 mt-2 order-4">
+                <div className="flex flex-wrap gap-1 mt-2 order-5">
                   {colorOptions.map((opt) => {
                     const selected = item.selected_gender === opt.key;
                     return (
@@ -196,12 +229,53 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                 </div>
               )}
 
-              {/* Gender-specific validation label — sits below the
-                  gender pills (or where they would render). The size
-                  label lives inside the brand block above. Both share
-                  the same coral micro-label treatment. */}
+              {/* Colour swatches — only when product_colors has rows
+                  for this product. Renders below the gender pills;
+                  swatches show color_hex backgrounds with the selected
+                  one ringed. Currently no products have populated
+                  rows — this block activates the moment admin does. */}
+              {hasColors && !excluded && (
+                <div className="order-6 mt-2">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-text-light/80 mb-1">
+                    Tap to choose colour
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.available_colors.map((c) => {
+                      const selected = item.selected_color_id === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => selectColor(item.product_id, c.id)}
+                          aria-label={`Choose ${c.color_name}`}
+                          aria-pressed={selected}
+                          title={c.color_name}
+                          className={`w-6 h-6 rounded-full border transition-all ${
+                            selected
+                              ? "ring-2 ring-forest ring-offset-1 ring-offset-background border-foreground"
+                              : "border-border hover:scale-110"
+                          }`}
+                          style={{ backgroundColor: c.color_hex || "#e5e5e5" }}
+                        />
+                      );
+                    })}
+                  </div>
+                  {item.selected_color_name && (
+                    <p className="mt-1 text-[10px] text-text-light">{item.selected_color_name}</p>
+                  )}
+                  {needsColor && (
+                    <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
+                      Please choose colour
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Gender-specific validation label — sits at the bottom
+                  so the per-axis labels are nested under their own
+                  controls. */}
               {needsGender && (
-                <p className="order-5 mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
+                <p className="order-7 mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
                   Please choose gender
                 </p>
               )}

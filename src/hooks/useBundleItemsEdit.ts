@@ -46,6 +46,26 @@ export interface DefaultItem {
   is_enabled?: boolean;
 }
 
+export interface ProductSize {
+  id: string;
+  product_id: string;
+  size_label: string;
+  size_code: string | null;
+  display_order: number | null;
+  is_default: boolean | null;
+  in_stock: boolean;
+}
+
+export interface ProductColor {
+  id: string;
+  product_id: string;
+  color_name: string;
+  color_hex: string | null;
+  gender_match: string | null;
+  display_order: number | null;
+  in_stock: boolean;
+}
+
 export interface BundleItem {
   product_id: string;
   product_name: string;
@@ -57,12 +77,20 @@ export interface BundleItem {
   // Gender axis — only populated when products.gender_relevant === true
   // for this item. Carried through to cart for order fulfilment.
   selected_gender: string | null;
-  // Session-only flag: true once the customer has explicitly engaged
-  // the brand picker for this item (selectBrand) OR added it from the
-  // catalogue. Snapshot-hydrated items start false. Used by
-  // itemNeedsSize to require explicit confirmation on multi-size
-  // products instead of silently inheriting the snapshot default.
-  brand_explicitly_selected: boolean;
+  // Size axis — populated from product_sizes (opt-in admin table).
+  // Empty array means "no size choice for this product". Per user
+  // directive we do NOT auto-select a default even when is_default=true
+  // — the customer must explicitly pick. selected_size_label is cached
+  // separately so the cart row can carry the human label without
+  // joining back to ProductSize.
+  available_sizes: ProductSize[];
+  selected_size_id: string | null;
+  selected_size_label: string | null;
+  // Colour axis — same shape as sizes. Framework is live now; activates
+  // automatically when admin populates product_colors rows.
+  available_colors: ProductColor[];
+  selected_color_id: string | null;
+  selected_color_name: string | null;
 }
 
 export interface GenderInfo {
@@ -86,13 +114,15 @@ export interface BundleEditApi {
   itemRequiresAttention: (item: BundleItem) => boolean;
   itemNeedsGender: (item: BundleItem) => boolean;
   itemNeedsSize: (item: BundleItem) => boolean;
-  itemHasMultipleSizes: (item: BundleItem) => boolean;
+  itemNeedsColor: (item: BundleItem) => boolean;
   unmetRequirementItems: BundleItem[];
   hasUnmetRequirements: boolean;
   // Mutators
   toggleInclude: (productId: string) => void;
   selectBrand: (productId: string, brand: BrandRow) => void;
   setItemGender: (productId: string, key: string) => void;
+  selectSize: (productId: string, sizeId: string) => void;
+  selectColor: (productId: string, colorId: string) => void;
   updateQuantity: (productId: string, qty: number) => void;
   removeCustomItem: (productId: string) => void;
   resetToDefault: () => void;
@@ -210,6 +240,52 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     staleTime: 60_000,
   });
 
+  // ── Sizes per item product (opt-in product_sizes table) ──────────
+  const sizesQuery = useQuery({
+    queryKey: ["bundle-edit-sizes", productIdsKey],
+    enabled: productIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_sizes")
+        .select("id, product_id, size_label, size_code, display_order, is_default, in_stock")
+        .in("product_id", productIds)
+        .eq("in_stock", true)
+        .order("display_order");
+      if (error) throw error;
+      const map: Record<string, ProductSize[]> = {};
+      ((data || []) as ProductSize[]).forEach((s) => {
+        const k = s.product_id;
+        if (!map[k]) map[k] = [];
+        map[k].push(s);
+      });
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
+  // ── Colours per item product (opt-in product_colors table) ───────
+  const colorsQuery = useQuery({
+    queryKey: ["bundle-edit-colors", productIdsKey],
+    enabled: productIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_colors")
+        .select("id, product_id, color_name, color_hex, gender_match, display_order, in_stock")
+        .in("product_id", productIds)
+        .eq("in_stock", true)
+        .order("display_order");
+      if (error) throw error;
+      const map: Record<string, ProductColor[]> = {};
+      ((data || []) as ProductColor[]).forEach((c) => {
+        const k = c.product_id;
+        if (!map[k]) map[k] = [];
+        map[k].push(c);
+      });
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
   // ── Build initial bundle items state once data resolves ───────────
   const [bundleItems, setBundleItems] = useState<BundleItem[]>([]);
   const [initialised, setInitialised] = useState(false);
@@ -218,6 +294,8 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     if (!defaultsQuery.data) return null;
     const brandsMap = brandsQuery.data || {};
     const genderMap = genderQuery.data || {};
+    const sizesMap = sizesQuery.data || {};
+    const colorsMap = colorsQuery.data || {};
     return defaultsQuery.data.items
       .filter((it) => it.is_enabled !== false)
       .map<BundleItem>((it) => {
@@ -245,10 +323,17 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
           is_included: true,
           is_default: true,
           selected_gender: seedGender,
-          brand_explicitly_selected: false,
+          available_sizes: sizesMap[it.product_id] || [],
+          // Per user directive: no auto-select even if a row is
+          // flagged is_default — customer must explicitly pick.
+          selected_size_id: null,
+          selected_size_label: null,
+          available_colors: colorsMap[it.product_id] || [],
+          selected_color_id: null,
+          selected_color_name: null,
         };
       });
-  }, [defaultsQuery.data, brandsQuery.data, genderQuery.data]);
+  }, [defaultsQuery.data, brandsQuery.data, genderQuery.data, sizesQuery.data, colorsQuery.data]);
 
   useEffect(() => {
     // Gate on BOTH defaults AND the brand pool (when there are product
@@ -258,9 +343,14 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     if (initialised) return;
     if (!buildInitialItems) return;
     if (productIds.length > 0 && !brandsQuery.data) return;
+    // Wait on sizes + colors too so available_sizes /
+    // available_colors are populated on first hydration — otherwise
+    // the validation predicates would silently pass on first paint.
+    if (productIds.length > 0 && !sizesQuery.data) return;
+    if (productIds.length > 0 && !colorsQuery.data) return;
     setBundleItems(buildInitialItems);
     setInitialised(true);
-  }, [buildInitialItems, initialised, brandsQuery.data, productIds.length]);
+  }, [buildInitialItems, initialised, brandsQuery.data, sizesQuery.data, colorsQuery.data, productIds.length]);
 
   // ── Derivations ───────────────────────────────────────────────────
   const includedItems = useMemo(
@@ -293,21 +383,16 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     const g = genderMapResolved[item.product_id];
     return !!(g?.gender_relevant && !item.selected_gender);
   };
-  const itemHasMultipleSizes = (item: BundleItem) => {
-    const sizes = new Set<string>();
-    (item.available_brands || []).forEach((b) => {
-      const s = (b.size_variant || "").trim();
-      if (s) sizes.add(s);
-    });
-    return sizes.size > 1;
-  };
   const itemNeedsSize = (item: BundleItem) => {
     if (!item.is_included) return false;
-    if (item.brand_explicitly_selected) return false;
-    return itemHasMultipleSizes(item);
+    return item.available_sizes.length > 0 && !item.selected_size_id;
+  };
+  const itemNeedsColor = (item: BundleItem) => {
+    if (!item.is_included) return false;
+    return item.available_colors.length > 0 && !item.selected_color_id;
   };
   const itemRequiresAttention = (item: BundleItem) =>
-    itemNeedsGender(item) || itemNeedsSize(item);
+    itemNeedsGender(item) || itemNeedsSize(item) || itemNeedsColor(item);
   const unmetRequirementItems = useMemo(
     () => bundleItems.filter((i) => itemRequiresAttention(i)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,15 +406,31 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
 
   const selectBrand = (pid: string, brand: BrandRow) =>
     setBundleItems((items) =>
-      items.map((i) =>
-        i.product_id === pid
-          ? { ...i, selected_brand: brand, brand_explicitly_selected: true }
-          : i,
-      ),
+      items.map((i) => (i.product_id === pid ? { ...i, selected_brand: brand } : i)),
     );
 
   const setItemGender = (pid: string, key: string) =>
     setBundleItems((items) => items.map((i) => (i.product_id === pid ? { ...i, selected_gender: key } : i)));
+
+  const selectSize = (pid: string, sizeId: string) =>
+    setBundleItems((items) =>
+      items.map((i) => {
+        if (i.product_id !== pid) return i;
+        const sz = i.available_sizes.find((s) => s.id === sizeId);
+        if (!sz) return i;
+        return { ...i, selected_size_id: sz.id, selected_size_label: sz.size_label };
+      }),
+    );
+
+  const selectColor = (pid: string, colorId: string) =>
+    setBundleItems((items) =>
+      items.map((i) => {
+        if (i.product_id !== pid) return i;
+        const c = i.available_colors.find((col) => col.id === colorId);
+        if (!c) return i;
+        return { ...i, selected_color_id: c.id, selected_color_name: c.color_name };
+      }),
+    );
 
   const updateQuantity = (pid: string, newQty: number) => {
     if (newQty < 1) return;
@@ -352,6 +453,8 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
       return "already";
     }
     const cheapest = shoppable[0];
+    const sizesMap = sizesQuery.data || {};
+    const colorsMap = colorsQuery.data || {};
     setBundleItems((prev) => [
       ...prev,
       {
@@ -363,8 +466,12 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
         is_included: true,
         is_default: false,
         selected_gender: null,
-        // Catalogue-added items are an explicit user pick by definition.
-        brand_explicitly_selected: true,
+        available_sizes: sizesMap[p.id] || [],
+        selected_size_id: null,
+        selected_size_label: null,
+        available_colors: colorsMap[p.id] || [],
+        selected_color_id: null,
+        selected_color_name: null,
       },
     ]);
     return "ok";
@@ -373,7 +480,9 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
   return {
     isLoading:
       defaultsQuery.isLoading ||
-      (productIds.length > 0 && brandsQuery.isLoading && !initialised),
+      (productIds.length > 0 &&
+        (brandsQuery.isLoading || sizesQuery.isLoading || colorsQuery.isLoading) &&
+        !initialised),
     bundleItems,
     includedItems,
     currentTotalPrice,
@@ -384,12 +493,14 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     itemRequiresAttention,
     itemNeedsGender,
     itemNeedsSize,
-    itemHasMultipleSizes,
+    itemNeedsColor,
     unmetRequirementItems,
     hasUnmetRequirements,
     toggleInclude,
     selectBrand,
     setItemGender,
+    selectSize,
+    selectColor,
     updateQuantity,
     removeCustomItem,
     resetToDefault,

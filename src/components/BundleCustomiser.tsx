@@ -179,8 +179,16 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
       const n = unmet.length;
       const anyGender = unmet.some((i) => api.itemNeedsGender(i));
       const anySize = unmet.some((i) => api.itemNeedsSize(i));
+      const anyColor = unmet.some((i) => api.itemNeedsColor(i));
       const fieldCopy =
-        anyGender && anySize ? "options" : anySize ? "size" : "gender";
+        anySize && anyGender && anyColor ? "options"
+        : anySize && anyGender ? "size and gender"
+        : anySize && anyColor ? "size and colour"
+        : anyGender && anyColor ? "gender and colour"
+        : anySize ? "size"
+        : anyColor ? "colour"
+        : anyGender ? "gender"
+        : "options";
       toast.error(
         `Please choose ${fieldCopy} for ${n} item${n === 1 ? "" : "s"} before checking out.`
       );
@@ -216,8 +224,8 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         quantity: i.quantity,
         lineTotal: i.selected_brand.price * i.quantity,
         isDefault: i.is_default,
-        color: i.selected_gender ?? null,
-        size: i.selected_brand.size_variant ?? null,
+        color: i.selected_color_name ?? i.selected_gender ?? null,
+        size: i.selected_size_label ?? i.selected_brand.size_variant ?? null,
       })),
       removedDefaultCount,
     } as any);
