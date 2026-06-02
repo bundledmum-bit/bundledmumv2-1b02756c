@@ -28,6 +28,8 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
     toggleInclude,
     removeCustomItem,
     itemRequiresAttention,
+    itemNeedsGender,
+    itemNeedsSize,
   } = editApi;
 
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -55,6 +57,8 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
           const hasBrandChoice = (item.available_brands || []).length > 1;
           const excluded = !item.is_included;
           const needsAttention = itemRequiresAttention ? itemRequiresAttention(item) : false;
+          const needsSize = itemNeedsSize ? itemNeedsSize(item) : false;
+          const needsGender = itemNeedsGender ? itemNeedsGender(item) : false;
 
           return (
             <div
@@ -132,7 +136,7 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
               <div className="order-3">
                 {hasBrandChoice && !excluded && (
                   <p className="text-[10px] uppercase tracking-[0.18em] text-text-light/80 mb-0.5">
-                    Tap to choose brand
+                    {needsSize ? "Tap to choose size and brand" : "Tap to choose brand"}
                   </p>
                 )}
                 {hasBrandChoice ? (
@@ -155,6 +159,11 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                 ) : (
                   <p className="text-text-light text-xs line-clamp-1">
                     {item.selected_brand.brand_name || "—"}
+                  </p>
+                )}
+                {needsSize && (
+                  <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
+                    Please choose size
                   </p>
                 )}
               </div>
@@ -187,12 +196,13 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                 </div>
               )}
 
-              {/* Validation hint — coral micro-label when the item still
-                  needs a required selection. Driven by editApi so future
-                  required axes (size, colour) light up the same UI. */}
-              {needsAttention && (
+              {/* Gender-specific validation label — sits below the
+                  gender pills (or where they would render). The size
+                  label lives inside the brand block above. Both share
+                  the same coral micro-label treatment. */}
+              {needsGender && (
                 <p className="order-5 mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-coral">
-                  Please choose
+                  Please choose gender
                 </p>
               )}
             </div>

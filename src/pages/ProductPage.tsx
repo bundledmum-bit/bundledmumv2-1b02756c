@@ -614,11 +614,16 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           // useBundleItemsEdit so other surfaces (customiser checkout)
           // stay in lockstep without duplicating logic.
           if (editApi.hasUnmetRequirements) {
-            const n = editApi.unmetRequirementItems.length;
+            const unmet = editApi.unmetRequirementItems;
+            const n = unmet.length;
+            const anyGender = unmet.some((i) => editApi.itemNeedsGender(i));
+            const anySize = unmet.some((i) => editApi.itemNeedsSize(i));
+            const fieldCopy =
+              anyGender && anySize ? "options" : anySize ? "size" : "gender";
             toast.error(
-              `Please choose gender for ${n} item${n === 1 ? "" : "s"} before adding to cart.`
+              `Please choose ${fieldCopy} for ${n} item${n === 1 ? "" : "s"} before adding to cart.`
             );
-            const firstId = editApi.unmetRequirementItems[0]?.product_id;
+            const firstId = unmet[0]?.product_id;
             if (firstId) {
               requestAnimationFrame(() => {
                 document

@@ -57,6 +57,12 @@ export interface BundleItem {
   // Gender axis — only populated when products.gender_relevant === true
   // for this item. Carried through to cart for order fulfilment.
   selected_gender: string | null;
+  // Session-only flag: true once the customer has explicitly engaged
+  // the brand picker for this item (selectBrand) OR added it from the
+  // catalogue. Snapshot-hydrated items start false. Used by
+  // itemNeedsSize to require explicit confirmation on multi-size
+  // products instead of silently inheriting the snapshot default.
+  brand_explicitly_selected: boolean;
 }
 
 export interface GenderInfo {
@@ -78,6 +84,9 @@ export interface BundleEditApi {
   // size pickers, real colour pickers) plug in by extending the
   // predicate, not by re-architecting consumers.
   itemRequiresAttention: (item: BundleItem) => boolean;
+  itemNeedsGender: (item: BundleItem) => boolean;
+  itemNeedsSize: (item: BundleItem) => boolean;
+  itemHasMultipleSizes: (item: BundleItem) => boolean;
   unmetRequirementItems: BundleItem[];
   hasUnmetRequirements: boolean;
   // Mutators
@@ -236,6 +245,7 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
           is_included: true,
           is_default: true,
           selected_gender: seedGender,
+          brand_explicitly_selected: false,
         };
       });
   }, [defaultsQuery.data, brandsQuery.data, genderQuery.data]);
@@ -274,12 +284,30 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
   // hero CTAs, the customiser's checkout button) all read the same
   // predicate so behaviour stays in lockstep.
   const genderMapResolved = genderQuery.data || {};
-  const itemRequiresAttention = (item: BundleItem) => {
+  // Composable predicates. Each axis (gender, size, future colour)
+  // has its own micro-predicate; itemRequiresAttention is the OR
+  // composite. Adding a new required axis = add another predicate
+  // here + one more || clause.
+  const itemNeedsGender = (item: BundleItem) => {
     if (!item.is_included) return false;
     const g = genderMapResolved[item.product_id];
-    if (g?.gender_relevant && !item.selected_gender) return true;
-    return false;
+    return !!(g?.gender_relevant && !item.selected_gender);
   };
+  const itemHasMultipleSizes = (item: BundleItem) => {
+    const sizes = new Set<string>();
+    (item.available_brands || []).forEach((b) => {
+      const s = (b.size_variant || "").trim();
+      if (s) sizes.add(s);
+    });
+    return sizes.size > 1;
+  };
+  const itemNeedsSize = (item: BundleItem) => {
+    if (!item.is_included) return false;
+    if (item.brand_explicitly_selected) return false;
+    return itemHasMultipleSizes(item);
+  };
+  const itemRequiresAttention = (item: BundleItem) =>
+    itemNeedsGender(item) || itemNeedsSize(item);
   const unmetRequirementItems = useMemo(
     () => bundleItems.filter((i) => itemRequiresAttention(i)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,7 +320,13 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     setBundleItems((items) => items.map((i) => (i.product_id === pid ? { ...i, is_included: !i.is_included } : i)));
 
   const selectBrand = (pid: string, brand: BrandRow) =>
-    setBundleItems((items) => items.map((i) => (i.product_id === pid ? { ...i, selected_brand: brand } : i)));
+    setBundleItems((items) =>
+      items.map((i) =>
+        i.product_id === pid
+          ? { ...i, selected_brand: brand, brand_explicitly_selected: true }
+          : i,
+      ),
+    );
 
   const setItemGender = (pid: string, key: string) =>
     setBundleItems((items) => items.map((i) => (i.product_id === pid ? { ...i, selected_gender: key } : i)));
@@ -329,6 +363,8 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
         is_included: true,
         is_default: false,
         selected_gender: null,
+        // Catalogue-added items are an explicit user pick by definition.
+        brand_explicitly_selected: true,
       },
     ]);
     return "ok";
@@ -346,6 +382,9 @@ export function useBundleItemsEdit(productId: string, productName: string): Bund
     removedDefaultCount,
     genderMap: genderQuery.data || {},
     itemRequiresAttention,
+    itemNeedsGender,
+    itemNeedsSize,
+    itemHasMultipleSizes,
     unmetRequirementItems,
     hasUnmetRequirements,
     toggleInclude,

@@ -175,11 +175,16 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
     // shared editApi so a coral-flagged card on the inline grid will
     // also block checkout from the customiser.
     if (api.hasUnmetRequirements) {
-      const n = api.unmetRequirementItems.length;
+      const unmet = api.unmetRequirementItems;
+      const n = unmet.length;
+      const anyGender = unmet.some((i) => api.itemNeedsGender(i));
+      const anySize = unmet.some((i) => api.itemNeedsSize(i));
+      const fieldCopy =
+        anyGender && anySize ? "options" : anySize ? "size" : "gender";
       toast.error(
-        `Please choose gender for ${n} item${n === 1 ? "" : "s"} before checking out.`
+        `Please choose ${fieldCopy} for ${n} item${n === 1 ? "" : "s"} before checking out.`
       );
-      const firstId = api.unmetRequirementItems[0]?.product_id;
+      const firstId = unmet[0]?.product_id;
       if (firstId) {
         requestAnimationFrame(() => {
           document
