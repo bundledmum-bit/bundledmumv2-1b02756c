@@ -165,7 +165,7 @@ export default function CategoryPage() {
                 <div className="h-5 w-40 bg-muted rounded mb-3 animate-pulse" />
                 <div className="flex gap-3 overflow-hidden">
                   {[1, 2, 3].map(j => (
-                    <div key={j} className="w-[35vw] md:w-[180px] h-[260px] bg-card rounded-card animate-pulse" />
+                    <div key={j} className="w-[35vw] min-w-[140px] md:w-[180px] h-[260px] bg-card rounded-card animate-pulse" />
                   ))}
                 </div>
               </div>
@@ -373,7 +373,7 @@ function BrandCard({
 
   return (
     <div
-      className={`snap-start shrink-0 w-[35vw] md:w-[180px] bg-card rounded-card shadow-card overflow-hidden flex flex-col ${isOutOfStock ? "opacity-60" : ""}`}
+      className={`snap-start shrink-0 w-[35vw] min-w-[140px] md:w-[180px] bg-card rounded-card shadow-card overflow-hidden flex flex-col ${isOutOfStock ? "opacity-60" : ""}`}
     >
       <button
         type="button"

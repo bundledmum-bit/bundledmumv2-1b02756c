@@ -101,9 +101,9 @@ export default function TrackOrderPage() {
             <h4 className="text-xs font-semibold text-text-med mb-2">Items</h4>
             <div className="space-y-2 mb-3">
               {(order.order_items || []).map((item: any, i: number) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span>{item.product_name} {item.brand_name ? `(${item.brand_name})` : ""} × {item.quantity}{item.size ? ` — ${item.size}` : ""}</span>
-                  <span className="font-semibold">{fmt(item.line_total)}</span>
+                <div key={i} className="flex justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate">{item.product_name} {item.brand_name ? `(${item.brand_name})` : ""} × {item.quantity}{item.size ? ` — ${item.size}` : ""}</span>
+                  <span className="font-semibold flex-shrink-0">{fmt(item.line_total)}</span>
                 </div>
               ))}
             </div>

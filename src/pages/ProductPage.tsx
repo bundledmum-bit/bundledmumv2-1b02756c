@@ -1193,7 +1193,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <SubscribeAndSaveBadge productId={raw?.id} isSubscribable={raw?.is_subscribable === true} />
 
             {/* Trust badges */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
               <div className="flex flex-col items-center gap-1 text-center">
                 <Truck className="h-5 w-5 text-forest" />
                 <span className="text-[10px] text-muted-foreground font-medium">Fast Delivery</span>
