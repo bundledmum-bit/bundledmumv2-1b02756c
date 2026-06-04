@@ -8,6 +8,8 @@ import {
   Files,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
+import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getBrandImage } from "@/lib/brandImage";
 import StateZoneLgaCityCascade from "@/components/address/StateZoneLgaCityCascade";
 import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmModal";
@@ -27,7 +29,9 @@ const NG_STATES = [
   "Jigawa", "Katsina", "Zamfara", "Kogi", "Ebonyi",
 ];
 
-const STATUS_COLORS: Record<string, string> = {
+// Exported so the mobile AdminQuoteCard renders status badges with the
+// IDENTICAL colour map as the desktop table rows.
+export const STATUS_COLORS: Record<string, string> = {
   draft:     "bg-gray-100 text-gray-700 border-gray-200",
   sent:      "bg-blue-100 text-blue-700 border-blue-200",
   viewed:    "bg-indigo-100 text-indigo-700 border-indigo-200",
@@ -65,7 +69,8 @@ const shareUrlFor = (token: string | null | undefined): string => {
   return `${origin}/quote/${token}`;
 };
 
-const fmtN = (n: number | null | undefined) =>
+// Exported so the mobile AdminQuoteCard formats totals identically.
+export const fmtN = (n: number | null | undefined) =>
   typeof n === "number" && isFinite(n) ? `₦${Math.round(n).toLocaleString()}` : "₦0";
 
 const fmtDate = (iso: string) =>
@@ -253,6 +258,26 @@ export default function AdminQuotes() {
     }
   };
 
+  // Page-level glue handlers passed to the mobile AdminQuoteCard. These
+  // mirror the desktop row's inline copy-share / decline behaviour
+  // exactly (no useMutation involved); the desktop table keeps its own
+  // inline copies unchanged.
+  const copyShare = async (q: any) => {
+    const url = shareUrlFor(q.share_token);
+    if (!url) { toast.error("No share URL yet — save the quote first."); return; }
+    const ok = await copyToClipboard(url);
+    toast[ok ? "success" : "error"](ok ? "Share URL copied" : "Couldn't copy — open the quote to copy manually");
+  };
+  const declineQuote = (q: any) => {
+    if (!confirm(`Mark quote ${q.quote_number} as declined?`)) return;
+    (supabase as any).from("quotes").update({ status: "declined" }).eq("id", q.id)
+      .then(({ error }: { error: any }) => {
+        if (error) { toast.error(error.message); return; }
+        queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+        toast.success("Quote declined");
+      });
+  };
+
   if (view === "editor") {
     return (
       <QuoteEditor
@@ -322,7 +347,12 @@ export default function AdminQuotes() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-text-med text-sm">Loading quotes…</div>
+        <>
+          <div className="hidden md:block text-center py-12 text-text-med text-sm">Loading quotes…</div>
+          <div className="md:hidden flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[132px] w-full rounded-lg" />)}
+          </div>
+        </>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-border rounded-xl text-text-med text-sm">
           {(quotes as any[]).length === 0
@@ -330,7 +360,9 @@ export default function AdminQuotes() {
             : "No quotes match your filters."}
         </div>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <>
+        {/* Desktop (md+) — table + pager, unchanged. */}
+        <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 sticky top-0 z-10">
@@ -511,6 +543,33 @@ export default function AdminQuotes() {
             </div>
           )}
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table (full filtered set; the desktop pager stays
+            desktop-only). No separate fetch / filter. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.map((q: any) => (
+            <AdminQuoteCard
+              key={q.id}
+              quote={q}
+              shareUrl={shareUrlFor(q.share_token)}
+              canEdit={canEdit}
+              canCreate={canCreate}
+              canDelete={canDelete}
+              isDownloading={downloadingId === q.id}
+              isDuplicating={duplicateQuote.isPending && duplicateQuote.variables === q.id}
+              onOpen={(qq) => { setEditingId(qq.id); setView("editor"); }}
+              onCopyShare={copyShare}
+              onDownload={(qq) => handleDownload(qq.id)}
+              onSend={(qq) => setSendingFor(qq.id)}
+              onConvert={(qq) => setConvertingFor(qq.id)}
+              onDecline={declineQuote}
+              onDuplicate={(qq) => duplicateQuote.mutate(qq.id)}
+              onDelete={(qq) => { if (confirm(`Delete quote ${qq.quote_number}? This cannot be undone.`)) deleteQuote.mutate(qq.id); }}
+            />
+          ))}
+        </div>
+        </>
       )}
 
       {/* Workflow modals — Send to Customer + Place Order for Customer.
