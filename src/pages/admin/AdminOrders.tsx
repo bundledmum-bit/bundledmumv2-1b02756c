@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2 } from "lucide-react";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
+import AdminOrderCard from "@/components/admin/AdminOrderCard";
 import { openBrandedInvoice } from "@/components/admin/PrintInvoice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
@@ -23,7 +24,9 @@ const PAYMENT_METHODS = ["card", "transfer", "ussd"];
 const CANCEL_REASONS = ["customer_request", "out_of_stock", "payment_failed", "fraud_suspected", "other"];
 const RETURN_REASONS = ["wrong_item", "damaged", "changed_mind", "not_as_described", "quality_issue", "other"];
 
-const STATUS_COLORS: Record<string, string> = {
+// Exported so the mobile AdminOrderCard renders status badges with the
+// IDENTICAL colour map as the desktop table rows.
+export const STATUS_COLORS: Record<string, string> = {
   pending: "bg-gray-100 text-gray-700", confirmed: "bg-blue-100 text-blue-700",
   processing: "bg-yellow-100 text-yellow-700", packed: "bg-purple-100 text-purple-700",
   shipped: "bg-cyan-100 text-cyan-700", delivered: "bg-green-100 text-green-700",
@@ -39,7 +42,7 @@ const DATE_PRESETS = [
   { label: "This Month", getValue: () => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.toISOString(); }},
 ];
 
-const fmt = (n: number) => `₦${n.toLocaleString()}`;
+export const fmt = (n: number) => `₦${n.toLocaleString()}`;
 const formatColor = (color: string | null | undefined): string => {
   if (!color) return "";
   if (color === "boy") return "Boy (Blue)";
@@ -452,7 +455,9 @@ export default function AdminOrders() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-10 text-muted-foreground">No data yet</div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        {/* Desktop (md+) — existing table, unchanged. */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-background">
               <tr className="text-xs text-muted-foreground border-b border-border">
@@ -541,6 +546,22 @@ export default function AdminOrders() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table; no separate fetch / filter / sort. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.map((o: any) => (
+            <AdminOrderCard
+              key={o.id}
+              order={o}
+              onSelect={setDetailOrder}
+              canViewCustomer={can("orders", "view_customer")}
+              showFinance={showFinance}
+              pickedOrderIds={pickedOrderIds}
+            />
+          ))}
+        </div>
+        </>
       )}
     </div>
   );
