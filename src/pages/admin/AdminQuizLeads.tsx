@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import AdminQuizLeadCard from "@/components/admin/AdminQuizLeadCard";
 import { Download, Calendar, Users, Phone, ShoppingCart, TrendingUp, DollarSign, ExternalLink } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -42,7 +44,9 @@ function formatLagosTimestamp(iso: string | null): string {
   });
 }
 
-const SHOPPER_COLORS: Record<string, string> = {
+// Exported so the mobile AdminQuizLeadCard renders the shopper-type
+// badge with the IDENTICAL colour map as the desktop table rows.
+export const SHOPPER_COLORS: Record<string, string> = {
   self: "bg-blue-100 text-blue-700 border-blue-200",
   dad: "bg-orange-100 text-orange-700 border-orange-200",
   gift: "bg-purple-100 text-purple-700 border-purple-200",
@@ -272,11 +276,18 @@ export default function AdminQuizLeads() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground text-sm">Loading leads...</div>
+        <>
+          <div className="hidden md:block text-center py-12 text-muted-foreground text-sm">Loading leads...</div>
+          <div className="md:hidden flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-lg" />)}
+          </div>
+        </>
       ) : !filtered.length ? (
         <div className="text-center py-12 text-muted-foreground text-sm">No quiz leads found.</div>
       ) : (
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
+        <>
+        {/* Desktop (md+) — existing table, unchanged. */}
+        <div className="hidden md:block bg-card rounded-lg border border-border overflow-hidden">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-background">
@@ -357,6 +368,15 @@ export default function AdminQuizLeads() {
             </Table>
           </div>
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table; no separate fetch / filter / sort. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.map(lead => (
+            <AdminQuizLeadCard key={lead.id} lead={lead} />
+          ))}
+        </div>
+        </>
       )}
     </div>
   );
