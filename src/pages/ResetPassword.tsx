@@ -74,6 +74,9 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden" style={{ background: "#FFF8F4" }}>
+      {/* Decorative blobs are intentionally oversized and negatively offset.
+          The root above is `relative overflow-hidden`, which clips them — they
+          never cause horizontal overflow at 375px. Keep that overflow-hidden. */}
       <div className="absolute w-[500px] h-[500px] rounded-full -top-[200px] -right-[200px] opacity-10" style={{ background: "#2D6A4F" }} />
       <div className="absolute w-[300px] h-[300px] rounded-full -bottom-[100px] -left-[100px] opacity-10" style={{ background: "#F4845F" }} />
 
