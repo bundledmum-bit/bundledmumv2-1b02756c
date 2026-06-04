@@ -3,6 +3,29 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, Download, AlertTriangle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import AdminInventoryCard from "@/components/admin/AdminInventoryCard";
+
+// Stock status helpers — module-level + exported so the mobile
+// AdminInventoryCard renders IDENTICAL status logic + badge colours as
+// the desktop table rows. Pure functions (no component state).
+export const getInventoryStatus = (b: any): string => {
+  if (b.stock_quantity === null) return "untracked";
+  if (b.stock_quantity === 0) return "out";
+  if (b.stock_quantity < 10) return "low";
+  return "in";
+};
+
+export const inventoryStatusBadge = (s: string): string => {
+  const map: Record<string, string> = {
+    in: "bg-green-100 text-green-700", low: "bg-yellow-100 text-yellow-700",
+    out: "bg-red-100 text-red-700", untracked: "bg-gray-100 text-gray-500",
+  };
+  return map[s] || "";
+};
+
+export const inventoryStatusLabel = (s: string): string =>
+  s === "untracked" ? "N/A" : s === "in" ? "In Stock" : s === "low" ? "Low Stock" : "Out of Stock";
 
 export default function AdminInventory() {
   const queryClient = useQueryClient();
@@ -29,12 +52,7 @@ export default function AdminInventory() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-inventory"] }); toast.success("Updated"); },
   });
 
-  const getStatus = (b: any) => {
-    if (b.stock_quantity === null) return "untracked";
-    if (b.stock_quantity === 0) return "out";
-    if (b.stock_quantity < 10) return "low";
-    return "in";
-  };
+  const getStatus = getInventoryStatus;
 
   const filtered = (brands || []).filter((b: any) => {
     const status = getStatus(b);
@@ -57,13 +75,7 @@ export default function AdminInventory() {
     URL.revokeObjectURL(url);
   };
 
-  const statusBadge = (s: string) => {
-    const map: Record<string, string> = {
-      in: "bg-green-100 text-green-700", low: "bg-yellow-100 text-yellow-700",
-      out: "bg-red-100 text-red-700", untracked: "bg-gray-100 text-gray-500",
-    };
-    return map[s] || "";
-  };
+  const statusBadge = inventoryStatusBadge;
 
   const lowCount = (brands || []).filter((b: any) => getStatus(b) === "low").length;
   const outCount = (brands || []).filter((b: any) => getStatus(b) === "out").length;
@@ -109,9 +121,16 @@ export default function AdminInventory() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-10 text-text-med">Loading...</div>
+        <>
+          <div className="hidden md:block text-center py-10 text-text-med">Loading...</div>
+          <div className="md:hidden flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[88px] w-full rounded-lg" />)}
+          </div>
+        </>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <>
+        {/* Desktop (md+) — existing table, unchanged. */}
+        <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 sticky top-0 z-10">
@@ -176,6 +195,19 @@ export default function AdminInventory() {
           </table>
           </div>
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table; no separate fetch / filter / sort. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.map((b: any) => (
+            <AdminInventoryCard
+              key={b.id}
+              brand={b}
+              onToggleStock={(id, current) => updateBrand.mutate({ id, updates: { in_stock: !current } })}
+            />
+          ))}
+        </div>
+        </>
       )}
     </div>
   );
