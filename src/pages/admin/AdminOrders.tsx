@@ -3,11 +3,14 @@ import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2 } from "lucide-react";
+import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, format } from "date-fns";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import AdminOrderCard from "@/components/admin/AdminOrderCard";
 import { openBrandedInvoice } from "@/components/admin/PrintInvoice";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
@@ -35,11 +38,28 @@ export const STATUS_COLORS: Record<string, string> = {
   paid: "bg-green-100 text-green-700",
 };
 
-const DATE_PRESETS = [
-  { label: "Today", getValue: () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); }},
-  { label: "Yesterday", getValue: () => { const d = new Date(); d.setDate(d.getDate()-1); d.setHours(0,0,0,0); return d.toISOString(); }},
-  { label: "This Week", getValue: () => { const d = new Date(); d.setDate(d.getDate()-d.getDay()); d.setHours(0,0,0,0); return d.toISOString(); }},
-  { label: "This Month", getValue: () => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.toISOString(); }},
+// Date-range filter. Server-side now: the resolved range is passed to
+// get_admin_orders as p_date_from / p_date_to, which filter on
+// created_at BEFORE pagination, so totalCount reflects the filtered
+// dataset. "this_month" is the default (silent — no URL param).
+type DatePreset =
+  | "today" | "yesterday" | "this_week" | "this_month"
+  | "last_month" | "last_30_days" | "ytd" | "all_time" | "custom";
+
+const DATE_PRESET_LABELS: Record<Exclude<DatePreset, "custom">, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This week",
+  this_month: "This month",
+  last_month: "Last month",
+  last_30_days: "Last 30 days",
+  ytd: "Year to date",
+  all_time: "All time",
+};
+
+const DATE_PRESET_GROUPS: { label: string; presets: (keyof typeof DATE_PRESET_LABELS)[] }[] = [
+  { label: "Recent", presets: ["today", "yesterday", "this_week", "this_month"] },
+  { label: "Looking back", presets: ["last_month", "last_30_days", "ytd"] },
 ];
 
 export const fmt = (n: number) => `₦${n.toLocaleString()}`;
@@ -55,7 +75,7 @@ export default function AdminOrders() {
   const queryClient = useQueryClient();
   const { can, adminUser, isSuperAdmin } = usePermissions();
   const [search, setSearch] = useState("");
-  const [urlParams] = useSearchParams();
+  const [urlParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState("all");
   const [subsOnly, setSubsOnly] = useState(urlParams.get("filter") === "subscriptions");
   const [paymentFilter, setPaymentFilter] = useState("all");
@@ -65,7 +85,18 @@ export default function AdminOrders() {
   // rows, expressStatusFilter narrows by express lifecycle step.
   const [orderTypeFilter, setOrderTypeFilter] = useState<"all" | "standard" | "express">("all");
   const [expressStatusFilter, setExpressStatusFilter] = useState<"all" | "pending_quote" | "quoted" | "accepted" | "declined" | "expired">("all");
-  const [datePreset, setDatePreset] = useState("This Month");
+  const [datePreset, setDatePreset] = useState<DatePreset>(
+    (urlParams.get("preset") as DatePreset) ?? "this_month"
+  );
+  const [customRange, setCustomRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
+    from: urlParams.get("from") ? new Date(urlParams.get("from")!) : undefined,
+    to: urlParams.get("to") ? new Date(urlParams.get("to")!) : undefined,
+  });
+  // Popover-local UI state: open + whether the custom range picker is
+  // expanded. Custom dates write straight to customRange but only take
+  // effect once datePreset flips to "custom" (via Apply).
+  const [dateOpen, setDateOpen] = useState(false);
+  const [showCustom, setShowCustom] = useState(datePreset === "custom");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailOrder, setDetailOrder] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState<string | null>(null);
@@ -108,15 +139,50 @@ export default function AdminOrders() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
-  const dateFrom = useMemo(() => {
-    const preset = DATE_PRESETS.find(p => p.label === datePreset);
-    return preset ? preset.getValue() : new Date(0).toISOString();
-  }, [datePreset]);
+  // Resolve the preset into a concrete [from, to] range. Boundaries are
+  // computed in the browser's local time, then converted to UTC at the
+  // .toISOString() boundary when passed to the RPC — so "this month" in
+  // Lagos maps to the correct UTC window the server filters on.
+  const activeDateRange = useMemo<{ from: Date | null; to: Date | null }>(() => {
+    const now = new Date();
+    switch (datePreset) {
+      case "today":
+        return { from: startOfDay(now), to: endOfDay(now) };
+      case "yesterday": {
+        const y = subDays(now, 1);
+        return { from: startOfDay(y), to: endOfDay(y) };
+      }
+      case "this_week":
+        return { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfDay(now) };
+      case "this_month":
+        return { from: startOfMonth(now), to: endOfDay(now) };
+      case "last_month": {
+        const lm = subMonths(now, 1);
+        return { from: startOfMonth(lm), to: endOfMonth(lm) };
+      }
+      case "last_30_days":
+        return { from: startOfDay(subDays(now, 30)), to: endOfDay(now) };
+      case "ytd":
+        return { from: startOfYear(now), to: endOfDay(now) };
+      case "custom":
+        return {
+          // from-only → to defaults to today; to-only → from stays null.
+          from: customRange.from ? startOfDay(customRange.from) : null,
+          to: customRange.to ? endOfDay(customRange.to) : (customRange.from ? endOfDay(now) : null),
+        };
+      case "all_time":
+      default:
+        return { from: null, to: null };
+    }
+  }, [datePreset, customRange]);
 
   const [currentPage, setCurrentPage] = useState(0);
 
+  const dateFromIso = activeDateRange.from?.toISOString() ?? null;
+  const dateToIso = activeDateRange.to?.toISOString() ?? null;
+
   const { data: rpcResult, isLoading } = useQuery({
-    queryKey: ["admin-orders", currentPage, statusFilter, paymentFilter, search],
+    queryKey: ["admin-orders", currentPage, statusFilter, paymentFilter, search, dateFromIso, dateToIso],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_admin_orders", {
         p_limit: 50,
@@ -124,6 +190,8 @@ export default function AdminOrders() {
         p_status: statusFilter !== "all" ? statusFilter : null,
         p_payment_status: paymentFilter !== "all" ? paymentFilter : null,
         p_search: search || null,
+        p_date_from: dateFromIso,
+        p_date_to: dateToIso,
       });
       if (error) throw error;
       return data as any;
@@ -134,11 +202,33 @@ export default function AdminOrders() {
   const totalCount = rpcResult?.total || 0;
   const isPaidOnlyRestricted = rpcResult?.paid_only_restricted || false;
 
+  // Reset to page 0 on any date-filter change, so the customer isn't
+  // stranded on page 5 of a now-shorter filtered dataset.
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [datePreset, customRange.from?.toISOString(), customRange.to?.toISOString()]);
+
+  // Sync date-filter state → URL. "this_month" is the silent default
+  // (no param). Custom writes date-only from/to. Other URL params
+  // (?order=, ?filter=) are preserved.
+  useEffect(() => {
+    const params = new URLSearchParams(urlParams);
+    if (datePreset === "this_month") params.delete("preset");
+    else params.set("preset", datePreset);
+    if (datePreset === "custom" && customRange.from) params.set("from", customRange.from.toISOString().slice(0, 10));
+    else params.delete("from");
+    if (datePreset === "custom" && customRange.to) params.set("to", customRange.to.toISOString().slice(0, 10));
+    else params.delete("to");
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datePreset, customRange]);
+
   const filtered = useMemo(() => {
     const rows = (orders || []).filter((o: any) => {
       if (subsOnly && !o.is_subscription_order) return false;
       if (methodFilter !== "all" && o.payment_method !== methodFilter) return false;
-      if (o.created_at < dateFrom) return false;
+      // Date filtering now happens server-side (p_date_from/p_date_to)
+      // before pagination — no client-side created_at filter here.
       if (courierFilter !== "all") {
         if (courierFilter === "unassigned") {
           if (o.delivery_partner) return false;
@@ -163,7 +253,7 @@ export default function AdminOrders() {
       return bd - ad;
     });
     return rows;
-  }, [orders, methodFilter, dateFrom, courierFilter, subsOnly, orderTypeFilter, expressStatusFilter]);
+  }, [orders, methodFilter, courierFilter, subsOnly, orderTypeFilter, expressStatusFilter]);
 
   const stats = useMemo(() => {
     const f = filtered;
@@ -329,12 +419,103 @@ export default function AdminOrders() {
       </div>
 
       <div className="flex gap-2 mb-4 flex-wrap">
-        {DATE_PRESETS.map(p => (
-          <button key={p.label} onClick={() => setDatePreset(p.label)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === p.label ? "border-forest bg-forest/10 text-forest" : "border-border text-muted-foreground"}`}>
-            {p.label}
-          </button>
-        ))}
+        <Popover open={dateOpen} onOpenChange={(o) => { setDateOpen(o); if (o) setShowCustom(datePreset === "custom"); }}>
+          <PopoverTrigger asChild>
+            <button
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                datePreset !== "this_month"
+                  ? "border-forest bg-forest/10 text-forest"
+                  : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              <CalendarIcon className="w-3.5 h-3.5" />
+              {datePreset === "custom"
+                ? (customRange.from && customRange.to
+                    ? `${format(customRange.from, "MMM d")} – ${format(customRange.to, "MMM d, yyyy")}`
+                    : "Custom range")
+                : DATE_PRESET_LABELS[datePreset]}
+              <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[300px] max-w-[92vw] p-3">
+            {DATE_PRESET_GROUPS.map((group) => (
+              <div key={group.label} className="mb-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">{group.label}</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {group.presets.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => { setDatePreset(p); setShowCustom(false); setDateOpen(false); }}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left ${
+                        datePreset === p ? "border-forest bg-forest/10 text-forest" : "border-border text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {DATE_PRESET_LABELS[p]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <button
+              onClick={() => { setDatePreset("all_time"); setShowCustom(false); setDateOpen(false); }}
+              className={`w-full px-2.5 py-1.5 mb-2 rounded-lg text-xs font-semibold border text-left ${
+                datePreset === "all_time" ? "border-forest bg-forest/10 text-forest" : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {DATE_PRESET_LABELS.all_time}
+            </button>
+
+            <div className="border-t border-border pt-2">
+              <button
+                onClick={() => setShowCustom((v) => !v)}
+                className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold border text-left ${
+                  datePreset === "custom" || showCustom ? "border-forest bg-forest/10 text-forest" : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                Custom range…
+              </button>
+
+              {showCustom && (
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">From</p>
+                    <Calendar
+                      mode="single"
+                      selected={customRange.from}
+                      onSelect={(d) => setCustomRange((r) => ({ ...r, from: d }))}
+                      className="rounded-md border p-2"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">To</p>
+                    <Calendar
+                      mode="single"
+                      selected={customRange.to}
+                      onSelect={(d) => setCustomRange((r) => ({ ...r, to: d }))}
+                      className="rounded-md border p-2"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={!customRange.from || !customRange.to}
+                      onClick={() => { setDatePreset("custom"); setDateOpen(false); }}
+                      className="flex-1 px-3 py-1.5 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => { setDatePreset("this_month"); setCustomRange({ from: undefined, to: undefined }); setShowCustom(false); setDateOpen(false); }}
+                      className="flex-1 px-3 py-1.5 border border-border rounded-lg text-xs font-semibold hover:bg-muted"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 md:grid-cols-9 gap-2 mb-4">
@@ -449,6 +630,19 @@ export default function AdminOrders() {
           </div>
         </div>
       )}
+
+      {/* Active date-filter indicator. totalCount comes from the RPC's
+          COUNT over the date-filtered set, so it's accurate across pages. */}
+      <p className="text-xs text-muted-foreground mb-3">
+        Showing {totalCount} order{totalCount === 1 ? "" : "s"}
+        {datePreset !== "all_time" && (
+          <> from {datePreset === "custom"
+            ? (customRange.from && customRange.to
+                ? `${format(customRange.from, "MMM d")} – ${format(customRange.to, "MMM d, yyyy")}`
+                : "custom range")
+            : DATE_PRESET_LABELS[datePreset]}</>
+        )}
+      </p>
 
       {isLoading ? (
         <div className="space-y-2">{Array.from({length:5}).map((_,i)=><Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
