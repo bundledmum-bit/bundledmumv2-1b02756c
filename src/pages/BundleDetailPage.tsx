@@ -326,7 +326,7 @@ export default function BundleDetailPage() {
                 {bundle.tier.toUpperCase()}
               </p>
               {/* Display name (customer-facing) with internal-name fallback */}
-              <h1 className="pf text-[44px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight mb-6">
+              <h1 className="pf text-[44px] md:text-6xl lg:text-7xl font-light leading-[1.05] text-foreground tracking-tight break-words mb-6">
                 {bundle.displayName || bundle.name}
               </h1>
               <p className="text-text-med text-base md:text-lg leading-relaxed mb-8 max-w-[42ch]">
@@ -663,7 +663,7 @@ export default function BundleDetailPage() {
                               key={b.id}
                               onClick={() => !oos && setPickerBrandId(b.id)}
                               disabled={oos}
-                              className={`px-3 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
+                              className={`inline-flex items-center justify-center min-h-9 px-3 rounded-full text-xs font-semibold border-2 transition-colors ${
                                 selected
                                   ? "border-forest bg-forest text-primary-foreground"
                                   : oos
@@ -688,7 +688,7 @@ export default function BundleDetailPage() {
                             <button
                               key={sz}
                               onClick={() => setPickerSize(sz)}
-                              className={`px-3 py-2 rounded-full text-xs font-semibold border-2 transition-colors ${
+                              className={`inline-flex items-center justify-center min-h-9 px-3 rounded-full text-xs font-semibold border-2 transition-colors ${
                                 selected
                                   ? "border-forest bg-forest text-primary-foreground"
                                   : "border-border bg-card hover:border-forest text-foreground"
@@ -790,7 +790,7 @@ export default function BundleDetailPage() {
                             key={b.id}
                             onClick={() => !oos && setPickerBrandId(b.id)}
                             disabled={oos}
-                            className={`px-3 py-1.5 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${oos ? "opacity-40 cursor-not-allowed" : ""} ${selected ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
+                            className={`inline-flex items-center justify-center min-h-9 px-3 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${oos ? "opacity-40 cursor-not-allowed" : ""} ${selected ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
                           >
                             {b.label} · {fmt(b.price)}
                           </button>
@@ -811,7 +811,7 @@ export default function BundleDetailPage() {
                           <button
                             key={s}
                             onClick={() => setPickerSize(s)}
-                            className={`px-3 py-1.5 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selected ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
+                            className={`inline-flex items-center justify-center min-h-9 px-3 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selected ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
                           >
                             {s}
                           </button>
@@ -875,7 +875,7 @@ export default function BundleDetailPage() {
       {/* Hero Header – compact on mobile */}
       <div className="pt-[68px]" style={{ background: `linear-gradient(135deg, ${bundle.color}CC, ${bundle.color}88)` }}>
         <div className="max-w-[900px] mx-auto px-4 md:px-10 py-5 md:py-14">
-          <Link to="/bundles" className="text-primary-foreground/60 text-xs hover:text-primary-foreground/80 mb-2 inline-flex items-center gap-1 py-2 -my-2">
+          <Link to="/bundles" className="text-primary-foreground/60 text-xs hover:text-primary-foreground/80 mb-2 inline-flex items-center gap-1 min-h-9 py-2 -my-2">
             <ArrowLeft className="h-3 w-3" /> All Bundles
           </Link>
 
