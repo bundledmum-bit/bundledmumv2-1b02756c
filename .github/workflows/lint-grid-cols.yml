@@ -1,0 +1,30 @@
+name: Lint — grid-cols guard
+
+# Guards against the mobile horizontal-overflow bug class fixed in
+# commits 2948c9d + 8da37b2: a `grid` with a breakpoint-only grid-cols
+# (e.g. `grid md:grid-cols-2`) and no explicit base `grid-cols-N`.
+#
+# Currently WARNING-ONLY (the script exits 0). It surfaces the ~48
+# remaining admin violations on every push/PR without blocking. Once
+# the admin sweep lands, set WARN_ONLY=0 in scripts/check-grid-cols.sh
+# to make this a hard gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  grid-cols:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run grid-cols guard
+        run: bash scripts/check-grid-cols.sh
