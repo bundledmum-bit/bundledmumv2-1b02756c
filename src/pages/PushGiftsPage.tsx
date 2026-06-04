@@ -80,7 +80,7 @@ function PushGiftCard({ product, onAdd, onViewDetail }: { product: Product; onAd
 
   return (
     <div className={`bg-card rounded-card shadow-card card-hover overflow-hidden ${allBrandsOos ? "opacity-60" : ""}`}>
-      <div className="h-[200px] flex items-center justify-center relative cursor-pointer overflow-hidden"
+      <div className="h-[160px] sm:h-[180px] md:h-[200px] flex items-center justify-center relative cursor-pointer overflow-hidden"
         style={{ background: displayImage ? '#f5f5f5' : `linear-gradient(135deg, #FFE0E6, #fff)` }}
         onClick={onViewDetail}>
         {product.badge && (
@@ -107,7 +107,7 @@ function PushGiftCard({ product, onAdd, onViewDetail }: { product: Product; onAd
                 const bOos = !b.inStock;
                 return (
                   <button key={b.id} onClick={() => setSelectedBrand(b)}
-                    className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body ${bOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-coral bg-coral/10 text-coral" : "border-border bg-card text-text-med"}`}>
+                    className={`inline-flex items-center min-h-9 px-3 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body ${bOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-coral bg-coral/10 text-coral" : "border-border bg-card text-text-med"}`}>
                     {b.label} {fmt(b.price)}
                   </button>
                 );
@@ -215,7 +215,7 @@ export default function PushGiftsPage() {
             <p className="text-text-light text-xs mt-1">Check back soon — we're adding new gifts regularly!</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filtered.map(p => (
               <PushGiftCard key={p.id} product={p} onAdd={handleAdd} onViewDetail={() => setDetailProduct(p)} />
             ))}
