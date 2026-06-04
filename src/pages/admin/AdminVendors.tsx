@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Plus, Edit2, Eye, Power } from "lucide-react";
 import VendorEditDialog from "@/components/admin/VendorEditDialog";
+import AdminVendorCard from "@/components/admin/AdminVendorCard";
 import BrandPickerDialog from "@/components/admin/BrandPickerDialog";
 import {
   useVendors,
@@ -125,7 +126,10 @@ export default function AdminVendors() {
             </div>
           )}
           {isLoading ? (
-            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div>
+            <>
+              <div className="hidden md:block space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div>
+              <div className="md:hidden flex flex-col gap-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[132px] w-full rounded-lg" />)}</div>
+            </>
           ) : filteredVendors.length === 0 ? (
             <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
               {activeFilter === "all"
@@ -133,7 +137,9 @@ export default function AdminVendors() {
                 : `No vendors match this filter.`}
             </div>
           ) : (
-            <div className="overflow-x-auto border border-border rounded-lg">
+            <>
+            {/* Desktop (md+) — existing table, unchanged. */}
+            <div className="hidden md:block overflow-x-auto border border-border rounded-lg">
               <table className="w-full text-sm">
                 <thead className="bg-muted/30 sticky top-0 z-10">
                   <tr className="text-left text-xs text-muted-foreground">
@@ -165,6 +171,24 @@ export default function AdminVendors() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile (<md) — card list. Consumes the SAME filteredVendors
+                array + the SAME row handlers as the table. */}
+            <div className="md:hidden flex flex-col gap-3">
+              {filteredVendors.map(v => (
+                <AdminVendorCard
+                  key={v.id}
+                  vendor={v}
+                  onEdit={() => openEdit(v)}
+                  onViewProducts={() => viewProducts(v)}
+                  onToggleActive={() => toggleActive.mutate(
+                    { id: v.id, isActive: !v.is_active },
+                    { onSuccess: () => toast.success(v.is_active ? "Vendor deactivated" : "Vendor activated") },
+                  )}
+                />
+              ))}
+            </div>
+            </>
           )}
         </TabsContent>
 
