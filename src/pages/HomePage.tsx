@@ -40,7 +40,7 @@ function HeroSearch() {
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder="Search products, bundles, brands…"
-        className="w-full pl-9 pr-20 py-3 rounded-pill bg-primary-foreground/95 text-foreground placeholder:text-text-light text-sm outline-none focus:ring-2 focus:ring-coral"
+        className="w-full pl-9 pr-20 py-3 rounded-pill bg-primary-foreground/95 text-foreground placeholder:text-text-light text-sm text-ellipsis outline-none focus:ring-2 focus:ring-coral"
       />
       <button
         type="submit"
@@ -397,7 +397,7 @@ function StickyMobileCTA() {
 
   if (!show) return null;
   return (
-    <div className="fixed bottom-14 left-0 right-0 z-[80] bg-card border-t border-border p-3 md:hidden animate-slide-up">
+    <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-0 right-0 z-[80] bg-card border-t border-border p-3 md:hidden animate-slide-up">
       <Link to="/quiz" className="block w-full rounded-pill bg-coral py-3.5 text-center font-body font-semibold text-primary-foreground text-sm">Build My List →</Link>
     </div>
   );
