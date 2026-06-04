@@ -1293,7 +1293,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-[calc(1rem+64px)] md:pb-0">
+    <div className="min-h-screen bg-background pb-[calc(1rem+64px+env(safe-area-inset-bottom))] md:pb-0">
       <div className="pt-20" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
         <div className="max-w-[1100px] mx-auto px-4 md:px-10 py-8 md:py-10">
           <Link to="/cart" className="text-primary-foreground/50 text-xs hover:text-primary-foreground/70 transition-colors">← Back to Cart</Link>
@@ -1325,7 +1325,7 @@ export default function CheckoutPage() {
               {cart.map(item => {
                 const flagged = cartItemHasIssue(item, stockIssues);
                 return (
-                  <div key={item._key} className={`flex items-center justify-between gap-2 text-xs ${flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
+                  <div key={item._key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs ${flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {(() => {
                         const url = cartItemImage(item);
@@ -1337,9 +1337,9 @@ export default function CheckoutPage() {
                           : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{item.img || "📦"}</span>;
                       })()}
                       <span className="truncate">{item.bundleName ? `[${item.bundleName}] ` : ""}{item.name} ×{item.qty}</span>
-                      {flagged && <span className="text-[9px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
+                      {flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                     </div>
-                    <span className="font-bold">{fmt(item.price * item.qty)}</span>
+                    <span className="font-bold flex-shrink-0">{fmt(item.price * item.qty)}</span>
                   </div>
                 );
               })}
@@ -1617,8 +1617,8 @@ export default function CheckoutPage() {
               <div className="bg-card rounded-card shadow-card p-4 md:p-6 border-l-4 border-amber-400">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <h2 className="pf text-lg flex items-center gap-2">
-                      ⚡ {expressDisplayName}
+                    <h2 className="pf text-base md:text-lg flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="min-w-0 break-words">⚡ {expressDisplayName}</span>
                       {!stateRequiresExpress && minEnforced && (
                         <span className="text-[11px] font-semibold text-text-light">(₦{expressMinSubtotal.toLocaleString("en-NG")}+ orders)</span>
                       )}
@@ -1701,11 +1701,11 @@ export default function CheckoutPage() {
                   <button onClick={() => { setAppliedCoupon(null); setCouponCode(""); }} className="text-destructive text-xs font-semibold hover:underline">Remove</button>
                 </div>
               ) : (
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="Enter coupon code"
-                    className="flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none uppercase" />
+                    className="w-full sm:flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none uppercase" />
                   <button onClick={applyCoupon} disabled={couponLoading}
-                    className="rounded-[10px] bg-forest px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-forest-deep disabled:opacity-50 font-body">
+                    className="w-full sm:w-auto rounded-[10px] bg-forest px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-forest-deep disabled:opacity-50 font-body">
                     {couponLoading ? "..." : "Apply"}
                   </button>
                 </div>
@@ -1781,7 +1781,7 @@ export default function CheckoutPage() {
                 <div className="mt-3 bg-warm-cream rounded-lg p-3.5 animate-fade-in">
                   <div className="font-semibold text-[13px] mb-2">Bank Transfer Details</div>
                   {[["Bank", bankName], ["Account Name", bankAccountName], ["Account Number", bankAccountNumber]].map(([k, v]) => (
-                    <div key={k} className="flex gap-2 mb-1"><span className="text-text-light text-xs min-w-[90px]">{k}:</span><span className="text-xs font-semibold">{v}</span></div>
+                    <div key={k} className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 mb-1"><span className="text-text-light text-xs sm:min-w-[90px]">{k}:</span><span className="text-xs font-semibold break-all">{v}</span></div>
                   ))}
                   <div className="mt-2.5 text-coral text-xs">⚠️ Send exact amount, use your phone number as reference.</div>
                 </div>
