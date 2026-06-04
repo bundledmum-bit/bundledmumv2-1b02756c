@@ -8,6 +8,8 @@ import AdminProductForm from "./AdminProductForm";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import TrashTabs from "@/components/admin/TrashTabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
+import AdminProductCard from "@/components/admin/AdminProductCard";
 import { ExportButton, ImportButton } from "@/components/admin/ExcelImportExport";
 import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
@@ -238,9 +240,16 @@ export default function AdminProducts() {
       )}
 
       {isLoading ? (
-        <div className="text-center py-10 text-text-med">Loading products...</div>
+        <>
+          <div className="hidden md:block text-center py-10 text-text-med">Loading products...</div>
+          <div className="md:hidden flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[104px] w-full rounded-lg" />)}
+          </div>
+        </>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <>
+        {/* Desktop (md+) — existing table, unchanged. */}
+        <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 sticky top-0 z-10">
@@ -365,6 +374,33 @@ export default function AdminProducts() {
           </table>
           </div>
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table; no separate fetch / filter / sort. Handlers are
+            the SAME ones the desktop row uses. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-10 text-center text-text-med">No products found.</div>
+          ) : (
+            filtered.map((p: any) => (
+              <AdminProductCard
+                key={p.id}
+                product={p}
+                trashTab={trashTab}
+                canEdit={can("products", "edit")}
+                canCreate={can("products", "create")}
+                canDelete={can("products", "delete")}
+                onEdit={(prod) => { setEditingProduct(prod); setShowForm(true); }}
+                onDuplicate={(prod) => duplicateProduct(prod)}
+                onToggleOos={(prod) => bulkMutation.mutate({ ids: [prod.id], action: prod.is_out_of_stock ? "mark_in_stock" : "mark_oos" })}
+                onTrash={(prod) => bulkMutation.mutate({ ids: [prod.id], action: "trash" })}
+                onRestore={(prod) => bulkMutation.mutate({ ids: [prod.id], action: "restore" })}
+                onDeletePermanent={() => { if (confirm("Permanently delete?")) bulkMutation.mutate({ ids: [p.id], action: "delete_permanent" }); }}
+              />
+            ))
+          )}
+        </div>
+        </>
       )}
 
       {showForm && (
