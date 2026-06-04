@@ -6,13 +6,17 @@ import { toast } from "sonner";
 import { Plus, X, Shield } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import AdminPermissionsManager from "@/components/admin/AdminPermissionsManager";
+import { Skeleton } from "@/components/ui/skeleton";
+import AdminUserCard from "@/components/admin/AdminUserCard";
 
 const ROLES = ["super_admin", "admin", "fulfilment", "customer_service", "analyst", "content_manager", "custom"];
-const ROLE_LABELS: Record<string, string> = {
+// Exported so the mobile AdminUserCard renders role labels + colours
+// (and last-login) IDENTICALLY to the desktop table rows.
+export const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin", admin: "Admin", fulfilment: "Fulfilment",
   customer_service: "Customer Service", analyst: "Analyst", content_manager: "Content Manager", custom: "Custom",
 };
-const ROLE_COLORS: Record<string, string> = {
+export const ROLE_COLORS: Record<string, string> = {
   super_admin: "bg-purple-100 text-purple-700", admin: "bg-blue-100 text-blue-700",
   fulfilment: "bg-green-100 text-green-700", customer_service: "bg-yellow-100 text-yellow-700",
   analyst: "bg-cyan-100 text-cyan-700", content_manager: "bg-orange-100 text-orange-700", custom: "bg-gray-100 text-gray-700",
@@ -81,9 +85,16 @@ export default function AdminUsers() {
       ) : (
         <>
           {isLoading ? (
-            <div className="text-center py-10 text-text-med">Loading...</div>
+            <>
+              <div className="hidden md:block text-center py-10 text-text-med">Loading...</div>
+              <div className="md:hidden flex flex-col gap-3">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[120px] w-full rounded-lg" />)}
+              </div>
+            </>
           ) : (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <>
+            {/* Desktop (md+) — existing table, unchanged. */}
+            <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
               <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 sticky top-0 z-10">
@@ -144,6 +155,23 @@ export default function AdminUsers() {
               </table>
               </div>
             </div>
+
+            {/* Mobile (<md) — card list. Consumes the SAME `users` array +
+                the SAME row handlers + the SAME self-action guards. */}
+            <div className="md:hidden flex flex-col gap-3">
+              {(users || []).map((u: any) => (
+                <AdminUserCard
+                  key={u.id}
+                  user={u}
+                  currentAuthUserId={currentAdmin?.auth_user_id}
+                  canEdit={can("admin", "edit_users")}
+                  canDeactivate={can("admin", "deactivate_users")}
+                  onEdit={(usr) => { setEditUser(usr); setShowForm(true); }}
+                  onToggleActive={(usr) => toggleActive.mutate({ id: usr.id, is_active: !usr.is_active })}
+                />
+              ))}
+            </div>
+            </>
           )}
         </>
       )}
@@ -165,7 +193,7 @@ export default function AdminUsers() {
 //   null      → muted "Never"
 // ---------------------------------------------------------------------------
 
-function LastLoginCell({ value }: { value: string | null | undefined }) {
+export function LastLoginCell({ value }: { value: string | null | undefined }) {
   if (!value) {
     return <span className="text-text-light">Never</span>;
   }
