@@ -723,7 +723,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               <div
                 className={
                   bundleHeroImage
-                    ? "max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center"
+                    ? "max-w-[1120px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center"
                     : "max-w-[720px] mx-auto"
                 }
               >
@@ -891,7 +891,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
             {/* Mobile sticky CTA — bundle-specific, since the page-level
                 sticky CTA is gated to non-bundles. */}
-            <div className="fixed bottom-[56px] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3 safe-area-bottom">
+            <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3">
               <button
                 onClick={handleAddMaternityBundleToCart}
                 className="w-full bg-coral text-primary-foreground py-3 text-sm font-medium hover:bg-coral-dark transition-colors"
@@ -905,7 +905,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
       {!isInlineEditableBundle && (
       <div className="max-w-6xl mx-auto px-4">
-        <div className="grid md:grid-cols-2 gap-6 md:gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
           {/* LEFT: Image Gallery */}
           <div>
             {/* Main Image */}
@@ -1344,7 +1344,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
       {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own) */}
       {!raw?.is_gift_box && (
-      <div className="fixed bottom-[56px] md:bottom-0 left-0 right-0 bg-card border-t border-border p-3 flex items-center justify-between gap-4 z-40 md:hidden safe-area-bottom">
+      <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-card border-t border-border p-3 flex items-center justify-between gap-4 z-40 md:hidden">
         <div>
           <p className="pf text-lg font-bold text-forest">{fmt(selectedBrand.price)}</p>
           {showSalePrice && <p className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</p>}
@@ -1378,7 +1378,7 @@ function ProductPageSkeleton() {
   return (
     <div className="max-w-6xl mx-auto px-4 pt-8">
       <Skeleton className="h-4 w-48 mb-6" />
-      <div className="grid md:grid-cols-2 gap-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
         <Skeleton className="aspect-square rounded-2xl" />
         <div className="space-y-4">
           <Skeleton className="h-8 w-3/4" />

@@ -727,7 +727,7 @@ export default function BundleDetailPage() {
         )}
 
         {/* Mobile sticky bottom CTA */}
-        <div className="fixed bottom-[56px] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3 safe-area-bottom">
+        <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 z-40 md:hidden bg-background border-t border-border px-4 py-3">
           {isInCart ? (
             <Link
               to="/cart"
@@ -1103,7 +1103,7 @@ export default function BundleDetailPage() {
       </div>
 
       {/* Mobile sticky bottom CTA */}
-      <div className="fixed bottom-[56px] md:bottom-0 inset-x-0 z-40 md:hidden bg-card border-t border-border px-4 py-3 safe-area-bottom">
+      <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 inset-x-0 z-40 md:hidden bg-card border-t border-border px-4 py-3">
         {isInCart ? (
           <Link to="/cart" className="block w-full rounded-pill bg-forest text-center py-3 font-body font-semibold text-primary-foreground text-sm interactive">
             In Cart ✓ — View Cart
