@@ -40,7 +40,7 @@ export default function AnnouncementBar({
   return (
     <AnnouncementImpressionTracker promoId={promoId} promoName={promoName}>
       <div
-        className="fixed top-0 left-0 right-0 z-[1001] flex items-center justify-center px-10 transition-all duration-300"
+        className="fixed top-0 left-0 right-0 z-[1001] flex items-center justify-center px-4 md:px-10 transition-all duration-300"
         style={{ backgroundColor: bgColor, color: textColor, height: BAR_HEIGHT }}
       >
       {link ? (
@@ -66,7 +66,7 @@ export default function AnnouncementBar({
       )}
       <button
         onClick={onDismiss}
-        className="absolute right-3 p-1 rounded-full hover:opacity-70 transition-opacity"
+        className="absolute right-3 min-h-9 min-w-9 inline-flex items-center justify-center rounded-full hover:opacity-70 transition-opacity"
         aria-label="Dismiss announcement"
       >
         <X size={14} style={{ color: textColor }} />

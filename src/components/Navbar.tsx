@@ -77,13 +77,13 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
           </div>
 
           <div className="flex items-center gap-1 md:hidden">
-            <Link to="/cart" className="relative p-1.5">
+            <Link to="/cart" className="relative inline-flex items-center justify-center min-h-9 min-w-9">
               <span className="text-xl">🛍️</span>
               {totalItems > 0 && (
                 <span className={`absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-coral text-[9px] font-bold text-primary-foreground ${justAdded ? "animate-pulse-badge" : ""}`}>{totalItems}</span>
               )}
             </Link>
-            <button onClick={() => setMenuOpen(true)} className="p-2 flex flex-col gap-[5px]">
+            <button onClick={() => setMenuOpen(true)} className="min-h-9 min-w-9 flex flex-col items-center justify-center gap-[5px]">
               {[0, 1, 2].map(i => <div key={i} className={`w-[22px] h-[2px] rounded-sm ${dark ? "bg-foreground" : "bg-primary-foreground"}`} />)}
             </button>
           </div>
@@ -94,7 +94,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
       {menuOpen && (
         <>
           <div className="fixed inset-0 bg-midnight/50 z-[998] animate-fade-in" onClick={() => setMenuOpen(false)} />
-          <div className="fixed top-0 right-0 bottom-0 w-[280px] bg-card z-[999] p-6 overflow-y-auto animate-slide-down">
+          <div className="fixed top-0 right-0 bottom-0 w-[280px] max-w-[85vw] bg-card z-[999] p-6 overflow-y-auto animate-slide-down">
             <div className="flex justify-between items-center mb-7">
               <img src={logoGreen} alt="BundledMum" className="h-9 w-auto" />
               <button onClick={() => setMenuOpen(false)} className="text-text-med text-xl leading-none">✕</button>

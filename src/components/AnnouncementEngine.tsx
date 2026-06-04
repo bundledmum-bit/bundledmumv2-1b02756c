@@ -262,7 +262,7 @@ export default function AnnouncementEngine({ topOffset = 0 }: Props) {
         return (
           <div
             key={a.id}
-            className="fixed left-0 right-0 z-[1000] flex items-center justify-center px-10 transition-all duration-300"
+            className="fixed left-0 right-0 z-[1000] flex items-center justify-center px-4 md:px-10 transition-all duration-300"
             style={{ top, backgroundColor: bg, color: fg, height: BAR_HEIGHT }}
             role="region"
             aria-label={a.title || "Announcement"}
@@ -283,7 +283,7 @@ export default function AnnouncementEngine({ topOffset = 0 }: Props) {
             )}
             <button
               onClick={() => dismissBar(a.id)}
-              className="absolute right-3 p-1 rounded-full hover:opacity-70 transition-opacity"
+              className="absolute right-3 min-h-9 min-w-9 inline-flex items-center justify-center rounded-full hover:opacity-70 transition-opacity"
               aria-label="Dismiss announcement"
             >
               <X size={14} style={{ color: fg }} />
@@ -311,7 +311,7 @@ export default function AnnouncementEngine({ topOffset = 0 }: Props) {
           >
             <button
               onClick={closePopup}
-              className="absolute top-3 right-3 p-1 rounded-full hover:bg-black/10 transition-colors"
+              className="absolute top-3 right-3 min-h-9 min-w-9 inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
               aria-label="Close"
               style={{ color: activePopup.text_color || "#111827" }}
             >
