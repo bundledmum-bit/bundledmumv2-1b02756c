@@ -235,7 +235,7 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
               <li key={it.id} className="py-2 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold">{it.brands?.brand_name || ""} {it.products?.name || "Product"}</div>
+                    <div className="font-semibold truncate">{it.brands?.brand_name || ""} {it.products?.name || "Product"}</div>
                     <div className="text-[10px] text-text-light">Qty: {it.quantity} · {fmtN(it.unit_price)} per delivery</div>
                   </div>
                   {editableNextCycle && (
@@ -251,7 +251,7 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
                           onClick={() => changeQty(it.id, Math.max(1, it.quantity - 1))}
                           disabled={it.quantity <= 1}
                           aria-label="Decrease quantity"
-                          className="w-6 h-6 inline-flex items-center justify-center text-text-med disabled:opacity-40"
+                          className="h-9 w-9 inline-flex items-center justify-center text-text-med disabled:opacity-40"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
@@ -259,7 +259,7 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
                         <button
                           onClick={() => changeQty(it.id, it.quantity + 1)}
                           aria-label="Increase quantity"
-                          className="w-6 h-6 inline-flex items-center justify-center text-text-med"
+                          className="h-9 w-9 inline-flex items-center justify-center text-text-med"
                         >
                           <Plus className="w-3 h-3" />
                         </button>

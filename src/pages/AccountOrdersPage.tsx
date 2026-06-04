@@ -156,7 +156,7 @@ export default function AccountOrdersPage() {
                         </ul>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-border">
                         <div>
                           <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light">Delivery</div>
                           <div className="mt-0.5 leading-snug">

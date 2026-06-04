@@ -113,7 +113,7 @@ export default function AccountReferralPage() {
                 <li>• You earn <b className="text-forest">{fmt(credit)}</b> credit for each order they place.</li>
               </ul>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <Stat label="Times used"       value={String(data?.referral_uses || 0)} />
                 <Stat label="Credits earned"   value={fmt(data?.total_credits_earned)} />
                 <Stat label="Credits available" value={fmt(data?.credits_available)} highlight />

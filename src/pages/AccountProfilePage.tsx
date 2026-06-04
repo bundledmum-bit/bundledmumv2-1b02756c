@@ -253,10 +253,10 @@ function AddressesSection({ customer, addresses, states }: {
                 {a.delivery_notes && <p className="text-[11px] text-text-light italic mt-1">{a.delivery_notes}</p>}
               </div>
             </div>
-            <div className="flex items-center gap-2 mt-2 text-xs">
-              <button onClick={() => setEditingId(a.id)} className="text-forest font-semibold hover:underline">Edit</button>
-              {!a.is_default && <button onClick={() => setDefault.mutate(a.id)} className="text-forest font-semibold hover:underline">Set as default</button>}
-              <button onClick={() => { if (confirm("Remove this address?")) del.mutate(a.id); }} className="text-destructive hover:underline inline-flex items-center gap-1 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+              <button onClick={() => setEditingId(a.id)} className="text-forest font-semibold hover:underline inline-flex items-center min-h-9">Edit</button>
+              {!a.is_default && <button onClick={() => setDefault.mutate(a.id)} className="text-forest font-semibold hover:underline inline-flex items-center min-h-9">Set as default</button>}
+              <button onClick={() => { if (confirm("Remove this address?")) del.mutate(a.id); }} className="text-destructive hover:underline inline-flex items-center gap-1 min-h-9 ml-auto">
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </div>
