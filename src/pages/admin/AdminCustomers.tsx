@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, X, Download, Users } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+import { Skeleton } from "@/components/ui/skeleton";
+import AdminCustomerCard from "@/components/admin/AdminCustomerCard";
 
 export default function AdminCustomers() {
   const queryClient = useQueryClient();
@@ -74,9 +76,16 @@ export default function AdminCustomers() {
       </div>
 
       {isLoading ? (
-        <div className="text-center py-10 text-text-med">Loading...</div>
+        <>
+          <div className="hidden md:block text-center py-10 text-text-med">Loading...</div>
+          <div className="md:hidden flex flex-col gap-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[116px] w-full rounded-lg" />)}
+          </div>
+        </>
       ) : (
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <>
+        {/* Desktop (md+) — existing table, unchanged. */}
+        <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 sticky top-0 z-10">
@@ -108,6 +117,26 @@ export default function AdminCustomers() {
           </table>
           </div>
         </div>
+
+        {/* Mobile (<md) — card list. Consumes the SAME `filtered` array
+            as the table; no separate fetch / filter / sort. */}
+        <div className="md:hidden flex flex-col gap-3">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-10 text-center text-text-med">
+              No customers found. Customers are auto-created when orders are placed.
+            </div>
+          ) : (
+            filtered.map((c: any) => (
+              <AdminCustomerCard
+                key={c.id}
+                customer={c}
+                onSelect={setSelectedCustomer}
+                canViewContact={showContact}
+              />
+            ))
+          )}
+        </div>
+        </>
       )}
 
       {selectedCustomer && (
