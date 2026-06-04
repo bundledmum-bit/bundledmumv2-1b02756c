@@ -1411,7 +1411,7 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
           <div className="space-y-4">
             {/* Free nationwide nudge — only when the shopper is in the
                 70–100% window and the master switch is on. */}

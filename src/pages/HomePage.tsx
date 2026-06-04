@@ -87,7 +87,7 @@ function HeroSection() {
       </div>
       <div className="absolute w-[700px] h-[700px] rounded-full bg-primary-foreground/[0.025] -top-[250px] -right-[250px]" />
 
-      <div className="max-w-[1200px] mx-auto px-5 md:px-10 pt-20 md:pt-24 pb-10 md:pb-8 grid md:grid-cols-2 gap-6 md:gap-[56px] items-center w-full">
+      <div className="max-w-[1200px] mx-auto px-5 md:px-10 pt-20 md:pt-24 pb-10 md:pb-8 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-[56px] items-center w-full">
         <div>
           {heroBadge && (
             <div className="animate-fade-up inline-flex items-center gap-2 bg-coral/[0.18] border border-coral/40 rounded-pill px-4 py-1.5 mb-4">
@@ -172,7 +172,7 @@ function HowItWorks() {
           <span className="text-coral text-xs font-semibold uppercase tracking-widest">Simple Process</span>
           <h2 className="pf text-2xl md:text-[42px] text-forest mt-2">How BundledMum Works</h2>
         </div>
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {steps.map((s) => (
             <div key={s.num} className="relative bg-card border border-border rounded-[20px] p-6 md:p-8 text-center">
               <div className="absolute top-3 left-4 text-[56px] font-bold text-forest/[0.06] pf leading-none">{s.num}</div>
@@ -203,7 +203,7 @@ function BundleTiers() {
           <span className="text-coral text-xs font-semibold uppercase tracking-widest">Bundles & Kits</span>
           <h2 className="pf text-2xl md:text-[42px] text-primary-foreground mt-2">Shop by Budget</h2>
         </div>
-        <div className="grid gap-4 md:grid-cols-3 items-end">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 items-end">
           {tiers.map((t, idx) => (
             <div key={t.name} className={`rounded-[20px] p-6 md:p-8 text-center relative ${t.popular ? "bg-forest-light md:scale-105 md:-my-2 border-2 border-forest" : "bg-primary-foreground/[0.07] border border-primary-foreground/10"}`}>
               {t.popular && (
@@ -331,7 +331,7 @@ function _LegacyTestimonialsSection() {
           <span className="text-coral text-xs font-semibold uppercase tracking-widest">Real Stories</span>
           <h2 className="pf text-2xl md:text-[42px] text-primary-foreground mt-2">{heading}</h2>
         </div>
-        <div className="grid md:grid-cols-3 gap-3.5 md:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 md:gap-6">
           {items.map((t, i) => (
             <div key={i} className="bg-primary-foreground/[0.09] border border-primary-foreground/[0.11] rounded-[20px] p-5 md:p-8">
               <div className="text-coral text-base mb-3">{"⭐".repeat(t.stars)}</div>

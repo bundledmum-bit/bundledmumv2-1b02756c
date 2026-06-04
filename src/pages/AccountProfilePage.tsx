@@ -130,7 +130,7 @@ export default function AccountProfilePage() {
             <label className={labelCls}>Full name</label>
             <input value={draft.full_name || ""} onChange={e => setDraft({ ...draft, full_name: e.target.value })} className={inputCls} disabled={isLoading} />
           </div>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Phone number</label>
               <input value={draft.phone || ""} onChange={e => setDraft({ ...draft, phone: e.target.value })} className={inputCls} placeholder="0801..." disabled={isLoading} />
@@ -312,7 +312,7 @@ function AddressForm({ address, customerId, states, onCancel, onSave }: {
 
   return (
     <div className="border border-forest/30 bg-forest/5 rounded-lg p-3 space-y-2">
-      <div className="grid md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div>
           <label className={labelCls}>Label</label>
           <select value={draft.label || "Home"} onChange={e => setDraft({ ...draft, label: e.target.value })} className={inputCls}>

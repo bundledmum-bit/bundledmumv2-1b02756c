@@ -115,7 +115,7 @@ export default function EmployeeProfile() {
           </>
         ) : (
           <div className="space-y-2">
-            <div className="grid md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <Field label="Phone"><input className={inputCls} value={draft.phone || ""} onChange={e => setDraft({ ...draft, phone: e.target.value })} /></Field>
               <Field label="WhatsApp"><input className={inputCls} value={draft.whatsapp_number || ""} onChange={e => setDraft({ ...draft, whatsapp_number: e.target.value })} /></Field>
               <Field label="Address" full><textarea rows={2} className={inputCls} value={draft.address || ""} onChange={e => setDraft({ ...draft, address: e.target.value })} /></Field>

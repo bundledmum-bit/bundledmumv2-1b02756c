@@ -269,7 +269,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <h3 className="text-2xl font-bold text-[#1A1A1A] mb-8 text-center">
                   ✨ What's inside every bundle
                 </h3>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { emoji: "🏥", title: "Hospital bag essentials",         text: "Packed and ready for labour day. Pads, gown, going-home outfit — sorted." },
                     { emoji: "🤱", title: "Postpartum recovery kit",         text: "Supporting mum through the first weeks: pads, nipple cream, comfort wear, and more." },
@@ -294,7 +294,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
                   🛍️ How it works
                 </h3>
-                <div className="grid sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   {[
                     { step: "1", title: "Pick your bundle", text: "Choose the budget that fits you: ₦200k, ₦500k, or ₦1M+. Same essentials, different quantity and premium upgrades." },
                     { step: "2", title: "We pack the box",  text: "Hand-checked, brand-verified, and prepared in 24 hours. You don't lift a finger." },
@@ -382,7 +382,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <p className="text-center text-gray-600 mb-8 max-w-xl mx-auto">
                   The essentials nobody warns you about. Sorted, packed, and ready before you need them.
                 </p>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { emoji: "🌸", title: "Pad & flow care",         text: "Heavy-flow maternity pads, mesh underwear, and a peri bottle. Because the bleeding lasts longer than anyone tells you." },
                     { emoji: "🤱", title: "Breastfeeding comfort",   text: "Lanolin nipple cream, breast pads, and nursing-friendly basics. For the days when latching hurts more than labour." },
@@ -407,7 +407,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
                   🛍️ How it works
                 </h3>
-                <div className="grid sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   {[
                     { step: "1", title: "Pick the kit that fits", text: "Choose the kit that matches what you need most. We make sure the essentials are covered in all of them." },
                     { step: "2", title: "We pack it with care",   text: "Hand-checked, mum-curated, and packed within 24 hours. You don't lift anything heavier than your baby." },
@@ -497,7 +497,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <p className="text-center text-gray-600 mb-8 max-w-xl mx-auto">
                   A blend of essentials and small comforts. Useful enough to be remembered. Lovely enough to feel like a gift.
                 </p>
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     { emoji: "🌸", title: "The things she actually needs",   text: "Postpartum essentials she'd be too shy to ask for. Maternity pads, nipple cream, comfort wear, recovery basics." },
                     { emoji: "👶", title: "A few baby treats too",           text: "Soft baby essentials so she doesn't feel left out of the cute stuff. But practical, not just decorative." },
@@ -522,7 +522,7 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
                 <h3 className="text-2xl font-bold text-[#1A1A1A] mb-10 text-center">
                   🛍️ How it works
                 </h3>
-                <div className="grid sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   {[
                     { step: "1", title: "Choose your gift box",          text: "Pick the one that matches what you want to spend. Each is thoughtfully built and gift-ready." },
                     { step: "2", title: "Add a personal note",           text: "Write a message at checkout. We hand-write it onto a card and tuck it into the box." },

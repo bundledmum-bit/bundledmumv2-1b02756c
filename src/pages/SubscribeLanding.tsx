@@ -161,7 +161,7 @@ export default function SubscribeLanding() {
       <section className="px-4 md:px-8 py-12 md:py-16 bg-white">
         <div className="max-w-[960px] mx-auto">
           <h2 className="pf text-2xl md:text-3xl font-bold text-center mb-8">From nappies to nipple cream</h2>
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <CategoryBlock title="For Baby" items={[
               { emoji: "🍼", label: "Baby Formula" },
               { emoji: "👶", label: "Nappies" },

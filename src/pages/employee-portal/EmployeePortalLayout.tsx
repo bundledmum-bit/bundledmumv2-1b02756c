@@ -56,7 +56,7 @@ function EmployeePortalInner() {
         </div>
       </header>
 
-      <div className="max-w-[1100px] mx-auto grid md:grid-cols-[220px_1fr] gap-4 px-4 md:px-8 py-4 pb-24 md:pb-10">
+      <div className="max-w-[1100px] mx-auto grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 px-4 md:px-8 py-4 pb-24 md:pb-10">
         {/* Desktop sidebar */}
         <aside className="hidden md:block">
           <nav className="sticky top-20 space-y-1">

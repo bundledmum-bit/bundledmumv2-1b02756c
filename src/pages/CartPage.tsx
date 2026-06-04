@@ -431,7 +431,7 @@ export default function CartPage() {
         </Link>
         <h1 className="pf text-2xl md:text-3xl mb-8">Your Cart ({totalItems})</h1>
 
-        <div className="grid gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_380px]">
           <div className="space-y-3">
             <FreeDeliveryNudgeBanner cartSubtotal={subtotal} className="mb-1" />
             <SpendMoreBanner variant="cart" />

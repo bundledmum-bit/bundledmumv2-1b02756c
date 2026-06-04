@@ -123,7 +123,7 @@ export default function AboutPage() {
             {renderParagraph(p)}
           </p>
         ))}
-        <div className="grid md:grid-cols-3 gap-3.5 md:gap-5 mb-9">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 md:gap-5 mb-9">
           {values.map((v, i) => (
             <div key={`${v.title}-${i}`} className="bg-warm-cream rounded-[18px] p-5 md:p-6 text-center">
               <div className="text-3xl mb-2.5">{v.icon}</div>

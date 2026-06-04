@@ -319,7 +319,7 @@ export default function BundleDetailPage() {
 
         {/* HERO */}
         <section className="px-6 md:px-12 lg:px-16 pt-10 md:pt-16 pb-10 md:pb-16">
-          <div className="max-w-[1120px] mx-auto grid md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center">
+          <div className="max-w-[1120px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 lg:gap-16 items-center">
             <div>
               {/* Tier eyebrow — small caps + wide tracking; muted */}
               <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-text-med mb-4">
@@ -523,7 +523,7 @@ export default function BundleDetailPage() {
                   Done
                 </button>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {[
                   { key: "baby" as const, label: "👶 For Baby", items: babyItems },
                   { key: "mum" as const, label: "💛 For Mum", items: mumItems },
@@ -979,7 +979,7 @@ export default function BundleDetailPage() {
 
       {/* Items Section */}
       <div className="max-w-[900px] mx-auto px-4 md:px-10 py-6 md:py-10">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* Baby Items */}
           <div className="bg-card rounded-card shadow-card overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">

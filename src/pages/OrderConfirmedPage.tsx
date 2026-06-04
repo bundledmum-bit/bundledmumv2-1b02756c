@@ -222,12 +222,12 @@ export default function OrderConfirmedPage() {
         {/* Customer Details */}
         <div className="bg-card rounded-card shadow-card p-5 md:p-8 mb-4">
           <h3 className="pf text-lg md:text-xl text-forest mb-4">📋 Your Details</h3>
-          <div className="grid md:grid-cols-2 gap-3 text-sm font-body">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm font-body">
             <div><span className="text-text-light">Name:</span> <span className="font-semibold">{order.customer_name}</span></div>
-            <div><span className="text-text-light">Email:</span> <span className="font-semibold">{order.customer_email}</span></div>
+            <div><span className="text-text-light">Email:</span> <span className="font-semibold break-words">{order.customer_email}</span></div>
             <div><span className="text-text-light">Phone:</span> <span className="font-semibold">{order.customer_phone}</span></div>
             <div><span className="text-text-light">Payment:</span> <span className="font-semibold">{payLabels[order.payment_method] || ""}</span></div>
-            <div className="md:col-span-2"><span className="text-text-light">Address:</span> <span className="font-semibold">{order.delivery_address}, {order.delivery_city}, {order.delivery_state}</span></div>
+            <div className="md:col-span-2"><span className="text-text-light">Address:</span> <span className="font-semibold break-words">{order.delivery_address}, {order.delivery_city}, {order.delivery_state}</span></div>
           </div>
         </div>
 

@@ -46,7 +46,7 @@ export default function ContactPage() {
       </div>
       <div className="max-w-[920px] mx-auto px-5 md:px-10 py-8 md:py-[72px]">
         {contactCards.length > 0 && (
-          <div className="grid md:grid-cols-3 gap-3 md:gap-5 mb-10 md:mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-5 mb-10 md:mb-16">
             {contactCards.map(ct => (
               <div key={ct.t} className="bg-card rounded-card shadow-card p-5 md:p-7 text-center">
                 <div className="w-[52px] h-[52px] rounded-full flex items-center justify-center text-2xl mx-auto mb-3" style={{ background: ct.bg }}>{ct.icon}</div>
