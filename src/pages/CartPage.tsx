@@ -383,10 +383,10 @@ export default function CartPage() {
           <h1 className="pf text-2xl mb-2">Your cart is empty 🛍️</h1>
           <p className="font-body text-muted-foreground mb-6">Start building your perfect hospital bag</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center mb-10">
-            <Link to="/bundles" className="rounded-pill bg-coral px-8 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark interactive inline-block min-h-[48px] flex items-center justify-center">
+            <Link to="/bundles" className="rounded-pill bg-coral px-8 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark interactive inline-flex min-h-[48px] items-center justify-center">
               Browse Bundles →
             </Link>
-            <Link to="/quiz" className="rounded-pill border-2 border-forest text-forest px-8 py-3 font-body font-semibold hover:bg-forest/5 interactive inline-block min-h-[48px] flex items-center justify-center">
+            <Link to="/quiz" className="rounded-pill border-2 border-forest text-forest px-8 py-3 font-body font-semibold hover:bg-forest/5 interactive inline-flex min-h-[48px] items-center justify-center">
               Take the Quiz →
             </Link>
           </div>
@@ -457,7 +457,7 @@ export default function CartPage() {
                 {!stillShoppable && (
                   <div className="mb-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-[12px] text-destructive flex items-center justify-between gap-2">
                     <span>This item is no longer available. Remove from cart to proceed to checkout.</span>
-                    <button onClick={() => removeItem(item._key)} className="rounded-pill border border-destructive text-destructive px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap hover:bg-destructive hover:text-primary-foreground">Remove</button>
+                    <button onClick={() => removeItem(item._key)} className="rounded-pill border border-destructive text-destructive inline-flex items-center justify-center min-h-9 px-3 text-xs font-semibold whitespace-nowrap hover:bg-destructive hover:text-primary-foreground">Remove</button>
                   </div>
                 )}
                 <div className="flex items-start gap-3">
@@ -503,10 +503,10 @@ export default function CartPage() {
                     <p className="font-body font-bold text-coral text-sm mt-1">{fmt(item.price)}</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => saveForLater(item._key)} className="text-text-light hover:text-forest interactive p-1" title="Save for later">
+                    <button onClick={() => saveForLater(item._key)} className="text-text-light hover:text-forest interactive h-9 w-9 flex items-center justify-center" title="Save for later">
                       <Bookmark className="h-4 w-4" />
                     </button>
-                    <button onClick={() => removeItem(item._key)} className="text-text-light hover:text-destructive interactive p-1">
+                    <button onClick={() => removeItem(item._key)} className="text-text-light hover:text-destructive interactive h-9 w-9 flex items-center justify-center">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -542,16 +542,16 @@ export default function CartPage() {
                 {item.type !== "bundle" && (
                 <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                   <div className="flex items-center gap-2">
-                    <button onClick={() => updateQty(item._key, item.qty - 1)} className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-warm-cream flex items-center justify-center interactive">
+                    <button onClick={() => updateQty(item._key, item.qty - 1)} className="h-9 w-9 rounded-full bg-warm-cream flex items-center justify-center interactive">
                       <Minus className="h-3 w-3" />
                     </button>
                     <span className="font-body font-bold text-sm w-6 text-center">{item.qty}</span>
-                    <button onClick={() => updateQty(item._key, item.qty + 1)} className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-warm-cream flex items-center justify-center interactive">
+                    <button onClick={() => updateQty(item._key, item.qty + 1)} className="h-9 w-9 rounded-full bg-warm-cream flex items-center justify-center interactive">
                       <Plus className="h-3 w-3" />
                     </button>
                     <button
                       onClick={() => setEditKey(item._key)}
-                      className="ml-1 inline-flex items-center gap-1 rounded-pill border border-border text-text-med hover:text-forest hover:border-forest/60 px-2.5 py-1 text-[11px] font-semibold"
+                      className="ml-1 inline-flex items-center justify-center gap-1 rounded-pill border border-border text-text-med hover:text-forest hover:border-forest/60 px-3 min-h-9 text-xs font-semibold"
                     >
                       <Pencil className="h-3 w-3" /> Edit
                     </button>
@@ -568,14 +568,18 @@ export default function CartPage() {
                 <h3 className="pf text-lg mb-3">💾 Saved for Later ({savedItems.length})</h3>
                 <div className="space-y-2">
                   {savedItems.map(item => (
-                    <div key={item._key} className="bg-warm-cream rounded-card p-3 flex items-center gap-3">
-                      <ProductImage imageUrl={resolveImgUrl(item.img)} emoji={resolveEmojiFallback(item.img) || resolveEmojiFallback(item.baseImg)} alt={item.name} className="w-10 h-10 rounded-lg bg-card" emojiClassName="text-xl" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">{item.name}</p>
-                        <p className="text-coral text-xs font-bold">{fmt(item.price)}</p>
+                    <div key={item._key} className="bg-warm-cream rounded-card p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <ProductImage imageUrl={resolveImgUrl(item.img)} emoji={resolveEmojiFallback(item.img) || resolveEmojiFallback(item.baseImg)} alt={item.name} className="w-10 h-10 rounded-lg bg-card flex-shrink-0" emojiClassName="text-xl" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{item.name}</p>
+                          <p className="text-coral text-xs font-bold">{fmt(item.price)}</p>
+                        </div>
                       </div>
-                      <button onClick={() => moveToCart(item._key)} className="rounded-pill bg-forest px-3 py-1.5 text-[11px] font-semibold text-primary-foreground font-body interactive">Move to Cart</button>
-                      <button onClick={() => removeSaved(item._key)} className="text-text-light hover:text-destructive p-1"><X className="h-3.5 w-3.5" /></button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button onClick={() => moveToCart(item._key)} className="rounded-pill bg-forest px-3 py-1.5 text-[11px] font-semibold text-primary-foreground font-body interactive">Move to Cart</button>
+                        <button onClick={() => removeSaved(item._key)} className="text-text-light hover:text-destructive h-9 w-9 flex items-center justify-center"><X className="h-4 w-4" /></button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -585,7 +589,7 @@ export default function CartPage() {
             {crossSell.length > 0 && totalItems > 0 && (
               <div className="mt-6">
                 <h3 className="pf text-lg mb-3">💡 {crossSellHeading}</h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {crossSell.map(p => {
                     const brand = p.brands[Math.min(1, p.brands.length - 1)];
                     return (
