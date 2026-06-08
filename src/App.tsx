@@ -82,6 +82,8 @@ import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminDelivery from "@/pages/admin/AdminDelivery";
 import AdminContent from "@/pages/admin/AdminContent";
 import AdminBlog from "@/pages/admin/AdminBlog";
+import AdminArticlesPage from "@/pages/admin/AdminArticlesPage";
+import AdminArticleEditorPage from "@/pages/admin/AdminArticleEditorPage";
 import AdminSettings from "@/pages/admin/AdminSettings";
 import AdminPermissions from "@/pages/admin/AdminPermissions";
 import AdminApprovals from "@/pages/admin/AdminApprovals";
@@ -354,6 +356,8 @@ const App = () => (
                 <Route path="delivery" element={<PermissionGate module="delivery" action="view"><AdminDelivery /></PermissionGate>} />
                 <Route path="content" element={<PermissionGate module="content" action="view"><AdminContent /></PermissionGate>} />
                 <Route path="blog" element={<PermissionGate module="content" action="view"><AdminBlog /></PermissionGate>} />
+                <Route path="articles" element={<PermissionGate module="content" action="view"><AdminArticlesPage /></PermissionGate>} />
+                <Route path="articles/:id" element={<PermissionGate module="content" action="view"><AdminArticleEditorPage /></PermissionGate>} />
                 <Route path="settings" element={<PermissionGate module="content" action="edit_settings"><AdminSettings /></PermissionGate>} />
                 <Route path="settings/permissions" element={<AdminPermissions />} />
                 <Route path="approvals" element={<AdminApprovals />} />
