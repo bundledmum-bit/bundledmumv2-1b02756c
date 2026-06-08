@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -5,6 +6,7 @@ import Seo from "@/components/Seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Clock, MessageCircle } from "lucide-react";
 import ArticleBlockRenderer from "@/components/article/ArticleBlockRenderer";
+import type { ProductWithBrands } from "@/components/article/ArticleProductCard";
 
 // /articles/:slug detail. Fetches the published article by slug and
 // renders its structured JSONB body via ArticleBlockRenderer.
@@ -31,6 +33,39 @@ export default function ArticleDetailPage() {
       return data as any;
     },
   });
+
+  // Unique product slugs referenced by `product` blocks in the body.
+  const productSlugs = useMemo<string[]>(() => {
+    if (!article?.body || !Array.isArray(article.body)) return [];
+    return Array.from(new Set(
+      (article.body as any[])
+        .filter((b) => b?.type === "product" && b.product_slug)
+        .map((b) => b.product_slug as string)
+    ));
+  }, [article]);
+
+  // Bulk-fetch the referenced products + their brand variants in one go
+  // (brands_public = RLS-safe public view, same source ProductPage uses).
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ["article-products", productSlugs.slice().sort().join(",")],
+    enabled: productSlugs.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, slug, name, image_url, brands:brands_public(id, brand_name, price, in_stock, image_url, stored_image_url, sku)")
+        .in("slug", productSlugs)
+        .eq("is_active", true);
+      if (error) throw error;
+      const map = new Map<string, ProductWithBrands>();
+      (data || []).forEach((p: any) => map.set(p.slug, p as ProductWithBrands));
+      return map;
+    },
+  });
+
+  // Bump the existing Navbar cart icon after an add (no new floating CTA).
+  const triggerCartBump = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("cart-bump"));
+  }, []);
 
   if (isLoading) return <ArticleDetailSkeleton />;
 
@@ -105,7 +140,12 @@ export default function ArticleDetailPage() {
 
       {/* Body */}
       <article className="max-w-3xl mx-auto px-5 mt-10 md:mt-14">
-        <ArticleBlockRenderer body={article.body} />
+        <ArticleBlockRenderer
+          body={article.body}
+          productsData={productsData}
+          productsLoading={productSlugs.length > 0 && productsLoading}
+          onCartBump={triggerCartBump}
+        />
 
         <div className="mt-14 pt-8 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <Link to="/articles" className="inline-flex items-center gap-1.5 text-forest font-semibold text-sm hover:underline">

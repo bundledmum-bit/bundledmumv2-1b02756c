@@ -1,30 +1,41 @@
 import { Link } from "react-router-dom";
 import { Info, Lightbulb, ArrowRight } from "lucide-react";
+import ArticleProductCard, { type ProductWithBrands } from "@/components/article/ArticleProductCard";
 
 // Renders an article's JSONB body — an array of typed blocks. Each
 // block type gets its own visual treatment in BundledMum's tokens.
 //
-// Stage 1: `product` blocks render as PLACEHOLDER cards (link + name +
-// why). Stage 2 replaces them with a full product card + brand-picker
-// add-to-cart modal.
+// Stage 2: `product` blocks render as interactive ArticleProductCards
+// (image + price + add-to-cart). The parent bulk-fetches the products
+// and passes them in via `productsData` (slug -> product+brands).
 
 interface Block {
   type: string;
   [key: string]: any;
 }
 
-export default function ArticleBlockRenderer({ body }: { body: unknown }) {
+interface RendererProps {
+  body: unknown;
+  /** slug -> product+brands, bulk-fetched by the detail page. */
+  productsData?: Map<string, ProductWithBrands>;
+  /** undefined while the product fetch is still loading. */
+  productsLoading?: boolean;
+  /** fired after a successful add-to-cart so the parent can bump the cart icon. */
+  onCartBump?: () => void;
+}
+
+export default function ArticleBlockRenderer({ body, productsData, productsLoading, onCartBump }: RendererProps) {
   if (!Array.isArray(body) || body.length === 0) return null;
   return (
     <div className="space-y-6 md:space-y-8">
       {(body as Block[]).map((block, i) => (
-        <ArticleBlock key={i} block={block} />
+        <ArticleBlock key={i} block={block} productsData={productsData} productsLoading={productsLoading} onCartBump={onCartBump} />
       ))}
     </div>
   );
 }
 
-function ArticleBlock({ block }: { block: Block }) {
+function ArticleBlock({ block, productsData, productsLoading, onCartBump }: { block: Block } & Omit<RendererProps, "body">) {
   switch (block.type) {
     case "intro":
       return <p className="text-lg md:text-xl text-text-med leading-relaxed">{block.text}</p>;
@@ -56,26 +67,33 @@ function ArticleBlock({ block }: { block: Block }) {
         </div>
       );
 
-    case "product":
+    case "product": {
+      const product = productsData?.get(block.product_slug);
+      // Orphaned reference (product not found / inactive): minimal link.
+      if (productsData && !productsLoading && !product) {
+        return (
+          <div className="rounded-xl border border-border bg-muted/30 p-4 md:p-5">
+            <Link
+              to={`/products/${block.product_slug}`}
+              className="group inline-flex items-center gap-1.5 text-base font-semibold text-foreground hover:text-coral transition-colors break-words"
+            >
+              {block.display_name}
+              <ArrowRight className="w-4 h-4 text-coral flex-shrink-0 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            {block.why_needed && <p className="text-sm text-text-med leading-relaxed mt-1.5">{block.why_needed}</p>}
+          </div>
+        );
+      }
       return (
-        // TODO Stage 2: replace with full product card + brand picker modal
-        <div className="rounded-xl border border-coral/40 bg-coral/[0.04] p-4 md:p-5">
-          <Link
-            to={`/products/${block.product_slug}`}
-            className="group inline-flex items-center gap-1.5 text-base font-semibold text-foreground hover:text-coral transition-colors break-words"
-          >
-            {block.display_name}
-            <ArrowRight className="w-4 h-4 text-coral flex-shrink-0 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-          {block.why_needed && <p className="text-sm text-text-med leading-relaxed mt-1.5">{block.why_needed}</p>}
-          <Link
-            to={`/products/${block.product_slug}`}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-coral hover:underline mt-3"
-          >
-            View product <ArrowRight className="w-3 h-3" />
-          </Link>
-        </div>
+        <ArticleProductCard
+          productSlug={block.product_slug}
+          displayName={block.display_name}
+          whyNeeded={block.why_needed}
+          productData={productsLoading ? undefined : product}
+          onAdded={onCartBump}
+        />
       );
+    }
 
     case "text_item":
       return (

@@ -13,6 +13,7 @@ import { useSubscriptionSettings } from "@/hooks/useSubscription";
 export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bumping, setBumping] = useState(false);
   const { totalItems, justAdded } = useCart();
   const { isLoggedIn } = useCustomerAuth();
   const location = useLocation();
@@ -33,6 +34,18 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   }, []);
 
   useEffect(() => setMenuOpen(false), [location]);
+
+  // Cart-icon bump: fired by article product adds (window 'cart-bump'
+  // event) so the existing cart icon animates instead of a new floating
+  // CTA. Resting state is unchanged — only a brief scale pulse on add.
+  useEffect(() => {
+    const handler = () => {
+      setBumping(true);
+      setTimeout(() => setBumping(false), 400);
+    };
+    window.addEventListener("cart-bump", handler);
+    return () => window.removeEventListener("cart-bump", handler);
+  }, []);
 
   const onLight = !isHome;
   const dark = scrolled || onLight;
@@ -69,7 +82,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               {isLoggedIn ? "My Account" : "Sign In"}
             </Link>
             <Link to="/cart" className="relative ml-1 p-1.5">
-              <span className="text-xl">🛍️</span>
+              <span className={`text-xl inline-block transition-transform duration-300 ${bumping ? "scale-125" : "scale-100"}`}>🛍️</span>
               {totalItems > 0 && (
                 <span className={`absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-coral text-[9px] font-bold text-primary-foreground ${justAdded ? "animate-pulse-badge" : ""}`}>{totalItems}</span>
               )}
@@ -78,7 +91,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
 
           <div className="flex items-center gap-1 md:hidden">
             <Link to="/cart" className="relative inline-flex items-center justify-center min-h-9 min-w-9">
-              <span className="text-xl">🛍️</span>
+              <span className={`text-xl inline-block transition-transform duration-300 ${bumping ? "scale-125" : "scale-100"}`}>🛍️</span>
               {totalItems > 0 && (
                 <span className={`absolute top-0 right-0 flex h-4 w-4 items-center justify-center rounded-full bg-coral text-[9px] font-bold text-primary-foreground ${justAdded ? "animate-pulse-badge" : ""}`}>{totalItems}</span>
               )}
