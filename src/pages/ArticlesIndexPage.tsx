@@ -3,6 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import Seo from "@/components/Seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import ArticleCard, { type ArticleCardData } from "@/components/article/ArticleCard";
+import { SITE_URL, OG_FALLBACK_IMAGE } from "@/lib/seo";
+
+const ARTICLES_DESCRIPTION =
+  "Practical, mum-tested guides on pregnancy, delivery, and parenting in Nigeria. Hospital bag checklists, baby essentials, and more from BundledMum.";
+
+const COLLECTION_JSONLD = {
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  name: "Articles for Nigerian Mums",
+  description: ARTICLES_DESCRIPTION,
+  url: `${SITE_URL}/articles`,
+};
 
 // /articles index. Fetches published articles and groups them into the
 // two segments (Pregnancy / Parenting). The `articles` table is not yet
@@ -32,9 +44,11 @@ export default function ArticlesIndexPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <Seo
-        title="Articles for Nigerian Mums | BundledMum"
-        description="Practical, mum-tested guides on pregnancy, hospital bags, newborn care and parenting — written for Nigerian mums."
+        title="Articles for Nigerian Mums | Pregnancy & Parenting Guides | BundledMum"
+        description={ARTICLES_DESCRIPTION}
         type="website"
+        image={OG_FALLBACK_IMAGE}
+        jsonLd={COLLECTION_JSONLD}
       />
 
       {/* Hero */}

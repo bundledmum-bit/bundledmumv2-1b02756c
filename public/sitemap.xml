@@ -76,6 +76,11 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://bundledmum.com/articles</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://bundledmum.com/track-order</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
@@ -99,5 +104,11 @@
     <loc>https://bundledmum.com/cookies</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://bundledmum.com/articles/what-to-pack-for-delivery-hospital-checklist-nigeria</loc>
+    <lastmod>2026-06-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
   </url>
 </urlset>

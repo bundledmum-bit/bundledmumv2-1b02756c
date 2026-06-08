@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { Helmet } from "react-helmet-async";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Clock, MessageCircle } from "lucide-react";
 import ArticleBlockRenderer from "@/components/article/ArticleBlockRenderer";
 import type { ProductWithBrands } from "@/components/article/ArticleProductCard";
+import { SITE_URL, OG_FALLBACK_IMAGE, buildAbsoluteUrl } from "@/lib/seo";
 
 // /articles/:slug detail. Fetches the published article by slug and
 // renders its structured JSONB body via ArticleBlockRenderer.
@@ -67,6 +69,28 @@ export default function ArticleDetailPage() {
     window.dispatchEvent(new CustomEvent("cart-bump"));
   }, []);
 
+  // schema.org Article JSON-LD for rich results.
+  const articleJsonLd = useMemo(() => {
+    if (!article) return null;
+    return {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      headline: article.title,
+      description: article.meta_description || article.excerpt || "",
+      image: [buildAbsoluteUrl(article.hero_image_url) || OG_FALLBACK_IMAGE],
+      datePublished: article.published_at || undefined,
+      dateModified: article.updated_at || article.published_at || undefined,
+      author: { "@type": "Organization", name: "BundledMum", url: SITE_URL },
+      publisher: {
+        "@type": "Organization",
+        name: "BundledMum",
+        logo: { "@type": "ImageObject", url: OG_FALLBACK_IMAGE },
+      },
+      mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}/articles/${article.slug}` },
+      articleSection: article.segment === "pregnancy" ? "Pregnancy" : "Parenting",
+    };
+  }, [article]);
+
   if (isLoading) return <ArticleDetailSkeleton />;
 
   if (isError || !article) {
@@ -93,11 +117,23 @@ export default function ArticleDetailPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <Seo
-        title={article.meta_title || article.title}
+        title={`${article.meta_title || article.title} | BundledMum`}
         description={article.meta_description || article.excerpt || ""}
         type="article"
-        image={article.hero_image_url || undefined}
+        image={buildAbsoluteUrl(article.hero_image_url) || OG_FALLBACK_IMAGE}
+        jsonLd={articleJsonLd || undefined}
       />
+      {/* Article-specific OG / Twitter tags not covered by <Seo>. */}
+      <Helmet>
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta property="og:site_name" content="BundledMum" />
+        <meta property="og:image:alt" content={article.hero_image_alt || article.title} />
+        {article.published_at && <meta property="article:published_time" content={article.published_at} />}
+        {(article.updated_at || article.published_at) && (
+          <meta property="article:modified_time" content={article.updated_at || article.published_at} />
+        )}
+        <meta property="article:section" content={article.segment === "pregnancy" ? "Pregnancy" : "Parenting"} />
+      </Helmet>
 
       {/* Hero */}
       <section className="bg-warm-cream pt-24 md:pt-28 pb-10 md:pb-14 px-5">
