@@ -383,7 +383,7 @@ function CourierCard({
           </div>
 
           <h4 className={sectionCls}>Contact & Info</h4>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div><label className={labelCls}>Address</label><input className={inputCls} value={draft.address || ""} onChange={e => field("address", e.target.value)} /></div>
             <div><label className={labelCls}>Website</label><input className={inputCls} value={draft.website || ""} onChange={e => field("website", e.target.value)} /></div>
             <div><label className={labelCls}>Working Hours</label><input className={inputCls} value={draft.working_hours || ""} onChange={e => field("working_hours", e.target.value)} /></div>
@@ -400,7 +400,7 @@ function CourierCard({
           <ChipList value={draft.excluded_areas || []} onChange={v => field("excluded_areas", v)} color="red" placeholder="e.g. Ajah, Badagry" />
 
           <h4 className={sectionCls}>Pricing</h4>
-          <div className="grid md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className={labelCls}>Pricing Model</label>
               <select className={inputCls} value={draft.pricing_model} onChange={e => field("pricing_model", e.target.value)}>
@@ -762,7 +762,7 @@ function AssignmentAddForm({
 
   return (
     <div className="bg-muted/30 border border-border rounded-lg p-3 space-y-2">
-      <div className="grid md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <div>
           <label className={labelCls}>Zone</label>
           <select className={inputCls} value={draft.zone_id} onChange={e => setDraft({ ...draft, zone_id: e.target.value })}>
@@ -1000,7 +1000,7 @@ function RateCardAddForm({ zoneId, couriers, onCreate }: {
 
   return (
     <div className="bg-muted/30 border border-border rounded-lg p-3 space-y-2">
-      <div className="grid md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <div>
           <label className={labelCls}>Courier</label>
           <select className={inputCls} value={draft.courier_id} onChange={e => setDraft({ ...draft, courier_id: e.target.value })}>
@@ -1372,7 +1372,7 @@ function RoutingRulesTab() {
 
       <div className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h3 className="font-bold text-sm">Bulk Settings</h3>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Bulk order threshold</label>
             <input type="number" className={inputCls} value={draft.bulk_order_threshold ?? 5} onChange={e => setDraft({ ...draft, bulk_order_threshold: e.target.value ? Number(e.target.value) : null })} />
@@ -1388,7 +1388,7 @@ function RoutingRulesTab() {
 
       <div className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h3 className="font-bold text-sm">Special Couriers</h3>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Interstate courier</label>
             <select className={inputCls} value={draft.interstate_courier_id || ""} onChange={e => setDraft({ ...draft, interstate_courier_id: e.target.value || null })}>
@@ -1570,7 +1570,7 @@ function CostSimulator({ zones, couriers }: { zones: AdminShippingZone[]; courie
         <h3 className="font-bold text-sm">Courier Cost Simulator</h3>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
           <label className={labelCls}>Order Weight (kg)</label>
           <input type="number" min="0.1" step="0.1" className={inputCls} value={weight} onChange={e => setWeight(Number(e.target.value) || 0)} />

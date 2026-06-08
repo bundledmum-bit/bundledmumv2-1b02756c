@@ -924,7 +924,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       <CourierAssignmentEditor order={o} />
 
 
-      <div className="grid md:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Customer Info — gated */}
         {showCustomer && (
           <div className="bg-card border border-border rounded-xl p-5">
@@ -995,7 +995,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           order is shipped/delivered/cancelled. */}
       <EditOrderCard order={o} adminUser={adminUser} can={can} />
 
-      <div className="grid md:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Delivery Info */}
         {showAddress && (
           <div className="bg-card border border-border rounded-xl p-5">

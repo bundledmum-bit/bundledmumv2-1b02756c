@@ -446,7 +446,7 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
         <div className="space-y-4">
           {/* Slug (read-only) */}
           <div className="bg-card border border-border rounded-xl p-5">

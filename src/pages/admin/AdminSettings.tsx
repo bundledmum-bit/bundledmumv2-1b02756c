@@ -425,7 +425,7 @@ function AutoFeesTab() {
           </span>
         </label>
 
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum products in cart</label>
             <input
@@ -471,7 +471,7 @@ function AutoFeesTab() {
           <span className="text-sm font-semibold">Auto-apply service &amp; packaging fee on large orders</span>
         </label>
 
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="text-[11px] font-semibold text-text-med block mb-1">Minimum item count to trigger fee</label>
             <input

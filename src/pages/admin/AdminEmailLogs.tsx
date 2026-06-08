@@ -169,7 +169,7 @@ export default function AdminEmailLogs() {
       </div>
 
       {/* Filters */}
-      <div className="bg-card border border-border rounded-xl p-3 grid md:grid-cols-5 gap-3">
+      <div className="bg-card border border-border rounded-xl p-3 grid grid-cols-1 md:grid-cols-5 gap-3">
         <div>
           <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Type</label>
           <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value as TypeFilter); setPage(0); }}

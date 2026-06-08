@@ -65,7 +65,7 @@ function Row({ t, onSave }: { t: SpendThreshold; onSave: (p: Partial<SpendThresh
 
   return (
     <div className="bg-card border border-border rounded-xl p-3">
-      <div className="grid md:grid-cols-6 gap-2 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
         <div>
           <label className={labelCls}>Type (key)</label>
           <input value={d.threshold_type} readOnly className={inputCls + " bg-muted/60 text-text-light cursor-not-allowed"} />
@@ -83,7 +83,7 @@ function Row({ t, onSave }: { t: SpendThreshold; onSave: (p: Partial<SpendThresh
           <input value={d.reward_description || ""} onChange={e => setD({ ...d, reward_description: e.target.value })} className={inputCls} />
         </div>
       </div>
-      <div className="grid md:grid-cols-6 gap-2 mt-2 items-end">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mt-2 items-end">
         <div className="md:col-span-4">
           <label className={labelCls}>Applies to zones (comma-separated)</label>
           <input value={zonesInput} onChange={e => setZonesInput(e.target.value)} placeholder="e.g. Island, Mainland" className={inputCls} />
@@ -123,7 +123,7 @@ function AddForm({ onSave }: { onSave: (t: Partial<SpendThreshold>) => Promise<a
   return (
     <div className="bg-card border border-border rounded-xl p-3 space-y-2">
       <h3 className="font-semibold text-sm">New threshold</h3>
-      <div className="grid md:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         <div><label className={labelCls}>Type (key)</label><input value={draft.threshold_type || ""} onChange={e => setDraft({ ...draft, threshold_type: e.target.value })} placeholder="e.g. free_delivery_lagos" className={inputCls} /></div>
         <div><label className={labelCls}>Label</label><input value={draft.label || ""} onChange={e => setDraft({ ...draft, label: e.target.value })} className={inputCls} /></div>
         <div><label className={labelCls}>Amount (₦)</label><input type="number" value={draft.amount || 0} onChange={e => setDraft({ ...draft, amount: Number(e.target.value) || 0 })} className={inputCls} /></div>

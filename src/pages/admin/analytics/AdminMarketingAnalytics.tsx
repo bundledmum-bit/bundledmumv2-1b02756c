@@ -184,7 +184,7 @@ export default function AdminMarketingAnalytics() {
       </section>
 
       {/* Sections 3 + 5 — Traffic sources | Devices */}
-      <section className="grid md:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="font-bold text-sm">Traffic sources</h2>
           <TrafficSourcesView />

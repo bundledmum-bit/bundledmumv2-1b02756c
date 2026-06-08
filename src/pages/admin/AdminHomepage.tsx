@@ -148,7 +148,7 @@ function SectionRow({
 
       {open && (
         <div className="mt-3 pl-7 space-y-3">
-          <div className="grid md:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Title</label>
               <input value={draft.title || ""} onChange={e => setDraft({ ...draft, title: e.target.value })} className={inputCls} />

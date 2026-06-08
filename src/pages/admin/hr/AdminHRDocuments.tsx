@@ -103,7 +103,7 @@ function UploadForm({ employees, onCancel, onSave }: {
   };
   return (
     <div className="bg-card border border-border rounded-xl p-4 space-y-2">
-      <div className="grid md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div>
           <label className={labelCls}>Employee</label>
           <select value={empId} onChange={e => setEmpId(e.target.value)} className={inputCls}>

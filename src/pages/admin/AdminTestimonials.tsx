@@ -66,7 +66,7 @@ function AddForm({ onSave }: { onSave: (t: Partial<Testimonial>) => Promise<any>
   return (
     <div className="bg-card border border-border rounded-xl p-4 space-y-2">
       <h3 className="font-semibold text-sm">New testimonial</h3>
-      <div className="grid md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div><label className={labelCls}>Name</label><input value={draft.customer_name || ""} onChange={e => setDraft({ ...draft, customer_name: e.target.value })} className={inputCls} /></div>
         <div><label className={labelCls}>Initial (optional)</label><input value={draft.customer_initial || ""} onChange={e => setDraft({ ...draft, customer_initial: e.target.value })} maxLength={2} className={inputCls} /></div>
         <div><label className={labelCls}>City</label><input value={draft.customer_city || ""} onChange={e => setDraft({ ...draft, customer_city: e.target.value })} className={inputCls} /></div>
@@ -97,7 +97,7 @@ function Row({ t, onSave, onDelete }: { t: Testimonial; onSave: (p: Partial<Test
 
   return (
     <div className={`bg-card border border-border rounded-xl p-3 ${t.is_active ? "" : "opacity-60"}`}>
-      <div className="grid md:grid-cols-6 gap-2 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-start">
         <input value={draft.customer_name} onChange={e => setDraft({ ...draft, customer_name: e.target.value })} className={inputCls + " md:col-span-1"} />
         <input value={draft.customer_location || draft.customer_city || ""} onChange={e => setDraft({ ...draft, customer_location: e.target.value })} className={inputCls + " md:col-span-1"} placeholder="Location" />
         <textarea rows={2} value={draft.quote} onChange={e => setDraft({ ...draft, quote: e.target.value })} className={inputCls + " md:col-span-3"} />
@@ -105,7 +105,7 @@ function Row({ t, onSave, onDelete }: { t: Testimonial; onSave: (p: Partial<Test
           {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}★</option>)}
         </select>
       </div>
-      <div className="grid md:grid-cols-6 gap-2 mt-2 items-center">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-2 mt-2 items-center">
         <input value={draft.product_context || ""} onChange={e => setDraft({ ...draft, product_context: e.target.value })} placeholder="Product context" className={inputCls + " md:col-span-2"} />
         <input type="number" value={draft.display_order ?? 0} onChange={e => setDraft({ ...draft, display_order: Number(e.target.value) })} placeholder="Order" className={inputCls + " md:col-span-1"} />
         <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={!!draft.is_verified_purchase} onChange={e => setDraft({ ...draft, is_verified_purchase: e.target.checked })} /> Verified</label>

@@ -307,7 +307,7 @@ export default function AdminProfitPerOrder() {
 
       {/* Filter bar */}
       <section className="bg-card border border-border rounded-xl p-3 sm:p-4">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="text-[11px] font-semibold text-text-med block mb-1">Date range</label>
             <select

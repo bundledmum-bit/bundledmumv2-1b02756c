@@ -68,7 +68,7 @@ export default function AdminHRDashboard() {
         <Kpi icon={<Wallet className="w-4 h-4" />} label="Monthly payroll (net)" value={stats ? fmtN(stats.current_month_net_payroll) : "—"} />
       </section>
 
-      <section className="grid md:grid-cols-2 gap-3">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-xl p-3">
           <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2 flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Headcount by department</h2>
           <div className="overflow-x-auto">
@@ -116,7 +116,7 @@ export default function AdminHRDashboard() {
         </div>
       </section>
 
-      <section className="grid md:grid-cols-2 gap-3">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-xl p-3">
           <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med mb-2 flex items-center gap-1.5"><ListChecks className="w-3.5 h-3.5" /> Task overview</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">

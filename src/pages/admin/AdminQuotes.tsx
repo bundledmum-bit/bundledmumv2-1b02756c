@@ -1367,7 +1367,7 @@ function QuoteEditor({
         )}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left column — customer + items + notes */}
         <div className="lg:col-span-2 space-y-4">
           {/* Section A — Customer Details */}
@@ -1377,7 +1377,7 @@ function QuoteEditor({
               Optional at this stage. Required when sending the quote email
               or placing the order on the customer's behalf.
             </p>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className={labelCls}>Customer Name</label>
                 <input value={form.customer_name} onChange={(e) => update({ customer_name: e.target.value })} className={inputCls} disabled={!canEdit} />
@@ -2306,7 +2306,7 @@ function ConvertQuoteDialog({
         <p className="text-xs text-text-med mb-3">
           Customer will receive an order confirmation email with bank-transfer instructions. The order stays <strong>pending</strong> until you confirm payment in /admin/orders.
         </p>
-        <div className="grid sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <label className={labelCls}>Name *</label>
             <input value={form.name} onChange={(e) => update({ name: e.target.value })} className={inputCls} autoFocus />

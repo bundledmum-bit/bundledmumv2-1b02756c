@@ -371,7 +371,7 @@ export default function AdminAnalytics() {
             <StatCard label="AOV" value={fmt(aov)} change={pctChange(aov, prevAov)} showChange={compareEnabled} />
             <StatCard label="Gift Wrap %" value={`${pct(o.filter((x:any)=>x.gift_wrapping).length, o.length)}%`} />
           </div>
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <ChartCard title="Revenue Over Time" empty={paid.length === 0}>
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={groupByDay(paid, items => items.reduce((s,x) => s + (x.total||0), 0))}>
@@ -487,7 +487,7 @@ export default function AdminAnalytics() {
                   <StatCard label="Conversion Rate" value={`${conversionRate}%`} />
                   <StatCard label="WhatsApp Capture" value={`${whatsappRate}%`} />
                 </div>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {[
                     { title: "By Hospital Type", data: makeDonut("hospital_type") },
                     { title: "By Delivery Method", data: makeDonut("delivery_method") },
@@ -538,7 +538,7 @@ export default function AdminAnalytics() {
               if (qa?.hospital_type) hospitalCounts[qa.hospital_type] = (hospitalCounts[qa.hospital_type] || 0) + 1;
             });
             return (
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <ChartCard title="Top 10 Products by Revenue" empty={topByRevenue.length === 0}>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={topByRevenue} layout="vertical">
@@ -610,7 +610,7 @@ export default function AdminAnalytics() {
                   <StatCard label="Conversion Rate" value={`${convRate}%`} />
                   <StatCard label="Sessions" value={Object.values(sessionsByDay).reduce((s, set) => s + set.size, 0)} />
                 </div>
-                <div className="grid md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <ChartCard title="Sessions Over Time" empty={sessionsChart.length === 0}>
                     <ResponsiveContainer width="100%" height={280}>
                       <LineChart data={sessionsChart}>

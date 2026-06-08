@@ -210,7 +210,7 @@ export default function AdminComingSoon() {
             rows={2} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-text-med block mb-1.5">CTA button label</label>
             <input type="text" value={form.cta_label} onChange={e => setForm(p => ({ ...p, cta_label: e.target.value }))}
@@ -236,7 +236,7 @@ export default function AdminComingSoon() {
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-text-med block mb-1.5">Background color</label>
             <div className="flex items-center gap-2">

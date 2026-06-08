@@ -141,7 +141,7 @@ export default function QuizContentEditor() {
       {/* Labels */}
       <section className="bg-card border border-border rounded-xl p-5">
         <h3 className="text-sm font-bold mb-4">Section headings</h3>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {FIELDS.labels.map(renderField)}
         </div>
       </section>
@@ -149,7 +149,7 @@ export default function QuizContentEditor() {
       {/* CTA & min-budget */}
       <section className="bg-card border border-border rounded-xl p-5">
         <h3 className="text-sm font-bold mb-4">CTA & minimum budget</h3>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {FIELDS.cta.map(renderField)}
         </div>
       </section>
@@ -158,7 +158,7 @@ export default function QuizContentEditor() {
       <section className="bg-card border border-border rounded-xl p-5">
         <h3 className="text-sm font-bold mb-1">Category cards</h3>
         <p className="text-text-light text-[11px] mb-4">The 3 cards under "What do you need?"</p>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {FIELDS.categories.map(renderField)}
         </div>
       </section>
@@ -167,7 +167,7 @@ export default function QuizContentEditor() {
       <section className="bg-card border border-border rounded-xl p-5">
         <h3 className="text-sm font-bold mb-1">Gender cards</h3>
         <p className="text-text-light text-[11px] mb-4">The 3 cards under "Baby's gender"</p>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {FIELDS.gender.map(renderField)}
         </div>
       </section>

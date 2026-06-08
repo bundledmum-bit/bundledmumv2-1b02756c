@@ -227,7 +227,7 @@ function EmployeeFormModal({
 
         <div className="p-5 space-y-5">
           <Section title="Personal">
-            <div className="grid md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Full name *"><input className={inputCls} value={form.full_name || ""} onChange={e => set("full_name", e.target.value)} /></Field>
               <Field
                 label={
@@ -259,7 +259,7 @@ function EmployeeFormModal({
           </Section>
 
           <Section title="Employment">
-            <div className="grid md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Department *">
                 <select className={inputCls} value={form.department_id || ""} onChange={e => set("department_id", e.target.value)}>
                   <option value="">Select…</option>
@@ -287,7 +287,7 @@ function EmployeeFormModal({
           </Section>
 
           <Section title="Banking">
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="Bank name"><input className={inputCls} value={form.bank_name || ""} onChange={e => set("bank_name", e.target.value)} /></Field>
               <Field label="Account number"><input className={inputCls} value={form.bank_account_number || ""} onChange={e => set("bank_account_number", e.target.value)} /></Field>
               <Field label="Account name"><input className={inputCls} value={form.bank_account_name || ""} onChange={e => set("bank_account_name", e.target.value)} /></Field>
@@ -295,7 +295,7 @@ function EmployeeFormModal({
           </Section>
 
           <Section title="Salary defaults (₦)">
-            <div className="grid md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <Field label="Basic"><input type="number" min={0} className={inputCls} value={form.basicNaira || ""} onChange={e => set("basicNaira", e.target.value)} /></Field>
               <Field label="Housing"><input type="number" min={0} className={inputCls} value={form.housingNaira || ""} onChange={e => set("housingNaira", e.target.value)} /></Field>
               <Field label="Transport"><input type="number" min={0} className={inputCls} value={form.transportNaira || ""} onChange={e => set("transportNaira", e.target.value)} /></Field>
@@ -304,7 +304,7 @@ function EmployeeFormModal({
           </Section>
 
           <Section title="Emergency contact">
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="Name"><input className={inputCls} value={form.emergency_contact_name || ""} onChange={e => set("emergency_contact_name", e.target.value)} /></Field>
               <Field label="Phone"><input className={inputCls} value={form.emergency_contact_phone || ""} onChange={e => set("emergency_contact_phone", e.target.value)} /></Field>
               <Field label="Relationship"><input className={inputCls} value={form.emergency_contact_relationship || ""} onChange={e => set("emergency_contact_relationship", e.target.value)} /></Field>
@@ -543,7 +543,7 @@ function EmployeeDetailPanel({ employee: e, onClose, onEdit }: { employee: HREmp
                     </button>
                   ) : (
                     <div className="border border-border rounded-lg p-3 space-y-2 bg-muted/20">
-                      <div className="grid md:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         <div>
                           <label className={labelCls}>Termination date</label>
                           <input type="date" className={inputCls} value={termDate} onChange={ev => setTermDate(ev.target.value)} />
@@ -719,7 +719,7 @@ function EmployeeDocumentsTab({ employeeId, employeeName }: { employeeId: string
       </div>
       {open && (
         <div className="border border-border rounded-lg p-2 space-y-2">
-          <div className="grid md:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <select value={docType} onChange={e => setDocType(e.target.value)} className={inputCls}>
               {["contract","offer_letter","id_document","tax_form","pension","nhf","certificate","appraisal","other"].map(t => <option key={t} value={t}>{t.replace("_", " ")}</option>)}
             </select>

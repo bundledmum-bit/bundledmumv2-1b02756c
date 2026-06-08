@@ -242,7 +242,7 @@ export default function OrdersReportTab() {
       </div>
 
       {/* Charts */}
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="font-bold text-sm mb-3">Net Sales vs Gross Profit</h3>
           <ResponsiveContainer width="100%" height={250}>

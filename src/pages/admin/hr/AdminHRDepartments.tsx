@@ -105,7 +105,7 @@ function DepartmentForm({ department, employees, onCancel, onSave }: {
 
   return (
     <div className="bg-card border border-border rounded-xl p-4 space-y-2">
-      <div className="grid md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div>
           <label className={labelCls}>Name</label>
           <input value={name} onChange={e => setName(e.target.value)} className={inputCls} />
