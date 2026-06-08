@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ShoppingBag, ArrowRight, Minus, Plus } from "lucide-react";
+import { ShoppingBag, ArrowRight, Minus, Plus, X } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
 import { getBrandImage } from "@/lib/brandImage";
 import BrandPickerModal from "@/components/article/BrandPickerModal";
@@ -107,6 +108,20 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
     setModalMode("add");
   };
 
+  // Tap/click-to-zoom lightbox. zoomSrc === null means closed.
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (!zoomSrc) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setZoomSrc(null); };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [zoomSrc]);
+
   // Loading skeleton while the parent's bulk product fetch resolves.
   if (productData === undefined) {
     return (
@@ -129,8 +144,13 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
   return (
     <div className="rounded-2xl border border-coral-blush/30 bg-card p-4">
       <div className="flex flex-row gap-3">
-        {/* Image */}
-        <div className="w-20 h-20 rounded-xl overflow-hidden bg-gradient-to-br from-forest-light to-coral-blush flex-shrink-0">
+        {/* Image — tap/click to zoom (image only; doesn't affect the card CTAs) */}
+        <button
+          type="button"
+          onClick={() => { if (img) setZoomSrc(img); }}
+          aria-label={`Zoom image of ${productData.name}`}
+          className="w-20 h-20 rounded-xl overflow-hidden bg-gradient-to-br from-forest-light to-coral-blush flex-shrink-0 block md:cursor-zoom-in"
+        >
           {img && (
             <img
               src={img}
@@ -140,7 +160,7 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
             />
           )}
-        </div>
+        </button>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
@@ -212,6 +232,34 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
           mode={modalMode}
           existingItem={modalMode === "change" ? cartLine : null}
         />
+      )}
+
+      {/* Full-screen image lightbox (portal to body, above nav + modals) */}
+      {zoomSrc && createPortal(
+        <div
+          className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setZoomSrc(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Image of ${productData.name}`}
+        >
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={zoomSrc}
+              alt={productData.name}
+              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            />
+            <button
+              type="button"
+              onClick={() => setZoomSrc(null)}
+              aria-label="Close image"
+              className="absolute top-2 right-2 h-9 w-9 rounded-full bg-white/95 text-foreground shadow-lg flex items-center justify-center hover:bg-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
