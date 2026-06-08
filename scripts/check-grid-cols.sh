@@ -22,7 +22,7 @@
 #
 set -uo pipefail
 
-WARN_ONLY=1
+WARN_ONLY=0
 
 # 1) lines with a breakpoint-prefixed grid-cols
 # 2) drop lines that ALSO carry an explicit base grid-cols-N / -[..]
