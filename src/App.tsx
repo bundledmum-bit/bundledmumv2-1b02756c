@@ -54,6 +54,8 @@ import TermsPage from "@/pages/TermsPage";
 import CookiesPage from "@/pages/CookiesPage";
 import ReturnsPage from "@/pages/ReturnsPage";
 import BlogPage from "@/pages/BlogPage";
+import ArticlesIndexPage from "@/pages/ArticlesIndexPage";
+import ArticleDetailPage from "@/pages/ArticleDetailPage";
 import TrackOrderPage from "@/pages/TrackOrderPage";
 import AccountPage from "@/pages/AccountPage";
 import AccountLoginPage from "@/pages/AccountLoginPage";
@@ -297,6 +299,8 @@ function StorefrontShell() {
           <Route path="/cookies" element={<CookiesPage />} />
           <Route path="/returns" element={<ReturnsPage />} />
           <Route path="/blog" element={<BlogPage />} />
+          <Route path="/articles" element={<ArticlesIndexPage />} />
+          <Route path="/articles/:slug" element={<ArticleDetailPage />} />
           <Route path="/track-order" element={<TrackOrderPage />} />
           <Route path="/account/login" element={<AccountLoginPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
