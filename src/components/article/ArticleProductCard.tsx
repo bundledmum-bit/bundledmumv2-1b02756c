@@ -20,12 +20,30 @@ export interface ArticleBrand {
   sku?: string | null;
 }
 
+export interface ArticleSize {
+  id: string;
+  size_label: string;
+  size_code?: string | null;
+  in_stock?: boolean | null;
+  display_order?: number | null;
+}
+
+export interface ArticleColor {
+  id: string;
+  color_name: string;
+  color_hex?: string | null;
+  in_stock?: boolean | null;
+  display_order?: number | null;
+}
+
 export interface ProductWithBrands {
   id: string;
   slug: string;
   name: string;
   image_url?: string | null;
   brands: ArticleBrand[];
+  product_sizes?: ArticleSize[];
+  product_colors?: ArticleColor[];
 }
 
 // Cheapest brand: sort by price asc, prefer in-stock; fall back to the
@@ -60,11 +78,15 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
   // key, so qty increments. Bump the cart icon (additions only).
   const handleIncrement = () => {
     if (!cartLine) return;
+    // Preserve the line's full variant tuple so the cart's variant-aware
+    // _key matches and qty increments (rather than creating a new row).
     addToCart({
       ...productData,
       selectedBrand: cartLine.selectedBrand,
       price: cartLine.selectedBrand?.price ?? cartLine.price,
       name: cartLine.name,
+      selectedSize: cartLine.selectedSize ?? null,
+      selectedColor: cartLine.selectedColor ?? null,
     });
     onAdded?.();
   };

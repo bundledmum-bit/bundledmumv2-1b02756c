@@ -3,7 +3,11 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import { useCart, fmt } from "@/lib/cart";
 import { getBrandImage } from "@/lib/brandImage";
-import { cheapestBrand, type ProductWithBrands, type ArticleBrand } from "@/components/article/ArticleProductCard";
+import { cn } from "@/lib/utils";
+import { cheapestBrand, type ProductWithBrands, type ArticleBrand, type ArticleSize, type ArticleColor } from "@/components/article/ArticleProductCard";
+
+const byOrder = <T extends { display_order?: number | null }>(a: T, b: T) =>
+  (a.display_order ?? 0) - (b.display_order ?? 0);
 
 // Brand picker opened from an article product card. Bottom-sheet on
 // mobile (max-md:items-end / rounded-t-2xl), centered dialog on desktop
@@ -25,14 +29,25 @@ interface Props {
 export default function BrandPickerModal({ open, onClose, productData, onAdded, mode = "add", existingItem = null }: Props) {
   const { addToCart, removeFromCart } = useCart();
   const brands = productData?.brands || [];
+  const sizes = [...(productData?.product_sizes || [])].sort(byOrder);
+  const colors = [...(productData?.product_colors || [])].sort(byOrder);
+  const requiresSize = sizes.length > 0;
+  const requiresColor = colors.length > 0;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const isChange = mode === "change" && !!existingItem;
   const currentBrandId = existingItem?.selectedBrand?.id ?? null;
 
-  // Pre-select on open: the current brand in 'change' mode, else cheapest in-stock.
+  // Pre-select on open. Brand: current in 'change' mode, else cheapest
+  // in-stock. Size/colour: the existing line's values in 'change' mode,
+  // otherwise NULL (no default — the customer must choose).
   useEffect(() => {
     if (!open) return;
     setSelectedId(isChange ? currentBrandId : (cheapestBrand(brands)?.id ?? null));
+    setSelectedSize(isChange ? (existingItem?.selectedSize ?? null) : null);
+    setSelectedColor(isChange ? (existingItem?.selectedColor ?? null) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -47,13 +62,20 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded, 
   if (!open) return null;
 
   const selected = brands.find((b) => b.id === selectedId) || null;
-  const isSameAsCurrent = isChange && selected?.id === currentBrandId;
-  const canAdd = !!selected && selected.in_stock !== false && !isSameAsCurrent;
+  const variantsSatisfied = (!requiresSize || !!selectedSize) && (!requiresColor || !!selectedColor);
+  // 'change' is a no-op only when brand AND size AND colour are unchanged.
+  const isSameAsCurrent = isChange
+    && selected?.id === currentBrandId
+    && (selectedSize ?? null) === (existingItem?.selectedSize ?? null)
+    && (selectedColor ?? null) === (existingItem?.selectedColor ?? null);
+  const canAdd = !!selected && selected.in_stock !== false && variantsSatisfied && !isSameAsCurrent;
   const ctaLabel = isChange
     ? (isSameAsCurrent ? "Already selected" : `Switch to ${selected?.brand_name || "brand"}`)
     : "Add to cart";
 
   // Build the addToCart payload for a brand (matches ProductPage's shape).
+  // selectedSize/selectedColor feed the cart's variant-aware _key so S/M
+  // of the same brand are distinct cart rows.
   const buildItem = (brand: ArticleBrand) => {
     const label = brand.brand_name || "Brand";
     return {
@@ -61,6 +83,8 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded, 
       name: `${productData.name} (${label})`,
       price: brand.price ?? 0,
       img: getBrandImage(brand) || undefined,
+      selectedSize: selectedSize ?? null,
+      selectedColor: selectedColor ?? null,
       selectedBrand: {
         id: brand.id,
         label,
@@ -75,17 +99,15 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded, 
   };
 
   const handleAdd = () => {
-    if (!selected || selected.in_stock === false) return;
+    if (!canAdd || !selected) return;
     const label = selected.brand_name || "Brand";
 
     if (isChange) {
-      // No-op if the same brand is reselected.
-      if (selected.id === currentBrandId) { onClose(); return; }
-      // Atomic swap: remove the old line, re-add the new brand preserving qty.
+      // Atomic swap: remove the old line, re-add the new variant preserving qty.
       const preservedQty = Math.max(1, Number(existingItem.qty) || 1);
       removeFromCart(existingItem._key);
       for (let i = 0; i < preservedQty; i++) addToCart(buildItem(selected));
-      toast.success(`Switched to ${label}`);
+      toast.success(`Switched to ${label}${selectedSize ? ` · ${selectedSize}` : ""}`);
       onAdded?.();
       onClose();
       return;
@@ -158,6 +180,73 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded, 
             );
           })}
         </div>
+
+        {/* Size + colour pickers (only when the product has them). No
+            default selection — the customer must choose before adding. */}
+        {(requiresSize || requiresColor) && (
+          <div className="px-4 pb-3 space-y-4">
+            {requiresSize && (
+              <div>
+                <div className="text-sm font-semibold text-foreground mb-2">
+                  Choose size <span className="text-coral">*</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {sizes.map((s: ArticleSize) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => s.in_stock !== false && setSelectedSize(s.size_label)}
+                      disabled={s.in_stock === false}
+                      className={cn(
+                        "px-3 h-9 min-h-9 rounded-lg border-2 text-sm font-medium transition-colors",
+                        selectedSize === s.size_label
+                          ? "border-forest bg-forest-light text-forest"
+                          : "border-coral-blush/40 bg-card text-foreground",
+                        s.in_stock === false && "opacity-50 cursor-not-allowed line-through",
+                      )}
+                    >
+                      {s.size_label}
+                    </button>
+                  ))}
+                </div>
+                {!selectedSize && (
+                  <div className="text-xs text-muted-foreground mt-1.5">Please choose a size to continue</div>
+                )}
+              </div>
+            )}
+
+            {requiresColor && (
+              <div>
+                <div className="text-sm font-semibold text-foreground mb-2">
+                  Choose colour <span className="text-coral">*</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {colors.map((c: ArticleColor) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => c.in_stock !== false && setSelectedColor(c.color_name)}
+                      disabled={c.in_stock === false}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 px-3 h-9 min-h-9 rounded-lg border-2 text-sm font-medium transition-colors",
+                        selectedColor === c.color_name
+                          ? "border-forest bg-forest-light text-forest"
+                          : "border-coral-blush/40 bg-card text-foreground",
+                        c.in_stock === false && "opacity-50 cursor-not-allowed line-through",
+                      )}
+                    >
+                      <span className="inline-block w-3.5 h-3.5 rounded-full border border-border" style={{ backgroundColor: c.color_hex || "#e5e5e5" }} />
+                      {c.color_name}
+                    </button>
+                  ))}
+                </div>
+                {!selectedColor && (
+                  <div className="text-xs text-muted-foreground mt-1.5">Please choose a colour to continue</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-border">

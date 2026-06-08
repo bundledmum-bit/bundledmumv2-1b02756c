@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,6 +59,66 @@ export default function CheckoutPage() {
   const { cart, subtotal, clearCart, totalItems, autoFees } = useCart();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
   const navigate = useNavigate();
+
+  // ── Variant safety net ────────────────────────────────────────────
+  // place-order v38 rejects orders where a size/colour-required product
+  // has no selection. This client-side scan blocks Place Order + shows a
+  // banner so customers never hit that rejection. Covers every surface:
+  // article / product cart rows AND bundle child items (bundleItems[]).
+  const variantProductIds = useMemo(() => {
+    const ids = new Set<string>();
+    (cart || []).forEach((it: any) => {
+      if (it?.id) ids.add(String(it.id));
+      (it?.bundleItems || []).forEach((bi: any) => bi?.productId && ids.add(String(bi.productId)));
+    });
+    return [...ids];
+  }, [cart]);
+
+  const { data: variantReq } = useQuery({
+    queryKey: ["checkout-variant-req", variantProductIds.slice().sort().join(",")],
+    enabled: variantProductIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, slug, product_sizes(id), product_colors(id)")
+        .in("id", variantProductIds);
+      if (error) throw error;
+      const map = new Map<string, { slug: string | null; requiresSize: boolean; requiresColor: boolean }>();
+      (data || []).forEach((p: any) => map.set(String(p.id), {
+        slug: p.slug ?? null,
+        requiresSize: (p.product_sizes || []).length > 0,
+        requiresColor: (p.product_colors || []).length > 0,
+      }));
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
+  const itemsMissingVariants = useMemo(() => {
+    if (!variantReq) return [] as Array<{ key: string; name: string; slug: string | null }>;
+    const out: Array<{ key: string; name: string; slug: string | null }> = [];
+    (cart || []).forEach((it: any) => {
+      // Bundle row: check each child against its product's requirements.
+      if (it?.bundleItems?.length) {
+        it.bundleItems.forEach((bi: any) => {
+          const req = variantReq.get(String(bi.productId));
+          if (!req) return;
+          if ((req.requiresSize && !bi.size) || (req.requiresColor && !bi.color)) {
+            out.push({ key: `${it._key}-${bi.productId}`, name: `${bi.productName || "Item"} (in ${it.bundleName || it.name})`, slug: req.slug });
+          }
+        });
+        return;
+      }
+      const req = variantReq.get(String(it.id));
+      if (!req) return;
+      if ((req.requiresSize && !it.selectedSize) || (req.requiresColor && !it.selectedColor)) {
+        out.push({ key: it._key, name: it.name, slug: it.slug || req.slug });
+      }
+    });
+    return out;
+  }, [cart, variantReq]);
+
+  const hasMissingVariants = itemsMissingVariants.length > 0;
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
   const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
   const [giftWrap, setGiftWrap] = useState(false);
@@ -1050,10 +1111,18 @@ export default function CheckoutPage() {
           // the raw response is on error.context. Also accept the
           // issues on the parsed `result` body when the status is
           // surfaced via data rather than error.
-          const bodyFromCtx = anyErr?.context?.status === 409
+          const ctxStatusEarly: number | undefined = anyErr?.context?.status;
+          const bodyFromCtx = (ctxStatusEarly === 409 || ctxStatusEarly === 400)
             ? await anyErr.context.clone().json().catch(() => null)
             : null;
           const payload = bodyFromCtx || result || null;
+          // place-order v38 rejects size/colour-required items with no
+          // selection. Surface it clearly and scroll to the banner.
+          if (payload?.code === "MISSING_SIZE" || payload?.code === "MISSING_COLOR") {
+            toast.error(payload.error || "Please choose required options (size/colour) for items in your cart.");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            return null;
+          }
           const issues: StockIssue[] = Array.isArray(payload?.stock_issues) ? payload.stock_issues : [];
           if (issues.length > 0) {
             setStockIssues(issues);
@@ -1171,6 +1240,12 @@ export default function CheckoutPage() {
     if (!cartSnapshot.length) {
       toast.error("Your cart is empty. Please add items before checking out.");
       navigate("/cart");
+      return;
+    }
+    // Client-side variant gate (server place-order v38 is the backstop).
+    if (hasMissingVariants) {
+      toast.error("Please choose a size for the highlighted item(s) before checking out.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     if (!validate()) return;
@@ -1410,6 +1485,29 @@ export default function CheckoutPage() {
             </div>
           )}
         </div>
+
+        {hasMissingVariants && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+            <div className="font-semibold text-amber-900 mb-2">
+              Please choose a size for {itemsMissingVariants.length} item{itemsMissingVariants.length > 1 ? "s" : ""} before checking out
+            </div>
+            <ul className="space-y-2">
+              {itemsMissingVariants.map((it) => (
+                <li key={it.key} className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-amber-900 min-w-0 break-words">{it.name}</span>
+                  {it.slug && (
+                    <Link
+                      to={`/products/${it.slug}`}
+                      className="text-sm text-coral font-semibold underline-offset-2 hover:underline whitespace-nowrap flex-shrink-0"
+                    >
+                      Pick size →
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
           <div className="space-y-4">
@@ -1812,6 +1910,7 @@ export default function CheckoutPage() {
                 || (isExpressOrder
                     ? !expressAcknowledged
                     : (notDeliverable || quoteLoading || !deliveryReady))
+                || hasMissingVariants
               }
               className="w-full rounded-pill bg-forest py-4 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1959,7 +2058,7 @@ export default function CheckoutPage() {
               || (isExpressOrder
                   ? !expressAcknowledged
                   : (notDeliverable || quoteLoading || !deliveryReady))
-            }
+                || hasMissingVariants            }
             className="flex-1 rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processing

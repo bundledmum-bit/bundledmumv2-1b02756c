@@ -54,7 +54,7 @@ export default function ArticleDetailPage() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, slug, name, image_url, brands:brands_public(id, brand_name, price, in_stock, image_url, stored_image_url, sku)")
+        .select("id, slug, name, image_url, brands:brands_public(id, brand_name, price, in_stock, image_url, stored_image_url, sku), product_sizes(id, size_label, size_code, in_stock, display_order), product_colors(id, color_name, color_hex, in_stock, display_order)")
         .in("slug", productSlugs)
         .eq("is_active", true);
       if (error) throw error;
