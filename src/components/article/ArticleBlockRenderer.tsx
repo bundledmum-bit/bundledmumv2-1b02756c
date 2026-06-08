@@ -26,12 +26,50 @@ interface RendererProps {
 
 export default function ArticleBlockRenderer({ body, productsData, productsLoading, onCartBump }: RendererProps) {
   if (!Array.isArray(body) || body.length === 0) return null;
+  // Group consecutive promo_card blocks so a run of them renders as a
+  // single responsive grid (2-up on desktop, full-width when alone).
+  const grouped = (body as Block[]).reduce<Block[]>((acc, block) => {
+    if (block.type === "promo_card") {
+      const prev = acc[acc.length - 1];
+      if (prev?.type === "promo_card_group") { prev.cards.push(block); return acc; }
+      return [...acc, { type: "promo_card_group", cards: [block] }];
+    }
+    return [...acc, block];
+  }, []);
   return (
     <div className="space-y-6 md:space-y-8">
-      {(body as Block[]).map((block, i) => (
-        <ArticleBlock key={i} block={block} productsData={productsData} productsLoading={productsLoading} onCartBump={onCartBump} />
-      ))}
+      {grouped.map((item, i) =>
+        item.type === "promo_card_group" ? (
+          <div key={i} className={`grid grid-cols-1 gap-4 my-8 ${item.cards.length > 1 ? "md:grid-cols-2" : ""}`}>
+            {(item.cards as Block[]).map((card, j) => <PromoCard key={j} card={card} />)}
+          </div>
+        ) : (
+          <ArticleBlock key={i} block={item} productsData={productsData} productsLoading={productsLoading} onCartBump={onCartBump} />
+        )
+      )}
     </div>
+  );
+}
+
+function PromoCard({ card }: { card: Block }) {
+  const isExternal = /^https?:\/\//.test(card.url || "");
+  const content = (
+    <div className="h-full rounded-2xl p-6 flex flex-col items-start gap-3 border-2 border-[#2D6A4F]/20 bg-gradient-to-br from-[#2D6A4F]/[0.08] to-[#F4845F]/[0.08] shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer group">
+      <span className="text-5xl leading-none">{card.emoji}</span>
+      <div className="flex flex-col gap-1 min-w-0">
+        <h3 className="text-lg font-bold text-foreground leading-tight break-words">{card.title}</h3>
+        <p className="text-sm text-muted-foreground leading-relaxed">{card.description}</p>
+      </div>
+      <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-semibold text-[#2D6A4F] group-hover:gap-2.5 transition-all duration-200">
+        {card.cta_text}
+        <span aria-hidden>→</span>
+      </span>
+    </div>
+  );
+  return isExternal ? (
+    <a href={card.url} target="_blank" rel="noopener noreferrer" className="no-underline block h-full">{content}</a>
+  ) : (
+    <Link to={card.url || "#"} className="no-underline block h-full">{content}</Link>
   );
 }
 
