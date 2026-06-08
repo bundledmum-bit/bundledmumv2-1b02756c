@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ShoppingBag, ArrowRight } from "lucide-react";
-import { fmt } from "@/lib/cart";
+import { ShoppingBag, ArrowRight, Minus, Plus } from "lucide-react";
+import { fmt, useCart } from "@/lib/cart";
 import { getBrandImage } from "@/lib/brandImage";
 import BrandPickerModal from "@/components/article/BrandPickerModal";
 
@@ -44,7 +44,46 @@ interface Props {
 }
 
 export default function ArticleProductCard({ productSlug, displayName, whyNeeded, productData, onAdded }: Props) {
+  const { cart, addToCart, updateQty } = useCart();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"add" | "change">("add");
+
+  // The card's in-cart state derives from the cart (single source of
+  // truth): the most-recently-added line matching this product, if any.
+  const cartLine = useMemo(() => {
+    if (!productData) return null;
+    const matches = (cart || []).filter((i: any) => i.id === productData.id);
+    return matches.length ? matches[matches.length - 1] : null;
+  }, [cart, productData]);
+
+  // Re-adding the same product+brand hits the cart's variant-aware merge
+  // key, so qty increments. Bump the cart icon (additions only).
+  const handleIncrement = () => {
+    if (!cartLine) return;
+    addToCart({
+      ...productData,
+      selectedBrand: cartLine.selectedBrand,
+      price: cartLine.selectedBrand?.price ?? cartLine.price,
+      name: cartLine.name,
+    });
+    onAdded?.();
+  };
+
+  // updateQty auto-removes the line when newQty <= 0. No bump on decrement.
+  const handleDecrement = () => {
+    if (!cartLine) return;
+    updateQty(cartLine._key, cartLine.qty - 1);
+  };
+
+  const handleChangeBrand = () => {
+    setModalMode("change");
+    setPickerOpen(true);
+  };
+
+  const closeModal = () => {
+    setPickerOpen(false);
+    setModalMode("add");
+  };
 
   // Loading skeleton while the parent's bulk product fetch resolves.
   if (productData === undefined) {
@@ -91,32 +130,65 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
         </div>
       </div>
 
-      {/* Action */}
-      <div className="mt-3 flex sm:justify-end">
-        {best ? (
+      {/* Action — stepper once in cart, otherwise Add-to-cart / View product */}
+      {cartLine ? (
+        <div className="mt-3 flex flex-col gap-1.5 sm:items-end">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDecrement}
+              aria-label="Decrease quantity"
+              className="h-9 w-9 rounded-full bg-warm-cream flex items-center justify-center interactive"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <span className="font-body font-bold text-sm w-6 text-center">{cartLine.qty}</span>
+            <button
+              type="button"
+              onClick={handleIncrement}
+              aria-label="Increase quantity"
+              className="h-9 w-9 rounded-full bg-warm-cream flex items-center justify-center interactive"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => setPickerOpen(true)}
-            className="inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-pill bg-coral text-primary-foreground px-5 text-sm font-semibold hover:bg-coral-dark transition-colors min-h-9"
+            onClick={handleChangeBrand}
+            className="text-xs text-forest underline-offset-2 hover:underline self-start sm:self-end min-h-7 px-1"
           >
-            <ShoppingBag className="w-4 h-4" /> Add to cart
+            Change brand ({cartLine.selectedBrand?.brand_name || cartLine.selectedBrand?.label || "selected"})
           </button>
-        ) : (
-          <Link
-            to={`/products/${productSlug}`}
-            className="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-pill border border-border text-foreground px-5 text-sm font-semibold hover:border-forest/60 transition-colors min-h-9"
-          >
-            View product <ArrowRight className="w-4 h-4" />
-          </Link>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="mt-3 flex sm:justify-end">
+          {best ? (
+            <button
+              type="button"
+              onClick={() => { setModalMode("add"); setPickerOpen(true); }}
+              className="inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-pill bg-coral text-primary-foreground px-5 text-sm font-semibold hover:bg-coral-dark transition-colors min-h-9"
+            >
+              <ShoppingBag className="w-4 h-4" /> Add to cart
+            </button>
+          ) : (
+            <Link
+              to={`/products/${productSlug}`}
+              className="inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-pill border border-border text-foreground px-5 text-sm font-semibold hover:border-forest/60 transition-colors min-h-9"
+            >
+              View product <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
+        </div>
+      )}
 
       {best && (
         <BrandPickerModal
           open={pickerOpen}
-          onClose={() => setPickerOpen(false)}
+          onClose={closeModal}
           productData={productData}
           onAdded={onAdded}
+          mode={modalMode}
+          existingItem={modalMode === "change" ? cartLine : null}
         />
       )}
     </div>

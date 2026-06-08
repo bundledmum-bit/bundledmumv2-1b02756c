@@ -16,16 +16,23 @@ interface Props {
   onClose: () => void;
   productData: ProductWithBrands;
   onAdded?: () => void;
+  /** 'add' = first add; 'change' = swap the brand of an existing cart line. */
+  mode?: "add" | "change";
+  /** The cart line being swapped, when mode === 'change' (carries qty + current brand). */
+  existingItem?: any;
 }
 
-export default function BrandPickerModal({ open, onClose, productData, onAdded }: Props) {
-  const { addToCart } = useCart();
+export default function BrandPickerModal({ open, onClose, productData, onAdded, mode = "add", existingItem = null }: Props) {
+  const { addToCart, removeFromCart } = useCart();
   const brands = productData?.brands || [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const isChange = mode === "change" && !!existingItem;
+  const currentBrandId = existingItem?.selectedBrand?.id ?? null;
 
-  // Pre-select the cheapest in-stock brand each time the sheet opens.
+  // Pre-select on open: the current brand in 'change' mode, else cheapest in-stock.
   useEffect(() => {
-    if (open) setSelectedId(cheapestBrand(brands)?.id ?? null);
+    if (!open) return;
+    setSelectedId(isChange ? currentBrandId : (cheapestBrand(brands)?.id ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -40,27 +47,51 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded }
   if (!open) return null;
 
   const selected = brands.find((b) => b.id === selectedId) || null;
-  const canAdd = !!selected && selected.in_stock !== false;
+  const isSameAsCurrent = isChange && selected?.id === currentBrandId;
+  const canAdd = !!selected && selected.in_stock !== false && !isSameAsCurrent;
+  const ctaLabel = isChange
+    ? (isSameAsCurrent ? "Already selected" : `Switch to ${selected?.brand_name || "brand"}`)
+    : "Add to cart";
+
+  // Build the addToCart payload for a brand (matches ProductPage's shape).
+  const buildItem = (brand: ArticleBrand) => {
+    const label = brand.brand_name || "Brand";
+    return {
+      id: productData.id,
+      name: `${productData.name} (${label})`,
+      price: brand.price ?? 0,
+      img: getBrandImage(brand) || undefined,
+      selectedBrand: {
+        id: brand.id,
+        label,
+        brand_name: label,
+        price: brand.price ?? 0,
+        sku: brand.sku ?? null,
+        image_url: brand.image_url ?? null,
+        imageUrl: getBrandImage(brand),
+        inStock: brand.in_stock !== false,
+      },
+    };
+  };
 
   const handleAdd = () => {
     if (!selected || selected.in_stock === false) return;
     const label = selected.brand_name || "Brand";
-    addToCart({
-      id: productData.id,
-      name: `${productData.name} (${label})`,
-      price: selected.price ?? 0,
-      img: getBrandImage(selected) || undefined,
-      selectedBrand: {
-        id: selected.id,
-        label,
-        brand_name: label,
-        price: selected.price ?? 0,
-        sku: selected.sku ?? null,
-        image_url: selected.image_url ?? null,
-        imageUrl: getBrandImage(selected),
-        inStock: selected.in_stock !== false,
-      },
-    });
+
+    if (isChange) {
+      // No-op if the same brand is reselected.
+      if (selected.id === currentBrandId) { onClose(); return; }
+      // Atomic swap: remove the old line, re-add the new brand preserving qty.
+      const preservedQty = Math.max(1, Number(existingItem.qty) || 1);
+      removeFromCart(existingItem._key);
+      for (let i = 0; i < preservedQty; i++) addToCart(buildItem(selected));
+      toast.success(`Switched to ${label}`);
+      onAdded?.();
+      onClose();
+      return;
+    }
+
+    addToCart(buildItem(selected));
     toast.success(`${productData.name} added to cart`, {
       action: { label: "View Cart →", onClick: () => { window.location.href = "/cart"; } },
     });
@@ -83,7 +114,7 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded }
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-4 border-b border-border">
           <h2 className="text-base font-semibold text-foreground leading-snug min-w-0 break-words pt-1.5">
-            Choose brand: {productData.name}
+            {isChange ? "Change brand" : "Choose brand"}: {productData.name}
           </h2>
           <button
             type="button"
@@ -141,7 +172,7 @@ export default function BrandPickerModal({ open, onClose, productData, onAdded }
             disabled={!canAdd}
             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-coral text-primary-foreground font-semibold min-h-12 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-coral-dark transition-colors"
           >
-            Add to cart
+            {ctaLabel}
           </button>
         </div>
       </div>
