@@ -117,7 +117,7 @@ export default function ArticleDetailPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       <Seo
-        title={`${article.meta_title || article.title} | BundledMum`}
+        title={article.meta_title || `${article.title} | BundledMum`}
         description={article.meta_description || article.excerpt || ""}
         type="article"
         image={buildAbsoluteUrl(article.hero_image_url) || OG_FALLBACK_IMAGE}
