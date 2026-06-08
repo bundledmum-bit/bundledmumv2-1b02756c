@@ -7,6 +7,7 @@ import Seo from "@/components/Seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Clock, MessageCircle } from "lucide-react";
 import ArticleBlockRenderer from "@/components/article/ArticleBlockRenderer";
+import ArticleCard, { type ArticleCardData } from "@/components/article/ArticleCard";
 import type { ProductWithBrands } from "@/components/article/ArticleProductCard";
 import { SITE_URL, OG_FALLBACK_IMAGE, buildAbsoluteUrl } from "@/lib/seo";
 
@@ -90,6 +91,25 @@ export default function ArticleDetailPage() {
       articleSection: article.segment === "pregnancy" ? "Pregnancy" : "Parenting",
     };
   }, [article]);
+
+  // Related articles: 2 published articles from the same segment,
+  // excluding the current one. Only runs once the article is loaded.
+  const { data: relatedArticles } = useQuery({
+    queryKey: ["related_articles", article?.segment, article?.slug],
+    enabled: !!article?.segment && !!article?.slug,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("articles")
+        .select("slug, segment, title, excerpt, hero_image_url, hero_image_alt, read_time_minutes")
+        .eq("is_published", true)
+        .eq("segment", article.segment)
+        .neq("slug", article.slug)
+        .order("display_order", { ascending: true })
+        .limit(2);
+      if (error) throw error;
+      return (data || []) as ArticleCardData[];
+    },
+  });
 
   if (isLoading) return <ArticleDetailSkeleton />;
 
@@ -196,6 +216,17 @@ export default function ArticleDetailPage() {
             <MessageCircle className="w-4 h-4" /> Share on WhatsApp
           </a>
         </div>
+
+        {relatedArticles && relatedArticles.length > 0 && (
+          <section className="mt-16 pt-8 border-t border-border">
+            <h2 className="text-xl font-bold text-foreground mb-6">You might also like</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {relatedArticles.map((related) => (
+                <ArticleCard key={related.slug} article={related} />
+              ))}
+            </div>
+          </section>
+        )}
       </article>
     </div>
   );
