@@ -60,6 +60,15 @@ function ArticleBlock({ block, productsData, productsLoading, onCartBump }: { bl
     case "section":
       return (
         <div className="pt-2">
+          {typeof block.banner_url === "string" && block.banner_url && (
+            <img
+              src={block.banner_url}
+              alt={typeof block.banner_alt === "string" ? block.banner_alt : (block.title || "")}
+              loading="lazy"
+              className="w-full aspect-[3/1] object-cover rounded-2xl mb-6"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+          )}
           <h2 id={block.id} className="text-2xl md:text-3xl font-semibold text-foreground tracking-tight scroll-mt-24 break-words">
             {block.title}
           </h2>

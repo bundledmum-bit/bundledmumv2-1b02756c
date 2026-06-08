@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import Seo from "@/components/Seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import ArticleCard, { type ArticleCardData } from "@/components/article/ArticleCard";
+import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { SITE_URL, OG_FALLBACK_IMAGE } from "@/lib/seo";
 
 const ARTICLES_DESCRIPTION =
@@ -27,6 +28,12 @@ const SEGMENTS: { key: string; label: string }[] = [
 ];
 
 export default function ArticlesIndexPage() {
+  // Optional index hero from site_settings (key: articles_index_hero).
+  // Reuses the shared, cached useSiteSettings() map. Renders nothing
+  // when the row/url is absent — no skeleton, no placeholder flash.
+  const { data: siteSettings } = useSiteSettings();
+  const indexHero = siteSettings?.articles_index_hero as { url?: string; alt?: string } | undefined;
+
   const { data: articles, isLoading, isError } = useQuery({
     queryKey: ["articles-index"],
     queryFn: async () => {
@@ -47,13 +54,21 @@ export default function ArticlesIndexPage() {
         title="Articles for Nigerian Mums | Pregnancy & Parenting Guides | BundledMum"
         description={ARTICLES_DESCRIPTION}
         type="website"
-        image={OG_FALLBACK_IMAGE}
+        image={indexHero?.url || OG_FALLBACK_IMAGE}
         jsonLd={COLLECTION_JSONLD}
       />
 
       {/* Hero */}
       <section className="bg-warm-cream pt-24 md:pt-28 pb-12 md:pb-16 px-5">
         <div className="max-w-[1100px] mx-auto text-center">
+          {indexHero?.url && (
+            <img
+              src={indexHero.url}
+              alt={indexHero.alt || "Articles for Nigerian mums"}
+              className="w-full aspect-[21/9] md:aspect-[3/1] object-cover rounded-2xl mb-8"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+          )}
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-coral mb-4">BundledMum Journal</p>
           <h1 className="pf text-[40px] md:text-6xl font-light leading-[1.05] text-foreground tracking-tight mb-5">
             Articles for Nigerian Mums
