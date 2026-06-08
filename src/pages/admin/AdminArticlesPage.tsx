@@ -99,15 +99,15 @@ export default function AdminArticlesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         {[
           { label: "Total Articles", value: total },
           { label: "Published", value: published },
           { label: "Drafts", value: drafts },
         ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl p-4">
-            <div className="text-text-light text-xs font-semibold uppercase tracking-wide">{s.label}</div>
-            <div className="text-2xl font-bold mt-1">{s.value}</div>
+          <div key={s.label} className="bg-card border border-border rounded-xl p-3">
+            <div className="text-text-light text-[10px] sm:text-xs font-semibold uppercase tracking-wide leading-tight">{s.label}</div>
+            <div className="text-xl sm:text-2xl font-bold mt-1">{s.value}</div>
           </div>
         ))}
       </div>
@@ -120,7 +120,7 @@ export default function AdminArticlesPage() {
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-x-auto">
-          <table className="w-full text-sm min-w-[760px]">
+          <table className="hidden md:table w-full text-sm min-w-[760px]">
             <thead>
               <tr className="border-b border-border text-left text-text-light text-xs uppercase tracking-wide">
                 <th className="px-4 py-3 font-semibold">Title</th>
@@ -187,6 +187,48 @@ export default function AdminArticlesPage() {
               })}
             </tbody>
           </table>
+
+          {/* Mobile card list (table is hidden below md) */}
+          <div className="md:hidden space-y-3 p-3">
+            {list.map((a) => {
+              const productListing = isProductListing(a.body);
+              return (
+                <div key={a.id} className="bg-background border border-border rounded-xl p-4 space-y-3">
+                  <div className="font-semibold text-sm text-foreground leading-snug break-words">{a.title}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${segmentBadge(a.segment)}`}>{a.segment}</span>
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${a.is_published ? "bg-green-100 text-green-700" : "bg-muted text-text-light"}`}>{a.is_published ? "Published" : "Draft"}</span>
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${productListing ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{productListing ? "Product Listing" : "Informational"}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>{Array.isArray(a.body) ? a.body.length : 0} blocks</span>
+                    <span>Order: {a.display_order ?? "—"}</span>
+                    <span>{timeAgo(a.updated_at)}</span>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => navigate(`/admin/articles/${a.id}`)}
+                      className="flex-1 text-sm border border-border rounded-lg py-2 font-medium text-foreground hover:bg-muted transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => publishToggle.mutate(a)}
+                      className={`flex-1 text-sm border border-border rounded-lg py-2 font-medium transition-colors ${a.is_published ? "text-amber-600 hover:bg-amber-50" : "text-green-700 hover:bg-green-50"}`}
+                    >
+                      {a.is_published ? "Unpublish" : "Publish"}
+                    </button>
+                    <button
+                      onClick={() => { if (confirm(`Delete “${a.title}”? This cannot be undone.`)) remove.mutate(a.id); }}
+                      className="px-3 text-sm border border-red-200 rounded-lg py-2 text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
