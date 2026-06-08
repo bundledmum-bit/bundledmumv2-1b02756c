@@ -37,23 +37,27 @@ export default function ArticleBlockRenderer({ body, productsData, productsLoadi
 
 function PromoCard({ card }: { card: Block }) {
   const isExternal = /^https?:\/\//.test(card.url || "");
-  const content = (
-    <div className="h-full rounded-2xl p-6 flex flex-col items-start gap-3 border-2 border-[#2D6A4F]/20 bg-gradient-to-br from-[#2D6A4F]/[0.08] to-[#F4845F]/[0.08] shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer group">
-      <span className="text-5xl leading-none">{card.emoji}</span>
-      <div className="flex flex-col gap-1 min-w-0">
-        <h3 className="text-lg font-bold text-foreground leading-tight break-words">{card.title}</h3>
-        <p className="text-sm text-muted-foreground leading-relaxed">{card.description}</p>
+  const inner = (
+    <div className="rounded-2xl p-6 flex flex-col gap-4 border-2 border-[#2D6A4F]/20 bg-gradient-to-br from-[#2D6A4F]/10 to-[#F4845F]/10 shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer group w-full">
+      <div className="flex items-start gap-4">
+        <span className="text-5xl leading-none shrink-0">{card.emoji}</span>
+        <div className="flex flex-col gap-1 min-w-0">
+          <h3 className="text-lg font-bold text-foreground leading-tight break-words">{card.title}</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">{card.description}</p>
+        </div>
       </div>
-      <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-semibold text-[#2D6A4F] group-hover:gap-2.5 transition-all duration-200">
-        {card.cta_text}
-        <span aria-hidden>→</span>
-      </span>
+      <div className="flex justify-end">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#2D6A4F] group-hover:gap-2.5 transition-all duration-200">
+          {card.cta_text}
+          <span aria-hidden>→</span>
+        </span>
+      </div>
     </div>
   );
   return isExternal ? (
-    <a href={card.url} target="_blank" rel="noopener noreferrer" className="no-underline block h-full">{content}</a>
+    <a href={card.url} target="_blank" rel="noopener noreferrer" className="block no-underline my-8">{inner}</a>
   ) : (
-    <Link to={card.url || "#"} className="no-underline block h-full">{content}</Link>
+    <Link to={card.url || "#"} className="block no-underline my-8">{inner}</Link>
   );
 }
 
