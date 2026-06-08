@@ -26,27 +26,11 @@ interface RendererProps {
 
 export default function ArticleBlockRenderer({ body, productsData, productsLoading, onCartBump }: RendererProps) {
   if (!Array.isArray(body) || body.length === 0) return null;
-  // Group consecutive promo_card blocks so a run of them renders as a
-  // single responsive grid (2-up on desktop, full-width when alone).
-  const grouped = (body as Block[]).reduce<Block[]>((acc, block) => {
-    if (block.type === "promo_card") {
-      const prev = acc[acc.length - 1];
-      if (prev?.type === "promo_card_group") { prev.cards.push(block); return acc; }
-      return [...acc, { type: "promo_card_group", cards: [block] }];
-    }
-    return [...acc, block];
-  }, []);
   return (
     <div className="space-y-6 md:space-y-8">
-      {grouped.map((item, i) =>
-        item.type === "promo_card_group" ? (
-          <div key={i} className={`grid grid-cols-1 gap-4 my-8 ${item.cards.length > 1 ? "md:grid-cols-2" : ""}`}>
-            {(item.cards as Block[]).map((card, j) => <PromoCard key={j} card={card} />)}
-          </div>
-        ) : (
-          <ArticleBlock key={i} block={item} productsData={productsData} productsLoading={productsLoading} onCartBump={onCartBump} />
-        )
-      )}
+      {(body as Block[]).map((block, i) => (
+        <ArticleBlock key={i} block={block} productsData={productsData} productsLoading={productsLoading} onCartBump={onCartBump} />
+      ))}
     </div>
   );
 }
@@ -164,6 +148,9 @@ function ArticleBlock({ block, productsData, productsLoading, onCartBump }: { bl
         </Link>
       );
     }
+
+    case "promo_card":
+      return <PromoCard card={block} />;
 
     case "outro":
       return <p className="text-base text-text-light leading-relaxed italic">{block.text}</p>;
