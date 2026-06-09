@@ -650,6 +650,63 @@ export type Database = {
           },
         ]
       }
+      articles: {
+        Row: {
+          body: Json
+          created_at: string
+          display_order: number
+          excerpt: string | null
+          hero_image_alt: string | null
+          hero_image_url: string | null
+          id: string
+          is_published: boolean
+          meta_description: string | null
+          meta_title: string | null
+          published_at: string | null
+          read_time_minutes: number | null
+          segment: string
+          slug: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: Json
+          created_at?: string
+          display_order?: number
+          excerpt?: string | null
+          hero_image_alt?: string | null
+          hero_image_url?: string | null
+          id?: string
+          is_published?: boolean
+          meta_description?: string | null
+          meta_title?: string | null
+          published_at?: string | null
+          read_time_minutes?: number | null
+          segment: string
+          slug: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: Json
+          created_at?: string
+          display_order?: number
+          excerpt?: string | null
+          hero_image_alt?: string | null
+          hero_image_url?: string | null
+          id?: string
+          is_published?: boolean
+          meta_description?: string | null
+          meta_title?: string | null
+          published_at?: string | null
+          read_time_minutes?: number | null
+          segment?: string
+          slug?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       blog_posts: {
         Row: {
           author: string | null
@@ -8760,6 +8817,8 @@ export type Database = {
       get_admin_nav: { Args: never; Returns: Json }
       get_admin_orders: {
         Args: {
+          p_date_from?: string
+          p_date_to?: string
           p_limit?: number
           p_offset?: number
           p_payment_status?: string
