@@ -123,6 +123,15 @@ export default function MaternityBundleItemsEditor({ editApi }: { editApi: Bundl
                 >
                   {excluded ? <Undo2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
                 </button>
+
+                {/* Per-item price badge — top-left, purely decorative. Hidden when
+                    price is missing/0. Quantity > 1 shows as "₦11,550 ×2". */}
+                {Number(item.selected_brand?.price) > 0 && (
+                  <div className="absolute top-2 left-2 z-10 bg-white/90 text-coral text-xs font-semibold px-2 py-1 rounded-md shadow-sm pointer-events-none">
+                    ₦{Number(item.selected_brand.price).toLocaleString("en-NG")}
+                    {item.quantity > 1 && ` ×${item.quantity}`}
+                  </div>
+                )}
               </div>
 
               {/* Product name */}
