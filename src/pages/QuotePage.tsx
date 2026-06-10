@@ -10,6 +10,7 @@ import {
   type QuoteShareItem,
 } from "@/hooks/useQuoteShare";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
+import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import Zoom from "react-medium-image-zoom";
 import "react-medium-image-zoom/dist/styles.css";
@@ -351,9 +352,14 @@ export default function QuotePage() {
               <span className="text-text-med">Service fee</span>
               <span>{quote.service_fee === 0 ? "FREE" : fmt(quote.service_fee)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-text-med">Delivery</span>
-              <span>{deliveryFee === 0 ? "FREE" : fmt(deliveryFee)}</span>
+            <div className="flex justify-between gap-3">
+              <span className="text-text-med flex-shrink-0">Delivery</span>
+              {(() => {
+                const d = formatQuoteDeliveryFee(quote, fmt);
+                return (
+                  <span className={d === QUOTE_DELIVERY_TBD ? "text-xs text-text-med text-right" : "text-right"}>{d}</span>
+                );
+              })()}
             </div>
             {/* Gift wrapping — shown only when the admin set it on the
                 quote. No admin indicators (Auto / Manually set) leak

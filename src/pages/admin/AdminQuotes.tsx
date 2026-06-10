@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
@@ -1611,23 +1612,39 @@ function QuoteEditor({
                           </div>
                         )}
                       </div>
-                    ) : (
-                      // STATE 1 — no override; show the calculated value
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold">{fmtN(estimated)}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-forest-light text-forest text-[9px] font-bold uppercase tracking-wide">
-                            {deliveryCalcLoading ? "Calculating…" : "Calculated"}
-                          </span>
+                    ) : (() => {
+                      // STATE 1 — no override; show the calculated value, or
+                      // a "pending" note when the fee can't be resolved yet
+                      // (no address / bypass). Mirrors the customer quote page.
+                      const feeStr = formatQuoteDeliveryFee(
+                        {
+                          delivery_address: form.delivery_address,
+                          delivery_fee_override: null,
+                          estimated_delivery_fee: estimated,
+                          bypass_delivery_threshold: form.bypass_delivery_threshold,
+                        },
+                        fmtN,
+                      );
+                      const isTbd = feeStr === QUOTE_DELIVERY_TBD;
+                      return (
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={isTbd ? "text-sm font-semibold text-text-med" : "text-lg font-bold"}>{feeStr}</span>
+                            {!isTbd && (
+                              <span className="px-1.5 py-0.5 rounded bg-forest-light text-forest text-[9px] font-bold uppercase tracking-wide">
+                                {deliveryCalcLoading ? "Calculating…" : "Calculated"}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-text-light mt-0.5">
+                            {isTbd ? "Add the customer's delivery address to calculate the fee." : `Auto-calculated from address + cart.${deliveryPartner ? ` ${deliveryPartner}` : ""}`}
+                          </p>
+                          {canEdit && (
+                            <button onClick={() => { setOverrideDraft(String(estimated)); setOverrideEditing(true); }} className="text-xs font-semibold text-forest hover:underline mt-1.5">Override</button>
+                          )}
                         </div>
-                        <p className="text-[11px] text-text-light mt-0.5">
-                          Auto-calculated from address + cart.{deliveryPartner ? ` ${deliveryPartner}` : ""}
-                        </p>
-                        {canEdit && (
-                          <button onClick={() => { setOverrideDraft(String(estimated)); setOverrideEditing(true); }} className="text-xs font-semibold text-forest hover:underline mt-1.5">Override</button>
-                        )}
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })()}
