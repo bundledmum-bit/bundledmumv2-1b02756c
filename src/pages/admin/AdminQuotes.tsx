@@ -777,6 +777,13 @@ function QuoteEditor({
   // off the network without surprising the admin.
   useEffect(() => {
     if (!currentId || !canEdit) return;
+    // Gate: never autosave until the quote has actually loaded into the
+    // form. Before load, `form` is the empty default (customer_name: ""),
+    // and buildAutosavePayload would send customer_name/email/phone as
+    // null — wiping the saved values. The load-sync effect seeds
+    // lastSavedSigRef once data arrives, so the first post-load run is a
+    // no-op and only genuine edits (including intentional clears) write.
+    if (!quoteData) return;
     const payload = buildAutosavePayload(form);
     const sig = JSON.stringify(payload);
     if (sig === lastSavedSigRef.current) return;
@@ -795,7 +802,7 @@ function QuoteEditor({
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, currentId, canEdit]);
+  }, [form, currentId, canEdit, quoteData]);
 
   const items: any[] = useMemo(
     () => (quoteData?.quote_items || []).slice().sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0)),
