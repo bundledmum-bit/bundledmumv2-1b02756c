@@ -91,6 +91,10 @@ const fmtK = (n?: number | null) => {
 // so empty-but-loaded states like "no orders today" don't look like errors.
 const fmtOr = (n: number | null | undefined) => (n === null || n === undefined ? "—" : fmt(n));
 const fmtKOr = (n: number | null | undefined) => (n === null || n === undefined ? "—" : fmtK(n));
+// Acquisition KPIs (from finance_kpi_summary — already in NAIRA, no /100).
+const fmtNgnOr = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : fmt(n));
+const fmtPctOr = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(1)}%`);
+const fmtRoasOr = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(2)}x`);
 function delta(today?: number | null, yesterday?: number | null) {
   if (!yesterday) return null;
   const t = today || 0;
@@ -154,6 +158,18 @@ export default function AdminDashboard() {
       return data as DashboardMetrics;
     },
     refetchInterval: 5 * 60 * 1000,
+    staleTime: 60_000,
+  });
+
+  // Acquisition Health KPIs — lifetime, read straight from the
+  // finance_kpi_summary view (single row). No frontend computation.
+  const { data: acq } = useQuery({
+    queryKey: ["finance-kpi-summary"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("finance_kpi_summary").select("*").single();
+      if (error) throw error;
+      return data as any;
+    },
     staleTime: 60_000,
   });
 
@@ -618,6 +634,42 @@ export default function AdminDashboard() {
               <CardContent className="space-y-2">
                 <div className="text-2xl font-bold pf text-muted-foreground">—</div>
                 <div className="text-[11px] text-muted-foreground">Requires integration</div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {/* ============================================================ */}
+        {/* Acquisition Health — lifetime, from finance_kpi_summary       */}
+        {/* ============================================================ */}
+        <section className="space-y-4">
+          <h2 className="pf text-lg font-bold">Acquisition Health</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">CAC</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold pf">{fmtNgnOr(acq?.cac_naira)}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">Repeat Rate</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold pf">{fmtPctOr(acq?.repeat_rate_pct)}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">ROAS</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold pf">{fmtRoasOr(acq?.roas)}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">Cost per Purchase</CardTitle></CardHeader>
+              <CardContent><div className="text-2xl font-bold pf">{fmtNgnOr(acq?.cost_per_purchase)}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">Marketing ROI</CardTitle></CardHeader>
+              <CardContent><div className={`text-2xl font-bold pf ${Number(acq?.marketing_roi_pct) < 0 ? "text-red-600" : ""}`}>{fmtPctOr(acq?.marketing_roi_pct)}</div></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-semibold text-muted-foreground">Acquisition Spend</CardTitle></CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold pf">{fmtNgnOr(acq?.acquisition_spend)}</div>
+                <div className="text-[11px] text-muted-foreground mt-1">Marketing &amp; Advertising + Customer Acquisition + Content</div>
               </CardContent>
             </Card>
           </div>

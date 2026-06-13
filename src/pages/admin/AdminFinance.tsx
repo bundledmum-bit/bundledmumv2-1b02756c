@@ -191,12 +191,45 @@ function plRowKobo(row: PLRow | undefined, key: keyof PLRow): number {
 // ================================================================
 // PAGE 1 — DASHBOARD
 // ================================================================
+// Acquisition KPI formatters. NOTE: the finance_kpi_* views are already in
+// NAIRA, so these do NOT use fmtNaira (which expects kobo and divides by 100).
+const acqNgn = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : "₦" + Number(n).toLocaleString("en-NG"));
+const acqPct = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(1)}%`);
+const acqRoas = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(2)}x`);
+const acqMonth = (y: number, m: number) => new Date(y, (m || 1) - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+const acqPayback = (n: number | null | undefined) => (n === null || n === undefined ? "Not yet recoverable" : `${Number(n).toFixed(1)}x orders to break even`);
+
 function DashboardTab() {
   const p = usePeriod("this_month");
   const { data: plRows } = useFinancePL(p.resolved.year, p.resolved.month);
   const { data: plAll } = useFinancePL(p.resolved.year);
   const { data: expenses } = useFinanceExpenses(p.resolved.year, p.resolved.month);
   const { data: taxPosition } = useFinanceTaxPosition(p.resolved.year);
+
+  // Acquisition Health — lifetime + monthly, straight from the views.
+  // No frontend computation; values are already in NAIRA.
+  const { data: acq } = useQuery({
+    queryKey: ["finance-kpi-summary"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("finance_kpi_summary").select("*").single();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const { data: acqMonthly } = useQuery({
+    queryKey: ["finance-kpi-monthly"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("finance_kpi_monthly")
+        .select("*")
+        .order("year", { ascending: false })
+        .order("month", { ascending: false });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
 
   const cur = plRows?.[0];
   // Previous period for delta
@@ -260,6 +293,60 @@ function DashboardTab() {
       </div>
 
       <CourierCostsSection year={p.resolved.year} />
+
+      {/* ── Acquisition Health (lifetime, from finance_kpi_summary) ── */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold">Acquisition Health</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="CAC" source="auto" value={acqNgn(acq?.cac_naira)} />
+          <KpiCard title="Repeat Rate" source="auto" value={acqPct(acq?.repeat_rate_pct)} />
+          <KpiCard title="ROAS" source="auto" value={acqRoas(acq?.roas)} />
+          <KpiCard title="Cost per Purchase" source="auto" value={acqNgn(acq?.cost_per_purchase)} />
+          <KpiCard title="Marketing ROI" source="auto" value={acqPct(acq?.marketing_roi_pct)} negative={Number(acq?.marketing_roi_pct) < 0} />
+          <KpiCard title="Acquisition Spend" source="auto" value={acqNgn(acq?.acquisition_spend)} subtitle="Marketing + Acquisition + Content" />
+          <KpiCard title="Gross Margin" source="auto" value={acqPct(acq?.gross_margin_pct)} />
+          <KpiCard title="Avg Order Value" source="auto" value={acqNgn(acq?.avg_order_value)} />
+          <KpiCard title="Gross Profit / Customer" source="auto" value={acqNgn(acq?.gross_profit_per_customer)} />
+          <KpiCard title="Payback" source="auto" value={acqPayback(acq?.payback_customer_multiples)} />
+        </div>
+
+        {/* Monthly acquisition KPIs (most recent first) */}
+        <div className="rounded-xl border border-border bg-card overflow-x-auto">
+          <table className="w-full text-xs min-w-[820px]">
+            <thead>
+              <tr className="border-b border-border text-left text-text-light uppercase tracking-wide">
+                <th className="px-3 py-2 font-semibold">Month</th>
+                <th className="px-3 py-2 font-semibold text-right">Revenue</th>
+                <th className="px-3 py-2 font-semibold text-right">Gross Profit</th>
+                <th className="px-3 py-2 font-semibold text-right">Gross Margin %</th>
+                <th className="px-3 py-2 font-semibold text-right">Acq. Spend</th>
+                <th className="px-3 py-2 font-semibold text-right">CAC</th>
+                <th className="px-3 py-2 font-semibold text-right">ROAS</th>
+                <th className="px-3 py-2 font-semibold text-right">Marketing ROI %</th>
+                <th className="px-3 py-2 font-semibold text-right">Break-even Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(acqMonthly || []).map((r) => (
+                <tr key={`${r.year}-${r.month}`} className="border-b border-border last:border-0">
+                  <td className="px-3 py-2 font-semibold whitespace-nowrap">{acqMonth(r.year, r.month)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqNgn(r.revenue)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqNgn(r.gross_profit)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqPct(r.gross_margin_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqNgn(r.acquisition_spend)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqNgn(r.cac_naira)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{acqRoas(r.roas)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${Number(r.marketing_roi_pct) < 0 ? "text-red-600" : ""}`}>{acqPct(r.marketing_roi_pct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.breakeven_revenue_needed == null ? "n/a" : acqNgn(r.breakeven_revenue_needed)}</td>
+                </tr>
+              ))}
+              {(acqMonthly || []).length === 0 && (
+                <tr><td colSpan={9} className="px-3 py-6 text-center text-text-light">No monthly data yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
 
       {/* Charts */}
