@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { X, Plus, Trash2 } from "lucide-react";
+import { X, Plus, Trash2, Copy } from "lucide-react";
 import ProductImageManager from "@/components/admin/ProductImageManager";
 import SEOEditor from "@/components/admin/SEOEditor";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
@@ -382,8 +382,27 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                 <div key={i} className="border border-border rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-text-med">Brand {i + 1}</span>
-                    <button type="button" onClick={() => setBrands(bs => bs.filter((_, idx) => idx !== i))}
-                      className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3" /></button>
+                    <div className="flex items-center gap-1">
+                      <button type="button" title="Duplicate brand (copies all fields except SKU)"
+                        onClick={() => {
+                          setBrands(bs => {
+                            const src: any = bs[i];
+                            if (!src) return bs;
+                            // Drop id so save INSERTs a new row; reset SKU (admin
+                            // sets it), the per-tier default, reservations, and the
+                            // ingested image so the trigger repopulates it.
+                            const { id, ...rest } = src;
+                            const copy = { ...rest, sku: "", is_default_for_tier: false, reserved_quantity: 0, stored_image_url: null };
+                            const next = [...bs];
+                            next.splice(i + 1, 0, copy);
+                            return next;
+                          });
+                          toast.success(`Duplicated "${b.brand_name || "brand"}". Set a new SKU before saving.`);
+                        }}
+                        className="p-1 text-text-med hover:bg-muted rounded"><Copy className="w-3 h-3" /></button>
+                      <button type="button" onClick={() => setBrands(bs => bs.filter((_, idx) => idx !== i))}
+                        className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3" /></button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Brand Name</label>
