@@ -203,8 +203,9 @@ const acqCount = (n: number | null | undefined) => (n === null || n === undefine
 
 // Date-range selector for the period P&L / KPI cards (finance_period_metrics RPC).
 type PmRangeKey = "this_month" | "last_month" | "this_quarter" | "ytd";
-const PM_RANGES: [PmRangeKey, string][] = [
-  ["this_month", "This Month"], ["last_month", "Last Month"], ["this_quarter", "This Quarter"], ["ytd", "YTD"],
+type PmSelectorKey = PmRangeKey | "custom";
+const PM_RANGES: [PmSelectorKey, string][] = [
+  ["this_month", "This Month"], ["last_month", "Last Month"], ["this_quarter", "This Quarter"], ["ytd", "YTD"], ["custom", "Custom"],
 ];
 const pmIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function pmRangeFor(key: PmRangeKey, now: Date): { start: string; end: string; partial: boolean } {
@@ -276,17 +277,49 @@ function DashboardTab() {
 
   // Range-driven P&L + KPI cards from finance_period_metrics (already in NAIRA).
   // This is the single page selector; it does NOT affect Runway / Quote Pipeline.
-  const [pmKey, setPmKey] = useState<PmRangeKey>("this_quarter");
-  const pmRange = useMemo(() => pmRangeFor(pmKey, new Date()), [pmKey]);
+  const [pmKey, setPmKey] = useState<PmSelectorKey>("this_quarter");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [customApplied, setCustomApplied] = useState<{ start: string; end: string } | null>(null);
+  const [customError, setCustomError] = useState("");
+  // Effective range driving the cards. Presets resolve immediately; "custom"
+  // only resolves once Apply has set customApplied (else null -> query disabled).
+  const pmRange = useMemo(() => {
+    if (pmKey === "custom") {
+      if (!customApplied) return null;
+      return { start: customApplied.start, end: customApplied.end, partial: customApplied.end >= pmIso(new Date()) };
+    }
+    return pmRangeFor(pmKey, new Date());
+  }, [pmKey, customApplied]);
   const { data: pmRows } = useQuery({
-    queryKey: ["finance-period-metrics", pmRange.start, pmRange.end],
+    queryKey: ["finance-period-metrics", pmRange?.start, pmRange?.end],
+    enabled: !!pmRange,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: pmRange.start, p_end: pmRange.end });
+      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: pmRange!.start, p_end: pmRange!.end });
       if (error) throw error;
       return (data || []) as any[];
     },
     staleTime: 60_000,
   });
+
+  // Switch to a preset, or reveal custom inputs seeded from the current range
+  // (and keep the cards on that range until the user edits + Applies).
+  const selectRange = (k: PmSelectorKey) => {
+    setCustomError("");
+    if (k === "custom") {
+      const seed = pmRange ?? pmRangeFor("this_quarter", new Date());
+      setCustomStart(seed.start);
+      setCustomEnd(seed.end);
+      setCustomApplied({ start: seed.start, end: seed.end });
+    }
+    setPmKey(k);
+  };
+  const applyCustom = () => {
+    if (!customStart || !customEnd) { setCustomError("Pick both a start and end date."); return; }
+    if (customStart > customEnd) { setCustomError("Start date must be on or before end date."); return; }
+    setCustomError("");
+    setCustomApplied({ start: customStart, end: customEnd });
+  };
   const pm = pmRows?.[0];
   // OpEx = operating expenses + payroll (EBITDA intentionally omitted: with no
   // depreciation/amortisation logged it would equal Net Profit and mislead).
@@ -358,7 +391,7 @@ function DashboardTab() {
             <button
               key={k}
               type="button"
-              onClick={() => setPmKey(k)}
+              onClick={() => selectRange(k)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${pmKey === k ? "bg-forest text-primary-foreground border-forest" : "border-border text-text-med hover:bg-muted"}`}
             >
               {label}
@@ -367,6 +400,22 @@ function DashboardTab() {
         </div>
         <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
       </div>
+
+      {/* Custom range inputs — only when Custom is active */}
+      {pmKey === "custom" && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">Start</span>
+            <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">End</span>
+            <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+          </label>
+          <button type="button" onClick={applyCustom} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-forest text-primary-foreground hover:bg-forest-deep">Apply</button>
+          {customError && <span className="text-[11px] text-red-600 self-center">{customError}</span>}
+        </div>
+      )}
 
       <SourceLegend />
 
@@ -397,7 +446,7 @@ function DashboardTab() {
         <KpiCard title="Unique Customers" source="auto" value={acqCount(pm?.unique_customers)} />
       </div>
 
-      {pmRange.partial && (
+      {pmRange?.partial && (
         <p className="text-[11px] text-text-light">
           Partial period in progress. Margins and ratios may look extreme until the period completes.
         </p>
