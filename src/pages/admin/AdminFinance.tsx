@@ -199,6 +199,23 @@ const acqRoas = (n: number | null | undefined) => (n === null || n === undefined
 const acqMonth = (y: number, m: number) => new Date(y, (m || 1) - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
 const acqPayback = (n: number | null | undefined) => (n === null || n === undefined ? "Not yet recoverable" : `${Number(n).toFixed(1)}x orders to break even`);
 const acqMonths = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(1)} months`);
+const acqCount = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : String(n));
+
+// Date-range selector for the period P&L / KPI cards (finance_period_metrics RPC).
+type PmRangeKey = "this_month" | "last_month" | "this_quarter" | "ytd";
+const PM_RANGES: [PmRangeKey, string][] = [
+  ["this_month", "This Month"], ["last_month", "Last Month"], ["this_quarter", "This Quarter"], ["ytd", "YTD"],
+];
+const pmIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function pmRangeFor(key: PmRangeKey, now: Date): { start: string; end: string; partial: boolean } {
+  const y = now.getFullYear(), m = now.getMonth(); // m is 0-based
+  switch (key) {
+    case "this_month":   return { start: pmIso(new Date(y, m, 1)),     end: pmIso(new Date(y, m + 1, 0)), partial: true };
+    case "last_month":   return { start: pmIso(new Date(y, m - 1, 1)), end: pmIso(new Date(y, m, 0)),     partial: false };
+    case "this_quarter": { const q = Math.floor(m / 3) * 3; return { start: pmIso(new Date(y, q, 1)), end: pmIso(new Date(y, q + 3, 0)), partial: true }; }
+    case "ytd":          return { start: pmIso(new Date(y, 0, 1)),     end: pmIso(now),                   partial: false };
+  }
+}
 
 function DashboardTab() {
   const p = usePeriod("this_month");
@@ -256,6 +273,24 @@ function DashboardTab() {
     },
     staleTime: 60_000,
   });
+
+  // Range-driven P&L + KPI cards from finance_period_metrics (already in NAIRA).
+  // This is the single page selector; it does NOT affect Runway / Quote Pipeline.
+  const [pmKey, setPmKey] = useState<PmRangeKey>("this_quarter");
+  const pmRange = useMemo(() => pmRangeFor(pmKey, new Date()), [pmKey]);
+  const { data: pmRows } = useQuery({
+    queryKey: ["finance-period-metrics", pmRange.start, pmRange.end],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: pmRange.start, p_end: pmRange.end });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const pm = pmRows?.[0];
+  // OpEx = operating expenses + payroll (EBITDA intentionally omitted: with no
+  // depreciation/amortisation logged it would equal Net Profit and mislead).
+  const pmOpex = pm ? (Number(pm.total_expenses) || 0) + (Number(pm.total_payroll) || 0) : null;
   const [editingCapital, setEditingCapital] = useState(false);
   const [capitalDraft, setCapitalDraft] = useState("");
   const [savingCapital, setSavingCapital] = useState(false);
@@ -317,26 +352,56 @@ function DashboardTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <PeriodSelector p={p} />
+        {/* Range selector — drives the P&L + period KPI cards below only. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {PM_RANGES.map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setPmKey(k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${pmKey === k ? "bg-forest text-primary-foreground border-forest" : "border-border text-text-med hover:bg-muted"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
       </div>
 
       <SourceLegend />
 
-      {/* KPI Row 1 */}
+      {/* P&L — driven by the selected range (finance_period_metrics) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard title="Gross Revenue" source="auto" value={fmtNaira(revCur)} delta={pctChange(revCur, revPrev)} />
-        <KpiCard title="Gross Profit" source="mixed" value={fmtNaira(gpCur)} badge={fmtPct(Number(cur?.gross_margin_pct))} />
-        <KpiCard title="EBITDA" source="mixed" value={fmtNaira(ebitdaCur)} badge={fmtPct(Number(cur?.ebitda_margin_pct))} />
-        <KpiCard title="Net Profit" source="mixed" value={fmtNaira(netCur, { brackets: true })} badge={fmtPct(Number(cur?.net_margin_pct))} negative={netCur < 0} />
+        <KpiCard title="Gross Revenue" source="auto" value={acqNgn(pm?.gross_revenue)} />
+        <KpiCard title="Gross Profit" source="auto" value={acqNgn(pm?.gross_profit)} badge={acqPct(pm?.gross_margin_pct)} />
+        <KpiCard title="Gross Margin %" source="auto" value={acqPct(pm?.gross_margin_pct)} />
+        <KpiCard title="Net Profit" source="auto" value={acqNgn(pm?.net_profit)} negative={Number(pm?.net_profit) < 0} badge={acqPct(pm?.net_margin_pct)} />
+        <KpiCard title="Net Margin %" source="auto" value={acqPct(pm?.net_margin_pct)} negative={Number(pm?.net_margin_pct) < 0} />
+        <KpiCard title="Total COGS" source="auto" value={acqNgn(pm?.total_cogs)} />
+        <KpiCard title="Total Expenses" source="auto" value={acqNgn(pm?.total_expenses)} />
+        <KpiCard title="Total Payroll" source="auto" value={acqNgn(pm?.total_payroll)} />
+        <KpiCard title="Operating Expenses (OpEx)" source="auto" value={acqNgn(pmOpex)} subtitle="Expenses + payroll" />
+        <KpiCard title="Paid Orders" source="auto" value={acqCount(pm?.paid_orders)} />
+        <KpiCard title="Avg Order Value" source="auto" value={acqNgn(pm?.avg_order_value)} />
       </div>
 
-      {/* KPI Row 2 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <KpiCard title="Total Orders" source="auto" value={String(cur?.order_count ?? 0)} subtitle={`AOV: ${fmtNaira(ngnToKoboNum(Number(cur?.avg_order_value_ngn) || 0))}`} />
-        <KpiCard title="Total COGS" source="mixed" value={fmtNaira(cogsCur)} subtitle={revCur > 0 ? `${((cogsCur / revCur) * 100).toFixed(1)}% of revenue` : "—"} />
-        <KpiCard title="Total OpEx" source="manual" value={fmtNaira(opexCur + payrollCur)} subtitle={`Payroll: ${fmtNaira(payrollCur)}`} />
+      {/* Period KPIs — driven by the selected range */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard title="Acquisition Spend" source="auto" value={acqNgn(pm?.acquisition_spend)} />
+        <KpiCard title="New Customers" source="auto" value={acqCount(pm?.new_customers)} />
+        <KpiCard title="CAC" source="auto" value={acqNgn(pm?.cac_naira)} />
+        <KpiCard title="Cost per Purchase" source="auto" value={acqNgn(pm?.cost_per_purchase)} />
+        <KpiCard title="ROAS" source="auto" value={acqRoas(pm?.roas)} />
+        <KpiCard title="Marketing ROI %" source="auto" value={acqPct(pm?.marketing_roi_pct)} negative={Number(pm?.marketing_roi_pct) < 0} />
+        <KpiCard title="Repeat Rate %" source="auto" value={acqPct(pm?.repeat_rate_pct)} />
+        <KpiCard title="Unique Customers" source="auto" value={acqCount(pm?.unique_customers)} />
       </div>
+
+      {pmRange.partial && (
+        <p className="text-[11px] text-text-light">
+          Partial period in progress. Margins and ratios may look extreme until the period completes.
+        </p>
+      )}
 
       <CourierCostsSection year={p.resolved.year} />
 
@@ -416,7 +481,7 @@ function DashboardTab() {
 
       {/* ── Acquisition Health (lifetime, from finance_kpi_summary) ── */}
       <div className="space-y-3">
-        <h2 className="text-sm font-bold">Acquisition Health</h2>
+        <h2 className="text-sm font-bold">Acquisition Health <span className="text-text-light font-normal">· All-time (lifetime)</span></h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard title="CAC" source="auto" value={acqNgn(acq?.cac_naira)} />
           <KpiCard title="Repeat Rate" source="auto" value={acqPct(acq?.repeat_rate_pct)} />
