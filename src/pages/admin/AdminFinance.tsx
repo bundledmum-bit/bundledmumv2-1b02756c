@@ -245,6 +245,17 @@ function DashboardTab() {
     },
     staleTime: 60_000,
   });
+
+  // Quote pipeline — single-row view, already in NAIRA.
+  const { data: pipeline } = useQuery({
+    queryKey: ["finance-quote-pipeline"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("finance_quote_pipeline").select("*").single();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
   const [editingCapital, setEditingCapital] = useState(false);
   const [capitalDraft, setCapitalDraft] = useState("");
   const [savingCapital, setSavingCapital] = useState(false);
@@ -371,6 +382,35 @@ function DashboardTab() {
         </div>
         <p className="text-[11px] text-text-light">
           Launched {runway?.launch_date ?? "n/a"}. {runway?.days_since_launch ?? "n/a"} days trading. Net spent to date: {acqNgn(runway?.net_spend_to_date)}.
+        </p>
+      </div>
+
+      {/* ── Quote Pipeline (from finance_quote_pipeline) ── */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold">Quote Pipeline</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="Open Pipeline (Live)" source="auto" value={acqNgn(pipeline?.total_open_pipeline_raw)} subtitle={`${pipeline?.total_open_pipeline_count ?? 0} live quotes`} />
+          <KpiCard title="Weighted Pipeline" source="auto" value={acqNgn(pipeline?.weighted_pipeline_value)} subtitle="Stage-weighted expected value" />
+          <KpiCard title="At Historical Rate" source="auto" value={acqNgn(pipeline?.weighted_pipeline_at_historical_rate)} subtitle={`At ${acqPct(pipeline?.conversion_rate_pct)} conversion`} />
+          <KpiCard title="Conversion Rate" source="auto" value={acqPct(pipeline?.conversion_rate_pct)} negative={Number(pipeline?.conversion_rate_pct) < 10} subtitle={`${pipeline?.converted_ever ?? 0} of ${pipeline?.total_quotes_ever ?? 0} quotes converted`} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <KpiCard title="Draft (Live)" source="auto" value={acqNgn(pipeline?.draft_live_value)} subtitle={`${pipeline?.draft_live_count ?? 0} quotes`} />
+          <KpiCard title="Viewed (Live)" source="auto" value={acqNgn(pipeline?.viewed_live_value)} subtitle={`${pipeline?.viewed_live_count ?? 0} quotes`} />
+          <KpiCard title="Accepted" source="auto" value={acqNgn(pipeline?.accepted_live_value)} subtitle={`${pipeline?.accepted_live_count ?? 0} quotes`} />
+          <KpiCard title="Converted" source="auto" value={acqNgn(pipeline?.converted_value)} subtitle={`${pipeline?.converted_count ?? 0} quotes`} />
+          {/* Dead = expired + declined. Rendered muted — lost value, shown for transparency. */}
+          <div className={cardCls}>
+            <div className="flex items-center gap-1.5">
+              <SourceDot source="auto" />
+              <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light">Dead (expired + declined)</div>
+            </div>
+            <div className="text-xl font-bold mt-1 text-text-light">{acqNgn(pipeline?.dead_pipeline_value)}</div>
+            <div className="text-[11px] text-text-light mt-1">{pipeline?.dead_pipeline_count ?? 0} quotes</div>
+          </div>
+        </div>
+        <p className="text-[11px] text-text-light">
+          Live viewed quotes are your highest-value follow-up opportunity. Weighted values discount open pipeline by stage probability and by proven conversion rate.
         </p>
       </div>
 
