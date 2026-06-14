@@ -6,6 +6,7 @@ import {
   useQuoteByShareToken,
   useQuoteItemsByShareToken,
   recordQuoteView,
+  recordQuoteDownload,
   PENDING_QUOTE_TOKEN_KEY,
   type QuoteShareItem,
 } from "@/hooks/useQuoteShare";
@@ -399,7 +400,7 @@ export default function QuotePage() {
             {isExpired ? "Quote expired" : isLocked ? "Quote already used" : "Add to Cart & Checkout"}
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={() => { if (shareToken) void recordQuoteDownload(shareToken); window.print(); }}
             className="inline-flex items-center justify-center gap-2 border border-border px-6 py-3 rounded-pill text-sm font-semibold hover:bg-muted"
           >
             <Printer className="w-4 h-4" /> Print / Save as PDF

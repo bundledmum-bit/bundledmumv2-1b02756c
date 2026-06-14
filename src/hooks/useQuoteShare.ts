@@ -81,6 +81,18 @@ export async function recordQuoteView(shareToken: string) {
   }
 }
 
+/** Fire-and-forget download tracker; never throws. Increments download_count
+ * via a SECURITY-DEFINER RPC (mirrors record_quote_view — anon can't update
+ * quotes directly). The DB trigger sets last_downloaded_at and flips
+ * draft -> viewed. */
+export async function recordQuoteDownload(shareToken: string) {
+  try {
+    await (supabase as any).rpc("record_quote_download", { p_share_token: shareToken });
+  } catch (e) {
+    console.warn("record_quote_download failed (non-fatal):", e);
+  }
+}
+
 /** Called after place-order succeeds when CheckoutPage was opened from a quote. */
 export async function linkOrderToQuote(shareToken: string, orderId: string) {
   const { data, error } = await (supabase as any).rpc("link_order_to_quote", {
