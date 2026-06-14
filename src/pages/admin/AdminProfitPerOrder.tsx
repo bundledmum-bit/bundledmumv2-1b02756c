@@ -185,7 +185,7 @@ export default function AdminProfitPerOrder() {
     queryFn: async () => {
       let q = (supabase as any)
         .from("order_profit_summary")
-        .select("total, profit_as_ordered, refunded_revenue, refund_adjusted_profit, net_profit");
+        .select("total, total_cogs, extra_costs_total, profit_as_ordered, refunded_revenue, refund_adjusted_profit, net_profit");
       if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
       if (range.since) q = q.gte("created_at", range.since);
       if (range.until) q = q.lte("created_at", range.until);
@@ -204,13 +204,13 @@ export default function AdminProfitPerOrder() {
       const net = sum("net_profit");
       return {
         revenue,
-        // total_cogs + extra_costs_total were dropped from the view (both
-        // are now baked into orders.gross_profit). Not separately exposed.
-        cogs: null as number | null,
+        // total_cogs (sum of order_items.line_cost) + extra_costs_total
+        // (sum of order_extra_costs) are exposed by the view again.
+        cogs: sum("total_cogs"),
         profitAsOrdered: sum("profit_as_ordered"),
         refunded: sum("refunded_revenue"),
         refundAdjusted,
-        extras: null as number | null,
+        extras: sum("extra_costs_total"),
         net,
         netPct: revenue > 0 ? (net / revenue) * 100 : 0,
         count: rows.length,
@@ -366,9 +366,9 @@ export default function AdminProfitPerOrder() {
       {/* Aggregate cards — refund-aware + extra costs */}
       <section className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         <AggCard label="Revenue" value={fmt(aggregates?.revenue)} sub={`${aggregates?.count ?? 0} orders`} />
-        <AggCard label="COGS" value="—" sub="Included in profit" />
+        <AggCard label="COGS" value={fmt(aggregates?.cogs)} sub={`${aggregates?.count ?? 0} orders`} />
         <AggCard label="Refunded revenue" value={fmt(aggregates?.refunded)} />
-        <AggCard label="Total extras" value="—" sub="Included in profit" />
+        <AggCard label="Total extras" value={fmt(aggregates?.extras)} sub={`${aggregates?.count ?? 0} orders`} />
         <AggCard label="Profit before refunds" value={fmtSigned(aggregates?.profitAsOrdered)} />
         <AggCard
           label="Net profit"
@@ -549,7 +549,9 @@ function RowGroup({
             <div className="font-semibold">{fmt(row.total)}</div>
           )}
         </td>
-        <td className="px-2 py-2 align-top text-right tabular-nums text-text-light" title="Included in profit calculation">—</td>
+        <td className="px-2 py-2 align-top text-right tabular-nums">
+          {(row.total_cogs || 0) > 0 ? fmt(row.total_cogs) : <span className="text-text-light" title="Not recorded">—</span>}
+        </td>
         <td className={`px-2 py-2 align-top text-right tabular-nums ${profitTone} ${isCancelled ? "line-through" : ""}`}>
           <div className="font-bold">{fmtSigned(row.net_profit)}</div>
           {hasExtras && (
