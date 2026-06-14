@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   BarChart3, FileText, Wallet, ShoppingCart, Users, Scale, Briefcase, Settings as SettingsIcon,
   Plus, Trash2, Save, Printer, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, Calendar,
-  Download, ChevronDown, ChevronRight, Info, FileCheck, Bell,
+  Download, ChevronDown, ChevronRight, Info, FileCheck, Bell, Pencil,
 } from "lucide-react";
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import {
@@ -198,6 +198,7 @@ const acqPct = (n: number | null | undefined) => (n === null || n === undefined 
 const acqRoas = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(2)}x`);
 const acqMonth = (y: number, m: number) => new Date(y, (m || 1) - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
 const acqPayback = (n: number | null | undefined) => (n === null || n === undefined ? "Not yet recoverable" : `${Number(n).toFixed(1)}x orders to break even`);
+const acqMonths = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(1)} months`);
 
 function DashboardTab() {
   const p = usePeriod("this_month");
@@ -230,6 +231,40 @@ function DashboardTab() {
     },
     staleTime: 60_000,
   });
+
+  // Runway — founder-capital view (already in NAIRA). committed_capital is
+  // editable; writes go to finance_settings, then we refetch this view so all
+  // dependent figures (capital_remaining, both runway months) recompute.
+  const queryClient = useQueryClient();
+  const { data: runway } = useQuery({
+    queryKey: ["finance-runway"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("finance_runway").select("*").single();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const [editingCapital, setEditingCapital] = useState(false);
+  const [capitalDraft, setCapitalDraft] = useState("");
+  const [savingCapital, setSavingCapital] = useState(false);
+  const startEditCapital = () => { setCapitalDraft(String(runway?.committed_capital ?? "")); setEditingCapital(true); };
+  const saveCapital = async () => {
+    const n = Number(capitalDraft);
+    if (capitalDraft.trim() === "" || Number.isNaN(n) || n < 0) { toast.error("Enter a valid amount (₦0 or more)."); return; }
+    setSavingCapital(true);
+    try {
+      const { error } = await (supabase as any).from("finance_settings").update({ committed_capital: Math.round(n) }).eq("id", 1);
+      if (error) throw error;
+      toast.success("Committed capital updated");
+      setEditingCapital(false);
+      await queryClient.invalidateQueries({ queryKey: ["finance-runway"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Could not save committed capital");
+    } finally {
+      setSavingCapital(false);
+    }
+  };
 
   const cur = plRows?.[0];
   // Previous period for delta
@@ -293,6 +328,51 @@ function DashboardTab() {
       </div>
 
       <CourierCostsSection year={p.resolved.year} />
+
+      {/* ── Runway (founder capital, from finance_runway) ── */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold">Runway</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Committed Capital — editable, writes to finance_settings */}
+          <div className={cardCls}>
+            <div className="flex items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <SourceDot source="manual" />
+                <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light truncate">Committed Capital</div>
+              </div>
+              {!editingCapital && (
+                <button type="button" onClick={startEditCapital} title="Edit committed capital" className="h-7 w-7 -my-1 -mr-1 inline-flex items-center justify-center rounded hover:bg-muted text-text-light hover:text-forest shrink-0">
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            {editingCapital ? (
+              <div className="mt-1.5 space-y-2">
+                <input
+                  type="number" min={0} step={1} autoFocus value={capitalDraft}
+                  onChange={(e) => setCapitalDraft(e.target.value)}
+                  className="w-full border border-border rounded-lg px-2 py-1 text-sm bg-card focus:outline-none focus:ring-2 focus:ring-forest/30"
+                />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={saveCapital} disabled={savingCapital} className="px-3 py-1 rounded-lg bg-forest text-primary-foreground text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">{savingCapital ? "Saving…" : "Save"}</button>
+                  <button type="button" onClick={() => setEditingCapital(false)} className="px-3 py-1 rounded-lg border border-border text-xs font-semibold hover:bg-muted">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xl font-bold mt-1 text-forest">{acqNgn(runway?.committed_capital)}</div>
+            )}
+          </div>
+
+          <KpiCard title="Capital Remaining" source="auto" value={acqNgn(runway?.capital_remaining)} negative={Number(runway?.capital_remaining) < 1_000_000} />
+          <KpiCard title="Recurring Monthly Burn" source="auto" value={acqNgn(runway?.recurring_structural_monthly)} subtitle={`Payroll ${acqNgn(runway?.recurring_payroll_monthly)} + Subs ${acqNgn(runway?.recurring_subscriptions_monthly)}`} />
+          <KpiCard title="Runway (no marketing)" source="auto" value={acqMonths(runway?.runway_months_structural_only)} subtitle="If you pause all marketing spend" />
+          <KpiCard title="Runway (current pace)" source="auto" value={acqMonths(runway?.runway_months_at_current_marketing_pace)} negative={Number(runway?.runway_months_at_current_marketing_pace) < 2} subtitle="At your current marketing spend rate" />
+          <KpiCard title="Gross Profit Earned" source="auto" value={acqNgn(runway?.gross_profit_earned)} />
+        </div>
+        <p className="text-[11px] text-text-light">
+          Launched {runway?.launch_date ?? "n/a"}. {runway?.days_since_launch ?? "n/a"} days trading. Net spent to date: {acqNgn(runway?.net_spend_to_date)}.
+        </p>
+      </div>
 
       {/* ── Acquisition Health (lifetime, from finance_kpi_summary) ── */}
       <div className="space-y-3">
