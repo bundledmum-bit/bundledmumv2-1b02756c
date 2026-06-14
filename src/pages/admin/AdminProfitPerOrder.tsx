@@ -4,8 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Search, ChevronDown, ChevronRight, Download, AlertCircle, Plus, Trash2, Loader2,
+  Search, ChevronDown, ChevronRight, Download, AlertCircle, Plus, Trash2, Loader2, HelpCircle, Info,
 } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 // Free-text category options for manual extra costs (no DB constraint —
 // just the dropdown choices). Value stored as-is; label shown in UI.
@@ -296,7 +297,7 @@ export default function AdminProfitPerOrder() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold">Profit per Order</h1>
           <p className="text-xs sm:text-sm text-text-med mt-1">
-            Per-order product margin, refund-aware — profit after removing refunded items' margin.
+            Per-order profit after all costs: product COGS, delivery, payment fees, packaging, and any extra order costs (overages, materials). Refund-adjusted.
           </p>
         </div>
         <button
@@ -380,6 +381,13 @@ export default function AdminProfitPerOrder() {
         />
       </section>
 
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2 mb-4">
+        <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+        <span>
+          Profit figures include all extra order costs (delivery overages, packaging materials, etc.). Figures in individual order detail views show gross margin before these extras.
+        </span>
+      </div>
+
       {/* Table */}
       <section className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -392,7 +400,19 @@ export default function AdminProfitPerOrder() {
                 <th className="text-left px-2 py-2">Status</th>
                 <th className="text-right px-2 py-2">Revenue</th>
                 <th className="text-right px-2 py-2">COGS</th>
-                <th className="text-right px-2 py-2">Profit</th>
+                <th className="text-right px-2 py-2">
+                  <div className="flex items-center justify-end gap-1">
+                    Profit
+                    <Tooltip>
+                      <TooltipTrigger className="inline-flex items-center justify-center h-5 w-5 -my-1">
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs normal-case font-normal tracking-normal">
+                        Profit after deducting product cost, delivery, payment fees, packaging, and extra order costs (e.g. delivery overages, materials). More complete than the gross margin shown in order detail views.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
