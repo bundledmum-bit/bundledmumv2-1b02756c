@@ -185,7 +185,7 @@ export default function AdminProfitPerOrder() {
     queryFn: async () => {
       let q = (supabase as any)
         .from("order_profit_summary")
-        .select("total, total_cogs, profit_as_ordered, refunded_revenue, refund_adjusted_profit, extra_costs_total, net_profit");
+        .select("total, profit_as_ordered, refunded_revenue, refund_adjusted_profit, net_profit");
       if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
       if (range.since) q = q.gte("created_at", range.since);
       if (range.until) q = q.lte("created_at", range.until);
@@ -201,15 +201,16 @@ export default function AdminProfitPerOrder() {
         rows.reduce((acc, r) => acc + (Number((r as any)[k]) || 0), 0);
       const revenue = sum("total");
       const refundAdjusted = sum("refund_adjusted_profit");
-      const extras = sum("extra_costs_total");
       const net = sum("net_profit");
       return {
         revenue,
-        cogs: sum("total_cogs"),
+        // total_cogs + extra_costs_total were dropped from the view (both
+        // are now baked into orders.gross_profit). Not separately exposed.
+        cogs: null as number | null,
         profitAsOrdered: sum("profit_as_ordered"),
         refunded: sum("refunded_revenue"),
         refundAdjusted,
-        extras,
+        extras: null as number | null,
         net,
         netPct: revenue > 0 ? (net / revenue) * 100 : 0,
         count: rows.length,
@@ -243,7 +244,7 @@ export default function AdminProfitPerOrder() {
   const handleExport = async () => {
     let q = (supabase as any)
       .from("order_profit_summary")
-      .select("order_number, created_at, customer_name, payment_status, total, total_cogs, gross_profit_pre_cogs, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund, extra_costs_total, net_profit");
+      .select("order_number, created_at, customer_name, payment_status, total, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund, net_profit");
     if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
     if (range.since) q = q.gte("created_at", range.since);
     if (range.until) q = q.lte("created_at", range.until);
@@ -256,10 +257,10 @@ export default function AdminProfitPerOrder() {
     if (error) { alert(error.message); return; }
     const rows = (data || []) as OrderRow[];
     const headers = [
-      "Order #", "Date", "Customer", "Payment", "Revenue", "COGS",
-      "Gross Profit (pre-COGS)", "Profit (as ordered)", "Refunded Units",
+      "Order #", "Date", "Customer", "Payment", "Revenue",
+      "Profit (as ordered)", "Refunded Units",
       "Refunded Lines", "Refunded Revenue", "Refunded Profit Removed",
-      "Refund-Adjusted Profit", "Has Refund", "Extra Costs Total", "Net Profit",
+      "Refund-Adjusted Profit", "Has Refund", "Net Profit",
     ];
     const escape = (v: any) => {
       if (v == null) return "";
@@ -270,10 +271,10 @@ export default function AdminProfitPerOrder() {
       headers.join(","),
       ...rows.map(r => [
         r.order_number, r.created_at, r.customer_name, r.payment_status,
-        r.total, r.total_cogs, r.gross_profit_pre_cogs, r.profit_as_ordered,
+        r.total, r.profit_as_ordered,
         r.refunded_units, r.refunded_lines, r.refunded_revenue,
         r.refunded_profit_removed, r.refund_adjusted_profit, r.has_refund,
-        r.extra_costs_total, r.net_profit,
+        r.net_profit,
       ].map(escape).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -365,15 +366,15 @@ export default function AdminProfitPerOrder() {
       {/* Aggregate cards — refund-aware + extra costs */}
       <section className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
         <AggCard label="Revenue" value={fmt(aggregates?.revenue)} sub={`${aggregates?.count ?? 0} orders`} />
-        <AggCard label="COGS" value={fmt(aggregates?.cogs)} />
+        <AggCard label="COGS" value="—" sub="Included in profit" />
         <AggCard label="Refunded revenue" value={fmt(aggregates?.refunded)} />
-        <AggCard label="Total extras" value={fmt(aggregates?.extras)} />
+        <AggCard label="Total extras" value="—" sub="Included in profit" />
         <AggCard label="Profit before refunds" value={fmtSigned(aggregates?.profitAsOrdered)} />
         <AggCard
           label="Net profit"
           value={fmtSigned(aggregates?.net)}
           sub={fmtPct(aggregates?.netPct)}
-          note={`Refund-adj: ${fmtSigned(aggregates?.refundAdjusted)} · Extras: −${fmt(aggregates?.extras)}`}
+          note={`Refund-adj: ${fmtSigned(aggregates?.refundAdjusted)}`}
           tone={(aggregates?.net ?? 0) >= 0 ? "positive" : "negative"}
         />
       </section>
@@ -548,7 +549,7 @@ function RowGroup({
             <div className="font-semibold">{fmt(row.total)}</div>
           )}
         </td>
-        <td className="px-2 py-2 align-top text-right tabular-nums">{fmt(row.total_cogs)}</td>
+        <td className="px-2 py-2 align-top text-right tabular-nums text-text-light" title="Included in profit calculation">—</td>
         <td className={`px-2 py-2 align-top text-right tabular-nums ${profitTone} ${isCancelled ? "line-through" : ""}`}>
           <div className="font-bold">{fmtSigned(row.net_profit)}</div>
           {hasExtras && (
