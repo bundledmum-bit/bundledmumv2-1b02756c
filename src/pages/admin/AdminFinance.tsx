@@ -508,8 +508,9 @@ function DashboardTab() {
           <KpiCard title="Viewed (Live)" source="auto" value={acqNgn(pipeline?.viewed_live_value)} subtitle={`${pipeline?.viewed_live_count ?? 0} quotes`} />
           <KpiCard title="Weighted Pipeline" source="auto" value={acqNgn(pipeline?.weighted_pipeline_value)} subtitle="Stage-weighted expected value" />
           <KpiCard title="At Historical Rate" source="auto" value={acqNgn(pipeline?.weighted_pipeline_at_historical_rate)} subtitle={`At ${acqPct(pipeline?.conversion_rate_pct)} conversion`} />
-          <KpiCard title="Converted" source="auto" value={acqNgn(pipeline?.converted_value)} subtitle={`${pipeline?.converted_count ?? 0} quotes`} />
-          <KpiCard title="Conversion Rate" source="auto" value={acqPct(pipeline?.conversion_rate_pct)} negative={Number(pipeline?.conversion_rate_pct) < 10} subtitle={`${pipeline?.converted_ever ?? 0} of ${pipeline?.total_quotes_ever ?? 0} quotes converted`} />
+          <KpiCard title="Converted" source="auto" value={acqNgn(pipeline?.converted_value)} subtitle={`${pipeline?.converted_count ?? 0} orders created (not all paid)`} />
+          <KpiCard title="Paid" source="auto" value={acqNgn(pipeline?.paid_value)} subtitle={`${pipeline?.paid_count ?? 0} quotes paid`} />
+          <KpiCard title="Conversion Rate" source="auto" value={acqPct(pipeline?.conversion_rate_pct)} negative={Number(pipeline?.conversion_rate_pct) < 10} subtitle={`${pipeline?.paid_ever ?? 0} of ${pipeline?.total_quotes_ever ?? 0} quotes paid`} />
         </div>
 
         {/* Muted row — low-intent / lost value, shown for transparency */}
