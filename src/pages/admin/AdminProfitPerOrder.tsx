@@ -244,7 +244,7 @@ export default function AdminProfitPerOrder() {
   const handleExport = async () => {
     let q = (supabase as any)
       .from("order_profit_summary")
-      .select("order_number, created_at, customer_name, payment_status, total, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund, net_profit");
+      .select("order_number, created_at, customer_name, payment_status, total, total_cogs, extra_costs_total, profit_as_ordered, refunded_units, refunded_lines, refunded_revenue, refunded_profit_removed, refund_adjusted_profit, has_refund, net_profit");
     if (paymentFilter !== "all") q = q.eq("payment_status", paymentFilter);
     if (range.since) q = q.gte("created_at", range.since);
     if (range.until) q = q.lte("created_at", range.until);
@@ -258,6 +258,7 @@ export default function AdminProfitPerOrder() {
     const rows = (data || []) as OrderRow[];
     const headers = [
       "Order #", "Date", "Customer", "Payment", "Revenue",
+      "COGS (₦)", "Extra Costs (₦)",
       "Profit (as ordered)", "Refunded Units",
       "Refunded Lines", "Refunded Revenue", "Refunded Profit Removed",
       "Refund-Adjusted Profit", "Has Refund", "Net Profit",
@@ -271,7 +272,7 @@ export default function AdminProfitPerOrder() {
       headers.join(","),
       ...rows.map(r => [
         r.order_number, r.created_at, r.customer_name, r.payment_status,
-        r.total, r.profit_as_ordered,
+        r.total, r.total_cogs, r.extra_costs_total, r.profit_as_ordered,
         r.refunded_units, r.refunded_lines, r.refunded_revenue,
         r.refunded_profit_removed, r.refund_adjusted_profit, r.has_refund,
         r.net_profit,
