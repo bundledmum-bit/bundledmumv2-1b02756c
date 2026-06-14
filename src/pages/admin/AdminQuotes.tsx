@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
+import { recordQuoteDownload } from "@/hooks/useQuoteShare";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
@@ -253,6 +254,10 @@ export default function AdminQuotes() {
         bank_account_number: contactSettings?.bank_account_number,
       };
       await downloadQuotePdf(pdfQuote, contact);
+      // Record the admin-side download so the DB trigger advances the quote
+      // (draft -> viewed) and stamps last_downloaded_at. Fire-and-forget;
+      // never blocks or fails the PDF generation.
+      if (data.share_token) void recordQuoteDownload(data.share_token);
     } catch (e: any) {
       toast.error(e?.message || "Could not generate PDF");
     } finally {
