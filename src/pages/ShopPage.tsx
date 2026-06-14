@@ -486,7 +486,7 @@ export default function ShopPage() {
       <div className="pt-[68px]" style={{ background: isBaby ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : isMum ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : "linear-gradient(135deg, #1A1A2E 0%, #2D3A5C 100%)" }}>
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-14">
           <h1 className="pf text-2xl md:text-[44px] text-primary-foreground mb-2">
-            {isBaby ? "👶 Baby Shop" : isMum ? "💛 Mum Shop" : "🛍️ All Products"}
+            {isBaby ? "👶 Baby Shop" : isMum ? "💛 Mum Shop" : "🛍️ All Shops"}
           </h1>
           <p className="text-primary-foreground/65 text-sm md:text-[15px] max-w-[480px]">
             Shop baby essentials, mum items, and baby gifts without stepping foot in any market.
