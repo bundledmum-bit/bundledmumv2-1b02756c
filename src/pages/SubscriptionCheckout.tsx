@@ -243,6 +243,7 @@ export default function SubscriptionCheckout() {
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{it.product_name}</div>
                   <div className="text-[11px] text-text-light">{it.brand_name} · qty {it.quantity} · {fmtN(it.unit_price)} each</div>
+                  {it.delivery_day && <div className="text-[11px] text-forest font-medium">Delivers {WEEKDAY_LABEL[it.delivery_day] || it.delivery_day}</div>}
                 </div>
                 <div className="text-xs font-semibold tabular-nums">{fmtN(it.unit_price * it.quantity)}</div>
               </li>
@@ -259,6 +260,22 @@ export default function SubscriptionCheckout() {
               <span className="font-bold tabular-nums">{fmtN(draft.total_per_delivery)}</span>
             </div>
           </dl>
+        </section>
+
+        {/* Subscribe to more products */}
+        <section className="bg-card border border-border rounded-card p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="font-bold text-sm flex items-center gap-1.5"><Plus className="w-4 h-4 text-forest" /> Subscribe to more products</h2>
+              <p className="text-[11px] text-text-light mt-0.5">Browse everything you can subscribe to and add another from its product page.</p>
+            </div>
+            <Link
+              to="/subscriptions"
+              className="inline-flex items-center justify-center rounded-pill border border-forest text-forest px-4 min-h-9 text-xs font-semibold hover:bg-forest/10 whitespace-nowrap flex-shrink-0"
+            >
+              Browse
+            </Link>
+          </div>
         </section>
 
         {/* Delivery count */}
