@@ -1,29 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Lock, Loader2, Minus, Plus, ArrowLeft, Repeat, ShieldCheck, Calendar, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { useShippingZones } from "@/hooks/useShippingZones";
+import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import {
   readDraft, clearDraft, removeFromDraft, writeDraft, fmtN,
-  DELIVERY_COUNT_LIMITS, FREQUENCY_LABEL,
+  DELIVERY_COUNT_LIMITS, FREQUENCY_LABEL, useSubscriptionSettings,
   WEEKDAY_LABEL, nextDeliveryDate, projectCycleEnd,
   RESULT_KEY, type Frequency, type SubscriptionDraft,
 } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 
-const inputCls = "w-full border border-input rounded-lg px-3 py-2 text-sm bg-background";
-const labelCls = "text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1";
+// Form styling matched to CheckoutPage's address form (InputField).
+const fieldInputCls = "w-full rounded-[10px] border-[1.5px] px-3 py-2.5 text-sm bg-card font-body outline-none transition-colors min-h-[44px]";
+const fieldLabelCls = "text-xs font-semibold text-text-med uppercase tracking-wide";
 
 interface ContactForm {
-  full_name: string;
-  email: string;
+  firstName: string;
+  lastName: string;
   phone: string;
+  email: string;
   address: string;
-  city: string;
   state: string;
+  zoneId: string;
+  city: string;     // free-text fallback for states without zones
+  notes: string;
 }
+type FormKey = keyof ContactForm;
 
 export default function SubscriptionCheckout() {
   const navigate = useNavigate();
@@ -113,21 +119,11 @@ export default function SubscriptionCheckout() {
     });
   }, [hydrated, draft?.items.length]);
 
-  // Deliverable states for the dropdown. The column is `name` (not
-  // `state_name`); order by display_order then name for a stable list.
-  const { data: states = [] } = useQuery({
-    queryKey: ["deliverable-states"],
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("deliverable_states")
-        .select("name, display_order, is_active")
-        .order("display_order", { ascending: true })
-        .order("name", { ascending: true });
-      if (error) return [];
-      return (data || []) as Array<{ name: string; display_order: number; is_active: boolean }>;
-    },
-    staleTime: 5 * 60_000,
-  });
+  // States + shipping zones — the same sources CheckoutPage uses, so the
+  // delivery form behaves identically (State → Zone cascade).
+  const { data: deliverableStates = [], isLoading: statesLoading } = useDeliverableStates(true);
+  const { data: zones = [] } = useShippingZones();
+  const { data: settings } = useSubscriptionSettings();
 
   // Delivery count state, clamped by frequency.
   const [count, setCount] = useState(4);
@@ -142,10 +138,25 @@ export default function SubscriptionCheckout() {
   }, [draft, safeFrequency]);
 
   const [form, setForm] = useState<ContactForm>({
-    full_name: "", email: "", phone: "",
-    address: "", city: "", state: "",
+    firstName: "", lastName: "", phone: "", email: "",
+    address: "", state: "Lagos", zoneId: "", city: "", notes: "",
   });
+  const [errors, setErrors] = useState<Partial<Record<FormKey, string>>>({});
   const [processing, setProcessing] = useState(false);
+
+  // State → Zone cascade (mirrors CheckoutPage).
+  const activeState = deliverableStates.find(s => s.name === form.state);
+  const zonesForState = (zones || []).filter(z => (z.states || []).includes(form.state));
+  const stateHasZones = activeState?.has_zones === true && zonesForState.length > 0;
+  const selectedZone = zonesForState.find(z => z.id === form.zoneId) || null;
+
+  // Keep `state` valid once states load (fallback to the first deliverable).
+  useEffect(() => {
+    if (!deliverableStates.length) return;
+    if (!deliverableStates.some(s => s.name === form.state)) {
+      setForm(p => ({ ...p, state: deliverableStates[0].name }));
+    }
+  }, [deliverableStates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill contact + delivery from customer_account_view when signed in.
   useEffect(() => {
@@ -154,15 +165,17 @@ export default function SubscriptionCheckout() {
     (async () => {
       const { data } = await (supabase as any)
         .from("customer_account_view")
-        .select("full_name, phone, delivery_address, delivery_area, delivery_state")
+        .select("full_name, phone, delivery_address, delivery_state")
         .maybeSingle();
       if (cancelled || !data) return;
+      const [first, ...rest] = String(data.full_name || "").split(" ");
       setForm(prev => ({
-        full_name: prev.full_name || data.full_name || "",
+        ...prev,
+        firstName: prev.firstName || first || "",
+        lastName:  prev.lastName  || rest.join(" ") || "",
         email:     prev.email     || user.email || "",
         phone:     prev.phone     || data.phone || "",
         address:   prev.address   || data.delivery_address || "",
-        city:      prev.city      || data.delivery_area || "",
         state:     prev.state     || data.delivery_state || prev.state,
       }));
     })();
@@ -192,13 +205,50 @@ export default function SubscriptionCheckout() {
     return <div className="min-h-screen flex items-center justify-center text-sm text-text-light">Loading…</div>;
   }
 
+  // Validation — mirrors CheckoutPage (required fields + phone/email format).
+  const phoneDigits = form.phone.replace(/\D/g, "");
+  const validateField = (key: FormKey): string | undefined => {
+    const val = (form[key] || "").trim();
+    if (key === "firstName" && !val) return "First name is required";
+    if (key === "lastName" && !val) return "Last name is required";
+    if (key === "phone") {
+      const d = val.replace(/\D/g, "");
+      if (!d || d.length < 10) return "Valid phone required";
+    }
+    if (key === "email") {
+      if (!val) return "Email is required";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return "Enter a valid email address";
+    }
+    if (key === "address" && !val) return "Street address is required";
+    if (key === "zoneId" && stateHasZones && !val) return "Delivery zone is required";
+    if (key === "city" && !stateHasZones && !val) return "City / Town is required";
+    return undefined;
+  };
+  const handleBlur = (key: FormKey) => setErrors(p => ({ ...p, [key]: validateField(key) }));
+  const updateField = (key: FormKey, val: string) => {
+    setForm(p => ({ ...p, [key]: val }));
+    if (errors[key]) setErrors(p => ({ ...p, [key]: undefined }));
+  };
+  const requiredFields: FormKey[] = ["firstName", "lastName", "phone", "email", "address", stateHasZones ? "zoneId" : "city"];
+  const validate = () => {
+    const e: Partial<Record<FormKey, string>> = {};
+    requiredFields.forEach(k => { const err = validateField(k); if (err) e[k] = err; });
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
   const canPay =
-    !!form.full_name.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
-    !!form.phone.trim() && !!form.address.trim() && !!form.city.trim() && !!form.state.trim() &&
+    !!form.firstName.trim() && !!form.lastName.trim() &&
+    phoneDigits.length >= 10 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
+    !!form.address.trim() && !!form.state.trim() &&
+    (stateHasZones ? !!form.zoneId : !!form.city.trim()) &&
     !processing;
 
+  const deliveryCity = stateHasZones ? (selectedZone?.name || "") : form.city.trim();
+
   const pay = async () => {
-    if (!canPay) { toast.error("Please complete all contact and delivery fields."); return; }
+    if (!validate() || !canPay) { toast.error("Please complete all contact and delivery fields."); return; }
 
     setProcessing(true);
     try {
@@ -219,8 +269,8 @@ export default function SubscriptionCheckout() {
         amount: amountKobo,
         currency: "NGN",
         ref: reference,
-        firstname: form.full_name.split(" ")[0] || form.full_name,
-        lastname: form.full_name.split(" ").slice(1).join(" "),
+        firstname: form.firstName,
+        lastname: form.lastName,
         phone: form.phone.trim(),
         channels: ["card"],
         metadata: { type: "subscription" } as any,
@@ -233,10 +283,10 @@ export default function SubscriptionCheckout() {
                 frequency: safeFrequency,
                 delivery_day: safeDeliveryDay,
                 number_of_deliveries: count,
-                customer_name: form.full_name.trim(),
+                customer_name: `${form.firstName} ${form.lastName}`.trim(),
                 customer_phone: form.phone.trim(),
                 delivery_address: form.address.trim(),
-                delivery_city: form.city.trim(),
+                delivery_city: deliveryCity,
                 delivery_state: form.state.trim(),
               },
             });
@@ -409,29 +459,63 @@ export default function SubscriptionCheckout() {
           </div>
         </section>
 
-        {/* Contact + delivery forms */}
-        <section className="bg-card border border-border rounded-card p-4 space-y-3">
-          <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med">Contact details</h2>
-          <Field label="Full name *"><input className={inputCls} value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} /></Field>
-          <Field label="Email address *"><input type="email" inputMode="email" className={inputCls} value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} /></Field>
-          <Field label="Phone number *"><input inputMode="tel" className={inputCls} value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} /></Field>
-        </section>
+        {/* Contact + delivery — replica of CheckoutPage's address form */}
+        <section className="bg-card border border-border rounded-card p-4">
+          <h2 className="pf text-base font-bold mb-4">📍 Delivery Details</h2>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row gap-3">
+              <CoField label="First Name" value={form.firstName} onChange={v => updateField("firstName", v)} onBlur={() => handleBlur("firstName")} error={errors.firstName} />
+              <CoField label="Last Name" value={form.lastName} onChange={v => updateField("lastName", v)} onBlur={() => handleBlur("lastName")} error={errors.lastName} />
+            </div>
+            <div className="flex flex-col md:flex-row gap-3">
+              <CoField label="Phone Number" type="tel" placeholder="08012345678" value={form.phone} onChange={v => updateField("phone", v)} onBlur={() => handleBlur("phone")} error={errors.phone} />
+              <CoField label="Email Address" type="email" placeholder="you@example.com" value={form.email} onChange={v => updateField("email", v)} onBlur={() => handleBlur("email")} error={errors.email} />
+            </div>
+            <CoField label="Street Address" value={form.address} onChange={v => updateField("address", v)} onBlur={() => handleBlur("address")} error={errors.address} />
 
-        <section className="bg-card border border-border rounded-card p-4 space-y-3">
-          <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med">Delivery details</h2>
-          <Field label="Delivery address *"><input className={inputCls} value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))} /></Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field label="City *"><input className={inputCls} value={form.city} onChange={e => setForm(p => ({ ...p, city: e.target.value }))} /></Field>
-            <Field label="State *">
-              <select className={inputCls} value={form.state} onChange={e => setForm(p => ({ ...p, state: e.target.value }))}>
-                <option value="">Select…</option>
-                {states.map(s => (
-                  <option key={s.name} value={s.name}>
-                    {s.name}{s.is_active === false ? " (coming soon)" : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {/* State → Zone cascade */}
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1 flex flex-col gap-1">
+                <label className={fieldLabelCls}>State</label>
+                {statesLoading ? (
+                  <div className="w-full h-[44px] rounded-[10px] border-[1.5px] border-border bg-muted/40 animate-pulse" aria-label="Loading states" />
+                ) : (
+                  <select
+                    value={form.state}
+                    onChange={e => { setForm(p => ({ ...p, state: e.target.value, zoneId: "", city: "" })); setErrors(p => ({ ...p, zoneId: undefined, city: undefined })); }}
+                    className={`${fieldInputCls} border-border focus:border-forest`}
+                  >
+                    {deliverableStates.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
+                )}
+              </div>
+
+              {stateHasZones && (
+                <div className="flex-1 flex flex-col gap-1">
+                  <label className={fieldLabelCls}>Delivery Zone</label>
+                  <select
+                    value={form.zoneId}
+                    onChange={e => updateField("zoneId", e.target.value)}
+                    onBlur={() => handleBlur("zoneId")}
+                    className={`${fieldInputCls} ${errors.zoneId ? "border-destructive" : "border-border focus:border-forest"}`}
+                  >
+                    <option value="">Select your delivery zone</option>
+                    {zonesForState.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
+                  </select>
+                  {errors.zoneId && <p className="text-destructive text-[11px]">{errors.zoneId}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Free-text City — states without mapped zones */}
+            {!stateHasZones && (
+              <CoField label="City / Town" value={form.city} onChange={v => updateField("city", v)} onBlur={() => handleBlur("city")} error={errors.city} />
+            )}
+
+            <div className="flex flex-col gap-1">
+              <label className={fieldLabelCls}>Delivery Notes (Optional)</label>
+              <textarea value={form.notes} onChange={e => updateField("notes", e.target.value)} className="w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body resize-y h-20 focus:border-forest outline-none" placeholder="E.g. Landmark, gate colour..." />
+            </div>
           </div>
         </section>
 
@@ -458,8 +542,24 @@ export default function SubscriptionCheckout() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className={labelCls}>{label}</label>{children}</div>;
+function CoField({ label, value, onChange, onBlur, error, type = "text", placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; onBlur?: () => void;
+  error?: string; type?: string; placeholder?: string;
+}) {
+  return (
+    <div className="flex-1 flex flex-col gap-1">
+      <label className={fieldLabelCls}>{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        className={`${fieldInputCls} ${error ? "border-destructive" : "border-border focus:border-forest"}`}
+      />
+      {error && <p className="text-destructive text-[11px]">{error}</p>}
+    </div>
+  );
 }
 function Row({ label, v, muted }: { label: string; v: React.ReactNode; muted?: boolean }) {
   return (
