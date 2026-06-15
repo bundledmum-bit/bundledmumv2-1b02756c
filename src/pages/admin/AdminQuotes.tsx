@@ -255,9 +255,15 @@ export default function AdminQuotes() {
       };
       await downloadQuotePdf(pdfQuote, contact);
       // Record the admin-side download so the DB trigger advances the quote
-      // (draft -> viewed) and stamps last_downloaded_at. Fire-and-forget;
-      // never blocks or fails the PDF generation.
-      if (data.share_token) void recordQuoteDownload(data.share_token);
+      // (draft -> viewed) and stamps last_downloaded_at. Awaited + logged
+      // (TEMP diagnostic) so the RPC result/error is visible — the prior
+      // fire-and-forget swallowed any error, hiding why download_count stayed 0.
+      if (data.share_token) {
+        const dl = await recordQuoteDownload(data.share_token);
+        console.log("[admin pdf] record_quote_download", { share_token: data.share_token, data: dl.data, error: dl.error });
+      } else {
+        console.warn("[admin pdf] quote has no share_token; download not recorded", { id });
+      }
     } catch (e: any) {
       toast.error(e?.message || "Could not generate PDF");
     } finally {

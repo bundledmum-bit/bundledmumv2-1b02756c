@@ -87,9 +87,12 @@ export async function recordQuoteView(shareToken: string) {
  * draft -> viewed. */
 export async function recordQuoteDownload(shareToken: string) {
   try {
-    await (supabase as any).rpc("record_quote_download", { p_share_token: shareToken });
+    const { data, error } = await (supabase as any).rpc("record_quote_download", { p_share_token: shareToken });
+    if (error) console.warn("record_quote_download RPC error (non-fatal):", error);
+    return { data, error };
   } catch (e) {
-    console.warn("record_quote_download failed (non-fatal):", e);
+    console.warn("record_quote_download threw (non-fatal):", e);
+    return { data: null, error: e };
   }
 }
 
