@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -105,6 +106,10 @@ export interface SubscriptionDraftItem {
   brand_name: string;
   image_url?: string | null;
   size_variant?: string | null;
+  color?: string | null;
+  // Per-item delivery day (monday..saturday). Optional — falls back to the
+  // top-level draft.delivery_day when unset (the first item owns the default).
+  delivery_day?: string;
 }
 
 export interface SubscriptionDraft {
@@ -127,12 +132,75 @@ export function readDraft(): SubscriptionDraft | null {
   } catch { return null; }
 }
 
+// Same-tab sessionStorage writes do NOT fire the native `storage` event, so
+// we emit a custom event the basket indicator / product panels listen to.
+export const DRAFT_EVENT = "bm-subscription-draft-changed";
+function emitDraftChange() {
+  try { window.dispatchEvent(new Event(DRAFT_EVENT)); } catch { /* SSR/no-window */ }
+}
+
 export function writeDraft(payload: SubscriptionDraft) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+  emitDraftChange();
 }
 
 export function clearDraft() {
   sessionStorage.removeItem(DRAFT_KEY);
+  emitDraftChange();
+}
+
+// Recompute per-delivery totals from items, then persist (or clear when empty).
+function recomputeAndWrite(d: SubscriptionDraft) {
+  const subtotal = d.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+  d.subtotal_per_delivery = subtotal;
+  d.total_per_delivery = Math.round(subtotal * (1 - d.discount_pct / 100));
+  if (d.items.length === 0) { clearDraft(); return; }
+  writeDraft(d);
+}
+
+// Append (or merge by product_id+brand_id) into an EXISTING draft. No-op when
+// no draft exists — the caller creates the first draft (it owns frequency +
+// delivery_day for the session). A negative quantity decrements; reaching <= 0
+// removes the line, so a +/- stepper can drive this directly.
+export function addToDraft(newItem: SubscriptionDraftItem): void {
+  const existing = readDraft();
+  if (!existing) return;
+  const idx = existing.items.findIndex(
+    (i) => i.product_id === newItem.product_id && i.brand_id === newItem.brand_id,
+  );
+  if (idx >= 0) {
+    existing.items[idx].quantity += newItem.quantity;
+    existing.items[idx].unit_price = newItem.unit_price;
+    if (existing.items[idx].quantity <= 0) existing.items.splice(idx, 1);
+  } else if (newItem.quantity > 0) {
+    existing.items.push(newItem);
+  }
+  recomputeAndWrite(existing);
+}
+
+export function removeFromDraft(product_id: string, brand_id: string): void {
+  const existing = readDraft();
+  if (!existing) return;
+  existing.items = existing.items.filter(
+    (i) => !(i.product_id === product_id && i.brand_id === brand_id),
+  );
+  recomputeAndWrite(existing);
+}
+
+// Live view of the current draft — re-renders on add/remove/write/clear (custom
+// event, same tab) and on cross-tab `storage` changes.
+export function useSubscriptionDraft(): SubscriptionDraft | null {
+  const [draft, setDraft] = useState<SubscriptionDraft | null>(() => readDraft());
+  useEffect(() => {
+    const refresh = () => setDraft(readDraft());
+    window.addEventListener(DRAFT_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(DRAFT_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+  return draft;
 }
 
 export const fmtN = (naira: number): string => `₦${Math.round(naira || 0).toLocaleString("en-NG")}`;
