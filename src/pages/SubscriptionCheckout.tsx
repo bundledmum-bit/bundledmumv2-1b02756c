@@ -74,6 +74,26 @@ export default function SubscriptionCheckout() {
     else setDraft(updated);
   };
 
+  // Per-item frequency / delivery-day editing in the order summary.
+  const handleItemFrequencyChange = (productId: string, brandId: string, value: string) => {
+    const existing = readDraft();
+    if (!existing) return;
+    const idx = existing.items.findIndex(i => i.product_id === productId && i.brand_id === brandId);
+    if (idx < 0) return;
+    existing.items[idx].frequency = value as Frequency;
+    writeDraft(existing);
+    setDraft(readDraft());
+  };
+  const handleItemDeliveryDayChange = (productId: string, brandId: string, value: string) => {
+    const existing = readDraft();
+    if (!existing) return;
+    const idx = existing.items.findIndex(i => i.product_id === productId && i.brand_id === brandId);
+    if (idx < 0) return;
+    existing.items[idx].delivery_day = value;
+    writeDraft(existing);
+    setDraft(readDraft());
+  };
+
   // Meta Pixel InitiateCheckout + Schedule once the draft loads.
   useEffect(() => {
     if (!hydrated || !draft || draft.items.length === 0) return;
@@ -273,7 +293,35 @@ export default function SubscriptionCheckout() {
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{it.product_name}</div>
                   <div className="text-[11px] text-text-light">{it.brand_name} · {fmtN(it.unit_price)} each</div>
-                  {it.delivery_day && <div className="text-[11px] text-forest font-medium">Delivers {WEEKDAY_LABEL[it.delivery_day] || it.delivery_day}</div>}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Frequency:</span>
+                      <select
+                        value={it.frequency || draft.frequency || "monthly"}
+                        onChange={e => handleItemFrequencyChange(it.product_id, it.brand_id, e.target.value)}
+                        className="text-xs border border-border rounded-md px-2 py-1 bg-card focus:border-forest outline-none"
+                        aria-label="Item frequency"
+                      >
+                        {settings?.weekly_enabled && <option value="weekly">Every week</option>}
+                        {settings?.biweekly_enabled && <option value="biweekly">Every 2 weeks</option>}
+                        <option value="monthly">Every month</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">Delivers:</span>
+                      <select
+                        value={it.delivery_day || draft.delivery_day || ""}
+                        onChange={e => handleItemDeliveryDayChange(it.product_id, it.brand_id, e.target.value)}
+                        className="text-xs border border-border rounded-md px-2 py-1 bg-card focus:border-forest outline-none"
+                        aria-label="Item delivery day"
+                      >
+                        <option value="" disabled>Choose day</option>
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map(day => (
+                          <option key={day} value={day.toLowerCase()}>{day}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="flex items-center gap-2 mt-1.5">
                     <button
                       type="button"
