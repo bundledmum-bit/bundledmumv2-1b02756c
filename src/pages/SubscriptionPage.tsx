@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Package, Coins, Repeat, ShieldCheck, Plus } from "lucide-react";
+import { Package, Coins, Repeat, ShieldCheck, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getBrandImage } from "@/lib/brandImage";
 import {
   useSubscriptionSettings, prettySubcategory, writeDraft, addToDraft, useSubscriptionDraft,
-  WEEKDAYS, FREQUENCY_LABEL, fmtN, type Frequency, type SubscriptionDraftItem, type SubscriptionSettings,
+  WEEKDAYS, fmtN, type Frequency, type SubscriptionDraftItem, type SubscriptionSettings,
 } from "@/hooks/useSubscription";
 import SubscriptionBasketBar from "@/components/SubscriptionBasketBar";
 import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
@@ -181,21 +181,32 @@ function Pill({ icon, children }: { icon: React.ReactNode; children: React.React
   );
 }
 
-const pillSel = "bg-forest text-primary-foreground border-forest";
-const pillIdle = "bg-background text-text-med border-input hover:border-forest/60";
+// Native-select styling matched to the CheckoutPage address form, with a 44px
+// min tap target for mobile.
+const selectCls = "w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none transition-colors min-h-[44px]";
+const FREQ_OPT: Record<Frequency, string> = { weekly: "Every week", biweekly: "Every 2 weeks", monthly: "Every month" };
 
-// Fully interactive subscription card. Picks brand (default: cheapest in-stock),
-// size/colour (required when the product has them), frequency, and delivery day
-// (Mon–Sat). Adds straight to the draft — first add creates it, later adds append
-// per-item with their own delivery day.
+// Fully interactive subscription card. The shopper chooses brand, size/colour
+// (when the product has them), frequency, and delivery day (Mon–Sat) via
+// dropdowns — nothing is pre-selected — then adds straight to the draft. The
+// first add creates it; later adds append per-item with their own delivery day.
 function SubscribableProductCard({ product, settings }: { product: SubProduct; settings: SubscriptionSettings }) {
   const draft = useSubscriptionDraft();
+  const [zoomed, setZoomed] = useState(false);
 
-  const inStockBrands = product.brands.filter(b => b.in_stock !== false);
-  const brands = inStockBrands.length ? inStockBrands : product.brands;
+  // In-stock brands first, then OOS — so the dropdown lists available options up top.
+  const orderedBrands = useMemo(
+    () => [...product.brands].sort((a, b) => (a.in_stock === false ? 1 : 0) - (b.in_stock === false ? 1 : 0)),
+    [product.brands],
+  );
   const sizes = [...(product.product_sizes || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
   const colors = [...(product.product_colors || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-  const cheapest = [...brands].sort((a, b) => (a.price || 0) - (b.price || 0))[0];
+  // Cheapest in-stock brand drives the "From ₦X" + the default image only.
+  const cheapest = [...product.brands]
+    .filter(b => b.in_stock !== false)
+    .sort((a, b) => (a.price || 0) - (b.price || 0))[0]
+    || [...product.brands].sort((a, b) => (a.price || 0) - (b.price || 0))[0]
+    || null;
   const cadence = product.reorder_label || (product.reorder_days ? `Restocks every ${product.reorder_days} days` : null);
 
   const enabledFreqs: Frequency[] = useMemo(() => {
@@ -206,23 +217,32 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
     return list;
   }, [settings.weekly_enabled, settings.biweekly_enabled]);
 
-  const [brandId, setBrandId] = useState<string | null>(cheapest?.id ?? null);
-  const [sizeId, setSizeId] = useState<string | null>(null);
-  const [colorId, setColorId] = useState<string | null>(null);
-  const [frequency, setFrequency] = useState<Frequency>("monthly");
-  const [deliveryDay, setDeliveryDay] = useState<string | null>(null);
+  const [brandId, setBrandId] = useState<string>("");
+  const [sizeId, setSizeId] = useState<string>("");
+  const [colorId, setColorId] = useState<string>("");
+  const [frequency, setFrequency] = useState<Frequency | "">("");
+  const [deliveryDay, setDeliveryDay] = useState<string>("");
 
-  const brand = brands.find(b => b.id === brandId) || cheapest || null;
-  const img = brand ? (getBrandImage(brand) || brand.images?.[0] || null) : null;
+  const brand = orderedBrands.find(b => b.id === brandId) || null;
   const size = sizes.find(s => s.id === sizeId) || null;
   const color = colors.find(c => c.id === colorId) || null;
+  // Image: the chosen brand's, else the cheapest brand's (for display + zoom).
+  const displayBrand = brand || cheapest;
+  const img = displayBrand ? (getBrandImage(displayBrand) || displayBrand.images?.[0] || null) : null;
 
   const needsSize = sizes.length > 0;
   const needsColor = colors.length > 0;
-  const canSubscribe = !!brand && !!deliveryDay && (!needsSize || !!size) && (!needsColor || !!color);
+
+  const missing: string[] = [];
+  if (!brand) missing.push("brand");
+  if (needsSize && !size) missing.push("size");
+  if (needsColor && !color) missing.push("colour");
+  if (!frequency) missing.push("frequency");
+  if (!deliveryDay) missing.push("delivery day");
+  const canSubscribe = missing.length === 0;
 
   const handleSubscribe = () => {
-    if (!brand || !deliveryDay) return;
+    if (!brand || !frequency || !deliveryDay) return;
     const item: SubscriptionDraftItem = {
       product_id: product.id,
       brand_id: brand.id,
@@ -231,7 +251,7 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
       unit_price: Number(brand.price) || 0,
       product_name: product.name,
       brand_name: brand.brand_name,
-      image_url: img,
+      image_url: getBrandImage(brand) || brand.images?.[0] || null,
       size_variant: size?.size_label ?? brand.size_variant ?? null,
       color: color?.color_name ?? null,
       delivery_day: deliveryDay,
@@ -252,97 +272,95 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
   };
 
   return (
-    <div className="bg-card border border-border rounded-card p-3 flex flex-col">
-      <Link to={`/products/${product.slug}`} className="flex gap-3">
-        <div className="w-16 h-16 rounded-lg overflow-hidden bg-warm-cream flex-shrink-0">
-          {img && (
-            <img src={img} alt={product.name} loading="lazy" className="w-full h-full object-cover"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-sm leading-snug text-foreground line-clamp-2">{product.name}</div>
-          {cadence && <div className="text-[11px] text-text-light mt-0.5">{cadence}</div>}
-          {brand?.price != null && <div className="text-sm text-forest font-bold mt-1">From {fmtN(brand.price)}</div>}
-        </div>
-      </Link>
-
-      {/* Brand */}
-      {brands.length > 1 && (
-        <Picker label="Brand">
-          {brands.map(b => (
-            <button key={b.id} type="button" onClick={() => setBrandId(b.id)}
-              className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${brandId === b.id ? pillSel : pillIdle}`}>
-              {b.brand_name}
-            </button>
-          ))}
-        </Picker>
-      )}
-
-      {/* Size */}
-      {needsSize && (
-        <Picker label="Size">
-          {sizes.map(s => {
-            const oos = s.in_stock === false;
-            return (
-              <button key={s.id} type="button" disabled={oos} onClick={() => setSizeId(s.id)}
-                className={`px-3 min-h-9 min-w-9 rounded-pill text-xs font-semibold border ${sizeId === s.id ? pillSel : pillIdle} ${oos ? "opacity-50 line-through cursor-not-allowed" : ""}`}>
-                {s.size_label}
-              </button>
-            );
-          })}
-        </Picker>
-      )}
-
-      {/* Colour */}
-      {needsColor && (
-        <Picker label="Colour">
-          {colors.map(c => {
-            const oos = c.in_stock === false;
-            return (
-              <button key={c.id} type="button" disabled={oos} onClick={() => setColorId(c.id)}
-                className={`inline-flex items-center gap-1.5 px-3 min-h-9 rounded-pill text-xs font-semibold border ${colorId === c.id ? pillSel : pillIdle} ${oos ? "opacity-50 line-through cursor-not-allowed" : ""}`}>
-                {c.color_hex && <span className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: c.color_hex }} />}
-                {c.color_name}
-              </button>
-            );
-          })}
-        </Picker>
-      )}
-
-      {/* Frequency */}
-      <Picker label="Frequency">
-        {enabledFreqs.map(f => (
-          <button key={f} type="button" onClick={() => setFrequency(f)}
-            className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${frequency === f ? pillSel : pillIdle}`}>
-            {FREQUENCY_LABEL[f]}
-          </button>
-        ))}
-      </Picker>
-
-      {/* Delivery day — Mon–Sat */}
-      <Picker label="Delivery day">
-        {WEEKDAYS.slice(0, 6).map(d => (
-          <button key={d.v} type="button" onClick={() => setDeliveryDay(d.v)}
-            className={`px-3 min-h-9 min-w-9 rounded-pill text-xs font-semibold border ${deliveryDay === d.v ? pillSel : pillIdle}`}>
-            {d.short}
-          </button>
-        ))}
-      </Picker>
-
-      <button type="button" onClick={handleSubscribe} disabled={!canSubscribe}
-        className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[44px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-        <Plus className="w-4 h-4" /> Add to subscription
+    <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
+      {/* Image — bigger, click to zoom */}
+      <button
+        type="button"
+        onClick={() => img && setZoomed(true)}
+        className="block w-full aspect-[4/3] md:aspect-square bg-warm-cream overflow-hidden"
+        aria-label={`Zoom ${product.name} image`}
+      >
+        {img && (
+          <img src={img} alt={product.name} loading="lazy" className="w-full h-full object-cover"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+        )}
       </button>
-    </div>
-  );
-}
 
-function Picker({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mt-2.5">
-      <div className="text-[10px] uppercase tracking-wide font-semibold text-text-med mb-1">{label}</div>
-      <div className="flex flex-wrap gap-1.5">{children}</div>
+      <div className="p-3 flex flex-col">
+        <div className="font-semibold text-sm leading-snug text-foreground line-clamp-2">{product.name}</div>
+        {cadence && <div className="text-[11px] text-text-light mt-0.5">{cadence}</div>}
+        {displayBrand?.price != null && <div className="text-sm text-forest font-bold mt-1">From {fmtN(displayBrand.price)}</div>}
+        <Link to={`/products/${product.slug}`} className="text-xs text-muted-foreground underline hover:text-foreground transition-colors mt-1 self-start">
+          View product
+        </Link>
+
+        <div className="flex flex-col gap-2 mt-3">
+          {/* Brand */}
+          <select className={selectCls} value={brandId} onChange={e => setBrandId(e.target.value)} aria-label="Choose Brand">
+            <option value="">Choose Brand</option>
+            {orderedBrands.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.brand_name} — {fmtN(b.price)}{b.in_stock === false ? " (Out of Stock)" : ""}
+              </option>
+            ))}
+          </select>
+
+          {/* Size */}
+          {needsSize && (
+            <select className={selectCls} value={sizeId} onChange={e => setSizeId(e.target.value)} aria-label="Choose Size">
+              <option value="">Choose Size</option>
+              {sizes.map(s => (
+                <option key={s.id} value={s.id} disabled={s.in_stock === false}>
+                  {s.size_label}{s.in_stock === false ? " (Out of Stock)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Colour */}
+          {needsColor && (
+            <select className={selectCls} value={colorId} onChange={e => setColorId(e.target.value)} aria-label="Choose Color">
+              <option value="">Choose Color</option>
+              {colors.map(c => (
+                <option key={c.id} value={c.id} disabled={c.in_stock === false}>
+                  {c.color_name}{c.in_stock === false ? " (Out of Stock)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Frequency */}
+          <select className={selectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
+            <option value="">Choose Frequency</option>
+            {enabledFreqs.map(f => <option key={f} value={f}>{FREQ_OPT[f]}</option>)}
+          </select>
+
+          {/* Delivery day — Mon–Sat */}
+          <select className={selectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">
+            <option value="">Choose Delivery Day</option>
+            {WEEKDAYS.slice(0, 6).map(d => <option key={d.v} value={d.v}>{d.long}</option>)}
+          </select>
+        </div>
+
+        <button type="button" onClick={handleSubscribe} disabled={!canSubscribe}
+          className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[44px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
+          <Plus className="w-4 h-4" /> Add to subscription
+        </button>
+        {!canSubscribe && (
+          <p className="text-[11px] text-text-light mt-1.5 text-center">Please choose {missing.join(", ")} to continue</p>
+        )}
+      </div>
+
+      {/* Zoom lightbox */}
+      {zoomed && img && (
+        <div className="fixed inset-0 z-[1100] bg-black/80 flex items-center justify-center p-4" onClick={() => setZoomed(false)}>
+          <button type="button" aria-label="Close" onClick={() => setZoomed(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 text-foreground inline-flex items-center justify-center">
+            <X className="w-5 h-5" />
+          </button>
+          <img src={img} alt={product.name} className="max-w-[90vw] max-h-[90vh] object-contain" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }
