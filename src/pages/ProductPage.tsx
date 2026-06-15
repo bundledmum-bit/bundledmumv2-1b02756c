@@ -13,7 +13,7 @@ import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
 import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSubscriptionSettings, writeDraft, addToDraft, removeFromDraft, useSubscriptionDraft, WEEKDAYS, FREQUENCY_LABEL, type Frequency, type SubscriptionDraft, type SubscriptionDraftItem } from "@/hooks/useSubscription";
+import { useSubscriptionSettings, writeDraft, addToDraft, removeFromDraft, useSubscriptionDraft, WEEKDAYS, FREQUENCY_LABEL, type Frequency, type SubscriptionDraftItem } from "@/hooks/useSubscription";
 import SubscriptionBasketBar from "@/components/SubscriptionBasketBar";
 import { getBrandImage } from "@/lib/brandImage";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
@@ -1434,62 +1434,71 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
     list.push("monthly");
     return list;
   }, [settings?.weekly_enabled, settings?.biweekly_enabled]);
-  const [frequency, setFrequency] = useState<Frequency>("monthly");
-  const [deliveryDay, setDeliveryDay] = useState<string | null>(null);
+  // Always start empty — the shopper actively chooses cadence + day for each
+  // product, never inherited/pre-filled from an existing draft.
+  const [frequency, setFrequency] = useState<Frequency | "">("");
+  const [deliveryDay, setDeliveryDay] = useState<string>("");
   const draft = useSubscriptionDraft();
 
   // Default-hidden until the programme is confirmed on.
   if (!isSubscribable || settings?.subscription_enabled !== true) return null;
 
-  const pillSel = "bg-forest text-primary-foreground border-forest";
-  const pillIdle = "bg-background text-text-med border-input hover:border-forest/60";
   const draftExists = !!draft && draft.items.length > 0;
-  const lineQty = (selectedBrand && productId && draft)
-    ? (draft.items.find(i => i.product_id === productId && i.brand_id === selectedBrand.id)?.quantity ?? 0)
-    : 0;
+  const existingLine = (selectedBrand && productId && draft)
+    ? draft.items.find(i => i.product_id === productId && i.brand_id === selectedBrand.id)
+    : undefined;
+  const lineQty = existingLine?.quantity ?? 0;
 
-  const buildItem = (qty: number): SubscriptionDraftItem => ({
+  const buildItem = (qty: number, freq: Frequency): SubscriptionDraftItem => ({
     product_id: productId || "",
     brand_id: selectedBrand!.id,
     quantity: qty,
-    frequency: draftExists ? draft!.frequency : frequency,
+    frequency: freq,
     unit_price: selectedBrand!.price, // NAIRA — no conversion
     product_name: productName,
     brand_name: selectedBrand!.label,
     image_url: selectedBrand!.imageUrl ?? null,
     size_variant: selectedBrand!.sizeVariant ?? null,
+    delivery_day: deliveryDay || undefined,
   });
 
-  // First product of the session → create the draft (owns frequency +
-  // delivery_day) and go straight to checkout.
-  const handleFirstSubscribe = () => {
-    if (!selectedBrand || !deliveryDay) return;
-    const subtotal = selectedBrand.price * quantity;
-    const newDraft: SubscriptionDraft = {
-      items: [buildItem(quantity)],
-      frequency,
-      delivery_day: deliveryDay,
-      subtotal_per_delivery: subtotal,
-      discount_pct: settings.discount_pct,
-      total_per_delivery: Math.round(subtotal * (1 - settings.discount_pct / 100)),
-    };
-    writeDraft(newDraft);
-    navigate("/subscriptions/checkout");
+  const missing: string[] = [];
+  if (!selectedBrand) missing.push("a brand");
+  if (!frequency) missing.push("frequency");
+  if (!deliveryDay) missing.push("delivery day");
+  const canSubscribe = missing.length === 0;
+
+  // Add this product to the subscription. First product of the session creates
+  // the draft (owns the top-level frequency/day) and goes to checkout; a later
+  // product appends per-item (carrying its own day) and stays on the page.
+  const handleSubscribe = () => {
+    if (!selectedBrand || !frequency || !deliveryDay) return;
+    const item = buildItem(quantity, frequency);
+    if (draftExists) {
+      addToDraft(item);
+      toast.success(`Added ${productName} to your subscription`);
+      setFrequency(""); setDeliveryDay("");
+    } else {
+      const subtotal = selectedBrand.price * quantity;
+      writeDraft({
+        items: [item],
+        frequency,
+        delivery_day: deliveryDay,
+        subtotal_per_delivery: subtotal,
+        discount_pct: settings.discount_pct,
+        total_per_delivery: Math.round(subtotal * (1 - settings.discount_pct / 100)),
+      });
+      navigate("/subscriptions/checkout");
+    }
   };
 
-  // A basket already exists → append this product (inherits the session's
-  // frequency + delivery_day) and stay on the page.
-  const handleAddToBasket = () => {
-    if (!selectedBrand) return;
-    addToDraft(buildItem(quantity));
-    toast.success(`Added ${productName} to your subscription`);
-  };
-
-  const inc = () => { if (selectedBrand) addToDraft(buildItem(1)); };
+  // Stepper +/- operate on the existing line; keep its own cadence.
+  const lineFreq: Frequency = (existingLine?.frequency as Frequency) || "monthly";
+  const inc = () => { if (selectedBrand) addToDraft(buildItem(1, lineFreq)); };
   const dec = () => {
     if (!selectedBrand) return;
     if (lineQty <= 1) removeFromDraft(productId || "", selectedBrand.id);
-    else addToDraft(buildItem(-1));
+    else addToDraft(buildItem(-1, lineFreq));
   };
 
   return (
@@ -1515,64 +1524,41 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
             <button type="button" onClick={inc} aria-label="Increase quantity" className="w-10 h-10 rounded-full border border-input inline-flex items-center justify-center"><Plus className="w-4 h-4" /></button>
           </div>
         </div>
-      ) : draftExists ? (
-        /* Basket exists, this product not in it — append, inherit session cadence */
-        <>
-          <p className="text-[11px] text-text-light">Adds at your subscription's cadence — {FREQUENCY_LABEL[draft!.frequency].toLowerCase()}, delivered {WEEKDAY_SHORT(draft!.delivery_day)}.</p>
-          <button
-            type="button"
-            onClick={handleAddToBasket}
-            disabled={!selectedBrand}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-4 h-4" /> Add to subscription
-          </button>
-        </>
       ) : (
-        /* No basket yet — pick cadence + delivery day, create the draft */
+        /* Pick cadence + delivery day (always fresh), then add to the draft */
         <>
-          <div>
-            <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Frequency</div>
-            <div className="flex flex-wrap gap-1.5">
-              {enabledFreqs.map(f => (
-                <button key={f} type="button" onClick={() => setFrequency(f)}
-                  className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${frequency === f ? pillSel : pillIdle}`}>
-                  {FREQUENCY_LABEL[f]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Delivery day</div>
-            <div className="flex flex-wrap gap-1.5">
-              {WEEKDAYS.slice(0, 6).map(d => (
-                <button key={d.v} type="button" onClick={() => setDeliveryDay(d.v)}
-                  className={`px-3 min-h-9 min-w-[52px] rounded-pill text-xs font-semibold border ${deliveryDay === d.v ? pillSel : pillIdle}`}>
-                  {d.short}
-                </button>
-              ))}
-            </div>
+          <div className="flex flex-col gap-2">
+            <select className={subSelectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
+              <option value="">Choose Frequency</option>
+              {enabledFreqs.map(f => <option key={f} value={f}>{SUB_FREQ_OPT[f]}</option>)}
+            </select>
+            <select className={subSelectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">
+              <option value="">Choose Delivery Day</option>
+              {WEEKDAYS.slice(0, 6).map(d => <option key={d.v} value={d.v}>{d.long}</option>)}
+            </select>
           </div>
 
           <button
             type="button"
-            onClick={handleFirstSubscribe}
-            disabled={!selectedBrand || !deliveryDay}
+            onClick={handleSubscribe}
+            disabled={!canSubscribe}
             className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Repeat className="w-4 h-4" /> Subscribe
+            {draftExists ? <><Plus className="w-4 h-4" /> Add to subscription</> : <><Repeat className="w-4 h-4" /> Subscribe</>}
           </button>
+          {!canSubscribe && (
+            <p className="text-[11px] text-text-light text-center">Please choose {missing.join(", ")} to continue</p>
+          )}
         </>
       )}
     </div>
   );
 }
 
-// Short weekday label from a delivery_day value (e.g. "wednesday" -> "Wed").
-function WEEKDAY_SHORT(day: string): string {
-  return WEEKDAYS.find(d => d.v === day)?.short || day;
-}
+// Native-select styling matched to the CheckoutPage address form (44px min tap).
+const subSelectCls = "w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none transition-colors min-h-[44px]";
+const SUB_FREQ_OPT: Record<Frequency, string> = { weekly: "Every week", biweekly: "Every 2 weeks", monthly: "Every month" };
+
 
 // "Other products you can subscribe to" — compact horizontal scroll row at the
 // bottom of a subscribable product page. Compact cards use the cheapest in-stock
