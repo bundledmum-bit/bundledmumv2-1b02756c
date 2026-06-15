@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Lock, Loader2, Minus, Plus, ArrowLeft, Repeat, ShieldCheck, Calendar } from "lucide-react";
+import { Lock, Loader2, Minus, Plus, ArrowLeft, Repeat, ShieldCheck, Calendar, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import {
-  readDraft, clearDraft, fmtN,
+  readDraft, clearDraft, removeFromDraft, fmtN,
   DELIVERY_COUNT_LIMITS, FREQUENCY_LABEL,
   WEEKDAY_LABEL, nextDeliveryDate, projectCycleEnd,
   RESULT_KEY, type Frequency, type SubscriptionDraft,
@@ -43,6 +43,14 @@ export default function SubscriptionCheckout() {
       navigate("/subscriptions", { replace: true });
     }
   }, [hydrated, draft, navigate]);
+
+  // Remove a line item from the draft (pre-payment — sessionStorage only).
+  // Re-read the draft so the summary + totals re-render; the effect above
+  // handles the empty-basket redirect back to /subscriptions.
+  const handleRemoveItem = (productId: string, brandId: string) => {
+    removeFromDraft(productId, brandId);
+    setDraft(readDraft());
+  };
 
   // Meta Pixel InitiateCheckout + Schedule once the draft loads.
   useEffect(() => {
@@ -246,6 +254,14 @@ export default function SubscriptionCheckout() {
                   {it.delivery_day && <div className="text-[11px] text-forest font-medium">Delivers {WEEKDAY_LABEL[it.delivery_day] || it.delivery_day}</div>}
                 </div>
                 <div className="text-xs font-semibold tabular-nums">{fmtN(it.unit_price * it.quantity)}</div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveItem(it.product_id, it.brand_id)}
+                  aria-label={`Remove ${it.product_name}`}
+                  className="text-text-light hover:text-coral p-1 -mr-1 flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </li>
             ))}
           </ul>
