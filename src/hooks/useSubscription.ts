@@ -187,6 +187,19 @@ export function removeFromDraft(product_id: string, brand_id: string): void {
   recomputeAndWrite(existing);
 }
 
+// Decrement a line's quantity by 1; removes the line entirely at qty 1.
+export function decrementDraftItem(product_id: string, brand_id: string): void {
+  const existing = readDraft();
+  if (!existing) return;
+  const idx = existing.items.findIndex(
+    (i) => i.product_id === product_id && i.brand_id === brand_id,
+  );
+  if (idx < 0) return;
+  if (existing.items[idx].quantity <= 1) { removeFromDraft(product_id, brand_id); return; }
+  existing.items[idx].quantity -= 1;
+  recomputeAndWrite(existing);
+}
+
 // Live view of the current draft — re-renders on add/remove/write/clear (custom
 // event, same tab) and on cross-tab `storage` changes.
 export function useSubscriptionDraft(): SubscriptionDraft | null {

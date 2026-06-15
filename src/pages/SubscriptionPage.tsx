@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Package, Coins, Repeat, ShieldCheck, Plus, X } from "lucide-react";
+import { Package, Coins, Repeat, ShieldCheck, Plus, Minus, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getBrandImage } from "@/lib/brandImage";
 import {
-  useSubscriptionSettings, prettySubcategory, writeDraft, addToDraft, useSubscriptionDraft,
+  useSubscriptionSettings, prettySubcategory, writeDraft, addToDraft, removeFromDraft,
+  decrementDraftItem, useSubscriptionDraft,
   WEEKDAYS, fmtN, type Frequency, type SubscriptionDraftItem, type SubscriptionSettings,
 } from "@/hooks/useSubscription";
 import SubscriptionBasketBar from "@/components/SubscriptionBasketBar";
@@ -233,6 +234,14 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
   const needsSize = sizes.length > 0;
   const needsColor = colors.length > 0;
 
+  // Items already in the draft for THIS product (reactive via useSubscriptionDraft).
+  const subscribedItems = draft?.items.filter(i => i.product_id === product.id) ?? [];
+  const hasSubscribed = subscribedItems.length > 0;
+
+  const resetSelection = () => {
+    setBrandId(""); setSizeId(""); setColorId(""); setFrequency(""); setDeliveryDay("");
+  };
+
   const missing: string[] = [];
   if (!brand) missing.push("brand");
   if (needsSize && !size) missing.push("size");
@@ -269,6 +278,7 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
       });
     }
     toast.success(`Added ${product.name} to your subscription`);
+    resetSelection();
   };
 
   return (
@@ -293,6 +303,43 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
         <Link to={`/products/${product.slug}`} className="text-xs text-muted-foreground underline hover:text-foreground transition-colors mt-1 self-start">
           View product
         </Link>
+
+        {/* State B — subscribed items for this product + "add another brand" */}
+        {hasSubscribed && (
+          <div className="mt-3">
+            <div className="text-[10px] uppercase tracking-wide font-semibold text-text-med mb-1.5">In your subscription</div>
+            <ul className="space-y-2">
+              {subscribedItems.map(item => (
+                <li key={item.brand_id} className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{item.brand_name}</div>
+                    {item.size_variant && <div className="text-xs text-muted-foreground truncate">{item.size_variant}</div>}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button type="button" onClick={() => decrementDraftItem(item.product_id, item.brand_id)}
+                      className="w-7 h-7 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors" aria-label="Decrease quantity">
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="text-sm font-medium w-4 text-center tabular-nums">{item.quantity}</span>
+                    <button type="button" onClick={() => addToDraft({ ...item, quantity: 1 })}
+                      className="w-7 h-7 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors" aria-label="Increase quantity">
+                      <Plus className="h-3 w-3" />
+                    </button>
+                    <button type="button" onClick={() => removeFromDraft(item.product_id, item.brand_id)}
+                      className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-coral transition-colors" aria-label={`Remove ${item.brand_name}`}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-border my-3" />
+            <button type="button" onClick={resetSelection}
+              className="text-sm text-forest underline hover:opacity-80 transition-opacity flex items-center gap-1">
+              <Plus className="h-3.5 w-3.5" /> Subscribe to another brand
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col gap-2 mt-3">
           {/* Brand */}
@@ -344,7 +391,7 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
 
         <button type="button" onClick={handleSubscribe} disabled={!canSubscribe}
           className="mt-3 w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[44px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-          <Plus className="w-4 h-4" /> Add to subscription
+          <Plus className="w-4 h-4" /> {hasSubscribed ? "Add another brand" : "Add to subscription"}
         </button>
         {!canSubscribe && (
           <p className="text-[11px] text-text-light mt-1.5 text-center">Please choose {missing.join(", ")} to continue</p>
