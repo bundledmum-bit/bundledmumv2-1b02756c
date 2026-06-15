@@ -6,7 +6,7 @@ import { Lock, Loader2, Minus, Plus, ArrowLeft, Repeat, ShieldCheck, Calendar, T
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import {
-  readDraft, clearDraft, removeFromDraft, fmtN,
+  readDraft, clearDraft, removeFromDraft, writeDraft, fmtN,
   DELIVERY_COUNT_LIMITS, FREQUENCY_LABEL,
   WEEKDAY_LABEL, nextDeliveryDate, projectCycleEnd,
   RESULT_KEY, type Frequency, type SubscriptionDraft,
@@ -50,6 +50,28 @@ export default function SubscriptionCheckout() {
   const handleRemoveItem = (productId: string, brandId: string) => {
     removeFromDraft(productId, brandId);
     setDraft(readDraft());
+  };
+
+  // Adjust a line item's quantity (+1 / -1). Dropping to 0 removes the line.
+  // Recompute totals and re-read so the summary re-renders; empty → redirect.
+  const handleQuantityChange = (productId: string, brandId: string, delta: number) => {
+    const existing = readDraft();
+    if (!existing) return;
+    const idx = existing.items.findIndex(i => i.product_id === productId && i.brand_id === brandId);
+    if (idx < 0) return;
+    const newQty = existing.items[idx].quantity + delta;
+    if (newQty <= 0) {
+      removeFromDraft(productId, brandId);
+    } else {
+      existing.items[idx].quantity = newQty;
+      const subtotal = existing.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+      existing.subtotal_per_delivery = subtotal;
+      existing.total_per_delivery = Math.round(subtotal * (1 - existing.discount_pct / 100));
+      writeDraft(existing);
+    }
+    const updated = readDraft();
+    if (!updated || updated.items.length === 0) navigate("/subscriptions");
+    else setDraft(updated);
   };
 
   // Meta Pixel InitiateCheckout + Schedule once the draft loads.
@@ -250,8 +272,27 @@ export default function SubscriptionCheckout() {
                 {it.image_url && <img src={it.image_url} alt={it.product_name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{it.product_name}</div>
-                  <div className="text-[11px] text-text-light">{it.brand_name} · qty {it.quantity} · {fmtN(it.unit_price)} each</div>
+                  <div className="text-[11px] text-text-light">{it.brand_name} · {fmtN(it.unit_price)} each</div>
                   {it.delivery_day && <div className="text-[11px] text-forest font-medium">Delivers {WEEKDAY_LABEL[it.delivery_day] || it.delivery_day}</div>}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(it.product_id, it.brand_id, -1)}
+                      className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-sm hover:bg-muted transition-colors"
+                      aria-label="Decrease quantity"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="text-sm font-medium w-4 text-center tabular-nums">{it.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleQuantityChange(it.product_id, it.brand_id, 1)}
+                      className="w-7 h-7 rounded-full border border-border flex items-center justify-center text-sm hover:bg-muted transition-colors"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
                 <div className="text-xs font-semibold tabular-nums">{fmtN(it.unit_price * it.quantity)}</div>
                 <button
