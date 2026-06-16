@@ -827,6 +827,22 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     if (newStatus === "cancelled") { setShowCancel(true); return; }
     if (newStatus === "returned") { setShowReturn(true); return; }
 
+    // Warn-but-allow: shipping/delivering a subscription order BEFORE its
+    // scheduled delivery day risks arriving early. Confirm, never hard-block.
+    if (o.is_subscription_order && (newStatus === "shipped" || newStatus === "delivered")) {
+      const dd = subDeliveryDate(o);
+      if (dd) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        if (today < dd) {
+          const ok = window.confirm(
+            `This subscription delivery is scheduled for ${fmtDeliverLabel(dd)}. ` +
+            `Shipping before the customer's chosen delivery day may arrive early. Continue anyway?`,
+          );
+          if (!ok) return;
+        }
+      }
+    }
+
     const updates: any = { order_status: newStatus };
     if (newStatus === "packed") updates.packed_at = new Date().toISOString();
     if (newStatus === "shipped") updates.shipped_at = new Date().toISOString();
