@@ -723,6 +723,7 @@ interface RecipientField {
   key: string;
   title: string;
   description: string;
+  optional?: boolean;
 }
 
 const RECIPIENT_FIELDS: RecipientField[] = [
@@ -750,6 +751,12 @@ const RECIPIENT_FIELDS: RecipientField[] = [
     key: "picker_notification_emails",
     title: "Picker Notification Recipients",
     description: "Sent when a paid order is ready to pick. Recipients can claim the order by clicking the email button.",
+  },
+  {
+    key: "subscription_notification_email",
+    title: "Subscription Notification Recipients",
+    description: "Sent 48h and 24h before each subscription delivery is due. Leave blank to disable subscription delivery reminders.",
+    optional: true,
   },
 ];
 
@@ -807,7 +814,10 @@ function NotificationRecipientsPanel() {
   // no invalid entries are present anywhere.
   const allOk = RECIPIENT_FIELDS.every(f => {
     const p = parsedByKey[f.key];
-    return p.valid.length > 0 && p.invalid.length === 0;
+    if (p.invalid.length > 0) return false;
+    // Optional fields (e.g. subscription reminders) may be left empty.
+    if (f.optional) return true;
+    return p.valid.length > 0;
   });
   const canSave = allOk && !saving;
 
