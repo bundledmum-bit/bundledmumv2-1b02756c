@@ -125,6 +125,29 @@ export default function SubscriptionCheckout() {
   const { data: zones = [] } = useShippingZones();
   const { data: settings } = useSubscriptionSettings();
 
+  // Subscription-only delivery rules (subscription_settings). Subscriptions
+  // ship to a limited set of states and need a minimum lead time before the
+  // first delivery — both enforced server-side; mirrored here for display.
+  const [allowedStates, setAllowedStates] = useState<string[]>(["Lagos"]);
+  const [minLeadDays, setMinLeadDays] = useState(3);
+  useEffect(() => {
+    (supabase as any).from("subscription_settings")
+      .select("setting_value").eq("setting_key", "subscription_allowed_states").single()
+      .then(({ data }: any) => {
+        const v = data?.setting_value;
+        if (typeof v === "string" && v.trim()) {
+          const list = v.split(",").map((s: string) => s.trim()).filter(Boolean);
+          if (list.length) setAllowedStates(list);
+        }
+      });
+    (supabase as any).from("subscription_settings")
+      .select("setting_value").eq("setting_key", "min_lead_days").single()
+      .then(({ data }: any) => {
+        const n = parseInt(data?.setting_value, 10);
+        if (Number.isFinite(n) && n >= 0) setMinLeadDays(n);
+      });
+  }, []);
+
   // Delivery count state, clamped by frequency.
   const [count, setCount] = useState(4);
   const safeFrequency: Frequency = draft?.frequency && draft.frequency in DELIVERY_COUNT_LIMITS
@@ -144,19 +167,29 @@ export default function SubscriptionCheckout() {
   const [errors, setErrors] = useState<Partial<Record<FormKey, string>>>({});
   const [processing, setProcessing] = useState(false);
 
+  // State options = deliverable states ∩ subscription-allowed states
+  // (case-insensitive). Falls back to the allowed list if none of them are in
+  // the deliverable set, so the selector is never empty.
+  const stateOptions = useMemo(() => {
+    const inter = deliverableStates
+      .filter(s => allowedStates.some(a => a.toLowerCase() === s.name.toLowerCase()))
+      .map(s => s.name);
+    return inter.length ? inter : allowedStates;
+  }, [deliverableStates, allowedStates]);
+
   // State → Zone cascade (mirrors CheckoutPage).
   const activeState = deliverableStates.find(s => s.name === form.state);
   const zonesForState = (zones || []).filter(z => (z.states || []).includes(form.state));
   const stateHasZones = activeState?.has_zones === true && zonesForState.length > 0;
   const selectedZone = zonesForState.find(z => z.id === form.zoneId) || null;
 
-  // Keep `state` valid once states load (fallback to the first deliverable).
+  // Keep `state` valid once options resolve (fallback to the first allowed state).
   useEffect(() => {
-    if (!deliverableStates.length) return;
-    if (!deliverableStates.some(s => s.name === form.state)) {
-      setForm(p => ({ ...p, state: deliverableStates[0].name }));
+    if (!stateOptions.length) return;
+    if (!stateOptions.some(n => n.toLowerCase() === form.state.toLowerCase())) {
+      setForm(p => ({ ...p, state: stateOptions[0] }));
     }
-  }, [deliverableStates]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stateOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill contact + delivery from customer_account_view when signed in.
   useEffect(() => {
@@ -485,9 +518,10 @@ export default function SubscriptionCheckout() {
                     onChange={e => { setForm(p => ({ ...p, state: e.target.value, zoneId: "", city: "" })); setErrors(p => ({ ...p, zoneId: undefined, city: undefined })); }}
                     className={`${fieldInputCls} border-border focus:border-forest`}
                   >
-                    {deliverableStates.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    {stateOptions.map(name => <option key={name} value={name}>{name}</option>)}
                   </select>
                 )}
+                <p className="text-[11px] text-text-light">Subscriptions are currently available in: {allowedStates.join(", ")}.</p>
               </div>
 
               {stateHasZones && (
