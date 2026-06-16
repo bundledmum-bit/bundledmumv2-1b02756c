@@ -12,6 +12,11 @@ import { analytics, trackEcommerce } from "@/lib/ga";
 export default function OrderConfirmedPage() {
   const [searchParams] = useSearchParams();
   const orderNumber = searchParams.get("order") || "";
+  // get-order-confirmation now requires the order's share_token. Prefer the URL
+  // param; fall back to the copy stashed in sessionStorage at checkout time.
+  const shareToken = searchParams.get("token")
+    || (orderNumber ? sessionStorage.getItem(`share_token_${orderNumber}`) : null)
+    || "";
   const [showShareModal, setShowShareModal] = useState(false);
   const { data: settings } = useSiteSettings();
   const whatsapp = settings?.whatsapp_number || "";
@@ -23,15 +28,18 @@ export default function OrderConfirmedPage() {
   useEffect(() => { document.title = "Order Confirmed | BundledMum"; }, []);
 
   const { data: orderData, isLoading } = useQuery({
-    queryKey: ["order-confirmed", orderNumber],
+    queryKey: ["order-confirmed", orderNumber, shareToken],
     enabled: !!orderNumber,
     queryFn: async () => {
+      // Secured endpoint requires order_number + share_token. Without a token
+      // the order is never returned, so don't burn the retry budget.
+      if (!shareToken) return null;
       // Use edge function to fetch order (bypasses RLS)
       const MAX_ATTEMPTS = 10;
       const DELAY = 2000;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         const { data, error } = await supabase.functions.invoke("get-order-confirmation", {
-          body: { order_number: orderNumber },
+          body: { order_number: orderNumber, share_token: shareToken },
         });
         if (data?.order) return { order: data.order, referral_code: data.referral_code || null };
         if (error) console.error("Order confirmation fetch error:", error);
@@ -112,7 +120,7 @@ export default function OrderConfirmedPage() {
 
   if (!order) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="text-center"><h1 className="text-2xl font-bold mb-2">Order not found</h1><p className="text-muted-foreground mb-4">We couldn't find order {orderNumber}</p><Link to="/" className="text-forest font-semibold hover:underline">Go Home</Link></div>
+      <div className="text-center"><h1 className="text-2xl font-bold mb-2">Order not found</h1><p className="text-muted-foreground mb-4">Order not found. Please check your confirmation email for the link.</p><Link to="/" className="text-forest font-semibold hover:underline">Go Home</Link></div>
     </div>
   );
 

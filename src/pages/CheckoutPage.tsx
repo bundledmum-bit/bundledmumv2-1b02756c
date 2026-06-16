@@ -1235,6 +1235,22 @@ export default function CheckoutPage() {
     return [...cart];
   };
 
+  // Fetch the order's share_token (required by the secured
+  // get-order-confirmation endpoint), stash it for the confirmation page, and
+  // navigate there with the token in the URL.
+  const navigateToConfirmation = async (savedOrder: SavedOrderResult) => {
+    const num = savedOrder.orderNumber || "";
+    let shareToken = "";
+    try {
+      const { data } = await supabase.from("orders").select("share_token").eq("id", savedOrder.id).single();
+      shareToken = (data as any)?.share_token || "";
+    } catch { /* best-effort — confirmation page shows not-found if the token is missing */ }
+    if (num && shareToken) {
+      try { sessionStorage.setItem(`share_token_${num}`, shareToken); } catch { /* ignore */ }
+    }
+    navigate(`/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`);
+  };
+
   const placeOrder = async () => {
     const cartSnapshot = getLiveCart();
     if (!cartSnapshot.length) {
@@ -1271,7 +1287,7 @@ export default function CheckoutPage() {
       });
       await linkQuoteIfPending(savedOrder.id);
       clearCart();
-      navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
+      await navigateToConfirmation(savedOrder);
       return;
     }
 
@@ -1325,7 +1341,7 @@ export default function CheckoutPage() {
           });
           await linkQuoteIfPending(savedOrder.id);
           clearCart();
-          navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
+          await navigateToConfirmation(savedOrder);
         },
         onCancel: () => { setProcessing(false); toast.error("Payment cancelled"); },
       });
@@ -1349,7 +1365,7 @@ export default function CheckoutPage() {
         });
         await linkQuoteIfPending(savedOrder.id);
         clearCart();
-        navigate(`/order-confirmed?order=${encodeURIComponent(savedOrder.orderNumber || "")}`);
+        await navigateToConfirmation(savedOrder);
         return;
       }
       setProcessing(false);
