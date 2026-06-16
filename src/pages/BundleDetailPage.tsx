@@ -613,7 +613,7 @@ export default function BundleDetailPage() {
                       ? convenienceItems[swapPopup.swapIndex]
                       : mumItems[swapPopup.swapIndex])
               : null}
-            existingNames={existingNames}
+            existingItemNames={existingNames}
             onSelect={handleSwapSelect}
           />
         )}

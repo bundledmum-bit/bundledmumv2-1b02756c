@@ -20,6 +20,7 @@ import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
 import BundleCustomiser from "@/components/BundleCustomiser";
 import MaternityBundleItemsEditor from "@/components/MaternityBundleItemsEditor";
+import type { MaternityBundleSnapshotItem } from "@/components/MaternityBundleItemsGrid";
 import { useBundleItemsEdit } from "@/hooks/useBundleItemsEdit";
 import { buildWhatsAppOrderHref } from "@/lib/whatsapp";
 
