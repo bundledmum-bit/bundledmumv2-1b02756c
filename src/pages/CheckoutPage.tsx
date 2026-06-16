@@ -27,7 +27,7 @@ interface FormData {
   lga?: string;
 }
 
-type SavedOrderResult = { id: string; orderNumber: string | null };
+type SavedOrderResult = { id: string; orderNumber: string | null; share_token: string | null };
 
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
@@ -1208,7 +1208,7 @@ export default function CheckoutPage() {
         console.warn("Courier assignment skipped:", err);
       }
 
-      return { id: result.id, orderNumber: result.order_number };
+      return { id: result.id, orderNumber: result.order_number, share_token: result.share_token ?? null };
     } catch (e) {
       console.error("DB save failed:", e);
       return null;
@@ -1235,16 +1235,12 @@ export default function CheckoutPage() {
     return [...cart];
   };
 
-  // Fetch the order's share_token (required by the secured
-  // get-order-confirmation endpoint), stash it for the confirmation page, and
-  // navigate there with the token in the URL.
-  const navigateToConfirmation = async (savedOrder: SavedOrderResult) => {
+  // The order's share_token (required by the secured get-order-confirmation
+  // endpoint) comes straight from the place-order response — no extra fetch.
+  // Stash it for the confirmation page and pass it in the URL.
+  const navigateToConfirmation = (savedOrder: SavedOrderResult) => {
     const num = savedOrder.orderNumber || "";
-    let shareToken = "";
-    try {
-      const { data } = await supabase.from("orders").select("share_token").eq("id", savedOrder.id).single();
-      shareToken = (data as any)?.share_token || "";
-    } catch { /* best-effort — confirmation page shows not-found if the token is missing */ }
+    const shareToken = savedOrder.share_token || "";
     if (num && shareToken) {
       try { sessionStorage.setItem(`share_token_${num}`, shareToken); } catch { /* ignore */ }
     }
