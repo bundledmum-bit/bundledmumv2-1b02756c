@@ -4,9 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Repeat, Calendar, CreditCard, Package, Truck, Pause, Play, XCircle, CheckSquare,
-  Eye, X, Save, AlertTriangle,
+  Eye, X, Save, AlertTriangle, Printer, Clock, Inbox,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { openBrandedInvoice } from "@/components/admin/PrintInvoice";
 import { FREQUENCY_LABEL, WEEKDAY_LABEL, type Frequency } from "@/hooks/useSubscription";
 
 // -------------------------------------------------------------------------
@@ -19,6 +20,7 @@ interface SubItem {
   unit_price: number;      // NAIRA
   frequency: string;
   is_active: boolean;
+  notes?: string | null;   // per-item delivery day / cadence notes
   products?: { id: string; name: string; category: string | null } | null;
   brands?: { id: string; brand_name: string; price: number | null } | null;
 }
@@ -89,6 +91,67 @@ function totalPerCycle(row: SubRow): { subtotal: number; discount: number; total
   return { subtotal, discount, total: subtotal - discount };
 }
 
+// Per-item delivery day is stored loosely in subscription_items.notes (the
+// checkout writes the chosen day there). Pull a weekday out of it if present.
+function itemDeliveryDay(item: SubItem): string | null {
+  const raw = (item.notes || "").toLowerCase();
+  const day = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    .find(d => raw.includes(d));
+  return day ? WEEKDAY_LABEL[day] : null;
+}
+
+// Print a branded invoice / picking slip for a subscription delivery. Reuses
+// the orders print engine: a fulfilled cycle prints its real linked order; an
+// upcoming cycle prints a synthetic order built from the subscription itself
+// (no adminUserId → never touches generate_invoice_from_order).
+async function printSubscriptionDelivery(opts: { sub: SubRow; orderId?: string | null; cycleNumber?: number | null }) {
+  const { sub, orderId, cycleNumber } = opts;
+  try {
+    if (orderId) {
+      const { data: order, error } = await (supabase as any)
+        .from("orders").select("*, order_items(*)").eq("id", orderId).maybeSingle();
+      if (error || !order) { toast.error("Couldn't load the linked order to print."); return; }
+      await openBrandedInvoice(order);
+      return;
+    }
+    const items = (sub.subscription_items || []).filter(i => i.is_active !== false).map(it => ({
+      product_name: it.products?.name || "Item",
+      brand_name: it.brands?.brand_name || "",
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      line_total: it.unit_price * it.quantity,
+      brand_id: it.brands?.id || null,
+    }));
+    const totals = totalPerCycle(sub);
+    const dayLabel = WEEKDAY_LABEL[sub.delivery_day || ""] || sub.delivery_day || "";
+    await openBrandedInvoice({
+      order_number: `SUB-${sub.id.slice(0, 8).toUpperCase()}${cycleNumber ? `-C${cycleNumber}` : ""}`,
+      customer_name: sub.customer_name,
+      customer_phone: sub.customer_phone,
+      delivery_address: sub.delivery_address,
+      delivery_city: sub.delivery_city,
+      delivery_state: sub.delivery_state,
+      subtotal: totals.subtotal,
+      delivery_fee: 0,
+      service_fee: 0,
+      discount_amount: totals.discount,
+      total: totals.total,
+      delivery_notes: `Subscription delivery${dayLabel ? ` · delivers ${dayLabel}` : ""}${cycleNumber ? ` · cycle ${cycleNumber}` : ""}`,
+      order_items: items,
+    });
+  } catch (e: any) {
+    toast.error(e?.message || "Couldn't print the delivery slip.");
+  }
+}
+
+const ORDER_STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+  upcoming:  { label: "Upcoming",  cls: "bg-blue-100 text-blue-700" },
+  pending:   { label: "Pending",   cls: "bg-amber-100 text-amber-700" },
+  fulfilled: { label: "Fulfilled", cls: "bg-emerald-100 text-emerald-700" },
+  skipped:   { label: "Skipped",   cls: "bg-gray-100 text-gray-600" },
+  failed:    { label: "Failed",    cls: "bg-red-100 text-red-700" },
+};
+
 // -------------------------------------------------------------------------
 // Page
 // -------------------------------------------------------------------------
@@ -96,6 +159,7 @@ function totalPerCycle(row: SubRow): { subtotal: number; discount: number; total
 type Tab = "all" | "active" | "cancelled" | "payment_failed" | "completed";
 
 export default function AdminSubscriptions() {
+  const [view, setView] = useState<"subscriptions" | "upcoming">("subscriptions");
   const [tab, setTab] = useState<Tab>("all");
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -114,7 +178,7 @@ export default function AdminSubscriptions() {
           paystack_card_brand, paystack_card_last4,
           cancellation_requested_at, cancelled_at, paused_until, notes,
           subscription_items(
-            id, quantity, unit_price, frequency, is_active,
+            id, quantity, unit_price, frequency, is_active, notes,
             products(id, name, category),
             brands(id, brand_name, price)
           ),
@@ -162,6 +226,25 @@ export default function AdminSubscriptions() {
         <Stat label="Today's deliveries" value={stats.today_deliveries} tone={stats.today_deliveries > 0 ? "emerald" : undefined} />
       </section>
 
+      {/* Top-level tabs: master list vs the fulfilment queue */}
+      <nav className="flex gap-1 border-b border-border">
+        {([
+          { k: "subscriptions", label: "Subscriptions", icon: <Repeat className="w-3.5 h-3.5" /> },
+          { k: "upcoming",      label: "Upcoming Deliveries", icon: <Inbox className="w-3.5 h-3.5" /> },
+        ] as Array<{ k: typeof view; label: string; icon: React.ReactNode }>).map(t => (
+          <button
+            key={t.k}
+            onClick={() => setView(t.k)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${view === t.k ? "border-forest text-forest" : "border-transparent text-text-med hover:text-forest"}`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {view === "upcoming" && <UpcomingDeliveries subs={subs} isLoading={isLoading} onView={setDetailId} />}
+
+      {view === "subscriptions" && (<>
       <nav className="flex gap-1 border-b border-border flex-wrap">
         {([
           { k: "all",            label: "All" },
@@ -192,13 +275,15 @@ export default function AdminSubscriptions() {
                 <th className="px-3 py-2">Next Delivery</th>
                 <th className="px-3 py-2">Cycle</th>
                 <th className="px-3 py-2 text-right">Items</th>
+                <th className="px-3 py-2 text-right">Box value</th>
+                <th className="px-3 py-2">Created</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={9} className="px-3 py-8 text-center text-text-light">Loading…</td></tr>}
-              {!isLoading && filtered.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-text-light">No subscriptions match.</td></tr>}
+              {isLoading && <tr><td colSpan={11} className="px-3 py-8 text-center text-text-light">Loading…</td></tr>}
+              {!isLoading && filtered.length === 0 && <tr><td colSpan={11} className="px-3 py-8 text-center text-text-light">No subscriptions match.</td></tr>}
               {filtered.map(s => {
                 const style = STATUS_STYLE[s.status] || { label: s.status, cls: "bg-muted text-text-med" };
                 const activeItems = (s.subscription_items || []).filter(i => i.is_active !== false).length;
@@ -214,6 +299,8 @@ export default function AdminSubscriptions() {
                       {s.deliveries_remaining != null && <span className="text-text-light"> ({s.deliveries_remaining} left)</span>}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{activeItems}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-semibold text-forest">{fmtN(totalPerCycle(s).total)}</td>
+                    <td className="px-3 py-2 text-text-light">{fmtDateLong(s.created_at)}</td>
                     <td className="px-3 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded-pill text-[10px] font-semibold capitalize ${style.cls}`}>{style.label}</span></td>
                     <td className="px-3 py-2 text-right">
                       <button onClick={() => setDetailId(s.id)} className="inline-flex items-center gap-1 text-forest text-xs font-semibold hover:underline"><Eye className="w-3 h-3" /> View</button>
@@ -225,6 +312,7 @@ export default function AdminSubscriptions() {
           </table>
         </div>
       </div>
+      </>)}
 
       {selected && <SubscriptionDrawer row={selected} onClose={() => setDetailId(null)} />}
     </div>
@@ -237,6 +325,99 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "em
     <div className="bg-card border border-border rounded-xl p-3">
       <div className="text-[10px] uppercase tracking-widest font-semibold text-text-light">{label}</div>
       <div className={`text-2xl font-bold tabular-nums mt-1 ${cls}`}>{value}</div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Upcoming Deliveries — fulfilment queue: future active-subscription
+// deliveries + the last 30 days of subscription_orders, newest first.
+// -------------------------------------------------------------------------
+
+function UpcomingDeliveries({ subs, isLoading, onView }: { subs: SubRow[]; isLoading: boolean; onView: (id: string) => void }) {
+  const { rows, today } = useMemo(() => {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const todayIso = now.toISOString().slice(0, 10);
+    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+    type Row = {
+      key: string; scheduledDate: string | null; sub: SubRow;
+      cycleNumber: number | null; orderId: string | null; status: string;
+    };
+    const out: Row[] = [];
+    for (const s of subs) {
+      // (a) Upcoming — active subs whose next delivery is today or later.
+      if (s.status === "active" && s.next_charge_date && s.next_charge_date >= todayIso) {
+        out.push({ key: `up-${s.id}`, scheduledDate: s.next_charge_date, sub: s, cycleNumber: (s.total_cycles ?? 0) + 1, orderId: null, status: "upcoming" });
+      }
+      // (b) Recent past — subscription_orders scheduled within the last 30 days.
+      for (const o of (s.subscription_orders || [])) {
+        if (o.scheduled_date && o.scheduled_date >= cutoffIso && o.scheduled_date <= todayIso) {
+          out.push({ key: `ord-${o.id}`, scheduledDate: o.scheduled_date, sub: s, cycleNumber: o.cycle_number, orderId: o.order_id, status: o.status || "pending" });
+        }
+      }
+    }
+    out.sort((a, b) => (b.scheduledDate || "").localeCompare(a.scheduledDate || ""));
+    return { rows: out, today: now };
+  }, [subs]);
+
+  const daysChip = (iso: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso + "T00:00:00");
+    const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+    const label = diff === 0 ? "Today" : diff > 0 ? `in ${diff}d` : `${-diff}d ago`;
+    const cls = diff === 0 ? "bg-emerald-100 text-emerald-700" : diff > 0 ? "bg-blue-50 text-blue-700" : "bg-muted text-text-light";
+    return <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[10px] font-semibold ${cls}`}><Clock className="w-3 h-3" />{label}</span>;
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-muted/40 sticky top-0 z-10">
+            <tr className="text-left">
+              <th className="px-3 py-2">Scheduled</th>
+              <th className="px-3 py-2">When</th>
+              <th className="px-3 py-2">Customer</th>
+              <th className="px-3 py-2">Destination</th>
+              <th className="px-3 py-2 text-right">Items</th>
+              <th className="px-3 py-2 text-right">Box value</th>
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={8} className="px-3 py-8 text-center text-text-light">Loading…</td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-text-light">No upcoming or recent deliveries.</td></tr>}
+            {rows.map(r => {
+              const s = r.sub;
+              const st = ORDER_STATUS_STYLE[r.status] || { label: r.status, cls: "bg-muted text-text-med" };
+              const itemCount = (s.subscription_items || []).filter(i => i.is_active !== false).length;
+              const day = WEEKDAY_LABEL[s.delivery_day || ""] || s.delivery_day || "";
+              return (
+                <tr key={r.key} className="border-t border-border hover:bg-muted/30">
+                  <td className="px-3 py-2 text-text-med whitespace-nowrap">
+                    {fmtDateLong(r.scheduledDate)}{day && <span className="text-text-light"> · {day}</span>}
+                  </td>
+                  <td className="px-3 py-2">{daysChip(r.scheduledDate)}</td>
+                  <td className="px-3 py-2">
+                    <button onClick={() => onView(s.id)} className="font-semibold text-forest hover:underline text-left">{s.customer_name || s.customer_email.split("@")[0]}</button>
+                    <div className="text-text-light">{s.customer_phone || "—"}</div>
+                  </td>
+                  <td className="px-3 py-2 text-text-med">{[s.delivery_city, s.delivery_state].filter(Boolean).join(", ") || "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{itemCount}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-forest">{fmtN(totalPerCycle(s).total)}</td>
+                  <td className="px-3 py-2"><span className={`inline-flex items-center px-2 py-0.5 rounded-pill text-[10px] font-semibold capitalize ${st.cls}`}>{st.label}</span></td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => printSubscriptionDelivery({ sub: s, orderId: r.orderId, cycleNumber: r.cycleNumber })} className="inline-flex items-center gap-1 text-forest text-xs font-semibold hover:underline"><Printer className="w-3 h-3" /> Slip</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -300,6 +481,12 @@ function SubscriptionDrawer({ row, onClose }: { row: SubRow; onClose: () => void
             <p className="text-[10px] text-text-light">{row.customer_name || row.customer_email}</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => printSubscriptionDelivery({ sub: row, orderId: latestOrderId, cycleNumber: row.total_cycles })}
+              className="inline-flex items-center gap-1 border border-input rounded-lg px-2.5 py-1 text-xs font-semibold hover:bg-muted"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print slip
+            </button>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-pill text-[10px] font-semibold capitalize ${style.cls}`}>{style.label}</span>
             <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
           </div>
@@ -347,21 +534,28 @@ function SubscriptionDrawer({ row, onClose }: { row: SubRow; onClose: () => void
                   <tr className="text-left">
                     <th className="px-2 py-1.5">Brand</th>
                     <th className="px-2 py-1.5">Product</th>
+                    <th className="px-2 py-1.5">Schedule</th>
                     <th className="px-2 py-1.5 text-right w-12">Qty</th>
                     <th className="px-2 py-1.5 text-right w-20">Unit</th>
                     <th className="px-2 py-1.5 text-right w-20">Line</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(row.subscription_items || []).filter(i => i.is_active !== false).map(it => (
+                  {(row.subscription_items || []).filter(i => i.is_active !== false).map(it => {
+                    const day = itemDeliveryDay(it);
+                    return (
                     <tr key={it.id} className="border-t border-border/40">
                       <td className="px-2 py-1.5">{it.brands?.brand_name || "—"}</td>
                       <td className="px-2 py-1.5">{it.products?.name || "—"}</td>
+                      <td className="px-2 py-1.5 text-text-light text-[11px]">
+                        {FREQUENCY_LABEL[it.frequency as Frequency] || it.frequency}{day ? ` · ${day}` : ""}
+                      </td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{it.quantity}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmtN(it.unit_price)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{fmtN(it.unit_price * it.quantity)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
