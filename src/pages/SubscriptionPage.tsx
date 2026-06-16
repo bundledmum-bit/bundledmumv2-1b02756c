@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Package, Coins, Repeat, ShieldCheck, Plus, Minus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -67,6 +67,11 @@ interface SubProduct {
 
 export default function SubscriptionPage() {
   const { data: settings } = useSubscriptionSettings();
+  const [searchParams] = useSearchParams();
+  const targetSlug = searchParams.get("product");
+  // Slug of the card to visually highlight after a deep-link scroll. Cleared
+  // after a few seconds so the emphasis is a one-shot, not a permanent style.
+  const [highlightSlug, setHighlightSlug] = useState<string | null>(null);
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["subscribable-products"],
@@ -104,6 +109,27 @@ export default function SubscriptionPage() {
     }
     return map;
   }, [products]);
+
+  // Deep-link: ?product=<slug> scrolls to + briefly highlights that card.
+  // Runs only once the product list is loaded and the matching card exists in
+  // the DOM; a missing/deactivated slug is a no-op (page loads normally).
+  useEffect(() => {
+    if (!targetSlug || products.length === 0) return;
+    if (!products.some(p => p.slug === targetSlug)) return;
+    // Wait for the grouped cards to be in the DOM, then scroll. The delay also
+    // lets the global ScrollToTop finish its mount-time resets first.
+    const scrollTimer = setTimeout(() => {
+      const el = document.getElementById(`sub-product-${targetSlug}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightSlug(targetSlug);
+      // Re-assert next frame to win any race with ScrollToTop's post-data rAF
+      // reset (it re-pins tall pages back to the top once data loads).
+      requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth", block: "center" }));
+    }, 250);
+    const clearTimer = setTimeout(() => setHighlightSlug(null), 3000);
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer); };
+  }, [targetSlug, products]);
 
   if (!settings) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-text-light">Loading…</div>;
@@ -157,7 +183,7 @@ export default function SubscriptionPage() {
               <div key={sub} className="space-y-3">
                 <h3 className="text-xs uppercase tracking-widest font-semibold text-text-med">{prettySubcategory(sub)}</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {items.map(p => <SubscribableProductCard key={p.id} product={p} settings={settings} />)}
+                  {items.map(p => <SubscribableProductCard key={p.id} product={p} settings={settings} highlight={p.slug === highlightSlug} />)}
                 </div>
               </div>
             ))}
@@ -191,7 +217,7 @@ const FREQ_OPT: Record<Frequency, string> = { weekly: "Every week", biweekly: "E
 // (when the product has them), frequency, and delivery day (Mon–Sat) via
 // dropdowns — nothing is pre-selected — then adds straight to the draft. The
 // first add creates it; later adds append per-item with their own delivery day.
-function SubscribableProductCard({ product, settings }: { product: SubProduct; settings: SubscriptionSettings }) {
+function SubscribableProductCard({ product, settings, highlight = false }: { product: SubProduct; settings: SubscriptionSettings; highlight?: boolean }) {
   const draft = useSubscriptionDraft();
   const [zoomed, setZoomed] = useState(false);
 
@@ -282,7 +308,10 @@ function SubscribableProductCard({ product, settings }: { product: SubProduct; s
   };
 
   return (
-    <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
+    <div
+      id={`sub-product-${product.slug}`}
+      className={`bg-card border rounded-card overflow-hidden flex flex-col scroll-mt-24 transition-all duration-500 ${highlight ? "border-coral ring-2 ring-coral ring-offset-2 shadow-lg" : "border-border"}`}
+    >
       {/* Image — bigger, click to zoom */}
       <button
         type="button"
