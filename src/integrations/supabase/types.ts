@@ -2474,6 +2474,30 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_settings: {
+        Row: {
+          committed_capital: number
+          id: number
+          launch_date: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          committed_capital?: number
+          id?: number
+          launch_date?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          committed_capital?: number
+          id?: number
+          launch_date?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       finance_tax_settings: {
         Row: {
           annual_turnover_threshold: number | null
@@ -4970,7 +4994,9 @@ export type Database = {
           payment_method: string | null
           payment_reference: string | null
           payment_status: string | null
+          paystack_amount: number | null
           paystack_fee: number | null
+          paystack_reference: string | null
           paystack_transaction_id: string | null
           picking_started_at: string | null
           quiz_answers: Json | null
@@ -4981,6 +5007,7 @@ export type Database = {
           return_reason: string | null
           returned_at: string | null
           service_fee: number
+          share_token: string
           shipped_at: string | null
           spend_discount_amount: number | null
           spend_discount_id: string | null
@@ -5054,7 +5081,9 @@ export type Database = {
           payment_method?: string | null
           payment_reference?: string | null
           payment_status?: string | null
+          paystack_amount?: number | null
           paystack_fee?: number | null
+          paystack_reference?: string | null
           paystack_transaction_id?: string | null
           picking_started_at?: string | null
           quiz_answers?: Json | null
@@ -5065,6 +5094,7 @@ export type Database = {
           return_reason?: string | null
           returned_at?: string | null
           service_fee?: number
+          share_token?: string
           shipped_at?: string | null
           spend_discount_amount?: number | null
           spend_discount_id?: string | null
@@ -5138,7 +5168,9 @@ export type Database = {
           payment_method?: string | null
           payment_reference?: string | null
           payment_status?: string | null
+          paystack_amount?: number | null
           paystack_fee?: number | null
+          paystack_reference?: string | null
           paystack_transaction_id?: string | null
           picking_started_at?: string | null
           quiz_answers?: Json | null
@@ -5149,6 +5181,7 @@ export type Database = {
           return_reason?: string | null
           returned_at?: string | null
           service_fee?: number
+          share_token?: string
           shipped_at?: string | null
           spend_discount_amount?: number | null
           spend_discount_id?: string | null
@@ -6334,6 +6367,7 @@ export type Database = {
           delivery_state: string | null
           discount_amount: number
           discount_reason: string | null
+          download_count: number
           estimated_delivery_fee: number
           expires_at: string | null
           gift_wrap_admin_override: boolean
@@ -6341,6 +6375,7 @@ export type Database = {
           gift_wrapping: boolean
           id: string
           internal_notes: string | null
+          last_downloaded_at: string | null
           last_viewed_at: string | null
           quote_number: string
           sent_at: string | null
@@ -6369,6 +6404,7 @@ export type Database = {
           delivery_state?: string | null
           discount_amount?: number
           discount_reason?: string | null
+          download_count?: number
           estimated_delivery_fee?: number
           expires_at?: string | null
           gift_wrap_admin_override?: boolean
@@ -6376,6 +6412,7 @@ export type Database = {
           gift_wrapping?: boolean
           id?: string
           internal_notes?: string | null
+          last_downloaded_at?: string | null
           last_viewed_at?: string | null
           quote_number: string
           sent_at?: string | null
@@ -6404,6 +6441,7 @@ export type Database = {
           delivery_state?: string | null
           discount_amount?: number
           discount_reason?: string | null
+          download_count?: number
           estimated_delivery_fee?: number
           expires_at?: string | null
           gift_wrap_admin_override?: boolean
@@ -6411,6 +6449,7 @@ export type Database = {
           gift_wrapping?: boolean
           id?: string
           internal_notes?: string | null
+          last_downloaded_at?: string | null
           last_viewed_at?: string | null
           quote_number?: string
           sent_at?: string | null
@@ -7283,6 +7322,41 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_delivery_reminders: {
+        Row: {
+          id: string
+          recipient_email: string | null
+          reminder_type: string
+          scheduled_date: string
+          sent_at: string
+          subscription_id: string
+        }
+        Insert: {
+          id?: string
+          recipient_email?: string | null
+          reminder_type: string
+          scheduled_date: string
+          sent_at?: string
+          subscription_id: string
+        }
+        Update: {
+          id?: string
+          recipient_email?: string | null
+          reminder_type?: string
+          scheduled_date?: string
+          sent_at?: string
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_delivery_reminders_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
             referencedColumns: ["id"]
           },
         ]
@@ -8372,6 +8446,46 @@ export type Database = {
         }
         Relationships: []
       }
+      finance_kpi_monthly: {
+        Row: {
+          acquisition_spend: number | null
+          breakeven_revenue_needed: number | null
+          cac_naira: number | null
+          cost_per_purchase: number | null
+          fixed_plus_payroll_costs: number | null
+          gross_margin_pct: number | null
+          gross_profit: number | null
+          marketing_roi_pct: number | null
+          month: number | null
+          new_customers: number | null
+          paid_orders: number | null
+          revenue: number | null
+          roas: number | null
+          year: number | null
+        }
+        Relationships: []
+      }
+      finance_kpi_summary: {
+        Row: {
+          acquisition_spend: number | null
+          avg_order_value: number | null
+          avg_orders_per_customer: number | null
+          cac_naira: number | null
+          cost_per_purchase: number | null
+          gross_margin_pct: number | null
+          gross_profit: number | null
+          gross_profit_per_customer: number | null
+          marketing_roi_pct: number | null
+          paid_orders: number | null
+          payback_customer_multiples: number | null
+          repeat_customers: number | null
+          repeat_rate_pct: number | null
+          revenue: number | null
+          roas: number | null
+          unique_customers: number | null
+        }
+        Relationships: []
+      }
       finance_pl_summary: {
         Row: {
           gross_profit: number | null
@@ -8390,6 +8504,52 @@ export type Database = {
           total_payroll: number | null
           total_paystack_fees: number | null
           year: number | null
+        }
+        Relationships: []
+      }
+      finance_quote_pipeline: {
+        Row: {
+          accepted_live_count: number | null
+          accepted_live_value: number | null
+          conversion_rate_pct: number | null
+          converted_count: number | null
+          converted_ever: number | null
+          converted_value: number | null
+          dead_pipeline_count: number | null
+          dead_pipeline_value: number | null
+          draft_live_count: number | null
+          draft_live_value: number | null
+          paid_count: number | null
+          paid_ever: number | null
+          paid_value: number | null
+          total_open_pipeline_count: number | null
+          total_open_pipeline_raw: number | null
+          total_quotes_ever: number | null
+          viewed_live_count: number | null
+          viewed_live_value: number | null
+          weighted_pipeline_at_historical_rate: number | null
+          weighted_pipeline_value: number | null
+        }
+        Relationships: []
+      }
+      finance_runway: {
+        Row: {
+          as_of: string | null
+          capital_remaining: number | null
+          committed_capital: number | null
+          days_since_launch: number | null
+          discretionary_spend_total: number | null
+          gross_profit_earned: number | null
+          gross_spend_total: number | null
+          launch_date: string | null
+          net_spend_to_date: number | null
+          payroll_spend_total: number | null
+          recurring_payroll_monthly: number | null
+          recurring_structural_monthly: number | null
+          recurring_subscriptions_monthly: number | null
+          runway_months_at_current_marketing_pace: number | null
+          runway_months_structural_only: number | null
+          structural_spend_total: number | null
         }
         Relationships: []
       }
@@ -8630,7 +8790,7 @@ export type Database = {
           customer_email: string | null
           customer_name: string | null
           extra_costs_total: number | null
-          gross_profit_pre_cogs: number | null
+          gross_profit_stored: number | null
           has_refund: boolean | null
           net_profit: number | null
           order_id: string | null
@@ -8767,6 +8927,66 @@ export type Database = {
           new_quote_number: string
         }[]
       }
+      finance_period_metrics: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          acquisition_spend: number
+          avg_order_value: number
+          cac_naira: number
+          cost_per_purchase: number
+          gross_margin_pct: number
+          gross_profit: number
+          gross_revenue: number
+          marketing_roi_pct: number
+          net_margin_pct: number
+          net_profit: number
+          new_customers: number
+          paid_orders: number
+          period_end: string
+          period_start: string
+          repeat_customers: number
+          repeat_rate_pct: number
+          roas: number
+          total_cogs: number
+          total_expenses: number
+          total_payroll: number
+          unique_customers: number
+        }[]
+      }
+      finance_quote_pipeline_detail: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          created_at: string
+          customer_name: string
+          is_converted: boolean
+          is_paid: boolean
+          quote_number: string
+          status: string
+          total: number
+          view_count: number
+        }[]
+      }
+      finance_quote_pipeline_period: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          conversion_rate_pct: number
+          converted_count: number
+          converted_value: number
+          dead_count: number
+          dead_value: number
+          draft_live_count: number
+          draft_live_value: number
+          open_pipeline_count: number
+          open_pipeline_value: number
+          paid_count: number
+          paid_value: number
+          total_quotes: number
+          viewed_live_count: number
+          viewed_live_value: number
+          weighted_at_historical_rate: number
+          weighted_pipeline_value: number
+        }[]
+      }
       generate_compliance_notifications: { Args: never; Returns: undefined }
       generate_employment_letter_data: {
         Args: { p_employee_id: string }
@@ -8819,11 +9039,13 @@ export type Database = {
         Args: {
           p_date_from?: string
           p_date_to?: string
+          p_include_subscriptions?: boolean
           p_limit?: number
           p_offset?: number
           p_payment_status?: string
           p_search?: string
           p_status?: string
+          p_subscriptions_only?: boolean
         }
         Returns: Json
       }
@@ -8965,7 +9187,11 @@ export type Database = {
         Returns: boolean
       }
       next_delivery_date: {
-        Args: { p_delivery_day: string; p_from_date?: string }
+        Args: {
+          p_delivery_day: string
+          p_from_date?: string
+          p_min_lead_days?: number
+        }
         Returns: string
       }
       orders_paid_only_restricted: { Args: never; Returns: boolean }
@@ -8978,6 +9204,14 @@ export type Database = {
         Returns: Json
       }
       process_recurring_expenses: { Args: never; Returns: Json }
+      recompute_order_gross_profit: {
+        Args: { p_order_id: string }
+        Returns: undefined
+      }
+      record_quote_download: {
+        Args: { p_share_token: string }
+        Returns: undefined
+      }
       record_quote_view: { Args: { p_share_token: string }; Returns: undefined }
       refresh_maternity_bundle_prices: { Args: never; Returns: Json }
       request_admin_action: {
