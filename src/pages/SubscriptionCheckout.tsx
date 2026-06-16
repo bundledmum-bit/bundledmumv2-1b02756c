@@ -9,10 +9,28 @@ import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import {
   readDraft, clearDraft, removeFromDraft, writeDraft, fmtN,
   DELIVERY_COUNT_LIMITS, FREQUENCY_LABEL, useSubscriptionSettings,
-  WEEKDAY_LABEL, nextDeliveryDate, projectCycleEnd,
+  WEEKDAY_LABEL, projectCycleEnd,
   RESULT_KEY, type Frequency, type SubscriptionDraft,
 } from "@/hooks/useSubscription";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
+
+// First delivery = the next occurrence of the chosen weekday that is at least
+// `minLead` days from today. Mirrors the create-subscription server rule so the
+// pre-payment estimate matches the confirmation email.
+function computeFirstDeliveryDate(deliveryDay: string, minLead: number): Date {
+  const dayMap: Record<string, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+  };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = dayMap[deliveryDay.toLowerCase()] ?? today.getDay();
+  let daysAhead = target - today.getDay();
+  if (daysAhead <= 0) daysAhead += 7;
+  while (daysAhead < minLead) daysAhead += 7;
+  const d = new Date(today);
+  d.setDate(d.getDate() + daysAhead);
+  return d;
+}
 
 // Form styling matched to CheckoutPage's address form (InputField).
 const fieldInputCls = "w-full rounded-[10px] border-[1.5px] px-3 py-2.5 text-sm bg-card font-body outline-none transition-colors min-h-[44px]";
@@ -215,14 +233,16 @@ export default function SubscriptionCheckout() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Dates — first delivery = next occurrence of draft.delivery_day after today,
-  // first cycle end = first delivery + frequency_days × (count − 1).
+  // Dates — first delivery = next occurrence of the chosen weekday that is at
+  // least min_lead_days from today (mirrors the create-subscription server
+  // rule, so the customer sees the correct date before paying). First cycle
+  // end = first delivery + frequency_days × (count − 1).
   const safeDeliveryDay = draft?.delivery_day || "monday";
 
   const firstDelivery = useMemo(() => {
     if (!draft) return null;
-    return nextDeliveryDate(safeDeliveryDay);
-  }, [draft, safeDeliveryDay]);
+    return computeFirstDeliveryDate(safeDeliveryDay, minLeadDays);
+  }, [draft, safeDeliveryDay, minLeadDays]);
   const cycleEnd = useMemo(() => {
     if (!firstDelivery || !draft) return null;
     return projectCycleEnd(firstDelivery, safeFrequency, count);
@@ -230,6 +250,9 @@ export default function SubscriptionCheckout() {
 
   const fmtLongDate = (d: Date | null) => d
     ? d.toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })
+    : "—";
+  const fmtFirstDelivery = (d: Date | null) => d
+    ? d.toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     : "—";
 
   const firstPayment = (draft?.total_per_delivery ?? 0) * count;
@@ -366,6 +389,18 @@ export default function SubscriptionCheckout() {
           </div>
         </header>
 
+        {/* First delivery — applies the minimum lead time (matches the server). */}
+        <section className="bg-forest/5 border border-forest/20 rounded-card p-4 flex items-start gap-3">
+          <Calendar className="w-5 h-5 text-forest flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="text-[10px] uppercase tracking-widest font-bold text-forest">Your first delivery</div>
+            <div className="text-sm font-bold">{fmtFirstDelivery(firstDelivery)}</div>
+            <p className="text-[11px] text-text-light mt-0.5">
+              Chosen {WEEKDAY_LABEL[safeDeliveryDay] || safeDeliveryDay}, at least {minLeadDays} days from today so we can prepare your box.
+            </p>
+          </div>
+        </section>
+
         {/* Order summary */}
         <section className="bg-card border border-border rounded-card p-4 space-y-2">
           <h2 className="text-[10px] uppercase tracking-widest font-bold text-text-med">Order summary · per delivery</h2>
@@ -483,6 +518,7 @@ export default function SubscriptionCheckout() {
           <dl className="text-xs space-y-1 pt-2 border-t border-border/60">
             <Row label="First payment today" v={<b className="text-forest">{fmtN(firstPayment)}</b>} />
             <p className="text-[11px] text-text-light">Covers {count} deliveries — then auto-renews at the same amount per cycle.</p>
+            <Row label="First delivery" v={fmtFirstDelivery(firstDelivery)} />
             <Row label="First cycle ends around" v={fmtLongDate(cycleEnd)} />
           </dl>
 
