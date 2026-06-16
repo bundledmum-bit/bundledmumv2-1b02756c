@@ -1,4 +1,4 @@
-// Build refresh - June 2026
+// Build refresh - 2026-06-16 (force fresh Lovable deploy; billing-interrupted deploy left the live bundle blank)
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
