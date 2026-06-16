@@ -1304,13 +1304,17 @@ export default function CheckoutPage() {
             return;
           }
 
-          const { data: verification, error: verifyError } = await supabase.functions.invoke("process-payment", {
-            body: { reference: transaction.reference, order_id: savedOrder.orderNumber },
+          // Secure server-side verification: verify-payment fetches the order
+          // total, verifies the Paystack transaction, confirms the amount
+          // matches, and marks the order paid itself. The frontend NEVER
+          // updates payment_status directly. order_id is the order UUID.
+          const { data: verification, error: verifyError } = await supabase.functions.invoke("verify-payment", {
+            body: { order_id: savedOrder.id, reference: transaction.reference },
           });
 
           if (verifyError || !verification?.verified) {
             setProcessing(false);
-            triggerRecoveryModal("process-payment", verifyError || verification);
+            triggerRecoveryModal("verify-payment", verifyError || verification);
             return;
           }
 
