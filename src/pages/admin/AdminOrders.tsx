@@ -182,7 +182,7 @@ export default function AdminOrders() {
   const dateToIso = activeDateRange.to?.toISOString() ?? null;
 
   const { data: rpcResult, isLoading } = useQuery({
-    queryKey: ["admin-orders", currentPage, statusFilter, paymentFilter, search, dateFromIso, dateToIso],
+    queryKey: ["admin-orders", currentPage, statusFilter, paymentFilter, search, dateFromIso, dateToIso, subsOnly],
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_admin_orders", {
         p_limit: 50,
@@ -192,6 +192,9 @@ export default function AdminOrders() {
         p_search: search || null,
         p_date_from: dateFromIso,
         p_date_to: dateToIso,
+        // Subscription deliveries are excluded by default server-side; the
+        // toggle flips to a subscriptions-only view (correct pagination).
+        p_subscriptions_only: subsOnly,
       });
       if (error) throw error;
       return data as any;
@@ -225,7 +228,8 @@ export default function AdminOrders() {
 
   const filtered = useMemo(() => {
     const rows = (orders || []).filter((o: any) => {
-      if (subsOnly && !o.is_subscription_order) return false;
+      // Subscription filtering is now server-side (p_subscriptions_only); no
+      // client-side subscription filter here — it would corrupt pagination.
       if (methodFilter !== "all" && o.payment_method !== methodFilter) return false;
       // Date filtering now happens server-side (p_date_from/p_date_to)
       // before pagination — no client-side created_at filter here.
@@ -253,7 +257,7 @@ export default function AdminOrders() {
       return bd - ad;
     });
     return rows;
-  }, [orders, methodFilter, courierFilter, subsOnly, orderTypeFilter, expressStatusFilter]);
+  }, [orders, methodFilter, courierFilter, orderTypeFilter, expressStatusFilter]);
 
   const stats = useMemo(() => {
     const f = filtered;
