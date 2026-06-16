@@ -38,6 +38,24 @@ export const STATUS_COLORS: Record<string, string> = {
   paid: "bg-green-100 text-green-700",
 };
 
+// Subscription delivery date — subscription orders set estimated_delivery_start
+// to the customer's chosen day (start === end). Falls back to the
+// "Deliver on YYYY-MM-DD" marker in the order notes when the list payload omits
+// the estimate column. Exported so the mobile AdminOrderCard reuses it.
+export function subDeliveryDate(o: any): Date | null {
+  let s: string | null = o?.estimated_delivery_start || null;
+  if (!s && typeof o?.notes === "string") {
+    const m = o.notes.match(/Deliver on (\d{4}-\d{2}-\d{2})/i);
+    if (m) s = m[1];
+  }
+  if (!s) return null;
+  const d = new Date(String(s).length === 10 ? `${s}T00:00:00` : String(s));
+  return isNaN(d.getTime()) ? null : d;
+}
+export function fmtDeliverLabel(d: Date): string {
+  return d.toLocaleDateString("en-NG", { weekday: "long", day: "numeric", month: "short" });
+}
+
 // Date-range filter. Server-side now: the resolved range is passed to
 // get_admin_orders as p_date_from / p_date_to, which filter on
 // created_at BEFORE pagination, so totalCount reflects the filtered
@@ -701,13 +719,17 @@ export default function AdminOrders() {
                       </span>
                     )}
                     {o.is_subscription_order && (
-                      <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-teal-100 text-teal-700">Subscription</span>
+                      <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-coral text-primary-foreground">Subscription</span>
                     )}
                     {o.is_quiz_order ? (
                       <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-green-100 text-green-700">Quiz</span>
                     ) : !o.is_subscription_order && (
                       <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-500">Direct</span>
                     )}
+                    {o.is_subscription_order && (() => {
+                      const dd = subDeliveryDate(o);
+                      return dd ? <div className="mt-0.5 text-[10px] font-bold text-coral whitespace-nowrap">Deliver: {fmtDeliverLabel(dd)}</div> : null;
+                    })()}
                   </td>
                   <td className="p-2 text-center">
                     {o.delivery_partner ? (
@@ -899,7 +921,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           <p className="text-xs mt-0.5 inline-flex items-center gap-1 flex-wrap">
             <span>Source:</span>
             {o.is_subscription_order && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-100 text-teal-700">Subscription</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-coral text-primary-foreground">Subscription</span>
             )}
             {o.is_quiz_order ? (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">Quiz Order</span>
@@ -913,6 +935,21 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           <span className={`px-3 py-1 rounded text-xs font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
         </div>
       </div>
+
+      {/* Subscription delivery date — prominent so the fulfilment team
+          ships on the customer's chosen day, not before. */}
+      {o.is_subscription_order && (() => {
+        const dd = subDeliveryDate(o);
+        return dd ? (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border-2 border-coral bg-coral/10 px-4 py-3">
+            <Truck className="w-5 h-5 text-coral flex-shrink-0" />
+            <div>
+              <div className="text-[10px] uppercase tracking-widest font-bold text-coral">Subscription delivery</div>
+              <div className="text-sm font-bold">Deliver: {fmtDeliverLabel(dd)}</div>
+            </div>
+          </div>
+        ) : null;
+      })()}
 
       {/* Express Order — surfaces lifecycle actions only when the order
           was placed as express. Renders above subscription / courier

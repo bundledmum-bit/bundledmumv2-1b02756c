@@ -8,7 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { STATUS_COLORS, fmt } from "@/pages/admin/AdminOrders";
+import { STATUS_COLORS, fmt, subDeliveryDate, fmtDeliverLabel } from "@/pages/admin/AdminOrders";
 
 // Mobile (<md) order card for AdminOrders. Desktop keeps the table;
 // this is the sibling card view rendered under `md:hidden`. It consumes
@@ -58,6 +58,7 @@ export default function AdminOrderCard({
   // items_count is NOT in the list query (only the detail fetch joins
   // order_items), so Line 3's right side is omitted.
   const location = [o.delivery_city, o.delivery_state].filter(Boolean).join(", ");
+  const deliverDate = o.is_subscription_order ? subDeliveryDate(o) : null;
 
   return (
     <Card
@@ -99,9 +100,17 @@ export default function AdminOrderCard({
         </div>
       )}
 
+      {/* Subscription delivery date — prominent so it can't be missed. */}
+      {deliverDate && (
+        <div className="mt-1 text-xs font-bold text-coral">Deliver: {fmtDeliverLabel(deliverDate)}</div>
+      )}
+
       {/* Bottom row — status badges (left) · meatball (right) */}
       <div className="flex items-center justify-between gap-2 mt-3">
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+          {o.is_subscription_order && (
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-coral text-primary-foreground">Sub</span>
+          )}
           <span
             className={`px-2 py-0.5 rounded text-[10px] font-semibold ${STATUS_COLORS[o.order_status] || ""}`}
           >
