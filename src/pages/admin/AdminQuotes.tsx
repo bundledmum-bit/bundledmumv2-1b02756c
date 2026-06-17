@@ -662,6 +662,71 @@ const BLANK_FORM: QuoteForm = {
   status: "draft",
 };
 
+// Profit & Discount Room — internal cost/margin panel for the quote detail.
+// Cost data NEVER reaches the wire for unauthorized roles: the only source is
+// the SECURITY DEFINER get_quote_profit RPC, which returns { authorized: false }
+// for anyone other than super_admin / admin. The frontend role check below just
+// skips the call + hides the panel for those roles.
+function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: string | null }) {
+  const r = String(role || "").trim().toLowerCase();
+  const isAdminRole = r === "super_admin" || r === "admin";
+
+  const { data } = useQuery({
+    queryKey: ["quote-profit", quoteId],
+    enabled: !!quoteId && isAdminRole,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_quote_profit", { p_quote_id: quoteId });
+      if (error) { console.warn("get_quote_profit error:", error.message); return null; }
+      return data as any;
+    },
+    staleTime: 30_000,
+  });
+
+  // Null / unauthorized / not-found → render nothing (covers custom & fulfilment).
+  if (!data || data.authorized !== true || data.found !== true) return null;
+
+  const netPositive = Number(data.net_profit) > 0;
+  const missingCost = (Number(data.total_items) || 0) - (Number(data.items_costed) || 0);
+
+  return (
+    <section className="bg-muted/20 border-2 border-dashed border-text-light/40 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <h2 className="text-sm font-bold">Profit &amp; Discount Room</h2>
+        <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-text-light bg-card border border-border rounded-pill px-2 py-0.5">🔒 Internal — admin only</span>
+      </div>
+      <dl className="grid grid-cols-1 gap-1.5 text-sm">
+        <ProfitRow k="Product Revenue" v={fmtN(data.product_revenue)} />
+        <ProfitRow k="Cost (COGS)" v={fmtN(data.cogs)} />
+        <ProfitRow k="Service Fee" v={fmtN(data.service_fee)} />
+        <ProfitRow k="Discount Applied" v={fmtN(data.discount_amount)} />
+        <ProfitRow k="Gross Profit" v={fmtN(data.gross_profit)} />
+        <div className="flex items-center justify-between pt-1.5 border-t border-border">
+          <dt className="font-bold">Net Profit</dt>
+          <dd className={`font-bold tabular-nums ${netPositive ? "text-emerald-700" : "text-red-600"}`}>{fmtN(data.net_profit)}</dd>
+        </div>
+        <ProfitRow k="Margin" v={`${Number(data.margin_pct).toFixed(1)}%`} />
+      </dl>
+      <div className="mt-3 rounded-lg bg-forest/10 border border-forest/20 px-3 py-2 text-[12px] text-forest font-semibold">
+        You can discount up to {fmtN(data.max_discount_breakeven)} before this quote loses money.
+      </div>
+      {data.all_items_have_cost === false && (
+        <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+          {missingCost} item{missingCost === 1 ? "" : "s"} missing cost — profit may be understated.
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ProfitRow({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between">
+      <dt className="text-text-med">{k}</dt>
+      <dd className="font-semibold tabular-nums">{v}</dd>
+    </div>
+  );
+}
+
 function QuoteEditor({
   quoteId,
   onClose,
@@ -1774,6 +1839,11 @@ function QuoteEditor({
               </div>
             </div>
           </section>
+
+          {/* Profit & Discount Room — admin / super_admin only. Server-gated via
+              get_quote_profit (the RPC returns no cost data to other roles); the
+              role check here just avoids a pointless call + hides it cleanly. */}
+          {currentId && <QuoteProfitPanel quoteId={currentId} role={adminUser?.role} />}
 
           {/* Share URL + preview — only shows after the quote is saved. */}
           {currentId && quoteData?.share_token && (
