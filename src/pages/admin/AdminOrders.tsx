@@ -1040,8 +1040,15 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{fmt(o.subtotal || 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Delivery Fee</span><span>{fmt(o.delivery_fee || 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Service Fee</span><span>{fmt(o.service_fee || 0)}</span></div>
-            {o.gift_wrapping && <div className="flex justify-between"><span className="text-muted-foreground">Gift wrapping</span><span>{fmt(o.gift_wrap_fee || 0)}</span></div>}
-            {(o.discount_amount || 0) > 0 && <div className="flex justify-between text-green-600"><span>Coupon Discount</span><span>-{fmt(o.discount_amount)}</span></div>}
+            {o.gift_wrapping && Number(o.gift_wrap_fee) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Gift Wrapping</span><span>{fmt(o.gift_wrap_fee || 0)}</span></div>}
+            {(() => {
+              // Live discount (quote + coupon/referral) lives in `discount`;
+              // fall back to the legacy discount_amount only when it's 0/null.
+              const discountValue = Number(o.discount || 0) || Number(o.discount_amount || 0);
+              return discountValue > 0
+                ? <div className="flex justify-between text-coral"><span>Discount</span><span>−{fmt(discountValue)}</span></div>
+                : null;
+            })()}
             {(o.spend_discount_amount || 0) > 0 && <div className="flex justify-between text-green-600"><span>Spend Discount ({o.spend_discount_percent}%)</span><span>-{fmt(o.spend_discount_amount)}</span></div>}
             <div className="flex justify-between font-bold text-sm pt-2 border-t border-border"><span>Total</span><span>{fmt(o.total || 0)}</span></div>
           </div>
