@@ -183,7 +183,6 @@ async function initSession() {
     utm_term: attribution.utm_term,
     traffic_source: attribution.traffic_source,
     traffic_medium: attribution.traffic_medium,
-    channel_group: attribution.channel_group,
     referrer: attribution.referrer,
     device_type: ua.device_type,
     browser: ua.browser,
