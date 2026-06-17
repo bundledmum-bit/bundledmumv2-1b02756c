@@ -671,6 +671,7 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
   const r = String(role || "").trim().toLowerCase();
   const isAdminRole = r === "super_admin" || r === "admin";
 
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ["quote-profit", quoteId],
     enabled: !!quoteId && isAdminRole,
@@ -681,6 +682,51 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
     },
     staleTime: 30_000,
   });
+
+  // Editable "Other Cost" — seeded from the server payload (initial load and
+  // after each save). Profit numbers themselves are never computed here; the
+  // set_quote_other_cost RPC returns the recalculated payload, which we push
+  // into the query cache so net profit / margin / discount room update live.
+  const [otherCostInput, setOtherCostInput] = useState("");
+  const [otherNoteInput, setOtherNoteInput] = useState("");
+  const [savingOther, setSavingOther] = useState(false);
+  const [savedOther, setSavedOther] = useState(false);
+  const [otherErr, setOtherErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (data?.found) {
+      setOtherCostInput(data.other_cost != null ? String(data.other_cost) : "0");
+      setOtherNoteInput(data.other_cost_note || "");
+    }
+  }, [data?.found, data?.other_cost, data?.other_cost_note]);
+
+  const saveOtherCost = async () => {
+    setOtherErr(null);
+    const raw = otherCostInput.trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isInteger(n) || n < 0) {
+      setOtherErr("Enter a whole, non-negative amount.");
+      return;
+    }
+    setSavingOther(true);
+    try {
+      const { data: payload, error } = await (supabase as any).rpc("set_quote_other_cost", {
+        p_quote_id: quoteId,
+        p_other_cost: n,
+        p_other_cost_note: otherNoteInput.trim() || null,
+      });
+      if (error || !payload || payload.authorized !== true) {
+        setOtherErr(error?.message || "Couldn't save — not authorized.");
+        return;
+      }
+      // One round trip: feed the recalculated payload back into the cache.
+      queryClient.setQueryData(["quote-profit", quoteId], payload);
+      setSavedOther(true);
+    } catch (e: any) {
+      setOtherErr(e?.message || "Save failed.");
+    } finally {
+      setSavingOther(false);
+    }
+  };
 
   // Null / unauthorized / not-found → render nothing (covers custom & fulfilment).
   if (!data || data.authorized !== true || data.found !== true) return null;
@@ -699,6 +745,12 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
         <ProfitRow k="Cost (COGS)" v={fmtN(data.cogs)} />
         <ProfitRow k="Service Fee" v={fmtN(data.service_fee)} />
         <ProfitRow k="Discount Applied" v={fmtN(data.discount_amount)} />
+        {Number(data.other_cost) > 0 && (
+          <div>
+            <ProfitRow k="Other Cost" v={`−${fmtN(data.other_cost)}`} />
+            {data.other_cost_note && <p className="text-[11px] text-text-light">{data.other_cost_note}</p>}
+          </div>
+        )}
         <ProfitRow k="Gross Profit" v={fmtN(data.gross_profit)} />
         <div className="flex items-center justify-between pt-1.5 border-t border-border">
           <dt className="font-bold">Net Profit</dt>
@@ -706,6 +758,38 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
         </div>
         <ProfitRow k="Margin" v={`${Number(data.margin_pct).toFixed(1)}%`} />
       </dl>
+
+      {/* Editable Other Cost — saved via the role-gated set_quote_other_cost
+          RPC, which returns the recalculated payload (no direct table write). */}
+      <div className="mt-3 pt-3 border-t border-border">
+        <label className="text-[11px] uppercase tracking-wide font-semibold text-text-med block mb-1.5">Other cost (internal)</label>
+        <div className="grid grid-cols-1 gap-2">
+          <input
+            type="number" min={0} step={1} inputMode="numeric" value={otherCostInput}
+            onChange={(e) => { setOtherCostInput(e.target.value); setSavedOther(false); setOtherErr(null); }}
+            placeholder="0"
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+          />
+          <input
+            type="text" maxLength={200} value={otherNoteInput}
+            onChange={(e) => { setOtherNoteInput(e.target.value); setSavedOther(false); setOtherErr(null); }}
+            placeholder="what is this cost for? e.g. special packaging"
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+          />
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button" onClick={saveOtherCost} disabled={savingOther}
+              className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-50"
+            >
+              {savingOther ? "Saving…" : "Save"}
+            </button>
+            {savedOther && <span className="text-[11px] text-emerald-700 font-semibold">Saved ✓</span>}
+            {otherErr && <span className="text-[11px] text-red-600">{otherErr}</span>}
+          </div>
+        </div>
+        <p className="text-[10px] text-text-light mt-1">Subtracted from net profit and the discount room.</p>
+      </div>
+
       {Number(data.delivery_fee) > 0 && (
         <div className="mt-3 pt-2 border-t border-dashed border-border text-text-light">
           <div className="flex items-center justify-between text-sm">
