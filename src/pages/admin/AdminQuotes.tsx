@@ -706,6 +706,15 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
         </div>
         <ProfitRow k="Margin" v={`${Number(data.margin_pct).toFixed(1)}%`} />
       </dl>
+      {Number(data.delivery_fee) > 0 && (
+        <div className="mt-3 pt-2 border-t border-dashed border-border text-text-light">
+          <div className="flex items-center justify-between text-sm">
+            <span>Delivery (pass-through)</span>
+            <span className="tabular-nums">{fmtN(data.delivery_fee)}</span>
+          </div>
+          <p className="text-[11px] mt-0.5">Paid to courier — not counted in profit.</p>
+        </div>
+      )}
       <div className="mt-3 rounded-lg bg-forest/10 border border-forest/20 px-3 py-2 text-[12px] text-forest font-semibold">
         You can discount up to {fmtN(data.max_discount_breakeven)} before this quote loses money.
       </div>
