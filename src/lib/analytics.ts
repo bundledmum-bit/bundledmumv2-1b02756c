@@ -41,9 +41,20 @@ interface TrafficAttribution {
 
 function parseUserAgent() {
   const ua = navigator.userAgent;
+  const maxTouch = (navigator as any).maxTouchPoints || 0;
+  // Tablets: explicit tablet UAs, Android without "Mobile", and iPadOS 13+
+  // (which reports a Mac UA but exposes multitouch).
+  const isTablet = /iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua)
+    || (/Android/i.test(ua) && !/Mobile/i.test(ua))
+    || (/Macintosh/i.test(ua) && maxTouch > 1);
+  const isMobileUA = /iPhone|iPod|Android.*Mobile|Mobile|Windows Phone|BlackBerry|BB10|Opera Mini|IEMobile/i.test(ua);
+  const touch = ("ontouchstart" in window) || maxTouch > 0;
+  const smallViewport = Math.min(window.innerWidth || Infinity, (window.screen && window.screen.width) || Infinity) <= 768;
+
   let device_type = "desktop";
-  if (/Mobi|Android/i.test(ua)) device_type = "mobile";
-  else if (/Tablet|iPad/i.test(ua)) device_type = "tablet";
+  if (isTablet) device_type = "tablet";
+  else if (isMobileUA) device_type = "mobile";
+  else if (touch && smallViewport) device_type = "mobile"; // catch genuine mobiles the UA misses
 
   let browser = "other";
   if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) browser = "chrome";
