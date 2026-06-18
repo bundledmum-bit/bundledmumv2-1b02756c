@@ -786,7 +786,9 @@ function ExtraCosts({ orderId, onChanged }: { orderId: string; onChanged: () => 
 
   const { data: costs = [], isLoading, refetch } = useQuery({
     queryKey: ["order-extra-costs", orderId],
+    enabled: !!orderId, // never query order_extra_costs with an empty/undefined uuid
     queryFn: async () => {
+      if (!orderId) return [];
       const { data, error } = await (supabase as any)
         .from("order_extra_costs")
         .select("id, amount, description, category, created_at")
