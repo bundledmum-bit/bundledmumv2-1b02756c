@@ -724,6 +724,7 @@ interface RecipientField {
   title: string;
   description: string;
   optional?: boolean;
+  enabledKey?: string; // when set, the card also shows an on/off toggle bound to this site_settings boolean
 }
 
 const RECIPIENT_FIELDS: RecipientField[] = [
@@ -758,6 +759,13 @@ const RECIPIENT_FIELDS: RecipientField[] = [
     description: "Sent 48h and 24h before each subscription delivery is due. Leave blank to disable subscription delivery reminders.",
     optional: true,
   },
+  {
+    key: "new_order_notification_email",
+    title: "New Order Notification",
+    description: "Receives an email each time a new order is placed. Separate multiple emails with commas.",
+    optional: true,
+    enabledKey: "new_order_notification_enabled",
+  },
 ];
 
 function NotificationRecipientsPanel() {
@@ -765,8 +773,12 @@ function NotificationRecipientsPanel() {
   const [inputs, setInputs] = useState<Record<string, string>>(() =>
     Object.fromEntries(RECIPIENT_FIELDS.map(f => [f.key, ""])),
   );
+  // Per-field on/off toggles (only for fields with an enabledKey), keyed by enabledKey.
+  const [enabledMap, setEnabledMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const enabledKeys = RECIPIENT_FIELDS.map(f => f.enabledKey).filter(Boolean) as string[];
 
   useEffect(() => {
     let cancelled = false;
@@ -774,7 +786,7 @@ function NotificationRecipientsPanel() {
       const { data, error } = await supabase
         .from("site_settings")
         .select("key, value")
-        .in("key", RECIPIENT_FIELDS.map(f => f.key));
+        .in("key", [...RECIPIENT_FIELDS.map(f => f.key), ...enabledKeys]);
       if (cancelled) return;
       if (error) {
         toast.error(error.message || "Could not load notification recipients");
@@ -795,11 +807,20 @@ function NotificationRecipientsPanel() {
         next[f.key] = parseEmailList(raw).valid.join("\n");
       }
       setInputs(next);
+      // Enabled toggles — default ON when the key is absent (DB default true).
+      const en: Record<string, boolean> = {};
+      for (const f of RECIPIENT_FIELDS) {
+        if (!f.enabledKey) continue;
+        const raw = map[f.enabledKey];
+        en[f.enabledKey] = raw === undefined ? true : (raw === true || raw === "true");
+      }
+      setEnabledMap(en);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const parsedByKey = useMemo(() => {
@@ -833,6 +854,12 @@ function NotificationRecipientsPanel() {
           .from("site_settings")
           .upsert({ key: f.key, value }, { onConflict: "key" });
         if (error) throw error;
+        if (f.enabledKey) {
+          const { error: e2 } = await supabase
+            .from("site_settings")
+            .upsert({ key: f.enabledKey, value: enabledMap[f.enabledKey] ?? true }, { onConflict: "key" });
+          if (e2) throw e2;
+        }
       }
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       queryClient.invalidateQueries({ queryKey: ["site_settings"] });
@@ -873,6 +900,8 @@ function NotificationRecipientsPanel() {
             value={inputs[f.key] || ""}
             onChange={v => setInputs(prev => ({ ...prev, [f.key]: v }))}
             parsed={parsedByKey[f.key]}
+            enabled={f.enabledKey ? (enabledMap[f.enabledKey] ?? true) : undefined}
+            onToggle={f.enabledKey ? (v => setEnabledMap(prev => ({ ...prev, [f.enabledKey!]: v }))) : undefined}
           />
         ))}
       </div>
@@ -905,17 +934,29 @@ function RecipientCard({
   value,
   onChange,
   parsed,
+  enabled,
+  onToggle,
 }: {
   title: string;
   description: string;
   value: string;
   onChange: (v: string) => void;
   parsed: { valid: string[]; invalid: string[] };
+  enabled?: boolean;
+  onToggle?: (v: boolean) => void;
 }) {
   const hasInvalid = parsed.invalid.length > 0;
   return (
     <div className="bg-card border border-border rounded-xl p-5">
-      <h3 className="text-sm font-bold mb-1">{title}</h3>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <h3 className="text-sm font-bold">{title}</h3>
+        {onToggle && (
+          <label className="relative inline-flex items-center cursor-pointer flex-shrink-0" title={enabled ? "Notifications on" : "Notifications off"}>
+            <input type="checkbox" className="peer sr-only" checked={!!enabled} onChange={e => onToggle(e.target.checked)} />
+            <div className="peer h-6 w-11 rounded-full bg-muted after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-all peer-checked:bg-forest peer-checked:after:translate-x-5" />
+          </label>
+        )}
+      </div>
       <p className="text-[11px] text-text-light mb-3">{description}</p>
       <textarea
         value={value}
