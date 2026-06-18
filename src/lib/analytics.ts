@@ -10,19 +10,36 @@ function getSessionId(): string {
   return sid;
 }
 
-// ── Session Context ───────────────────────────
-// Must be called before any INSERT/UPDATE to sessions or page_views tables.
-let sessionContextSet = false;
-
-async function ensureSessionContext(): Promise<void> {
-  if (sessionContextSet) return;
-  const sid = getSessionId();
-  try {
-    await supabase.rpc("set_session_context", { p_session_id: sid });
-    sessionContextSet = true;
-  } catch (e) {
-    console.error("Failed to set session context:", e);
-  }
+// ── Session upsert (pooling-safe) ─────────────
+// SECURITY DEFINER RPC that inserts/updates the sessions row itself, so it works
+// under PgBouncer. (The old set_session_context + raw POST /sessions path failed
+// the RLS check whenever the transaction-local GUC didn't survive pooling — every
+// insert 401/403'd and the table stayed empty.) First call inserts with
+// first-touch attribution + landing page; later calls bump page_count/event_count,
+// refresh last_seen/exit_page, and preserve the first-touch attribution.
+function upsertSession(opts: { landing?: boolean } = {}) {
+  const a = getAttribution();
+  const ua = parseUserAgent();
+  (supabase as any).rpc("upsert_session", {
+    p_session_id: getSessionId(),
+    p_landing_page: opts.landing ? a.landing_page : null,
+    p_exit_page: window.location.pathname,
+    p_referrer: a.referrer,
+    p_traffic_source: a.traffic_source,
+    p_traffic_medium: a.traffic_medium,
+    p_traffic_campaign: null,
+    p_utm_source: a.utm_source,
+    p_utm_medium: a.utm_medium,
+    p_utm_campaign: a.utm_campaign,
+    p_utm_content: a.utm_content,
+    p_utm_term: a.utm_term,
+    p_device_type: ua.device_type,
+    p_browser: ua.browser,
+    p_os: ua.os,
+    p_user_agent: ua.user_agent,
+    p_country: null,
+    p_city: null,
+  }).then(() => {});
 }
 
 // ── UTM & Traffic Attribution ─────────────────
@@ -178,11 +195,7 @@ async function initSession() {
   if (sessionInitialized) return;
   sessionInitialized = true;
 
-  // Set session context BEFORE any writes to sessions/page_views
-  await ensureSessionContext();
-
   captureAttribution();
-  const sid = getSessionId();
   const attribution = getAttribution();
   const ua = parseUserAgent();
 
@@ -192,28 +205,8 @@ async function initSession() {
     ...ua,
   });
 
-  // Upsert session in sessions table (fire and forget)
-  supabase.from("sessions" as any).upsert({
-    session_id: sid,
-    first_seen_at: new Date().toISOString(),
-    last_seen_at: new Date().toISOString(),
-    page_count: 1,
-    landing_page: attribution.landing_page,
-    exit_page: window.location.pathname,
-    utm_source: attribution.utm_source,
-    utm_medium: attribution.utm_medium,
-    utm_campaign: attribution.utm_campaign,
-    utm_content: attribution.utm_content,
-    utm_term: attribution.utm_term,
-    traffic_source: attribution.traffic_source,
-    traffic_medium: attribution.traffic_medium,
-    referrer: attribution.referrer,
-    device_type: ua.device_type,
-    browser: ua.browser,
-    os: ua.os,
-    is_bounce: true,
-    converted: false,
-  } as any, { onConflict: "session_id" } as any).then(() => {});
+  // First-touch session row via the pooling-safe RPC (landing page on first call).
+  upsertSession({ landing: true });
 }
 
 // ── Track Event ────────────────────────────────
@@ -249,10 +242,10 @@ function trackEvent(eventType: string, eventData?: Record<string, unknown>) {
 // ── Track Page View ────────────────────────────
 async function trackPageView() {
   await initSession();
-  const pageCount = incrementPageCount();
+  incrementPageCount();
   const sid = getSessionId();
 
-  // Insert page_view
+  // Insert page_view (unchanged)
   supabase.from("page_views").insert({
     session_id: sid,
     page_url: window.location.pathname,
@@ -260,19 +253,17 @@ async function trackPageView() {
     referrer: document.referrer || null,
   }).then(() => {});
 
-  // Update session exit_page and page_count, is_bounce
-  supabase.from("sessions" as any).update({
-    last_seen_at: new Date().toISOString(),
-    exit_page: window.location.pathname,
-    page_count: pageCount,
-    is_bounce: pageCount <= 1,
-  } as any).eq("session_id", sid).then(() => {});
+  // Bump the session (exit_page + last_seen + page_count) via the RPC. The RPC
+  // increments page_count / event_count and recomputes is_bounce server-side.
+  upsertSession({});
 }
 
 // ── Mark Session Converted ─────────────────────
 function markSessionConverted() {
-  const sid = getSessionId();
-  supabase.from("sessions" as any).update({ converted: true } as any).eq("session_id", sid).then(() => {});
+  // The pooling-safe RPC owns the sessions row and has no `converted` param, and
+  // raw session writes are now rejected by design — so record the conversion-time
+  // touch via upsert_session. (Conversion is derived server-side from the order.)
+  upsertSession({});
 }
 
 // ── Referral Source (legacy compat) ────────────
