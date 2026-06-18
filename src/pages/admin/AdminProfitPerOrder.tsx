@@ -96,7 +96,7 @@ type OrderRow = {
 // order-level profit is the only thing that moved to the refund-aware view.
 type ItemRow = {
   order_id: string;
-  order_item_id: string;
+  item_id: string;
   product_name: string | null;
   brand_name: string | null;
   size: string | null;
@@ -525,7 +525,7 @@ function RowGroup({
   const handleItemSaved = (data: any) => {
     queryClient.setQueryData(["admin-profit-per-order-items", row.order_id], (old: ItemRow[] | undefined) =>
       (old || []).map((i) =>
-        i.order_item_id === data.item_id
+        i.item_id === data.item_id
           ? {
               ...i,
               cost_price: data.cost_price,
@@ -642,7 +642,7 @@ function RowGroup({
                       const variant = [it.size && `Size: ${it.size}`, it.color && `Colour: ${it.color}`]
                         .filter(Boolean).join(" · ");
                       return (
-                        <tr key={it.order_item_id} className="border-t border-border/60">
+                        <tr key={it.item_id} className="border-t border-border/60">
                           <td className="px-2 py-1.5">
                             <div className="font-semibold">{it.product_name || "—"}</div>
                             {it.brand_name && <div className="text-[10px] text-text-med">{it.brand_name}</div>}
@@ -714,13 +714,14 @@ function ActualCostCell({ item, isAdmin, onSaved }: {
   const save = async () => {
     setErr(null);
     const raw = val.trim();
-    const n = raw === "" ? 0 : Number(raw);
-    if (!Number.isInteger(n) || n < 0) { setErr("≥ 0 whole"); return; }
+    const parsed = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) { setErr("≥ 0"); return; }
+    const n = Math.round(parsed); // integer naira, no /100
     if (n === (item.cost_price ?? 0)) return; // unchanged — skip the round trip
     setSaving(true);
     try {
       const { data, error } = await (supabase as any).rpc("set_order_item_cost", {
-        p_item_id: item.order_item_id,
+        p_item_id: item.item_id,
         p_cost_price: n,
       });
       if (error || !data || data.authorized !== true || data.found !== true) {
