@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  Search, ChevronDown, ChevronRight, Download, AlertCircle, Plus, Trash2, Loader2, HelpCircle, Info,
+  Search, ChevronDown, ChevronRight, Download, AlertCircle, Plus, Trash2, Loader2, HelpCircle, Info, Check,
 } from "lucide-react";
+import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 // Free-text category options for manual extra costs (no DB constraint —
@@ -515,6 +516,31 @@ function RowGroup({
   onToggle: () => void;
   onCostsChanged: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const { adminUser } = usePermissions();
+  const isAdmin = ["super_admin", "admin"].includes(String(adminUser?.role || "").trim().toLowerCase());
+
+  // Update the edited line (from the set_order_item_cost RPC return) and refresh
+  // the order's profit headline from the server — one round trip, no reload.
+  const handleItemSaved = (data: any) => {
+    queryClient.setQueryData(["admin-profit-per-order-items", row.order_id], (old: ItemRow[] | undefined) =>
+      (old || []).map((i) =>
+        i.order_item_id === data.item_id
+          ? {
+              ...i,
+              cost_price: data.cost_price,
+              line_cost: data.line_cost,
+              line_margin: data.line_margin,
+              line_margin_pct: Number(data.line_total) > 0 ? (Number(data.line_margin) / Number(data.line_total)) * 100 : null,
+            }
+          : i,
+      ),
+    );
+    onCostsChanged(); // re-read net_profit / total_cogs from order_profit_summary
+  };
+
+  const someLineNoCost = (items || []).some((i) => !i.cost_price || i.cost_price <= 0);
+
   const rowDim = isCancelled ? "opacity-50" : "";
   const hasRefund = row.has_refund === true;
   // Partial refunds now stay payment_status='paid' (DB fix). That pairing
@@ -604,7 +630,7 @@ function RowGroup({
                       <th className="text-left px-2 py-1">Variant</th>
                       <th className="text-center px-2 py-1">Qty</th>
                       <th className="text-right px-2 py-1">Unit price</th>
-                      <th className="text-right px-2 py-1">Cost price</th>
+                      <th className="text-right px-2 py-1">Actual Cost</th>
                       <th className="text-right px-2 py-1">Line revenue</th>
                       <th className="text-right px-2 py-1">Line cost</th>
                       <th className="text-right px-2 py-1">Line margin</th>
@@ -625,14 +651,10 @@ function RowGroup({
                           <td className="px-2 py-1.5 text-center tabular-nums">×{it.quantity}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.unit_price)}</td>
                           <td
-                            className={`px-2 py-1.5 text-right tabular-nums ${noCost ? "bg-yellow-50 text-yellow-800" : ""}`}
+                            className={`px-2 py-1.5 text-right tabular-nums ${noCost ? "bg-yellow-50" : ""}`}
                             title={noCost ? "No cost captured" : undefined}
                           >
-                            {noCost ? (
-                              <span className="inline-flex items-center gap-1 justify-end">
-                                <AlertCircle className="w-3 h-3" /> {fmt(0)}
-                              </span>
-                            ) : fmt(it.cost_price)}
+                            <ActualCostCell item={it} isAdmin={isAdmin} onSaved={handleItemSaved} />
                           </td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.line_revenue)}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{fmt(it.line_cost)}</td>
@@ -648,6 +670,13 @@ function RowGroup({
               </div>
             )}
 
+            {someLineNoCost && (
+              <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                <span>Some lines have no cost — order profit excludes COGS until all line costs are filled.</span>
+              </div>
+            )}
+
             {/* Manual extra costs — delivery overages, replacements, etc.
                 The view recomputes net_profit; we just refetch after edits. */}
             <ExtraCosts orderId={row.order_id} onChanged={onCostsChanged} />
@@ -655,6 +684,73 @@ function RowGroup({
         </tr>
       )}
     </>
+  );
+}
+
+// ── Editable per-line actual cost ───────────────────────────────────
+// Admins get a naira-integer input that saves via the role-gated
+// set_order_item_cost RPC (DB triggers recompute line_cost + order profit).
+// Non-admins see read-only text. Never writes order_items directly and never
+// computes profit on the client — the RPC return is the source of truth.
+function ActualCostCell({ item, isAdmin, onSaved }: {
+  item: ItemRow;
+  isAdmin: boolean;
+  onSaved: (data: any) => void;
+}) {
+  const [val, setVal] = useState(String(item.cost_price ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  // Re-seed when the stored cost changes (after a save / refetch).
+  useEffect(() => { setVal(String(item.cost_price ?? 0)); }, [item.cost_price]);
+
+  if (!isAdmin) {
+    const noCost = !item.cost_price || item.cost_price <= 0;
+    return noCost
+      ? <span className="inline-flex items-center gap-1 justify-end text-yellow-800"><AlertCircle className="w-3 h-3" /> {fmt(0)}</span>
+      : <>{fmt(item.cost_price)}</>;
+  }
+
+  const save = async () => {
+    setErr(null);
+    const raw = val.trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isInteger(n) || n < 0) { setErr("≥ 0 whole"); return; }
+    if (n === (item.cost_price ?? 0)) return; // unchanged — skip the round trip
+    setSaving(true);
+    try {
+      const { data, error } = await (supabase as any).rpc("set_order_item_cost", {
+        p_item_id: item.order_item_id,
+        p_cost_price: n,
+      });
+      if (error || !data || data.authorized !== true || data.found !== true) {
+        setErr(data?.authorized === false ? "Not authorized" : (error?.message || "Save failed"));
+        return;
+      }
+      onSaved(data);
+      setSaved(true);
+    } catch (e: any) {
+      setErr(e?.message || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <span className="text-text-light">₦</span>
+      <input
+        type="number" min={0} step={1} inputMode="numeric" value={val}
+        onChange={(e) => { setVal(e.target.value); setSaved(false); setErr(null); }}
+        onBlur={save}
+        disabled={saving}
+        aria-label="Actual cost (naira)"
+        className="w-20 border border-input rounded px-1.5 py-0.5 text-right text-xs bg-background disabled:opacity-50"
+      />
+      {saving && <Loader2 className="w-3 h-3 animate-spin text-text-med" />}
+      {saved && !saving && <Check className="w-3 h-3 text-emerald-600" />}
+      {err && <span className="text-[10px] text-red-600 whitespace-nowrap">{err}</span>}
+    </div>
   );
 }
 
