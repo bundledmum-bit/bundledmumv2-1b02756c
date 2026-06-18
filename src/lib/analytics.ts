@@ -108,13 +108,26 @@ function captureAttribution(): TrafficAttribution {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const utm_source = params.get("utm_source") || null;
-  const utm_medium = params.get("utm_medium") || null;
+  let utm_source = params.get("utm_source") || null;
+  let utm_medium = params.get("utm_medium") || null;
   const utm_campaign = params.get("utm_campaign") || null;
   const utm_content = params.get("utm_content") || null;
   const utm_term = params.get("utm_term") || null;
   const referrer = document.referrer || null;
   const landing_page = window.location.pathname + window.location.search;
+
+  // Google Ads clicks carry a click identifier (gclid / gad_source / gbraid /
+  // wbraid) and usually NO utm_medium, so they were misclassified as Google
+  // Organic. Normalize them to google/cpc (also an explicit google + cpc/ppc/
+  // paid utm) so the DB classifier returns "Google Ads" (paid). Meta logic is
+  // untouched — this only fires for Google Ads signals.
+  const hasGoogleAdsClick = ["gclid", "gad_source", "gbraid", "wbraid"].some(k => !!params.get(k));
+  const isGooglePaidUtm = utm_source?.toLowerCase() === "google"
+    && ["cpc", "ppc", "paid"].includes((utm_medium || "").toLowerCase());
+  if (hasGoogleAdsClick || isGooglePaidUtm) {
+    utm_source = "google";
+    utm_medium = "cpc";
+  }
 
   const traffic_source = deriveTrafficSource(utm_source, referrer);
   const traffic_medium = deriveTrafficMedium(utm_medium, utm_source, traffic_source);
@@ -125,15 +138,15 @@ function captureAttribution(): TrafficAttribution {
     referrer, landing_page, traffic_source, traffic_medium, channel_group,
   };
 
+  // First-of-session attribution, session-scoped only (never localStorage).
   sessionStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(attribution));
-  localStorage.setItem(ATTRIBUTION_KEY, JSON.stringify(attribution));
 
   return attribution;
 }
 
 function getAttribution(): TrafficAttribution {
   try {
-    const s = sessionStorage.getItem(ATTRIBUTION_KEY) || localStorage.getItem(ATTRIBUTION_KEY);
+    const s = sessionStorage.getItem(ATTRIBUTION_KEY);
     if (s) return JSON.parse(s);
   } catch {}
   return captureAttribution();
