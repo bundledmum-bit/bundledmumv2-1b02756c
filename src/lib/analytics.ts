@@ -259,11 +259,14 @@ async function trackPageView() {
 }
 
 // ── Mark Session Converted ─────────────────────
-function markSessionConverted() {
-  // The pooling-safe RPC owns the sessions row and has no `converted` param, and
-  // raw session writes are now rejected by design — so record the conversion-time
-  // touch via upsert_session. (Conversion is derived server-side from the order.)
-  upsertSession({});
+function markSessionConverted(orderId?: string | null) {
+  // Dedicated SECURITY DEFINER RPC sets sessions.converted = true (and
+  // conversion_order_id when the order id is supplied). Pooling-safe; raw
+  // session writes are rejected by design.
+  (supabase as any).rpc("mark_session_converted", {
+    p_session_id: getSessionId(),
+    p_order_id: orderId || null,
+  }).then(() => {});
 }
 
 // ── Referral Source (legacy compat) ────────────

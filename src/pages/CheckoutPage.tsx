@@ -1150,8 +1150,8 @@ export default function CheckoutPage() {
         return null;
       }
 
-      // Mark session as converted
-      markSessionConverted();
+      // Mark session as converted (thread the order id for conversion_order_id)
+      markSessionConverted(result.id);
 
       // Track order_placed event
       trackEvent("order_placed", {
