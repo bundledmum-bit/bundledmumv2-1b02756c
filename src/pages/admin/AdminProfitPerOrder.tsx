@@ -89,6 +89,8 @@ type OrderRow = {
   refund_adjusted_profit: number | null;   // profit after refunds, before extras
   extra_costs_total: number | null;        // sum of non-deleted manual extras
   net_profit: number | null;               // headline: refund_adjusted_profit − extras
+  net_profit_margin_pct: number | null;     // net_profit / total * 100 (actual, after refunds)
+  profit_as_ordered_margin_pct: number | null; // profit_as_ordered / total * 100 (pre-refund)
   has_refund: boolean | null;
 };
 
@@ -601,6 +603,13 @@ function RowGroup({
         </td>
         <td className={`px-2 py-2 align-top text-right tabular-nums ${profitTone} ${isCancelled ? "line-through" : ""}`}>
           <div className="font-bold">{fmtSigned(row.net_profit)}</div>
+          {typeof row.net_profit_margin_pct === "number" && (() => {
+            // Source of truth = order_profit_summary column (reflects edited
+            // line costs after onCostsChanged re-reads). Not computed here.
+            const m = row.net_profit_margin_pct;
+            const tone = m >= 20 ? "text-green-700" : m > 5 ? "text-amber-600" : "text-red-700";
+            return <div className={`text-[11px] font-semibold ${tone}`}>Margin: {fmtPct(m)}</div>;
+          })()}
           {hasExtras && (
             <div className="text-[11px] text-text-light" title="Refund-adjusted profit minus manual extra costs">
               RA: {fmtSigned(row.refund_adjusted_profit)} · Extras: −{fmt(row.extra_costs_total)}
