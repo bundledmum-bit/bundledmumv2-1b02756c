@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Printer, MessageCircle, ShoppingBag, AlertCircle } from "lucide-react";
+import { Download, MessageCircle, ShoppingBag, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   useQuoteByShareToken,
@@ -13,6 +13,7 @@ import {
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { downloadQuotePdf } from "@/lib/quotePdf";
 import Zoom from "react-medium-image-zoom";
 import "react-medium-image-zoom/dist/styles.css";
 // Coral logo — matches the local-import convention used on every other
@@ -34,6 +35,54 @@ export default function QuotePage() {
   const itemsQ = useQuoteItemsByShareToken(shareToken);
   const quote = quoteQ.data;
   const items: QuoteShareItem[] = itemsQ.data || [];
+
+  // Generate the same branded PDF the admin produces (coral logo + section
+  // grouping), reusing src/lib/quotePdf.ts — no browser-print dependency.
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadPdf = async () => {
+    if (!quote || downloadingPdf) return;
+    if (shareToken) void recordQuoteDownload(shareToken);
+    setDownloadingPdf(true);
+    try {
+      // Delivery fee: override wins, else estimate, else 0 (mirrors the page/email).
+      const deliveryFee = quote.delivery_fee_override ?? quote.estimated_delivery_fee ?? 0;
+      await downloadQuotePdf(
+        {
+          quote_number: quote.quote_number,
+          created_at: quote.created_at,
+          customer_name: quote.customer_name || "",
+          delivery_city: quote.delivery_city,
+          delivery_state: quote.delivery_state,
+          subtotal: quote.subtotal || 0,
+          service_fee: quote.service_fee || 0,
+          estimated_delivery_fee: deliveryFee,
+          total: quote.total || 0,
+          customer_notes: quote.customer_notes,
+          items: items.map((it) => ({
+            product_name: it.product_name,
+            brand_name: it.brand_name,
+            size: it.size,
+            color: it.color,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            line_total: it.line_total,
+            section: it.section ?? null,
+            image_url: it.current_image_url ?? null, // RPC field → the PDF's image field
+          })),
+        },
+        {
+          whatsapp_number: whatsappNumber || undefined,
+          bank_name: (settings as any)?.bank_name,
+          bank_account_name: (settings as any)?.bank_account_name,
+          bank_account_number: (settings as any)?.bank_account_number,
+        },
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate PDF");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
   // Record one view per mount even under React 18 StrictMode's double-fire.
   const viewedRef = useRef(false);
@@ -427,10 +476,11 @@ export default function QuotePage() {
             {isExpired ? "Quote expired" : isLocked ? "Quote already used" : "Add to Cart & Checkout"}
           </button>
           <button
-            onClick={() => { if (shareToken) void recordQuoteDownload(shareToken); window.print(); }}
-            className="inline-flex items-center justify-center gap-2 border border-border px-6 py-3 rounded-pill text-sm font-semibold hover:bg-muted"
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf}
+            className="inline-flex items-center justify-center gap-2 border border-border px-6 py-3 rounded-pill text-sm font-semibold hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Printer className="w-4 h-4" /> Print / Save as PDF
+            <Download className="w-4 h-4" /> {downloadingPdf ? "Generating PDF…" : "Download PDF"}
           </button>
         </div>
 
