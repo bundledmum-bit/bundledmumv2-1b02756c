@@ -295,50 +295,75 @@ export default function QuotePage() {
           </div>
           {items.length === 0 ? (
             <p className="px-5 py-6 text-text-med text-sm text-center">No items on this quote.</p>
-          ) : (
-            <div className="divide-y divide-border">
-              {items.map((it) => (
-                <div key={it.id} className="px-5 py-3 flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
-                    {it.current_image_url ? (
-                      // Wrap in react-medium-image-zoom so customers can tap
-                      // the thumbnail to inspect what they're getting at
-                      // full size. Defaults: dark backdrop, Escape closes,
-                      // tap outside closes, native pinch-to-zoom on mobile.
-                      <Zoom zoomMargin={32} wrapElement="div">
-                        <img
-                          src={it.current_image_url}
-                          alt={it.product_name}
-                          className="w-full h-full object-cover cursor-zoom-in"
-                        />
-                      </Zoom>
-                    ) : (
-                      <div className="w-full h-full grid place-items-center text-text-light">
-                        <ShoppingBag className="w-5 h-5" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate">{it.product_name}</p>
-                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-text-med">
-                      {it.brand_name && <span>Brand: {it.brand_name}</span>}
-                      {it.size && <span>Size: {it.size}</span>}
-                      {it.color && <span>Colour: {it.color}</span>}
+          ) : (() => {
+            const renderRow = (it: typeof items[number]) => (
+              <div key={it.id} className="px-5 py-3 flex items-center gap-3">
+                <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
+                  {it.current_image_url ? (
+                    // Wrap in react-medium-image-zoom so customers can tap
+                    // the thumbnail to inspect what they're getting at
+                    // full size. Defaults: dark backdrop, Escape closes,
+                    // tap outside closes, native pinch-to-zoom on mobile.
+                    <Zoom zoomMargin={32} wrapElement="div">
+                      <img
+                        src={it.current_image_url}
+                        alt={it.product_name}
+                        className="w-full h-full object-cover cursor-zoom-in"
+                      />
+                    </Zoom>
+                  ) : (
+                    <div className="w-full h-full grid place-items-center text-text-light">
+                      <ShoppingBag className="w-5 h-5" />
                     </div>
-                    {it.current_in_stock === false && (
-                      <p className="mt-1 text-[11px] font-semibold text-red-700">
-                        Out of stock — contact us to substitute
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
-                    <p className="text-sm font-bold">{fmt(it.line_total)}</p>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold truncate">{it.product_name}</p>
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-text-med">
+                    {it.brand_name && <span>Brand: {it.brand_name}</span>}
+                    {it.size && <span>Size: {it.size}</span>}
+                    {it.color && <span>Colour: {it.color}</span>}
+                  </div>
+                  {it.current_in_stock === false && (
+                    <p className="mt-1 text-[11px] font-semibold text-red-700">
+                      Out of stock — contact us to substitute
+                    </p>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
+                  <p className="text-sm font-bold">{fmt(it.line_total)}</p>
+                </div>
+              </div>
+            );
+            // No section on any item → flat list exactly as before.
+            if (!items.some((it) => !!it.section)) {
+              return <div className="divide-y divide-border">{items.map(renderRow)}</div>;
+            }
+            // Otherwise group: Baby / Mother / Hospital (fixed order), Other last.
+            const byOrder = (a: typeof items[number], b: typeof items[number]) => (a.display_order || 0) - (b.display_order || 0);
+            const SECTIONS = [
+              { key: "baby", label: "Baby Items" },
+              { key: "mother", label: "Mother Items" },
+              { key: "hospital", label: "Hospital Items" },
+            ];
+            const groups = [
+              ...SECTIONS.map((s) => ({ label: s.label, rows: items.filter((it) => it.section === s.key).sort(byOrder) })),
+              { label: "Other Items", rows: items.filter((it) => !it.section).sort(byOrder) },
+            ].filter((g) => g.rows.length > 0);
+            return (
+              <div>
+                {groups.map((g) => (
+                  <div key={g.label}>
+                    <div className="px-5 pt-3 pb-1 bg-muted/30 border-t border-border">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-text-med">{g.label}</h3>
+                    </div>
+                    <div className="divide-y divide-border">{g.rows.map(renderRow)}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Totals */}

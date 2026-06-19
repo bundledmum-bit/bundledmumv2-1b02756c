@@ -37,6 +37,7 @@ export type QuoteShareItem = {
   display_order: number;
   current_image_url: string | null;
   current_in_stock: boolean;
+  section: string | null; // 'baby'|'mother'|'hospital'|null — returned by the RPC (last column)
 };
 
 export function useQuoteByShareToken(shareToken: string | undefined) {
