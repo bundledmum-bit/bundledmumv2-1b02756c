@@ -248,6 +248,7 @@ export default function AdminQuotes() {
           quantity: it.quantity,
           unit_price: it.unit_price,
           line_total: it.line_total,
+          section: it.section ?? null,
           // Only the CORS-safe Supabase Storage URL is embeddable; the
           // external image_url is CORS-blocked. Empty string = re-host
           // failed → treat as null (no thumbnail).
@@ -1490,6 +1491,7 @@ function QuoteEditor({
             product_name: it.product_name, brand_name: it.brand_name,
             size: it.size, color: it.color,
             quantity: it.quantity, unit_price: it.unit_price, line_total: it.line_total,
+            section: it.section ?? null,
             // CORS-safe stored URL only; "" / null → no thumbnail.
             image_url: (it.brands?.stored_image_url && it.brands.stored_image_url.trim() !== "")
               ? it.brands.stored_image_url

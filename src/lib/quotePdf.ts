@@ -8,6 +8,7 @@ import autoTable from "jspdf-autotable";
 import { preloadProductImages } from "@/lib/pdfImages";
 
 const FOREST = "#2D6A4F";
+const DEEP_FOREST = "#1E5C44"; // darker top accent for section bands (mirrors the email)
 const CORAL = "#E76F51";
 const BODY = "#1A1A1A";
 const MUTED = "#6B6B6B";
@@ -70,6 +71,7 @@ export interface QuoteItemForPdf {
   quantity: number;
   unit_price: number;
   line_total: number;
+  section?: string | null; // 'baby'|'mother'|'hospital'|null — optional grouping
   // CORS-safe Supabase Storage URL (brands.stored_image_url) only. The
   // caller is responsible for already having filtered out null/"" and
   // the CORS-blocked external brands.image_url — anything passed here is
@@ -211,69 +213,104 @@ export async function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock
   // Pre-load all line-item thumbnails to base64 BEFORE autoTable runs —
   // didDrawCell is synchronous, so images must be resolved up front.
   // Parallel fetch, per-image error isolation (see preloadProductImages).
+  // Pre-load ALL thumbnails to base64 once (keyed by url); each group's table
+  // builds its own index-aligned rowImages array from this shared map.
   const imageMap = await preloadProductImages(quote.items.map((it) => it.image_url || ""));
-  // Parallel array of the resolved-or-null image per row, indexed the
-  // same way autoTable indexes body rows (data.row.index).
-  const rowImages: Array<{ dataUrl: string; w: number; h: number } | null> = quote.items.map((it) => {
-    const u = it.image_url;
-    return u && u.trim() !== "" ? (imageMap.get(u) || null) : null;
-  });
 
   const IMG_COL = 1;          // image column index (after #)
   const IMG_BOX = 16;         // thumbnail box (mm)
   const IMG_CELL_W = 20;      // image column width (mm)
 
-  const itemRows = quote.items.map((it, i) => {
-    const item = it.product_name + (it.size ? `\nSize: ${it.size}` : "") + (it.color ? `\nColour: ${it.color}` : "");
-    return [
-      String(i + 1),
-      "", // image cell — drawn manually in didDrawCell
-      item,
-      it.brand_name || "—",
-      String(it.quantity),
-      fmtN(it.unit_price),
-      fmtN(it.line_total),
+  const imgFor = (it: QuoteItemForPdf) => {
+    const u = it.image_url;
+    return u && u.trim() !== "" ? (imageMap.get(u) || null) : null;
+  };
+
+  // Render one items table for `groupItems`, returning its finalY. didDrawCell
+  // maps thumbnails by row index WITHIN this table, so each group gets its own
+  // rowImages array and indices stay aligned across multiple tables.
+  const renderItemsTable = (startY: number, groupItems: QuoteItemForPdf[]): number => {
+    const rowImages = groupItems.map(imgFor);
+    const body = groupItems.length > 0
+      ? groupItems.map((it, i) => {
+          const item = it.product_name + (it.size ? `\nSize: ${it.size}` : "") + (it.color ? `\nColour: ${it.color}` : "");
+          return [String(i + 1), "", item, it.brand_name || "—", String(it.quantity), fmtN(it.unit_price), fmtN(it.line_total)];
+        })
+      : [["—", "", "No items on this quote", "", "", "", ""]];
+    autoTable(doc, {
+      startY,
+      head: [["#", "Image", "Item", "Brand", "Qty", "Unit Price", "Total"]],
+      body,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 9, cellPadding: 2.5, textColor: BODY, lineColor: [230, 230, 230] },
+      headStyles: { fillColor: FOREST, textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [250, 247, 241] },
+      bodyStyles: { minCellHeight: 18, valign: "middle" },
+      columnStyles: {
+        0: { cellWidth: 12, halign: "center" },
+        1: { cellWidth: IMG_CELL_W, halign: "center" },
+        4: { cellWidth: 12, halign: "center" },
+        5: { cellWidth: 28, halign: "right" },
+        6: { cellWidth: 28, halign: "right", fontStyle: "bold" },
+      },
+      didDrawCell: (data) => {
+        if (data.section !== "body" || data.column.index !== IMG_COL) return;
+        const entry = rowImages[data.row.index];
+        if (!entry) return; // no thumbnail → leave the cell blank
+        const ratio = entry.w / Math.max(entry.h, 1);
+        let drawW = IMG_BOX;
+        let drawH = IMG_BOX;
+        if (ratio >= 1) { drawH = IMG_BOX / ratio; } else { drawW = IMG_BOX * ratio; }
+        const x = data.cell.x + (data.cell.width - drawW) / 2;
+        const yc = data.cell.y + (data.cell.height - drawH) / 2;
+        try {
+          doc.addImage(entry.dataUrl, "PNG", x, yc, drawW, drawH);
+        } catch (e) {
+          console.warn("[quotePdf] addImage failed for a thumbnail", e);
+        }
+      },
+    });
+    // @ts-ignore — autoTable mutates the doc with the last-table position
+    return (doc as any).lastAutoTable.finalY;
+  };
+
+  // Filled green section band mirroring the email: solid forest fill, darker
+  // top accent, white bold uppercase label. Returns the y below the band.
+  const drawSectionBand = (yy: number, label: string): number => {
+    const bandH = 8;
+    if (yy > pageH - 30) { doc.addPage(); yy = margin; } // avoid an orphan heading
+    doc.setFillColor(FOREST);
+    doc.rect(margin, yy, pageW - margin * 2, bandH, "F");
+    doc.setDrawColor(DEEP_FOREST);
+    doc.setLineWidth(1);
+    doc.line(margin, yy + 0.5, pageW - margin, yy + 0.5); // darker top accent
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(255, 255, 255);
+    doc.text(label.toUpperCase(), margin + 3, yy + 5.6);
+    return yy + bandH;
+  };
+
+  if (!quote.items.some((it) => !!it.section)) {
+    // No item sectioned → flat list exactly as before.
+    y = renderItemsTable(y, quote.items) + 8;
+  } else {
+    // Grouped: Baby → Mother → Hospital (fixed order), Other Items last;
+    // display_order preserved (the caller passes items pre-sorted).
+    const SECTIONS = [
+      { key: "baby", label: "Baby Items" },
+      { key: "mother", label: "Mother Items" },
+      { key: "hospital", label: "Hospital Items" },
     ];
-  });
-
-  autoTable(doc, {
-    startY: y,
-    head: [["#", "Image", "Item", "Brand", "Qty", "Unit Price", "Total"]],
-    body: itemRows.length > 0 ? itemRows : [["—", "", "No items on this quote", "", "", "", ""]],
-    margin: { left: margin, right: margin },
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: BODY, lineColor: [230, 230, 230] },
-    headStyles: { fillColor: FOREST, textColor: [255, 255, 255], fontStyle: "bold" },
-    alternateRowStyles: { fillColor: [250, 247, 241] },
-    bodyStyles: { minCellHeight: 18, valign: "middle" },
-    columnStyles: {
-      0: { cellWidth: 12, halign: "center" },
-      1: { cellWidth: IMG_CELL_W, halign: "center" },
-      4: { cellWidth: 12, halign: "center" },
-      5: { cellWidth: 28, halign: "right" },
-      6: { cellWidth: 28, halign: "right", fontStyle: "bold" },
-    },
-    didDrawCell: (data) => {
-      if (data.section !== "body" || data.column.index !== IMG_COL) return;
-      const entry = rowImages[data.row.index];
-      if (!entry) return; // no thumbnail → leave the cell blank
-      // Fit within a 16mm box, preserving aspect ratio, centred in cell.
-      const ratio = entry.w / Math.max(entry.h, 1);
-      let drawW = IMG_BOX;
-      let drawH = IMG_BOX;
-      if (ratio >= 1) { drawH = IMG_BOX / ratio; } else { drawW = IMG_BOX * ratio; }
-      const x = data.cell.x + (data.cell.width - drawW) / 2;
-      const yc = data.cell.y + (data.cell.height - drawH) / 2;
-      try {
-        doc.addImage(entry.dataUrl, "PNG", x, yc, drawW, drawH);
-      } catch (e) {
-        // A malformed image must never abort the table render.
-        console.warn("[quotePdf] addImage failed for a thumbnail", e);
-      }
-    },
-  });
-
-  // @ts-ignore — autoTable mutates the doc with the last-table position
-  y = (doc as any).lastAutoTable.finalY + 8;
+    const groups = [
+      ...SECTIONS.map((s) => ({ label: s.label, items: quote.items.filter((it) => it.section === s.key) })),
+      { label: "Other Items", items: quote.items.filter((it) => !it.section) },
+    ].filter((g) => g.items.length > 0);
+    for (const g of groups) {
+      y = drawSectionBand(y, g.label) + 1;
+      y = renderItemsTable(y, g.items) + 6;
+    }
+  }
 
   // ── Totals block ───────────────────────────────────────────────
   const totalsX = pageW - margin - 80;
