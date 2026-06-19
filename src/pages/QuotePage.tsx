@@ -355,8 +355,10 @@ export default function QuotePage() {
               <div>
                 {groups.map((g) => (
                   <div key={g.label}>
-                    <div className="px-5 pt-3 pb-1 bg-muted/30 border-t border-border">
-                      <h3 className="text-xs font-bold uppercase tracking-widest text-text-med">{g.label}</h3>
+                    {/* Highlighted band — matches the customer email: solid
+                        brand-green fill, darker top accent, white bold caps. */}
+                    <div className="bg-forest border-t-4 border-forest-deep px-5 py-2.5">
+                      <h3 className="text-xs font-bold uppercase tracking-widest text-primary-foreground">{g.label}</h3>
                     </div>
                     <div className="divide-y divide-border">{g.rows.map(renderRow)}</div>
                   </div>
