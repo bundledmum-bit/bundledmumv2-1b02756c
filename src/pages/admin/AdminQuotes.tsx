@@ -76,6 +76,15 @@ const shareUrlFor = (token: string | null | undefined): string => {
 export const fmtN = (n: number | null | undefined) =>
   typeof n === "number" && isFinite(n) ? `₦${Math.round(n).toLocaleString()}` : "₦0";
 
+// Optional quote sectioning. DB CHECK allows only these keys (or NULL). Fixed
+// order; NULL ("Other Items") always rendered last.
+const QUOTE_SECTIONS = [
+  { key: "baby", label: "Baby Items" },
+  { key: "mother", label: "Mother Items" },
+  { key: "hospital", label: "Hospital Items" },
+] as const;
+const SECTION_OTHER_LABEL = "Other Items";
+
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-NG", {
     timeZone: "Africa/Lagos", dateStyle: "medium", timeStyle: "short",
@@ -842,6 +851,9 @@ function QuoteEditor({
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
+  // Active section for newly-added items ('baby'|'mother'|'hospital'|null). Items
+  // added fall under this until it's changed; null = ungrouped ("Other Items").
+  const [activeSection, setActiveSection] = useState<string | null>(null);
   const [pendingSizeProduct, setPendingSizeProduct] = useState<any | null>(null);
   const [itemSearchRaw, setItemSearchRaw] = useState("");
   const [itemSearch, setItemSearch] = useState("");
@@ -1331,6 +1343,7 @@ function QuoteEditor({
         quantity: 1,
         unit_price: item.price,
         display_order: items.length,
+        section: activeSection || null, // 'baby'|'mother'|'hospital'|null — never any other value
       });
       if (error) throw error;
     },
@@ -1348,6 +1361,7 @@ function QuoteEditor({
         brand_name?: string | null;
         size?: string | null;
         color?: string | null;
+        section?: string | null;
       };
     }) => {
       const { error } = await (supabase as any).from("quote_items").update(patch).eq("id", id);
@@ -1630,6 +1644,29 @@ function QuoteEditor({
               )}
             </div>
 
+            {/* Active section — newly-added items are filed under this. */}
+            {currentId && canEdit && (
+              <div className="mt-3">
+                <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Add to section</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {([{ key: null, label: "None" }, ...QUOTE_SECTIONS] as Array<{ key: string | null; label: string }>).map((opt) => {
+                    const active = (activeSection || null) === opt.key;
+                    return (
+                      <button
+                        key={opt.key ?? "none"}
+                        type="button"
+                        onClick={() => setActiveSection(opt.key)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${active ? "bg-forest text-primary-foreground border-forest" : "bg-card text-text-med border-border hover:bg-muted"}`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-text-light mt-1">New items are filed here until you change it. Optional.</p>
+              </div>
+            )}
+
             {/* Search/filter within existing items */}
             {items.length > 0 && (
               <div className="mt-3">
@@ -1673,24 +1710,41 @@ function QuoteEditor({
                   Clear search
                 </button>
               </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {filteredItems.map((it: any) => (
-                  <QuoteLineItemCard
-                    key={it.id}
-                    it={it}
-                    canEdit={canEdit}
-                    brands={brandsByProduct.get(it.product_id) || []}
-                    sizes={sizesByProduct.get(it.product_id) || []}
-                    colors={colorsByProduct.get(it.product_id) || []}
-                    isPending={updateItem.isPending || removeItem.isPending}
-                    onUpdate={(patch) => updateItem.mutate({ id: it.id, patch })}
-                    onRemove={() => removeItem.mutate(it.id)}
-                    onZoom={setZoomSrc}
-                  />
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              const card = (it: any) => (
+                <QuoteLineItemCard
+                  key={it.id}
+                  it={it}
+                  canEdit={canEdit}
+                  brands={brandsByProduct.get(it.product_id) || []}
+                  sizes={sizesByProduct.get(it.product_id) || []}
+                  colors={colorsByProduct.get(it.product_id) || []}
+                  isPending={updateItem.isPending || removeItem.isPending}
+                  onUpdate={(patch) => updateItem.mutate({ id: it.id, patch })}
+                  onRemove={() => removeItem.mutate(it.id)}
+                  onZoom={setZoomSrc}
+                />
+              );
+              // Flat list when no item is sectioned (unchanged behaviour).
+              if (!filteredItems.some((it: any) => !!it.section)) {
+                return <div className="mt-4 space-y-3">{filteredItems.map(card)}</div>;
+              }
+              // Otherwise group: fixed sections first (in order), Other Items last.
+              const groups = [
+                ...QUOTE_SECTIONS.map((s) => ({ label: s.label, rows: filteredItems.filter((it: any) => it.section === s.key) })),
+                { label: SECTION_OTHER_LABEL, rows: filteredItems.filter((it: any) => !it.section) },
+              ].filter((g) => g.rows.length > 0);
+              return (
+                <div className="mt-4 space-y-4">
+                  {groups.map((g) => (
+                    <div key={g.label} className="space-y-2">
+                      <h3 className="text-[11px] uppercase tracking-widest font-bold text-text-med">{g.label}</h3>
+                      <div className="space-y-3">{g.rows.map(card)}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Subtotal always reflects ALL items, not the filtered set */}
             {items.length > 0 && (
@@ -2298,6 +2352,22 @@ function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUp
               </div>
             </div>
           )}
+
+          {/* Section — re-file a mis-grouped item (None/Baby/Mother/Hospital) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Section</span>
+            <select
+              disabled={!canEdit}
+              value={it.section || ""}
+              onChange={(e) => onUpdate({ section: e.target.value || null })}
+              className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="">— None (Other Items) —</option>
+              {QUOTE_SECTIONS.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Qty +/- · unit price · line total */}
           <div className="flex items-center gap-3 flex-wrap pt-1">
