@@ -55,6 +55,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
     { to: "/shop", label: "All Shop" },
     { to: "/shop/baby", label: "Baby Shop" },
     { to: "/shop/mum", label: "Mum Shop" },
+    { to: "/hospital-list", label: "Shop Hospital Lists" },
     ...(showSubscribe ? [{ to: "/subscribe", label: "Subscribe 🔄" }] : []),
     { to: "/push-gifts", label: "Push Gifts 💝" },
   ];
