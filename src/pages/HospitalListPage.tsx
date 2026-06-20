@@ -49,24 +49,44 @@ interface ChosenBrand {
   image_url: string | null;
 }
 
-// category → customer-facing section. Reuses the Baby / Mother / Hospital
-// labels + green bands from the quote page for a consistent vocabulary.
-const SECTION_FOR_CATEGORY = (cat: string | null): string => {
-  if (cat === "baby") return "Baby Items";
-  if (cat === "mum") return "Mother Items";
-  return "Hospital Items"; // 'both' | 'push-gift' | anything else
-};
-const SECTION_ORDER = ["Baby Items", "Mother Items", "Hospital Items"];
+// category → STABLE section key (independent of the display heading, which
+// is now admin-configurable). 'both'/'push-gift'/anything → hospital.
+type SectionKey = "baby" | "mother" | "hospital";
+const SECTION_KEY_FOR_CATEGORY = (cat: string | null): SectionKey =>
+  cat === "baby" ? "baby" : cat === "mum" ? "mother" : "hospital";
+const SECTION_KEY_ORDER: SectionKey[] = ["baby", "mother", "hospital"];
 
-// Section tab filter (Change 3). `key` matches the section label produced
-// above; `cats` documents which raw categories fall in each bucket.
-type TabKey = "all" | "baby" | "mum" | "hospital";
-const TABS: { key: TabKey; label: string; section?: string }[] = [
-  { key: "all", label: "All" },
-  { key: "baby", label: "Baby", section: "Baby Items" },
-  { key: "mum", label: "Mother", section: "Mother Items" },
-  { key: "hospital", label: "Hospital", section: "Hospital Items" },
-];
+// Section tab filter — "all" plus one tab per section key.
+type TabKey = "all" | SectionKey;
+
+// Page copy/labels/toggles come from get_hospital_list_config(). These
+// defaults mirror the previously-hardcoded values and are used while the
+// config loads or when a field is missing/null.
+type HLConfig = Record<string, any>;
+const CONFIG_DEFAULTS: HLConfig = {
+  page_enabled: true,
+  heading: "Build your hospital bag",
+  subheading: "Tap Add on anything you need — your total updates as you go.",
+  budget_enabled: true,
+  budget_prompt_label: "Have a budget? We’ll build a bag for it.",
+  budget_summary_template: "Here’s a hospital bag for {budget}: {count} items, total {total}.",
+  search_placeholder: "Search e.g. cotton wool, pampers, rubber sheet",
+  tabs_enabled: true,
+  tab_label_all: "All",
+  tab_label_baby: "Baby",
+  tab_label_mother: "Mother",
+  tab_label_hospital: "Hospital",
+  section_heading_baby: "Baby Items",
+  section_heading_mother: "Mother Items",
+  section_heading_hospital: "Hospital Items",
+  add_more_enabled: true,
+  add_more_label: "Add More Products",
+  add_more_path: "/shop",
+  whatsapp_enabled: true,
+  whatsapp_label: "Need help? Chat on WhatsApp",
+  whatsapp_number: "",
+  empty_state_text: "Try a simpler word, or clear the search to see everything.",
+};
 
 const PLACEHOLDER = "/placeholder.svg";
 
@@ -79,6 +99,30 @@ export default function HospitalListPage() {
   const [products, setProducts] = useState<HLProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabKey>("all");
+
+  // Admin-controlled page copy/labels/toggles. Render defaults until it
+  // loads (never flash empty); a missing/null field falls back to default.
+  const [rawConfig, setRawConfig] = useState<HLConfig | null>(null);
+  const [configLoaded, setConfigLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any).rpc("get_hospital_list_config");
+      if (cancelled) return;
+      if (error) console.warn("get_hospital_list_config failed:", error);
+      else setRawConfig((data || {}) as HLConfig);
+      setConfigLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  // Resolved config: default for any missing/null field.
+  const cfg = useMemo(() => {
+    const out: HLConfig = { ...CONFIG_DEFAULTS };
+    if (rawConfig) for (const k of Object.keys(CONFIG_DEFAULTS)) {
+      if (rawConfig[k] !== null && rawConfig[k] !== undefined && rawConfig[k] !== "") out[k] = rawConfig[k];
+    }
+    return out;
+  }, [rawConfig]);
 
   // Budget mode (Change 1). `budgetItems === null` means we're NOT in
   // budget mode; an array (even empty) means the budget RPC has run.
@@ -245,23 +289,37 @@ export default function HospitalListPage() {
 
   const isSearching = debounced.length > 0;
 
-  // Group the default view into sections, then apply the tab filter.
-  const sections = useMemo(() => {
-    const map = new Map<string, HLProduct[]>();
-    for (const p of products) {
-      const label = SECTION_FOR_CATEGORY(p.category);
-      if (!map.has(label)) map.set(label, []);
-      map.get(label)!.push(p);
-    }
-    return SECTION_ORDER.filter((s) => map.has(s)).map((label) => ({
-      label,
-      rows: map.get(label)!,
-    }));
-  }, [products]);
+  // Admin-configurable display heading per stable section key.
+  const sectionHeading = (key: SectionKey): string =>
+    key === "baby" ? cfg.section_heading_baby
+      : key === "mother" ? cfg.section_heading_mother
+      : cfg.section_heading_hospital;
 
-  const activeSectionLabel = TABS.find((t) => t.key === activeTab)?.section;
+  // Group the default view into sections (by stable key), then apply the
+  // tab filter. The band heading text comes from config.
+  const sections = useMemo(() => {
+    const map = new Map<SectionKey, HLProduct[]>();
+    for (const p of products) {
+      const key = SECTION_KEY_FOR_CATEGORY(p.category);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(p);
+    }
+    return SECTION_KEY_ORDER.filter((k) => map.has(k)).map((key) => ({
+      key,
+      heading: sectionHeading(key),
+      rows: map.get(key)!,
+    }));
+  }, [products, cfg]);
+
+  // Tabs from config labels (key 'all' + one per section key).
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: "all", label: cfg.tab_label_all },
+    { key: "baby", label: cfg.tab_label_baby },
+    { key: "mother", label: cfg.tab_label_mother },
+    { key: "hospital", label: cfg.tab_label_hospital },
+  ];
   const visibleSections =
-    activeTab === "all" ? sections : sections.filter((s) => s.label === activeSectionLabel);
+    activeTab === "all" ? sections : sections.filter((s) => s.key === activeTab);
 
   // Budget summary numbers (honest — show the real total even if it edges
   // slightly over the requested budget; essentials have a price floor).
@@ -310,22 +368,49 @@ export default function HospitalListPage() {
     getCartItem,
   };
 
+  // WhatsApp link: build wa.me from the configured number, else fall back
+  // to the sitewide WHATSAPP_BASE.
+  const waText = encodeURIComponent("Hi BundledMum, I need help building my hospital bag.");
+  const waHref = cfg.whatsapp_number
+    ? `https://wa.me/${String(cfg.whatsapp_number).replace(/[^\d]/g, "")}?text=${waText}`
+    : `${WHATSAPP_BASE}?text=${waText}`;
+
+  const whatsappLink = cfg.whatsapp_enabled ? (
+    <a
+      href={waHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-center text-forest font-semibold underline underline-offset-4 py-2"
+    >
+      {cfg.whatsapp_label}
+    </a>
+  ) : null;
+
+  // Admin can disable the whole page.
+  if (configLoaded && !cfg.page_enabled) {
+    return (
+      <div className="min-h-screen bg-background pt-[68px] flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 className="text-2xl font-bold text-forest leading-tight">{cfg.heading}</h1>
+        <p className="text-base text-text-med">This page is currently unavailable. Please check back soon.</p>
+        {whatsappLink}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pt-[68px]">
       {/* Heading + helper */}
       <header className="px-4 pt-5 pb-3 max-w-screen-sm mx-auto">
-        <h1 className="text-2xl font-bold text-forest leading-tight">Build your hospital bag</h1>
-        <p className="text-base text-text-med mt-1">
-          Tap <span className="font-semibold text-forest">Add</span> on anything you need — your
-          total updates as you go.
-        </p>
+        <h1 className="text-2xl font-bold text-forest leading-tight">{cfg.heading}</h1>
+        <p className="text-base text-text-med mt-1">{cfg.subheading}</p>
       </header>
 
       {/* Budget builder (Change 1) */}
+      {cfg.budget_enabled && (
       <div className="px-4 max-w-screen-sm mx-auto">
         <div className="bg-forest-light/60 border border-forest/20 rounded-card p-3">
           <label htmlFor="budget" className="block text-sm font-semibold text-forest mb-1.5">
-            Have a budget? We’ll build a bag for it.
+            {cfg.budget_prompt_label}
           </label>
           <div className="flex gap-2">
             <div className="relative flex-1 min-w-0">
@@ -358,6 +443,7 @@ export default function HospitalListPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Sticky search — pinned just below the fixed sitewide navbar */}
       <div
@@ -371,7 +457,7 @@ export default function HospitalListPage() {
             inputMode="search"
             value={query}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search e.g. cotton wool, pampers, rubber sheet"
+            placeholder={cfg.search_placeholder}
             className="w-full h-12 pl-11 pr-11 rounded-pill border-2 border-border bg-card text-base text-text-dark placeholder:text-text-light focus:border-forest focus:outline-none"
             aria-label="Search products"
           />
@@ -401,9 +487,10 @@ export default function HospitalListPage() {
                   ? `We couldn’t fit a bag into ${fmt(budgetAmount || 0)}. Try a higher amount.`
                   : (
                     <>
-                      Here’s a hospital bag for <span className="font-bold">{fmt(budgetAmount || 0)}</span>:{" "}
-                      {budgetCount} {budgetCount === 1 ? "item" : "items"}, total{" "}
-                      <span className="font-bold text-forest">{fmt(budgetTotal)}</span>.
+                      {String(cfg.budget_summary_template)
+                        .split("{budget}").join(fmt(budgetAmount || 0))
+                        .split("{count}").join(String(budgetCount))
+                        .split("{total}").join(fmt(budgetTotal))}
                       {budgetTotal > (budgetAmount || 0) && (
                         <span className="block text-text-med text-xs mt-0.5">
                           (A little over — these are the essentials and they have a price floor.)
@@ -437,7 +524,7 @@ export default function HospitalListPage() {
         ) : products.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-text-dark font-semibold">No matches for “{debounced}”.</p>
-            <p className="text-text-med mt-1">Try a simpler word, or clear the search to see everything.</p>
+            <p className="text-text-med mt-1">{cfg.empty_state_text}</p>
           </div>
         ) : isSearching ? (
           // Flat result list while searching.
@@ -457,8 +544,9 @@ export default function HospitalListPage() {
           // Grouped default view: tab filter, then green-banded sections.
           <>
             {/* Section tab filter (Change 3) */}
+            {cfg.tabs_enabled && (
             <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by section">
-              {TABS.map((t) => {
+              {tabs.map((t) => {
                 const active = activeTab === t.key;
                 return (
                   <button
@@ -478,12 +566,13 @@ export default function HospitalListPage() {
                 );
               })}
             </div>
+            )}
 
             {visibleSections.map((sec) => (
-              <section key={sec.label} className="grid grid-cols-1 gap-4">
+              <section key={sec.key} className="grid grid-cols-1 gap-4">
                 <div className="bg-forest border-t-4 border-forest-deep px-5 py-2.5 rounded-t-card -mb-1">
                   <h2 className="text-sm font-bold uppercase tracking-widest text-primary-foreground">
-                    {sec.label}
+                    {sec.heading}
                   </h2>
                 </div>
                 {sec.rows.map((p) => (
@@ -503,22 +592,17 @@ export default function HospitalListPage() {
 
         {/* Keep-shopping: same global cart, so the hospital-bag items are
             preserved when the customer adds more from the storefront. */}
-        <Link
-          to="/shop"
-          className="min-h-12 inline-flex items-center justify-center gap-2 rounded-pill border-2 border-forest text-forest font-semibold text-base px-5 hover:bg-forest-light transition-colors"
-        >
-          <ShoppingBag className="w-4 h-4" /> Add More Products
-        </Link>
+        {cfg.add_more_enabled && (
+          <Link
+            to={cfg.add_more_path}
+            className="min-h-12 inline-flex items-center justify-center gap-2 rounded-pill border-2 border-forest text-forest font-semibold text-base px-5 hover:bg-forest-light transition-colors"
+          >
+            <ShoppingBag className="w-4 h-4" /> {cfg.add_more_label}
+          </Link>
+        )}
 
         {/* WhatsApp fallback */}
-        <a
-          href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hi BundledMum, I need help building my hospital bag.")}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-center text-forest font-semibold underline underline-offset-4 py-2"
-        >
-          Need help? Chat on WhatsApp
-        </a>
+        {whatsappLink}
       </main>
 
       {/* Persistent sticky bottom bar */}
