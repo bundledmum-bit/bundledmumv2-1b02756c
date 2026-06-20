@@ -4,6 +4,9 @@ import EditCartItemModal from "@/components/EditCartItemModal";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
+import ProductDetailDrawer from "@/components/ProductDetailDrawer";
+import ImageZoomModal from "@/components/ImageZoomModal";
+import type { Product } from "@/lib/supabaseAdapters";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText, Trash2 } from "lucide-react";
@@ -47,15 +50,27 @@ type RecRow = {
 // comes straight from the RPC's CORS-safe image_url (placeholder only as a
 // last-resort guard, which these RPCs shouldn't trigger).
 function RecCard({ row, onAdd }: { row: RecRow; onAdd: (r: RecRow) => void }) {
+  const [zoomOpen, setZoomOpen] = useState(false);
   return (
     <div className="bg-card rounded-card shadow-card p-3 text-center">
-      <img
-        src={row.image_url || "/placeholder.svg"}
-        alt={row.name}
-        loading="lazy"
-        onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
-        className="h-20 w-full object-cover rounded-lg mb-2 bg-[#f5f5f5]"
-      />
+      {/* Tap image to zoom — never adds or navigates. */}
+      <button
+        type="button"
+        onClick={() => setZoomOpen(true)}
+        aria-label={`View larger image of ${row.name}`}
+        className="block w-full rounded-lg overflow-hidden bg-[#f5f5f5] mb-2 cursor-zoom-in"
+      >
+        <img
+          src={row.image_url || "/placeholder.svg"}
+          alt={row.name}
+          loading="lazy"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+          className="h-20 w-full object-cover block"
+        />
+      </button>
+      {zoomOpen && (
+        <ImageZoomModal src={row.image_url} alt={row.name} caption={row.name} onClose={() => setZoomOpen(false)} />
+      )}
       <p className="text-[11px] font-semibold truncate mb-1">{row.name}</p>
       <p className="text-forest text-xs font-bold mb-2">{fmt(row.price)}</p>
       <button
@@ -457,6 +472,20 @@ export default function CartPage() {
     toast.success(`${row.name} added to cart`);
   };
 
+  // Variant-aware add: simple products (one in-stock brand, no sizes/
+  // gender) add immediately; products with options open the existing
+  // quick-view drawer to pick brand/size/etc. Option detection uses the
+  // already-loaded ALL_PRODUCTS adapter feed (brands/sizes/gender) — no
+  // extra per-card or batched DB call.
+  const [drawerProduct, setDrawerProduct] = useState<Product | null>(null);
+  const handleRecAdd = (row: RecRow) => {
+    const live = ALL_PRODUCTS.find(p => p.id === row.product_id);
+    const inStockBrands = live ? live.brands.filter(b => b.inStock !== false && (b.price || 0) > 0) : [];
+    const hasOptions = !!live && (inStockBrands.length > 1 || (live.sizes?.length || 0) > 0 || !!live.genderRelevant);
+    if (live && hasOptions) { setDrawerProduct(live); return; }
+    addRecommendation(row);
+  };
+
   if (!totalItems && savedItems.length === 0) {
     return (
       <div className="min-h-screen bg-background pt-20 pb-20">
@@ -488,7 +517,7 @@ export default function CartPage() {
                 <div className="flex gap-3" style={{ minWidth: "max-content" }}>
                   {popular.map(row => (
                     <div key={row.product_id} className="min-w-[140px] max-w-[160px]">
-                      <RecCard row={row} onAdd={addRecommendation} />
+                      <RecCard row={row} onAdd={handleRecAdd} />
                     </div>
                   ))}
                 </div>
@@ -496,6 +525,8 @@ export default function CartPage() {
             </div>
           )}
         </div>
+        {/* Quick-view drawer for variant-aware add from Popular Items. */}
+        <ProductDetailDrawer product={drawerProduct} onClose={() => setDrawerProduct(null)} />
       </div>
     );
   }
@@ -699,7 +730,7 @@ export default function CartPage() {
                 <h3 className="pf text-lg mb-3">💡 You might also like</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {recs.map(row => (
-                    <RecCard key={row.product_id} row={row} onAdd={addRecommendation} />
+                    <RecCard key={row.product_id} row={row} onAdd={handleRecAdd} />
                   ))}
                 </div>
               </div>
@@ -918,6 +949,9 @@ export default function CartPage() {
       {editingItem && (
         <EditCartItemModal item={editingItem} onClose={() => setEditKey(null)} />
       )}
+
+      {/* Quick-view drawer for variant-aware add from "You might also like". */}
+      <ProductDetailDrawer product={drawerProduct} onClose={() => setDrawerProduct(null)} />
 
       {/* Share-cart modal — WhatsApp deep-link + clipboard copy */}
       {shareOpen && (
