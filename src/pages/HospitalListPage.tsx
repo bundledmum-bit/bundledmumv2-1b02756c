@@ -136,7 +136,20 @@ export default function HospitalListPage() {
         console.warn("search_hospital_list_products failed:", error);
         setProducts([]);
       } else {
-        setProducts((data || []) as HLProduct[]);
+        const rows = (data || []) as HLProduct[];
+        setProducts(rows);
+        // Capture genuine zero-result searches so we learn the real terms
+        // people type (feeds alias learning). Only for actual user searches
+        // — never the empty-string default list — and once per settled
+        // debounce, not per keystroke. Fire-and-forget; the RPC re-checks
+        // and no-ops on blank/short/actually-matching terms.
+        if (debounced.length > 0 && rows.length === 0) {
+          try {
+            void (supabase as any).rpc("record_search_miss", { p_query: debounced });
+          } catch {
+            /* ignore — invisible capture must never affect the UI */
+          }
+        }
       }
       setLoading(false);
     })();
