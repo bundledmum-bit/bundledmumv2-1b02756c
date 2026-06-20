@@ -19,6 +19,9 @@ interface HLProduct {
   price: number;
   image_url: string | null;
   match_source?: string | null;
+  // Resolved hospital-list section from the RPC (per-product override if
+  // set, else derived server-side from category): 'baby'|'mother'|'hospital'.
+  section?: string | null;
 }
 
 // hospital_list_budget_fit returns the same shape PLUS a fitted quantity.
@@ -55,6 +58,15 @@ type SectionKey = "baby" | "mother" | "hospital";
 const SECTION_KEY_FOR_CATEGORY = (cat: string | null): SectionKey =>
   cat === "baby" ? "baby" : cat === "mum" ? "mother" : "hospital";
 const SECTION_KEY_ORDER: SectionKey[] = ["baby", "mother", "hospital"];
+
+// Resolve a row's section: prefer the RPC-resolved `section` (per-product
+// override or server-derived), falling back to the category lookup if it's
+// ever missing so grouping never breaks.
+const SECTION_KEY_OF = (row: { section?: string | null; category: string | null }): SectionKey => {
+  const s = row.section;
+  if (s === "baby" || s === "mother" || s === "hospital") return s;
+  return SECTION_KEY_FOR_CATEGORY(row.category);
+};
 
 // Section tab filter — "all" plus one tab per section key.
 type TabKey = "all" | SectionKey;
@@ -300,7 +312,7 @@ export default function HospitalListPage() {
   const sections = useMemo(() => {
     const map = new Map<SectionKey, HLProduct[]>();
     for (const p of products) {
-      const key = SECTION_KEY_FOR_CATEGORY(p.category);
+      const key = SECTION_KEY_OF(p);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(p);
     }
