@@ -798,6 +798,9 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
   const [showReturn, setShowReturn] = useState(false);
   const [showShippedModal, setShowShippedModal] = useState(false);
   const [shippedSaving, setShippedSaving] = useState(false);
+  // true when the modal is opened via "Edit" on an already-shipped order
+  // (update tracking only) vs the status dropdown (first-time shipment).
+  const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [showInitiateReturn, setShowInitiateReturn] = useState(false);
   const [cancelReason, setCancelReason] = useState(CANCEL_REASONS[0]);
   const [issueRefund, setIssueRefund] = useState(false);
@@ -849,6 +852,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     // email on confirm). Defer the save to the modal.
     if (newStatus === "shipped") {
       setTrackingNumber(o.tracking_number || "");
+      setIsEditingTracking(false);
       setShowShippedModal(true);
       return;
     }
@@ -868,17 +872,21 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     setStatusNote("");
   };
 
-  // Confirm "shipped" from the modal. skipTracking → don't write the
-  // tracking number (leaves whatever's stored unchanged-by-omission… but
-  // per spec we explicitly clear to null when the field is empty on Save,
-  // and leave it untouched on Skip).
+  // Confirm from the shipped modal. Two contexts:
+  //  • First-time shipment (status dropdown): set order_status='shipped'
+  //    and send the full 'order_shipped' email. skipTracking → don't touch
+  //    the tracking number; Save → persist the entered value (or null it).
+  //  • Editing tracking on an already-shipped order ("Edit" link): update
+  //    tracking silently (no status change) and send 'tracking_updated'.
   const confirmShipped = async (skipTracking: boolean) => {
+    const alreadyShipped = isEditingTracking;
     setShippedSaving(true);
     try {
       const updates: any = {
-        order_status: "shipped",
-        shipped_at: new Date().toISOString(),
+        // Preserve the original shipped_at when only editing tracking.
+        shipped_at: alreadyShipped ? (o.shipped_at || new Date().toISOString()) : new Date().toISOString(),
       };
+      if (!alreadyShipped) updates.order_status = "shipped";
       if (!skipTracking) {
         // Save: persist the entered value, or null it out if cleared.
         updates.tracking_number = trackingNumber.trim() || null;
@@ -887,25 +895,34 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       const { error: updErr } = await supabase.from("orders").update(updates).eq("id", o.id);
       if (updErr) { toast.error(updErr.message || "Could not update order"); return; }
 
-      await supabase.from("order_status_history").insert({
-        order_id: o.id, old_status: o.order_status, new_status: "shipped",
-        changed_by: adminUser?.id || null,
-        note: statusNote || (updates.tracking_number ? `Tracking: ${updates.tracking_number}` : null),
-      });
+      // Record a status-history row only on the actual shipment transition.
+      if (!alreadyShipped) {
+        await supabase.from("order_status_history").insert({
+          order_id: o.id, old_status: o.order_status, new_status: "shipped",
+          changed_by: adminUser?.id || null,
+          note: statusNote || (updates.tracking_number ? `Tracking: ${updates.tracking_number}` : null),
+        });
+      }
 
-      // Fire the shipped notification email (server template already updated).
+      // 'tracking_updated' when already shipped; otherwise the full
+      // 'order_shipped' email. Both templates are already on the server.
+      const emailType = alreadyShipped ? "tracking_updated" : "order_shipped";
       try {
         await (supabase as any).functions.invoke("send-transactional-email", {
-          body: { email_type: "order_shipped", order_id: o.id },
+          body: { email_type: emailType, order_id: o.id },
         });
       } catch (e) {
-        console.warn("[shipped] notification email failed (non-fatal):", e);
+        console.warn(`[shipped] ${emailType} email failed (non-fatal):`, e);
       }
 
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
       queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
       queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
-      toast.success("Order marked as shipped. Customer notified.");
+      toast.success(
+        alreadyShipped
+          ? "Tracking number updated. Customer notified."
+          : "Order marked as shipped. Customer notified.",
+      );
       setStatusNote("");
       setShowShippedModal(false);
     } finally {
@@ -994,7 +1011,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
               <span className="text-xs font-semibold font-mono">{o.tracking_number}</span>
               {can("orders", "edit_status") && (
                 <button
-                  onClick={() => { setTrackingNumber(o.tracking_number || ""); setShowShippedModal(true); }}
+                  onClick={() => { setTrackingNumber(o.tracking_number || ""); setIsEditingTracking(true); setShowShippedModal(true); }}
                   className="text-[11px] text-forest underline"
                 >
                   Edit
@@ -1333,7 +1350,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       {showShippedModal && (
         <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => !shippedSaving && setShowShippedModal(false)}>
           <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-sm mb-4">Mark Order as Shipped</h3>
+            <h3 className="font-bold text-sm mb-4">{isEditingTracking ? "Update Tracking Number" : "Mark Order as Shipped"}</h3>
             <label className="text-xs font-semibold text-muted-foreground">Tracking Number (optional)</label>
             <input
               type="text"
@@ -1344,11 +1361,15 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
               className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mt-1"
             />
             <p className="text-sm text-muted-foreground mt-1">
-              Leave blank if no tracking number is available. The customer will still receive a shipped notification.
+              {isEditingTracking
+                ? "The customer will be notified of the updated tracking number."
+                : "Leave blank if no tracking number is available. The customer will still receive a shipped notification."}
             </p>
             <div className="flex flex-wrap gap-2 mt-4">
-              <button onClick={() => confirmShipped(false)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">Save &amp; Mark Shipped</button>
-              <button onClick={() => confirmShipped(true)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 border border-border rounded-lg text-xs font-semibold disabled:opacity-50">Skip &amp; Mark Shipped</button>
+              <button onClick={() => confirmShipped(false)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">{isEditingTracking ? "Save Tracking Number" : "Save & Mark Shipped"}</button>
+              {!isEditingTracking && (
+                <button onClick={() => confirmShipped(true)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 border border-border rounded-lg text-xs font-semibold disabled:opacity-50">Skip &amp; Mark Shipped</button>
+              )}
               <button onClick={() => setShowShippedModal(false)} disabled={shippedSaving} className="px-3 py-2 text-xs font-semibold text-muted-foreground disabled:opacity-50">Cancel</button>
             </div>
           </div>
