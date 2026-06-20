@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { ShoppingBag, ArrowRight, Minus, Plus, X } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
 import { getBrandImage } from "@/lib/brandImage";
 import BrandPickerModal from "@/components/article/BrandPickerModal";
+import ImageZoomModal from "@/components/ImageZoomModal";
 
 // Stage 2: the interactive product card that replaces the Stage 1
 // placeholder inside articles. Shows the product image (cheapest
@@ -108,19 +108,9 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
     setModalMode("add");
   };
 
-  // Tap/click-to-zoom lightbox. zoomSrc === null means closed.
+  // Tap/click-to-zoom lightbox. zoomSrc === null means closed. The shared
+  // ImageZoomModal handles Esc + body-scroll-lock + dismissal.
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
-  useEffect(() => {
-    if (!zoomSrc) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setZoomSrc(null); };
-    window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [zoomSrc]);
 
   // Loading skeleton while the parent's bulk product fetch resolves.
   if (productData === undefined) {
@@ -234,32 +224,10 @@ export default function ArticleProductCard({ productSlug, displayName, whyNeeded
         />
       )}
 
-      {/* Full-screen image lightbox (portal to body, above nav + modals) */}
-      {zoomSrc && createPortal(
-        <div
-          className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setZoomSrc(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Image of ${productData.name}`}
-        >
-          <div className="relative" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={zoomSrc}
-              alt={productData.name}
-              className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-            />
-            <button
-              type="button"
-              onClick={() => setZoomSrc(null)}
-              aria-label="Close image"
-              className="absolute top-2 right-2 h-9 w-9 rounded-full bg-white/95 text-foreground shadow-lg flex items-center justify-center hover:bg-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>,
-        document.body,
+      {/* Full-screen image lightbox — shared constrained container
+          (self-portals to body, handles sizing + dismissal). */}
+      {zoomSrc && (
+        <ImageZoomModal src={zoomSrc} alt={productData.name} onClose={() => setZoomSrc(null)} />
       )}
     </div>
   );

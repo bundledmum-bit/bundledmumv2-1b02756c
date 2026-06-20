@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Package, Coins, Repeat, ShieldCheck, Plus, Minus, X } from "lucide-react";
 import { toast } from "sonner";
+import ImageZoomModal from "@/components/ImageZoomModal";
 import { supabase } from "@/integrations/supabase/client";
 import { getBrandImage } from "@/lib/brandImage";
 import {
@@ -427,15 +428,9 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
         )}
       </div>
 
-      {/* Zoom lightbox */}
+      {/* Zoom lightbox — constrained, tap-out scrim (shared component). */}
       {zoomed && img && (
-        <div className="fixed inset-0 z-[1100] bg-black/80 flex items-center justify-center p-4" onClick={() => setZoomed(false)}>
-          <button type="button" aria-label="Close" onClick={() => setZoomed(false)}
-            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 text-foreground inline-flex items-center justify-center">
-            <X className="w-5 h-5" />
-          </button>
-          <img src={img} alt={product.name} className="max-w-[90vw] max-h-[90vh] object-contain" onClick={e => e.stopPropagation()} />
-        </div>
+        <ImageZoomModal src={img} alt={product.name} onClose={() => setZoomed(false)} />
       )}
     </div>
   );

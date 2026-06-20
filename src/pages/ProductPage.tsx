@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Seo from "@/components/Seo";
+import ImageZoomModal from "@/components/ImageZoomModal";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -58,17 +59,6 @@ function useProduct(slug: string) {
 }
 
 /* ── Image Zoom Modal ── */
-function ImageZoomModal({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center animate-fade-in" onClick={onClose}>
-      <button onClick={onClose} className="absolute top-4 right-4 z-[210] bg-card rounded-full p-2 shadow-lg hover:bg-muted transition-colors" aria-label="Close zoom">
-        <X className="h-6 w-6 text-foreground" />
-      </button>
-      <img src={src} alt={alt} className="max-w-[95vw] max-h-[90vh] object-contain rounded-lg" onClick={(e) => e.stopPropagation()} />
-    </div>
-  );
-}
-
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
   const { data, isLoading } = useProduct(slug || "");

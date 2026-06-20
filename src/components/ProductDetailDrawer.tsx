@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Star, ShoppingBag, X, ZoomIn } from "lucide-react";
 import QtyControl from "@/components/QtyControl";
+import ImageZoomModal from "@/components/ImageZoomModal";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -40,26 +41,6 @@ export default function ProductDetailDrawer({ product, defaultBudget = "standard
 }
 
 /* ── Image Zoom Modal ── */
-function ImageZoomModal({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center animate-fade-in" onClick={onClose}>
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 z-[210] bg-card rounded-full p-2 shadow-lg hover:bg-muted transition-colors"
-        aria-label="Close zoom"
-      >
-        <X className="h-6 w-6 text-foreground" />
-      </button>
-      <img
-        src={src}
-        alt={alt}
-        className="max-w-[95vw] max-h-[90vh] object-contain rounded-lg"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
-  );
-}
-
 function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { product: Product; defaultBudget: string; selectedBrandId?: string; onClose: () => void }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
   const seedBrand = selectedBrandId

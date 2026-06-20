@@ -920,29 +920,9 @@ export default function CartPage() {
         </div>
       )}
 
-      {/* Image lightbox — full-screen with 80% black overlay, dismiss on
-          outside-click or the close button. Native <img loading="lazy"> so
-          we never need an image library. */}
+      {/* Image lightbox — constrained, tap-out scrim (shared component). */}
       {zoomImage && (
-        <div
-          className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setZoomImage(null)}
-        >
-          <button
-            onClick={() => setZoomImage(null)}
-            className="absolute top-4 right-4 z-[210] bg-card rounded-full p-2 shadow-lg hover:bg-muted"
-            aria-label="Close zoom"
-          >
-            <X className="h-5 w-5 text-foreground" />
-          </button>
-          <img
-            src={zoomImage.url}
-            alt={zoomImage.alt}
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
-          />
-        </div>
+        <ImageZoomModal src={zoomImage.url} alt={zoomImage.alt} onClose={() => setZoomImage(null)} />
       )}
 
       {/* Edit variant modal */}
