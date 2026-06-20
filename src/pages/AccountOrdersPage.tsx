@@ -40,6 +40,24 @@ const formatDeliveryWindow = (start: string, end: string): string => {
   return `${fmtDate(start)} to ${fmtDate(end)}`;
 };
 
+// Public tracking-page URL for the chosen logistics company, or null if we
+// don't have a known tracking link for it (e.g. "Other"/DHL handled offline).
+const getTrackingUrl = (company: string, trackingNumber: string): string | null => {
+  const urls: Record<string, string> = {
+    "GIG Logistics (GIGL)": `https://giglogistics.com/track-shipment/?waybill=${trackingNumber}`,
+    "GUO Transport": `https://www.guotransport.com.ng/track/${trackingNumber}`,
+    "ABC Cargo Express": `https://www.abctransport.com/track?waybill=${trackingNumber}`,
+    "Red Star Express (FedEx)": `https://www.redstarexpress.com/track?waybill=${trackingNumber}`,
+    "CourierPlus": `https://www.courierplus.com.ng/track/${trackingNumber}`,
+    "DHL Nigeria": `https://www.dhl.com/ng-en/home/tracking.html?tracking-id=${trackingNumber}`,
+    "Intercity.ng": `https://intercity.ng/track/${trackingNumber}`,
+    "Tranex Courier": `https://tranexcourier.com/tracking/?tracking_number=${trackingNumber}`,
+    "Zenith Carex": `https://zenithcarex.com/tracking/${trackingNumber}`,
+    "Sendbox": `https://sendbox.co/track/${trackingNumber}`,
+  };
+  return urls[company] || null;
+};
+
 export default function AccountOrdersPage() {
   const { user } = useCustomerAuth();
   const email = user?.email || "";
@@ -158,6 +176,19 @@ export default function AccountOrdersPage() {
                           <div className="font-mono font-bold text-text-dark text-sm break-all">
                             {o.tracking_number}
                           </div>
+                          {o.logistics_company && (
+                            <div className="text-[11px] text-text-light mt-1">via {o.logistics_company}</div>
+                          )}
+                          {o.logistics_company && getTrackingUrl(o.logistics_company, o.tracking_number) && (
+                            <a
+                              href={getTrackingUrl(o.logistics_company, o.tracking_number)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-block text-[11px] font-semibold text-green-700 underline hover:text-green-900"
+                            >
+                              Track on {o.logistics_company} website →
+                            </a>
+                          )}
                         </div>
                       )}
                       {o.order_status === "shipped" && o.estimated_delivery_start && o.estimated_delivery_end && (

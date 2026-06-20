@@ -801,6 +801,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
   // true when the modal is opened via "Edit" on an already-shipped order
   // (update tracking only) vs the status dropdown (first-time shipment).
   const [isEditingTracking, setIsEditingTracking] = useState(false);
+  const [logisticsCompany, setLogisticsCompany] = useState("");
+  const [logisticsCompanies, setLogisticsCompanies] = useState<any[]>([]);
   const [showInitiateReturn, setShowInitiateReturn] = useState(false);
   const [cancelReason, setCancelReason] = useState(CANCEL_REASONS[0]);
   const [issueRefund, setIssueRefund] = useState(false);
@@ -809,6 +811,16 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
   const [refundAmount, setRefundAmount] = useState(0);
   const [trackingNumber, setTrackingNumber] = useState(o.tracking_number || "");
   const [actualDelivery, setActualDelivery] = useState(o.actual_delivery_date || "");
+
+  // Active logistics partners for the Mark-as-Shipped modal selector.
+  useEffect(() => {
+    (supabase as any)
+      .from("logistics_companies")
+      .select("id, name, short_name, tracking_url, website_url")
+      .eq("is_active", true)
+      .order("display_order")
+      .then(({ data }: { data: any[] | null }) => setLogisticsCompanies(data || []));
+  }, []);
 
   const { data: orderNotes } = useQuery({
     queryKey: ["admin-order-notes", o.id],
@@ -852,6 +864,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     // email on confirm). Defer the save to the modal.
     if (newStatus === "shipped") {
       setTrackingNumber(o.tracking_number || "");
+      setLogisticsCompany(o.logistics_company || "");
       setIsEditingTracking(false);
       setShowShippedModal(true);
       return;
@@ -891,6 +904,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         // Save: persist the entered value, or null it out if cleared.
         updates.tracking_number = trackingNumber.trim() || null;
       }
+      // Always save the chosen logistics company (also when editing tracking).
+      if (logisticsCompany) updates.logistics_company = logisticsCompany;
 
       const { error: updErr } = await supabase.from("orders").update(updates).eq("id", o.id);
       if (updErr) { toast.error(updErr.message || "Could not update order"); return; }
@@ -924,6 +939,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           : "Order marked as shipped. Customer notified.",
       );
       setStatusNote("");
+      setLogisticsCompany("");
       setShowShippedModal(false);
     } finally {
       setShippedSaving(false);
@@ -1011,12 +1027,17 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
               <span className="text-xs font-semibold font-mono">{o.tracking_number}</span>
               {can("orders", "edit_status") && (
                 <button
-                  onClick={() => { setTrackingNumber(o.tracking_number || ""); setIsEditingTracking(true); setShowShippedModal(true); }}
+                  onClick={() => { setTrackingNumber(o.tracking_number || ""); setLogisticsCompany(o.logistics_company || ""); setIsEditingTracking(true); setShowShippedModal(true); }}
                   className="text-[11px] text-forest underline"
                 >
                   Edit
                 </button>
               )}
+            </div>
+          )}
+          {o.logistics_company && (
+            <div className="text-xs text-muted-foreground mt-1">
+              via <span className="font-semibold text-foreground">{o.logistics_company}</span>
             </div>
           )}
           <p className="text-xs mt-0.5 inline-flex items-center gap-1 flex-wrap">
@@ -1365,6 +1386,24 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 ? "The customer will be notified of the updated tracking number."
                 : "Leave blank if no tracking number is available. The customer will still receive a shipped notification."}
             </p>
+            <div className="mt-4">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Logistics Company (optional)</label>
+              <select
+                value={logisticsCompany}
+                onChange={e => setLogisticsCompany(e.target.value)}
+                className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+              >
+                <option value="">-- Select logistics company --</option>
+                {logisticsCompanies.map(company => (
+                  <option key={company.id} value={company.name}>
+                    {company.short_name || company.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Selecting a company lets us include a tracking link in the customer email.
+              </p>
+            </div>
             <div className="flex flex-wrap gap-2 mt-4">
               <button onClick={() => confirmShipped(false)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">{isEditingTracking ? "Save Tracking Number" : "Save & Mark Shipped"}</button>
               {!isEditingTracking && (
