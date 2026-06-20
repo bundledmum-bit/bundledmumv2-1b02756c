@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Save, Search, ClipboardList } from "lucide-react";
+import { Save, Search, ClipboardList, Plus, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 
 // ── Config field map ─────────────────────────────────────────────────
@@ -247,19 +247,34 @@ function PageSettings() {
   );
 }
 
-// ── Product Eligibility tab ──────────────────────────────────────────
+// ── Product Eligibility tab — section manager ────────────────────────
+type SectionKey = "baby" | "mother" | "hospital";
+const ELIG_SECTIONS: { key: SectionKey; label: string }[] = [
+  { key: "baby", label: "Baby" },
+  { key: "mother", label: "Mother" },
+  { key: "hospital", label: "Hospital" },
+];
+// Mirror the public page's category→section fallback for optimistic moves
+// when the admin picks "Auto" (server is authoritative on the response).
+const deriveSection = (cat: string | null): SectionKey =>
+  cat === "baby" ? "baby" : cat === "mum" ? "mother" : "hospital";
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 interface EligibilityRow {
   product_id: string;
   name: string;
   category: string | null;
   subcategory: string | null;
   on_hospital_list: boolean;
+  section_override: string | null;
+  resolved_section: SectionKey;
 }
 
 export function ProductEligibility() {
   const [rows, setRows] = useState<EligibilityRow[]>([]);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "on" | "off">("all");
+  const [query, setQuery] = useState(""); // filters the on-list section groups
+  const [addQuery, setAddQuery] = useState(""); // filters the add-products area
+  const [showAdd, setShowAdd] = useState(false);
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
@@ -275,27 +290,27 @@ export function ProductEligibility() {
     if (data) setRows(data);
   }, [data]);
 
-  const toggle = async (row: EligibilityRow) => {
-    const next = !row.on_hospital_list;
-    // Optimistic flip.
+  const markPending = (id: string, on: boolean) =>
+    setPending((prev) => {
+      const n = new Set(prev);
+      on ? n.add(id) : n.delete(id);
+      return n;
+    });
+
+  // Add / remove from the hospital list (hospital-bag scope).
+  const setOnList = async (row: EligibilityRow, next: boolean) => {
     setRows((prev) => prev.map((r) => (r.product_id === row.product_id ? { ...r, on_hospital_list: next } : r)));
-    setPending((prev) => new Set(prev).add(row.product_id));
+    markPending(row.product_id, true);
     const { data, error } = await (supabase as any).rpc("admin_toggle_hospital_list_eligibility", {
       p_product_id: row.product_id,
       p_on: next,
     });
-    setPending((prev) => {
-      const n = new Set(prev);
-      n.delete(row.product_id);
-      return n;
-    });
+    markPending(row.product_id, false);
     if (error) {
-      // Revert on failure.
       setRows((prev) => prev.map((r) => (r.product_id === row.product_id ? { ...r, on_hospital_list: !next } : r)));
       toast.error(error.message || "Could not update product");
       return;
     }
-    // Trust the server's returned state.
     const serverState = typeof data === "boolean" ? data : next;
     setRows((prev) =>
       prev.map((r) => (r.product_id === row.product_id ? { ...r, on_hospital_list: serverState } : r)),
@@ -303,81 +318,201 @@ export function ProductEligibility() {
     toast.success(`${row.name} ${serverState ? "added to" : "removed from"} the hospital list`);
   };
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (filter === "on" && !r.on_hospital_list) return false;
-      if (filter === "off" && r.on_hospital_list) return false;
-      if (q && !`${r.name} ${r.category ?? ""} ${r.subcategory ?? ""}`.toLowerCase().includes(q)) return false;
-      return true;
+  // Pin to a section, or 'auto' to clear the override (fall back to category).
+  const setSection = async (row: EligibilityRow, value: SectionKey | "auto") => {
+    const snapshot = { section_override: row.section_override, resolved_section: row.resolved_section };
+    const optimisticOverride = value === "auto" ? null : value;
+    const optimisticResolved: SectionKey = value === "auto" ? deriveSection(row.category) : value;
+    setRows((prev) =>
+      prev.map((r) =>
+        r.product_id === row.product_id
+          ? { ...r, section_override: optimisticOverride, resolved_section: optimisticResolved }
+          : r,
+      ),
+    );
+    markPending(row.product_id, true);
+    const { data, error } = await (supabase as any).rpc("admin_set_hospital_list_section", {
+      p_product_id: row.product_id,
+      p_section: value,
     });
-  }, [rows, query, filter]);
+    markPending(row.product_id, false);
+    if (error) {
+      setRows((prev) => prev.map((r) => (r.product_id === row.product_id ? { ...r, ...snapshot } : r)));
+      toast.error(error.message || "Could not move product");
+      return;
+    }
+    const resolved = (typeof data === "string" ? data : optimisticResolved) as SectionKey;
+    setRows((prev) =>
+      prev.map((r) =>
+        r.product_id === row.product_id
+          ? { ...r, section_override: optimisticOverride, resolved_section: resolved }
+          : r,
+      ),
+    );
+    toast.success(`${row.name} → ${cap(resolved)}${optimisticOverride ? "" : " (auto)"}`);
+  };
+
+  const matchesQuery = (r: EligibilityRow, q: string) =>
+    !q || `${r.name} ${r.category ?? ""} ${r.subcategory ?? ""}`.toLowerCase().includes(q);
+
+  // On-list products grouped by resolved section, filtered by the group search.
+  const grouped = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const map: Record<SectionKey, EligibilityRow[]> = { baby: [], mother: [], hospital: [] };
+    for (const r of rows) {
+      if (!r.on_hospital_list || !matchesQuery(r, q)) continue;
+      (map[r.resolved_section] || map.hospital).push(r);
+    }
+    return map;
+  }, [rows, query]);
+
+  // Off-list products for the Add area, filtered by the add search.
+  const offList = useMemo(() => {
+    const q = addQuery.trim().toLowerCase();
+    return rows.filter((r) => !r.on_hospital_list && matchesQuery(r, q));
+  }, [rows, addQuery]);
 
   const onCount = rows.filter((r) => r.on_hospital_list).length;
+  const ADD_CAP = 60;
 
   return (
-    <div className="bg-card border border-border rounded-xl p-5">
-      <p className="text-xs text-text-light mb-4">
-        Controls whether a product appears on the public hospital-list page. This is eligibility only —
-        prices, brands, and images are edited in Products / Brands / Inventory as usual.
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="w-4 h-4 text-text-light absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search products…"
-            className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background"
-          />
-        </div>
-        {([
-          ["all", "All"],
-          ["on", `On list (${onCount})`],
-          ["off", "Off list"],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold border ${
-              filter === key ? "border-forest bg-forest-light text-forest" : "border-border text-text-med"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+    <div className="space-y-5">
+      <div className="bg-card border border-border rounded-xl p-5">
+        <p className="text-xs text-text-light">
+          Controls which products appear on the public hospital-list page and in which section. The section here
+          is hospital-list display only — it does <span className="font-semibold">not</span> change the product’s
+          storefront category. Prices, brands, and images are edited in Products / Brands / Inventory.
+        </p>
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-10 text-text-med">Loading…</div>
-      ) : visible.length === 0 ? (
-        <div className="text-center py-10 text-text-light text-sm">No products match.</div>
-      ) : (
-        <div className="divide-y divide-border">
-          {visible.map((row) => (
-            <div key={row.product_id} className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-text-dark truncate">{row.name}</div>
-                <div className="text-xs text-text-light truncate">
-                  {row.category || "—"}
-                  {row.subcategory ? ` · ${row.subcategory}` : ""}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-xs font-semibold ${row.on_hospital_list ? "text-forest" : "text-text-light"}`}>
-                  {row.on_hospital_list ? "On list" : "Off"}
-                </span>
-                <Switch
-                  checked={row.on_hospital_list}
-                  disabled={pending.has(row.product_id)}
-                  onCheckedChange={() => toggle(row)}
-                />
-              </div>
+      {/* Add products */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <button
+          onClick={() => setShowAdd((v) => !v)}
+          className="flex items-center gap-2 text-sm font-bold"
+        >
+          <Plus className="w-4 h-4 text-forest" /> Add products to the hospital list
+          <span className="text-xs font-normal text-text-light">({rows.length - onCount} not on list)</span>
+        </button>
+        {showAdd && (
+          <div className="mt-4">
+            <div className="relative mb-3">
+              <Search className="w-4 h-4 text-text-light absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                value={addQuery}
+                onChange={(e) => setAddQuery(e.target.value)}
+                placeholder="Search products to add…"
+                className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background"
+              />
             </div>
-          ))}
+            {offList.length === 0 ? (
+              <div className="text-center py-6 text-text-light text-sm">No products to add.</div>
+            ) : (
+              <>
+                <div className="divide-y divide-border">
+                  {offList.slice(0, ADD_CAP).map((row) => (
+                    <div key={row.product_id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-text-dark truncate">{row.name}</div>
+                        <div className="text-xs text-text-light truncate">
+                          {row.category || "—"}
+                          {row.subcategory ? ` · ${row.subcategory}` : ""}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setOnList(row, true)}
+                        disabled={pending.has(row.product_id)}
+                        className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-forest text-primary-foreground px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {offList.length > ADD_CAP && (
+                  <p className="text-xs text-text-light mt-3">
+                    Showing {ADD_CAP} of {offList.length}. Search to narrow.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* On-list groups */}
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 className="text-sm font-bold">On the hospital list ({onCount})</h3>
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search className="w-4 h-4 text-text-light absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter on-list products…"
+              className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background"
+            />
+          </div>
         </div>
-      )}
+
+        {isLoading ? (
+          <div className="text-center py-10 text-text-med">Loading…</div>
+        ) : (
+          <div className="space-y-6">
+            {ELIG_SECTIONS.map((sec) => {
+              const items = grouped[sec.key];
+              return (
+                <div key={sec.key}>
+                  <div className="bg-forest border-t-4 border-forest-deep px-4 py-2 rounded-t-lg">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-primary-foreground">
+                      {sec.label} <span className="font-normal opacity-80">· {items.length}</span>
+                    </h4>
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="text-xs text-text-light py-3 px-1">No products in this section.</p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {items.map((row) => (
+                        <div key={row.product_id} className="flex items-center justify-between gap-3 py-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-text-dark truncate">{row.name}</div>
+                            <div className="text-xs text-text-light truncate">
+                              {row.category || "—"}
+                              {row.subcategory ? ` · ${row.subcategory}` : ""}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <select
+                              value={row.section_override ?? "auto"}
+                              disabled={pending.has(row.product_id)}
+                              onChange={(e) => setSection(row, e.target.value as SectionKey | "auto")}
+                              className="border border-input rounded-lg px-2 py-1.5 text-xs bg-background disabled:opacity-50"
+                              aria-label={`Section for ${row.name}`}
+                            >
+                              <option value="baby">Baby</option>
+                              <option value="mother">Mother</option>
+                              <option value="hospital">Hospital</option>
+                              <option value="auto">Auto ({cap(deriveSection(row.category))})</option>
+                            </select>
+                            <button
+                              onClick={() => setOnList(row, false)}
+                              disabled={pending.has(row.product_id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-border text-text-med px-2.5 py-1.5 text-xs font-semibold hover:border-destructive hover:text-destructive disabled:opacity-50"
+                              aria-label={`Remove ${row.name}`}
+                            >
+                              <X className="w-3.5 h-3.5" /> Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
