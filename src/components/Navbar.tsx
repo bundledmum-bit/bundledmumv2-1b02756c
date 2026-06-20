@@ -50,12 +50,12 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   const onLight = !isHome;
   const dark = scrolled || onLight;
 
-  const navLinks = [
+  const navLinks: { to: string; label: string; highlight?: boolean }[] = [
+    { to: "/hospital-list", label: "Shop Hospital Lists", highlight: true },
     { to: "/bundles", label: "Bundles & Kits" },
     { to: "/shop", label: "All Shop" },
     { to: "/shop/baby", label: "Baby Shop" },
     { to: "/shop/mum", label: "Mum Shop" },
-    { to: "/hospital-list", label: "Shop Hospital Lists" },
     ...(showSubscribe ? [{ to: "/subscribe", label: "Subscribe 🔄" }] : []),
     { to: "/push-gifts", label: "Push Gifts 💝" },
   ];
@@ -71,7 +71,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
           <div className="hidden md:flex items-center gap-1.5">
             <Link to="/quiz" className="rounded-pill bg-coral px-5 py-2 text-[13px] font-semibold text-primary-foreground hover:bg-coral-dark interactive font-body">Build My Bundle</Link>
             {navLinks.map(l => (
-              <Link key={l.to} to={l.to} className={`rounded-pill px-3.5 py-2 text-[13px] font-semibold transition-colors font-body ${dark ? "text-foreground hover:bg-midnight/[0.07]" : "text-primary-foreground hover:bg-primary-foreground/10"}`}>
+              <Link key={l.to} to={l.to} className={`rounded-pill px-3.5 py-2 text-[13px] font-semibold transition-colors font-body ${l.highlight ? "bg-forest text-primary-foreground hover:bg-forest-deep" : dark ? "text-foreground hover:bg-midnight/[0.07]" : "text-primary-foreground hover:bg-primary-foreground/10"}`}>
                 {l.label}
               </Link>
             ))}
@@ -115,7 +115,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
             </div>
             <Link to="/quiz" className="block w-full text-center rounded-pill bg-coral py-3.5 font-body font-semibold text-primary-foreground mb-5">Build My Bundle →</Link>
             {navLinks.map(l => (
-              <Link key={l.to} to={l.to} className="block w-full text-left py-3.5 border-b border-border font-body font-semibold text-base">{l.label}</Link>
+              <Link key={l.to} to={l.to} className={`block w-full text-left py-3.5 border-b border-border font-body font-semibold text-base ${l.highlight ? "text-forest" : ""}`}>{l.label}</Link>
             ))}
             <div className="mt-7">
               <div className="text-text-light text-xs mb-2">Contact us</div>
