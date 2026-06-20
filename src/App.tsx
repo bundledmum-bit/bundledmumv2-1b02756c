@@ -46,6 +46,7 @@ import GiftResultsPage from "@/pages/GiftResultsPage";
 import CartPage from "@/pages/CartPage";
 import CheckoutPage from "@/pages/CheckoutPage";
 import QuotePage from "@/pages/QuotePage";
+import HospitalListPage from "@/pages/HospitalListPage";
 import OrderConfirmedPage from "@/pages/OrderConfirmedPage";
 import AboutPage from "@/pages/AboutPage";
 import ContactPage from "@/pages/ContactPage";
@@ -293,6 +294,7 @@ function StorefrontShell() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/quote/:shareToken" element={<QuotePage />} />
+          <Route path="/hospital-list" element={<HospitalListPage />} />
           <Route path="/order-confirmed" element={<OrderConfirmedPage />} />
           <Route path="/payment-received" element={<PaymentReceivedPage />} />
           <Route path="/about" element={<AboutPage />} />

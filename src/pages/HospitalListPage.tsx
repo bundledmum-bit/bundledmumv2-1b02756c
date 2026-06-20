@@ -1,0 +1,849 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search, Plus, Minus, X, Wallet } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useCart, fmt, cartItemKey } from "@/lib/cart";
+import { WHATSAPP_BASE } from "@/lib/whatsapp";
+
+// ── Types ────────────────────────────────────────────────────────────
+// Rows returned by the search_hospital_list_products RPC. `price` is in
+// NAIRA already (never /100). `image_url` is the CORS-safe stored copy.
+interface HLProduct {
+  product_id: string;
+  name: string;
+  slug: string | null;
+  category: string | null; // 'baby' | 'mum' | 'both' | 'push-gift'
+  subcategory: string | null;
+  brand_id: string | null;
+  brand_name: string | null;
+  price: number;
+  image_url: string | null;
+  match_source?: string | null;
+}
+
+// hospital_list_budget_fit returns the same shape PLUS a fitted quantity.
+interface HLBudgetItem extends HLProduct {
+  quantity: number;
+}
+
+// A selectable colour variant (product_colors row).
+interface ColorOption {
+  name: string;
+  hex: string | null;
+}
+
+// One in-stock brand option for a product (lazy-loaded on "Other Options").
+interface BrandOption {
+  id: string;
+  brand_name: string | null;
+  price: number;
+  image_url: string | null;
+}
+
+// The brand a card is currently offering — defaults to the RPC default,
+// swapped when the customer picks an alternative under "Other Options".
+interface ChosenBrand {
+  id: string;
+  brand_name: string | null;
+  price: number;
+  image_url: string | null;
+}
+
+// category → customer-facing section. Reuses the Baby / Mother / Hospital
+// labels + green bands from the quote page for a consistent vocabulary.
+const SECTION_FOR_CATEGORY = (cat: string | null): string => {
+  if (cat === "baby") return "Baby Items";
+  if (cat === "mum") return "Mother Items";
+  return "Hospital Items"; // 'both' | 'push-gift' | anything else
+};
+const SECTION_ORDER = ["Baby Items", "Mother Items", "Hospital Items"];
+
+// Section tab filter (Change 3). `key` matches the section label produced
+// above; `cats` documents which raw categories fall in each bucket.
+type TabKey = "all" | "baby" | "mum" | "hospital";
+const TABS: { key: TabKey; label: string; section?: string }[] = [
+  { key: "all", label: "All" },
+  { key: "baby", label: "Baby", section: "Baby Items" },
+  { key: "mum", label: "Mother", section: "Mother Items" },
+  { key: "hospital", label: "Hospital", section: "Hospital Items" },
+];
+
+const PLACEHOLDER = "/placeholder.svg";
+
+export default function HospitalListPage() {
+  const navigate = useNavigate();
+  const { cart, addToCart, updateQty, getCartItem, totalItems, subtotal } = useCart();
+
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [products, setProducts] = useState<HLProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabKey>("all");
+
+  // Budget mode (Change 1). `budgetItems === null` means we're NOT in
+  // budget mode; an array (even empty) means the budget RPC has run.
+  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetAmount, setBudgetAmount] = useState<number | null>(null);
+  const [budgetItems, setBudgetItems] = useState<HLBudgetItem[] | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+
+  // product_ids that have >1 in-stock brand — so "Other Options" only
+  // appears where there's actually an alternative to choose.
+  const [multiBrandIds, setMultiBrandIds] = useState<Set<string>>(new Set());
+
+  // Per-product variant dimensions (sizes / colors) for visible products,
+  // loaded in ONE batched query through the anon-safe products embed.
+  const [sizesByProduct, setSizesByProduct] = useState<Map<string, string[]>>(new Map());
+  const [colorsByProduct, setColorsByProduct] = useState<Map<string, ColorOption[]>>(new Map());
+
+  // Sticky offset so the search bar pins just below the fixed sitewide
+  // navbar (Change 2). Measured because the announcement bar above the
+  // navbar is dismissable, which shifts the navbar's bottom edge.
+  const [navBottom, setNavBottom] = useState(108);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const nav = document.querySelector("nav");
+      if (nav) setNavBottom(Math.round(nav.getBoundingClientRect().bottom));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+    };
+  }, []);
+
+  const inBudgetMode = budgetItems !== null;
+
+  // Debounce the search text ~250ms so each keystroke doesn't hit the RPC.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Fetch the searchable list whenever the debounced query changes. Empty
+  // string returns the full default list straight from the RPC.
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const { data, error } = await (supabase as any).rpc("search_hospital_list_products", {
+        p_query: debounced,
+      });
+      if (cancelled) return;
+      if (error) {
+        console.warn("search_hospital_list_products failed:", error);
+        setProducts([]);
+      } else {
+        setProducts((data || []) as HLProduct[]);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [debounced]);
+
+  // The list currently on screen — budget results take precedence.
+  const displayList: HLProduct[] = inBudgetMode ? (budgetItems as HLBudgetItem[]) : products;
+  const displayIdsSig = useMemo(
+    () => Array.from(new Set(displayList.map((p) => p.product_id))).sort().join(","),
+    [displayList],
+  );
+
+  // After the visible list changes, tally in-stock brand counts in ONE
+  // query so "Other Options" shows only for genuinely multi-brand products.
+  useEffect(() => {
+    if (!displayIdsSig) {
+      setMultiBrandIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ids = displayIdsSig.split(",");
+      const { data, error } = await (supabase as any)
+        .from("brands_public")
+        .select("product_id")
+        .in("product_id", ids)
+        .eq("in_stock", true);
+      if (cancelled || error) return;
+      const counts = new Map<string, number>();
+      for (const row of (data || []) as { product_id: string }[]) {
+        counts.set(row.product_id, (counts.get(row.product_id) || 0) + 1);
+      }
+      const multi = new Set<string>();
+      counts.forEach((n, id) => {
+        if (n > 1) multi.add(id);
+      });
+      setMultiBrandIds(multi);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayIdsSig]);
+
+  // Batched variant load (sizes + colors) for the visible products, via the
+  // SAME anon-safe products embed the storefront uses (product_sizes /
+  // product_colors are RLS-locked directly, but readable through products).
+  // One query, not per-card. Only in-stock rows count; ordered by display_order.
+  useEffect(() => {
+    if (!displayIdsSig) {
+      setSizesByProduct(new Map());
+      setColorsByProduct(new Map());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ids = displayIdsSig.split(",");
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select(
+          "id, product_sizes(size_label, display_order, in_stock), product_colors(color_name, color_hex, display_order, in_stock)",
+        )
+        .in("id", ids);
+      if (cancelled || error) {
+        if (error) console.warn("variant load failed:", error);
+        return;
+      }
+      const sizeMap = new Map<string, string[]>();
+      const colorMap = new Map<string, ColorOption[]>();
+      for (const row of (data || []) as any[]) {
+        const sizes = ((row.product_sizes || []) as any[])
+          .filter((s) => s.in_stock)
+          .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+          .map((s) => s.size_label as string)
+          .filter(Boolean);
+        if (sizes.length) sizeMap.set(row.id, sizes);
+        const colors = ((row.product_colors || []) as any[])
+          .filter((c) => c.in_stock)
+          .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+          .map((c) => ({ name: c.color_name as string, hex: (c.color_hex as string) ?? null }))
+          .filter((c) => !!c.name);
+        if (colors.length) colorMap.set(row.id, colors);
+      }
+      setSizesByProduct(sizeMap);
+      setColorsByProduct(colorMap);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [displayIdsSig]);
+
+  const isSearching = debounced.length > 0;
+
+  // Group the default view into sections, then apply the tab filter.
+  const sections = useMemo(() => {
+    const map = new Map<string, HLProduct[]>();
+    for (const p of products) {
+      const label = SECTION_FOR_CATEGORY(p.category);
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(p);
+    }
+    return SECTION_ORDER.filter((s) => map.has(s)).map((label) => ({
+      label,
+      rows: map.get(label)!,
+    }));
+  }, [products]);
+
+  const activeSectionLabel = TABS.find((t) => t.key === activeTab)?.section;
+  const visibleSections =
+    activeTab === "all" ? sections : sections.filter((s) => s.label === activeSectionLabel);
+
+  // Budget summary numbers (honest — show the real total even if it edges
+  // slightly over the requested budget; essentials have a price floor).
+  const budgetCount = (budgetItems || []).reduce((s, i) => s + (i.quantity || 1), 0);
+  const budgetTotal = (budgetItems || []).reduce((s, i) => s + i.price * (i.quantity || 1), 0);
+
+  // ── Handlers ──────────────────────────────────────────────────────
+  const applyBudget = async () => {
+    const amt = parseInt(budgetInput.replace(/[^\d]/g, ""), 10);
+    if (!amt || amt <= 0) return;
+    setBudgetLoading(true);
+    // Budget + search are alternate ways to populate the list — entering
+    // budget mode clears any active search.
+    setQuery("");
+    setDebounced("");
+    const { data, error } = await (supabase as any).rpc("hospital_list_budget_fit", {
+      p_budget_amount: amt,
+    });
+    setBudgetLoading(false);
+    if (error) {
+      console.warn("hospital_list_budget_fit failed:", error);
+    }
+    setBudgetItems((data || []) as HLBudgetItem[]);
+    setBudgetAmount(amt);
+  };
+
+  const clearBudget = () => {
+    setBudgetItems(null);
+    setBudgetAmount(null);
+    setBudgetInput("");
+  };
+
+  // Typing a search exits budget mode and returns to the normal list.
+  const onSearchChange = (v: string) => {
+    if (inBudgetMode && v.length > 0) clearBudget();
+    setQuery(v);
+  };
+
+  const goToCheckout = () =>
+    navigate("/checkout", { state: { from: "/hospital-list" } });
+
+  const cardProps = {
+    cart,
+    addToCart,
+    updateQty,
+    getCartItem,
+  };
+
+  return (
+    <div className="min-h-screen bg-background pt-[68px]">
+      {/* Heading + helper */}
+      <header className="px-4 pt-5 pb-3 max-w-screen-sm mx-auto">
+        <h1 className="text-2xl font-bold text-forest leading-tight">Build your hospital bag</h1>
+        <p className="text-base text-text-med mt-1">
+          Tap <span className="font-semibold text-forest">Add</span> on anything you need — your
+          total updates as you go.
+        </p>
+      </header>
+
+      {/* Budget builder (Change 1) */}
+      <div className="px-4 max-w-screen-sm mx-auto">
+        <div className="bg-forest-light/60 border border-forest/20 rounded-card p-3">
+          <label htmlFor="budget" className="block text-sm font-semibold text-forest mb-1.5">
+            Have a budget? We’ll build a bag for it.
+          </label>
+          <div className="flex gap-2">
+            <div className="relative flex-1 min-w-0">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-med font-semibold pointer-events-none">
+                ₦
+              </span>
+              <input
+                id="budget"
+                type="text"
+                inputMode="numeric"
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(e.target.value.replace(/[^\d,]/g, ""))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyBudget();
+                }}
+                placeholder="e.g. 150,000"
+                className="w-full h-12 pl-7 pr-3 rounded-pill border-2 border-border bg-card text-base text-text-dark placeholder:text-text-light focus:border-forest focus:outline-none"
+                aria-label="Budget amount in naira"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={applyBudget}
+              disabled={budgetLoading}
+              className="h-12 px-4 rounded-pill bg-forest text-primary-foreground font-semibold text-sm hover:bg-forest-deep disabled:opacity-50 whitespace-nowrap inline-flex items-center gap-1.5"
+            >
+              <Wallet className="w-4 h-4" />
+              {budgetLoading ? "Building…" : "Build my bag"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Sticky search — pinned just below the fixed sitewide navbar */}
+      <div
+        className="sticky z-30 bg-background/95 backdrop-blur border-b border-border px-4 py-3 mt-3"
+        style={{ top: navBottom }}
+      >
+        <div className="max-w-screen-sm mx-auto relative">
+          <Search className="w-5 h-5 text-text-light absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            inputMode="search"
+            value={query}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search e.g. cotton wool, pampers, rubber sheet"
+            className="w-full h-12 pl-11 pr-11 rounded-pill border-2 border-border bg-card text-base text-text-dark placeholder:text-text-light focus:border-forest focus:outline-none"
+            aria-label="Search products"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-text-med"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Product list — pad the bottom so the sticky bar never covers the last card */}
+      <main className="max-w-screen-sm mx-auto px-4 pt-4 pb-36 grid grid-cols-1 gap-4">
+        {inBudgetMode ? (
+          // ── Budget-fitted results (flat) ────────────────────────────
+          <div className="grid grid-cols-1 gap-4">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm text-text-dark">
+                {budgetLoading
+                  ? "Building your bag…"
+                  : (budgetItems as HLBudgetItem[]).length === 0
+                  ? `We couldn’t fit a bag into ${fmt(budgetAmount || 0)}. Try a higher amount.`
+                  : (
+                    <>
+                      Here’s a hospital bag for <span className="font-bold">{fmt(budgetAmount || 0)}</span>:{" "}
+                      {budgetCount} {budgetCount === 1 ? "item" : "items"}, total{" "}
+                      <span className="font-bold text-forest">{fmt(budgetTotal)}</span>.
+                      {budgetTotal > (budgetAmount || 0) && (
+                        <span className="block text-text-med text-xs mt-0.5">
+                          (A little over — these are the essentials and they have a price floor.)
+                        </span>
+                      )}
+                    </>
+                  )}
+              </p>
+              <button
+                type="button"
+                onClick={clearBudget}
+                className="shrink-0 text-sm text-forest font-semibold underline underline-offset-2"
+              >
+                Clear
+              </button>
+            </div>
+            {(budgetItems as HLBudgetItem[]).map((p) => (
+              <ProductCard
+                key={`${p.product_id}-${p.brand_id}`}
+                product={p}
+                canSwap={multiBrandIds.has(p.product_id)}
+                sizes={sizesByProduct.get(p.product_id) || []}
+                colors={colorsByProduct.get(p.product_id) || []}
+                initialQty={p.quantity || 1}
+                {...cardProps}
+              />
+            ))}
+          </div>
+        ) : loading ? (
+          <p className="text-center text-text-med py-12">Loading…</p>
+        ) : products.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-text-dark font-semibold">No matches for “{debounced}”.</p>
+            <p className="text-text-med mt-1">Try a simpler word, or clear the search to see everything.</p>
+          </div>
+        ) : isSearching ? (
+          // Flat result list while searching.
+          <div className="grid grid-cols-1 gap-4">
+            {products.map((p) => (
+              <ProductCard
+                key={`${p.product_id}-${p.brand_id}`}
+                product={p}
+                canSwap={multiBrandIds.has(p.product_id)}
+                sizes={sizesByProduct.get(p.product_id) || []}
+                colors={colorsByProduct.get(p.product_id) || []}
+                {...cardProps}
+              />
+            ))}
+          </div>
+        ) : (
+          // Grouped default view: tab filter, then green-banded sections.
+          <>
+            {/* Section tab filter (Change 3) */}
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by section">
+              {TABS.map((t) => {
+                const active = activeTab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(t.key)}
+                    className={`h-10 px-4 rounded-pill text-sm font-semibold border-2 transition-colors ${
+                      active
+                        ? "bg-forest text-primary-foreground border-forest"
+                        : "bg-card text-text-med border-border"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {visibleSections.map((sec) => (
+              <section key={sec.label} className="grid grid-cols-1 gap-4">
+                <div className="bg-forest border-t-4 border-forest-deep px-5 py-2.5 rounded-t-card -mb-1">
+                  <h2 className="text-sm font-bold uppercase tracking-widest text-primary-foreground">
+                    {sec.label}
+                  </h2>
+                </div>
+                {sec.rows.map((p) => (
+                  <ProductCard
+                    key={`${p.product_id}-${p.brand_id}`}
+                    product={p}
+                    canSwap={multiBrandIds.has(p.product_id)}
+                    sizes={sizesByProduct.get(p.product_id) || []}
+                    colors={colorsByProduct.get(p.product_id) || []}
+                    {...cardProps}
+                  />
+                ))}
+              </section>
+            ))}
+          </>
+        )}
+
+        {/* WhatsApp fallback */}
+        <a
+          href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hi BundledMum, I need help building my hospital bag.")}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-center text-forest font-semibold underline underline-offset-4 py-2"
+        >
+          Need help? Chat on WhatsApp
+        </a>
+      </main>
+
+      {/* Persistent sticky bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+        <div className="max-w-screen-sm mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-text-med leading-none">Your bag</p>
+            <p className="text-base font-bold text-text-dark leading-tight mt-0.5">
+              {totalItems} {totalItems === 1 ? "item" : "items"} · {fmt(subtotal)}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={totalItems === 0}
+            onClick={goToCheckout}
+            className="h-12 px-5 rounded-pill bg-forest text-primary-foreground font-semibold text-base hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            View Bag / Checkout
+          </button>
+        </div>
+        <div className="h-[env(safe-area-inset-bottom)] bg-card" />
+      </div>
+    </div>
+  );
+}
+
+// ── Product card ─────────────────────────────────────────────────────
+interface ProductCardProps {
+  product: HLProduct;
+  canSwap: boolean;
+  sizes?: string[];
+  colors?: ColorOption[];
+  initialQty?: number;
+  cart: ReturnType<typeof useCart>["cart"];
+  addToCart: ReturnType<typeof useCart>["addToCart"];
+  updateQty: ReturnType<typeof useCart>["updateQty"];
+  getCartItem: ReturnType<typeof useCart>["getCartItem"];
+}
+
+// If a product has more sizes than this, use a dropdown instead of chips
+// (e.g. Nursing Bra spans S–8XL).
+const SIZE_CHIP_LIMIT = 5;
+
+function ProductCard({
+  product,
+  canSwap,
+  sizes = [],
+  colors = [],
+  initialQty = 1,
+  addToCart,
+  updateQty,
+  getCartItem,
+}: ProductCardProps) {
+  // The brand this card currently offers — starts as the RPC default.
+  const [chosen, setChosen] = useState<ChosenBrand>({
+    id: product.brand_id || "",
+    brand_name: product.brand_name,
+    price: product.price,
+    image_url: product.image_url,
+  });
+  const [showOptions, setShowOptions] = useState(false);
+  const [options, setOptions] = useState<BrandOption[] | null>(null);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const fetchedRef = useRef(false);
+
+  // Variant selections — NEVER auto-picked. Empty = unchosen. A product that
+  // has sizes and/or colors can't be added until the required one(s) are set.
+  const hasSizes = sizes.length > 0;
+  const hasColors = colors.length > 0;
+  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
+  const variantMissing = (hasSizes && !selectedSize) || (hasColors && !selectedColor);
+
+  // Lazy-load the in-stock brand list the first time "Other Options" is tapped.
+  const loadOptions = async () => {
+    if (fetchedRef.current) {
+      setShowOptions((v) => !v);
+      return;
+    }
+    fetchedRef.current = true;
+    setLoadingOptions(true);
+    setShowOptions(true);
+    // Read from brands_public — the anon-safe view the storefront uses.
+    // The raw `brands` table is RLS-blocked for anonymous visitors.
+    // Prefer the CORS-safe stored copy for the swapped-in card image.
+    const { data, error } = await (supabase as any)
+      .from("brands_public")
+      .select("id, brand_name, price, in_stock, image_url, stored_image_url")
+      .eq("product_id", product.product_id)
+      .eq("in_stock", true)
+      .order("price", { ascending: true });
+    setLoadingOptions(false);
+    if (error) {
+      console.warn("brand options fetch failed:", error);
+      setOptions([]);
+      return;
+    }
+    const mapped = ((data || []) as any[]).map((b) => ({
+      id: b.id,
+      brand_name: b.brand_name,
+      price: b.price,
+      image_url:
+        b.stored_image_url && String(b.stored_image_url).trim() !== ""
+          ? b.stored_image_url
+          : b.image_url,
+    })) as BrandOption[];
+    setOptions(mapped);
+  };
+
+  const hasMultiple = canSwap;
+
+  // Look up the cart row for THIS exact (brand, size, color) combination so
+  // the stepper tracks the chosen variant, mirroring the storefront.
+  const cartRow = getCartItem(product.product_id, {
+    brandId: chosen.id,
+    size: selectedSize || null,
+    color: selectedColor || null,
+  });
+  const qty = cartRow?.qty ?? 0;
+
+  const buildItem = () => ({
+    id: product.product_id,
+    name: chosen.brand_name ? `${product.name} (${chosen.brand_name})` : product.name,
+    price: chosen.price,
+    category: product.category,
+    subcategory: product.subcategory,
+    image_url: chosen.image_url,
+    imageUrl: chosen.image_url,
+    // Same cart fields the storefront uses → checkout maps these to
+    // order_items.size / order_items.color with no extra plumbing.
+    selectedSize: selectedSize || null,
+    selectedColor: selectedColor || null,
+    selectedBrand: {
+      id: chosen.id,
+      label: chosen.brand_name || "Standard",
+      price: chosen.price,
+      image_url: chosen.image_url,
+      inStock: true,
+    },
+  });
+
+  // First add seeds the budget-fitted quantity (initialQty); afterwards the
+  // stepper drives the count. Subsequent taps just bump by one.
+  const handleAdd = () => {
+    if (variantMissing) return; // required size/colour not chosen yet
+    if (cartRow) {
+      updateQty(cartRow._key, cartRow.qty + 1);
+      return;
+    }
+    addToCart(buildItem());
+    if (initialQty > 1) {
+      updateQty(
+        cartItemKey(product.product_id, chosen.id, selectedSize || null, selectedColor || null),
+        initialQty,
+      );
+    }
+  };
+  const handleInc = () => {
+    if (cartRow) updateQty(cartRow._key, cartRow.qty + 1);
+    else handleAdd();
+  };
+  const handleDec = () => {
+    if (cartRow) updateQty(cartRow._key, cartRow.qty - 1); // 0 removes
+  };
+
+  const img = chosen.image_url || PLACEHOLDER;
+
+  return (
+    <div className="bg-card rounded-card shadow-card border border-border p-3 flex gap-3 items-start">
+      <img
+        src={img}
+        alt={product.name}
+        loading="lazy"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).src = PLACEHOLDER;
+        }}
+        className="w-16 h-16 rounded-lg object-cover bg-[#f5f5f5] shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-base font-semibold text-text-dark leading-snug">{product.name}</p>
+        <p className="text-lg font-bold text-forest mt-0.5">{fmt(chosen.price)}</p>
+
+        {/* Size selector — chips, or a dropdown when there are many. Never
+            pre-selected; the customer must choose before Add unlocks. */}
+        {hasSizes && (
+          <div className="mt-2">
+            <p className="text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+              Size{!selectedSize && <span className="text-coral normal-case"> — choose one</span>}
+            </p>
+            {sizes.length > SIZE_CHIP_LIMIT ? (
+              <select
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(e.target.value)}
+                aria-label={`Choose size for ${product.name}`}
+                className="w-full h-10 px-3 rounded-lg border-2 border-border bg-card text-sm text-text-dark focus:border-forest focus:outline-none"
+              >
+                <option value="">Select size…</option>
+                {sizes.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {sizes.map((s) => {
+                  const active = selectedSize === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSelectedSize(active ? "" : s)}
+                      aria-pressed={active}
+                      className={`min-h-10 px-3 py-1.5 rounded-pill text-sm font-semibold border-2 transition-colors ${
+                        active
+                          ? "border-forest bg-forest text-primary-foreground"
+                          : "border-border bg-card text-text-med"
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Color selector — swatch chips (color_hex + color_name). */}
+        {hasColors && (
+          <div className="mt-2">
+            <p className="text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+              Color{!selectedColor && <span className="text-coral normal-case"> — choose one</span>}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {colors.map((c) => {
+                const active = selectedColor === c.name;
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => setSelectedColor(active ? "" : c.name)}
+                    aria-pressed={active}
+                    className={`min-h-10 pl-1.5 pr-3 py-1 rounded-pill text-sm font-semibold border-2 inline-flex items-center gap-1.5 transition-colors ${
+                      active
+                        ? "border-forest bg-forest-light text-forest"
+                        : "border-border bg-card text-text-med"
+                    }`}
+                  >
+                    <span
+                      className="w-5 h-5 rounded-full border border-black/10 shrink-0"
+                      style={{ backgroundColor: c.hex || "#e5e5e5" }}
+                    />
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {hasMultiple && (
+          <button
+            type="button"
+            onClick={loadOptions}
+            className="text-sm text-text-med underline underline-offset-2 mt-2 block"
+          >
+            {showOptions ? "Hide options" : "Other Options"}
+          </button>
+        )}
+
+        {showOptions && (
+          <div className="mt-2 grid grid-cols-1 gap-1.5">
+            {loadingOptions ? (
+              <p className="text-sm text-text-light">Loading options…</p>
+            ) : options && options.length > 0 ? (
+              options.map((b) => {
+                const active = b.id === chosen.id;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() =>
+                      setChosen({
+                        id: b.id,
+                        brand_name: b.brand_name,
+                        price: b.price,
+                        image_url: b.image_url,
+                      })
+                    }
+                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-left ${
+                      active
+                        ? "border-forest bg-forest-light text-forest"
+                        : "border-border bg-card text-text-dark"
+                    }`}
+                  >
+                    <span className="text-sm font-medium truncate">
+                      {b.brand_name || "Standard"}
+                    </span>
+                    <span className="text-sm font-semibold whitespace-nowrap">{fmt(b.price)}</span>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="text-sm text-text-light">No other options.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Add → stepper */}
+      <div className="shrink-0">
+        {qty === 0 ? (
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={variantMissing}
+            title={variantMissing ? "Choose a size/color first" : undefined}
+            className="h-12 min-w-[72px] px-4 rounded-pill bg-forest text-primary-foreground font-semibold text-base hover:bg-forest-deep inline-flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            aria-label={`Add ${product.name}`}
+          >
+            <Plus className="w-4 h-4" /> Add
+          </button>
+        ) : (
+          <div className="flex items-center gap-1 h-12">
+            <button
+              type="button"
+              onClick={handleDec}
+              aria-label="Remove one"
+              className="w-12 h-12 rounded-full border-2 border-forest text-forest flex items-center justify-center"
+            >
+              <Minus className="w-5 h-5" />
+            </button>
+            <span className="w-8 text-center text-lg font-bold text-text-dark" aria-live="polite">
+              {qty}
+            </span>
+            <button
+              type="button"
+              onClick={handleInc}
+              aria-label="Add one"
+              className="w-12 h-12 rounded-full bg-forest text-primary-foreground flex items-center justify-center"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

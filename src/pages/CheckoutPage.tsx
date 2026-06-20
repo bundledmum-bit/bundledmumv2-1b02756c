@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
@@ -59,6 +59,11 @@ export default function CheckoutPage() {
   const { cart, subtotal, clearCart, totalItems, autoFees } = useCart();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where to return when the customer taps "Back". Pages that open checkout
+  // from a focused flow (e.g. /hospital-list) pass their route in router
+  // state; otherwise we keep the original "Back to Cart" behaviour.
+  const backTo = (location.state as { from?: string } | null)?.from || "/cart";
 
   // ── Variant safety net ────────────────────────────────────────────
   // place-order v38 rejects orders where a size/colour-required product
@@ -1387,7 +1392,7 @@ export default function CheckoutPage() {
     <div className="min-h-screen bg-background pb-[calc(1rem+64px+env(safe-area-inset-bottom))] md:pb-0">
       <div className="pt-20" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
         <div className="max-w-[1100px] mx-auto px-4 md:px-10 py-8 md:py-10">
-          <Link to="/cart" className="text-primary-foreground/50 text-xs hover:text-primary-foreground/70 transition-colors">← Back to Cart</Link>
+          <Link to={backTo} className="text-primary-foreground/50 text-xs hover:text-primary-foreground/70 transition-colors">← {backTo === "/cart" ? "Back to Cart" : "Back"}</Link>
           <h1 className="pf text-2xl md:text-4xl text-primary-foreground mt-2">🔒 Secure Checkout</h1>
           <p className="text-primary-foreground/50 text-xs mt-2 font-body">Guest Checkout — no account needed. We only use your details to deliver your order.</p>
           <div className="flex items-center gap-2 mt-3">
