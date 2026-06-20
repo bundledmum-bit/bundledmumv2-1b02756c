@@ -676,9 +676,7 @@ function ProductCard({
     price: product.price,
     image_url: product.image_url,
   });
-  const [showOptions, setShowOptions] = useState(false);
   const [options, setOptions] = useState<BrandOption[] | null>(null);
-  const [loadingOptions, setLoadingOptions] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   const fetchedRef = useRef(false);
 
@@ -690,43 +688,39 @@ function ProductCard({
   const [selectedColor, setSelectedColor] = useState("");
   const variantMissing = (hasSizes && !selectedSize) || (hasColors && !selectedColor);
 
-  // Lazy-load the in-stock brand list the first time "Other Options" is tapped.
-  const loadOptions = async () => {
-    if (fetchedRef.current) {
-      setShowOptions((v) => !v);
-      return;
-    }
-    fetchedRef.current = true;
-    setLoadingOptions(true);
-    setShowOptions(true);
-    // Read from brands_public — the anon-safe view the storefront uses.
-    // The raw `brands` table is RLS-blocked for anonymous visitors.
-    // Prefer the CORS-safe stored copy for the swapped-in card image.
-    const { data, error } = await (supabase as any)
-      .from("brands_public")
-      .select("id, brand_name, price, in_stock, image_url, stored_image_url")
-      .eq("product_id", product.product_id)
-      .eq("in_stock", true)
-      .order("price", { ascending: true });
-    setLoadingOptions(false);
-    if (error) {
-      console.warn("brand options fetch failed:", error);
-      setOptions([]);
-      return;
-    }
-    const mapped = ((data || []) as any[]).map((b) => ({
-      id: b.id,
-      brand_name: b.brand_name,
-      price: b.price,
-      image_url:
-        b.stored_image_url && String(b.stored_image_url).trim() !== ""
-          ? b.stored_image_url
-          : b.image_url,
-    })) as BrandOption[];
-    setOptions(mapped);
-  };
-
   const hasMultiple = canSwap;
+
+  // Eagerly load the in-stock brand list for multi-brand products so the
+  // brand dropdown is always populated (no show/hide step). Read from
+  // brands_public — the anon-safe view the storefront uses (raw `brands`
+  // is RLS-blocked for anon). Prefer the CORS-safe stored image copy.
+  useEffect(() => {
+    if (!hasMultiple || fetchedRef.current) return;
+    fetchedRef.current = true;
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from("brands_public")
+        .select("id, brand_name, price, in_stock, image_url, stored_image_url")
+        .eq("product_id", product.product_id)
+        .eq("in_stock", true)
+        .order("price", { ascending: true });
+      if (error) {
+        console.warn("brand options fetch failed:", error);
+        setOptions([]);
+        return;
+      }
+      const mapped = ((data || []) as any[]).map((b) => ({
+        id: b.id,
+        brand_name: b.brand_name,
+        price: b.price,
+        image_url:
+          b.stored_image_url && String(b.stored_image_url).trim() !== ""
+            ? b.stored_image_url
+            : b.image_url,
+      })) as BrandOption[];
+      setOptions(mapped);
+    })();
+  }, [hasMultiple, product.product_id]);
 
   // Look up the cart row for THIS exact (brand, size, color) combination so
   // the stepper tracks the chosen variant, mirroring the storefront.
@@ -896,51 +890,42 @@ function ProductCard({
           </div>
         )}
 
+        {/* Brand selector — always-visible dropdown for multi-brand
+            products. Selecting drives the card price + image and the
+            brand added to cart. */}
         {hasMultiple && (
-          <button
-            type="button"
-            onClick={loadOptions}
-            className="text-sm text-text-med underline underline-offset-2 mt-2 block"
-          >
-            {showOptions ? "Hide options" : "Other Options"}
-          </button>
-        )}
-
-        {showOptions && (
-          <div className="mt-2 grid grid-cols-1 gap-1.5">
-            {loadingOptions ? (
-              <p className="text-sm text-text-light">Loading options…</p>
-            ) : options && options.length > 0 ? (
-              options.map((b) => {
-                const active = b.id === chosen.id;
-                return (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() =>
-                      setChosen({
-                        id: b.id,
-                        brand_name: b.brand_name,
-                        price: b.price,
-                        image_url: b.image_url,
-                      })
-                    }
-                    className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-left ${
-                      active
-                        ? "border-forest bg-forest-light text-forest"
-                        : "border-border bg-card text-text-dark"
-                    }`}
-                  >
-                    <span className="text-sm font-medium truncate">
-                      {b.brand_name || "Standard"}
-                    </span>
-                    <span className="text-sm font-semibold whitespace-nowrap">{fmt(b.price)}</span>
-                  </button>
-                );
-              })
-            ) : (
-              <p className="text-sm text-text-light">No other options.</p>
-            )}
+          <div className="mt-2">
+            <label className="block text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+              Option
+            </label>
+            <select
+              value={chosen.id}
+              disabled={!options}
+              onChange={(e) => {
+                const b = options?.find((o) => o.id === e.target.value);
+                if (b) {
+                  setChosen({
+                    id: b.id,
+                    brand_name: b.brand_name,
+                    price: b.price,
+                    // Fall back to the product/default image if the brand has none.
+                    image_url: b.image_url || product.image_url,
+                  });
+                }
+              }}
+              aria-label={`Choose option for ${product.name}`}
+              className="w-full h-11 px-3 rounded-lg border-2 border-border bg-card text-sm text-text-dark focus:border-forest focus:outline-none disabled:opacity-60"
+            >
+              {options ? (
+                options.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {(b.brand_name || "Standard") + " — " + fmt(b.price)}
+                  </option>
+                ))
+              ) : (
+                <option value={chosen.id}>{chosen.brand_name || "Standard"}</option>
+              )}
+            </select>
           </div>
         )}
       </div>
