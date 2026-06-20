@@ -27,6 +27,19 @@ const formatColor = (color: string | null | undefined): string => {
   return color;
 };
 
+// Human-readable estimated delivery window, in Lagos time.
+const formatDeliveryWindow = (start: string, end: string): string => {
+  const fmtDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-NG", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "Africa/Lagos",
+    });
+  return `${fmtDate(start)} to ${fmtDate(end)}`;
+};
+
 export default function AccountOrdersPage() {
   const { user } = useCustomerAuth();
   const email = user?.email || "";
@@ -130,6 +143,33 @@ export default function AccountOrdersPage() {
                     </div>
                     {expanded ? <ChevronDown className="w-4 h-4 text-text-light" /> : <ChevronRight className="w-4 h-4 text-text-light" />}
                   </button>
+
+                  {/* Tracking + estimated delivery — directly below the status
+                      badge, above the items. Visible on the card and when
+                      expanded. Delivery window only once shipped. */}
+                  {(o.tracking_number ||
+                    (o.order_status === "shipped" && o.estimated_delivery_start && o.estimated_delivery_end)) && (
+                    <div className="px-4 pb-3 space-y-2">
+                      {o.tracking_number && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">
+                            Tracking Number
+                          </div>
+                          <div className="font-mono font-bold text-text-dark text-sm break-all">
+                            {o.tracking_number}
+                          </div>
+                        </div>
+                      )}
+                      {o.order_status === "shipped" && o.estimated_delivery_start && o.estimated_delivery_end && (
+                        <div className="text-sm text-text-med">
+                          <span className="font-medium">Est. Delivery: </span>
+                          <span className="text-green-700 font-semibold">
+                            {formatDeliveryWindow(o.estimated_delivery_start, o.estimated_delivery_end)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {expanded && (
                     <div className="border-t border-border px-4 py-3 text-xs space-y-2">
