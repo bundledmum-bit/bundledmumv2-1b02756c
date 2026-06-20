@@ -4,6 +4,7 @@ import { Search, Plus, Minus, X, Wallet, ShoppingBag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey } from "@/lib/cart";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import ImageZoomModal from "@/components/ImageZoomModal";
 
 // ── Types ────────────────────────────────────────────────────────────
 // Rows returned by the search_hospital_list_products RPC. `price` is in
@@ -678,6 +679,7 @@ function ProductCard({
   const [showOptions, setShowOptions] = useState(false);
   const [options, setOptions] = useState<BrandOption[] | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const fetchedRef = useRef(false);
 
   // Variant selections — NEVER auto-picked. Empty = unchosen. A product that
@@ -782,17 +784,35 @@ function ProductCard({
 
   const img = chosen.image_url || PLACEHOLDER;
 
+  const canZoom = !!chosen.image_url;
+
   return (
     <div className="bg-card rounded-card shadow-card border border-border p-3 flex gap-3 items-start">
-      <img
-        src={img}
-        alt={product.name}
-        loading="lazy"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).src = PLACEHOLDER;
-        }}
-        className="w-16 h-16 rounded-lg object-cover bg-[#f5f5f5] shrink-0"
-      />
+      <button
+        type="button"
+        onClick={() => canZoom && setZoomOpen(true)}
+        disabled={!canZoom}
+        aria-label={`View larger image of ${product.name}`}
+        className="shrink-0 rounded-lg overflow-hidden bg-[#f5f5f5] disabled:cursor-default enabled:cursor-zoom-in"
+      >
+        <img
+          src={img}
+          alt={product.name}
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = PLACEHOLDER;
+          }}
+          className="w-16 h-16 object-cover block"
+        />
+      </button>
+      {zoomOpen && (
+        <ImageZoomModal
+          src={chosen.image_url}
+          alt={product.name}
+          caption={product.name}
+          onClose={() => setZoomOpen(false)}
+        />
+      )}
       <div className="flex-1 min-w-0">
         <p className="text-base font-semibold text-text-dark leading-snug">{product.name}</p>
         <p className="text-lg font-bold text-forest mt-0.5">{fmt(chosen.price)}</p>
