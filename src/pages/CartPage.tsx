@@ -6,7 +6,6 @@ import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
-import { useCrossSellRules } from "@/hooks/useHomepage";
 import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText, Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -28,6 +27,47 @@ import { toast } from "sonner";
 import { MessageCircle, Copy as CopyIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
+
+// Row shape from get_cart_recommendations / get_popular_products. price is
+// NAIRA; image_url is CORS-safe and guaranteed non-null; brand_* is the
+// default (cheapest in-stock) brand.
+type RecRow = {
+  product_id: string;
+  name: string;
+  slug: string | null;
+  category: string | null;
+  subcategory: string | null;
+  brand_id: string;
+  brand_name: string | null;
+  price: number;
+  image_url: string | null;
+};
+
+// Compact recommendation card — reuses the existing card tokens; image
+// comes straight from the RPC's CORS-safe image_url (placeholder only as a
+// last-resort guard, which these RPCs shouldn't trigger).
+function RecCard({ row, onAdd }: { row: RecRow; onAdd: (r: RecRow) => void }) {
+  return (
+    <div className="bg-card rounded-card shadow-card p-3 text-center">
+      <img
+        src={row.image_url || "/placeholder.svg"}
+        alt={row.name}
+        loading="lazy"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+        className="h-20 w-full object-cover rounded-lg mb-2 bg-[#f5f5f5]"
+      />
+      <p className="text-[11px] font-semibold truncate mb-1">{row.name}</p>
+      <p className="text-forest text-xs font-bold mb-2">{fmt(row.price)}</p>
+      <button
+        type="button"
+        onClick={() => onAdd(row)}
+        className="w-full rounded-pill bg-forest text-primary-foreground text-[11px] font-semibold py-1.5 hover:bg-forest-deep inline-flex items-center justify-center gap-1"
+      >
+        <Plus className="w-3 h-3" /> Add
+      </button>
+    </div>
+  );
+}
 
 /**
  * Coerce a cart item's `img` value to a usable <img src>. Accepts:
@@ -63,7 +103,7 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
-  const { cart, setCart, clearCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
+  const { cart, setCart, clearCart, addToCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
   // Image zoom + Edit modal local state. Both are page-scoped because the
@@ -342,7 +382,6 @@ export default function CartPage() {
   const { data: allProductsData } = useAllProducts();
   const ALL_PRODUCTS = allProductsData || [];
   const cartIds = new Set(cart.map(i => i.id));
-  const hasBundleItem = cart.some(i => !!i.bundleName);
 
   // True if any cart line item references a product (or brand variant)
   // that has since been deactivated server-side. We disable the checkout
@@ -358,33 +397,65 @@ export default function CartPage() {
     return !live.brands.some(b => b.inStock !== false && (b.price || 0) > 0);
   });
 
-  // DB-driven cross-sell: pick the rule that matches the current cart.
-  // bundle_item trigger wins when the cart already contains a bundle;
-  // otherwise fall back to 'always'. Heading + max_items come from the
-  // rule. If the rule specifies product_ids, show those exactly;
-  // otherwise use is_bestseller products.
-  const { data: crossSellRules } = useCrossSellRules();
-  const activeRule = (crossSellRules || []).find(r =>
-    hasBundleItem ? r.trigger_type === "bundle_item" : r.trigger_type === "always"
-  ) || (crossSellRules || []).find(r => r.trigger_type === "always");
+  // Contextual recommendations, server-side. "You might also like" pulls
+  // products related to the cart (same subcategory → category) via
+  // get_cart_recommendations; "Popular Items" (empty cart) via
+  // get_popular_products. Both RPCs return a CORS-safe, non-null image and
+  // the default (cheapest in-stock) brand per row, so add-to-cart works.
+  const [recs, setRecs] = useState<RecRow[]>([]);
+  const [popular, setPopular] = useState<RecRow[]>([]);
 
-  const crossSellHeading = activeRule?.heading || "You might also like";
-  const crossSellMax = activeRule?.max_items ?? 3;
-  const crossSell = (() => {
-    if (activeRule?.product_ids && activeRule.product_ids.length > 0) {
-      return activeRule.product_ids
-        .map(id => ALL_PRODUCTS.find(p => p.id === id))
-        .filter((p): p is typeof ALL_PRODUCTS[number] => !!p && !cartIds.has(p.id))
-        .slice(0, crossSellMax);
-    }
-    // Fall back to bestsellers, then to the legacy category-swap logic.
-    const hasBaby = cart.some(i => ALL_PRODUCTS.find(p => p.id === i.id)?.category === "baby");
-    const hasMum = cart.some(i => ALL_PRODUCTS.find(p => p.id === i.id)?.category === "mum");
-    return ALL_PRODUCTS
-      .filter(p => !cartIds.has(p.id))
-      .filter(p => (p as any).is_bestseller || (hasBaby && p.category === "mum") || (hasMum && p.category === "baby") || (!hasBaby && !hasMum))
-      .slice(0, crossSellMax);
-  })();
+  // Signature of the cart's product ids — refetch recommendations whenever
+  // the cart contents change so they stay contextual.
+  const cartIdsSig = Array.from(new Set(cart.map(i => i.id))).sort().join(",");
+  useEffect(() => {
+    const ids = cartIdsSig ? cartIdsSig.split(",") : [];
+    if (ids.length === 0) { setRecs([]); return; }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any).rpc("get_cart_recommendations", {
+        p_product_ids: ids,
+        p_limit: 6,
+      });
+      if (cancelled) return;
+      if (error) { console.warn("get_cart_recommendations failed:", error); setRecs([]); return; }
+      setRecs((data || []) as RecRow[]);
+    })();
+    return () => { cancelled = true; };
+  }, [cartIdsSig]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await (supabase as any).rpc("get_popular_products", { p_limit: 6 });
+      if (cancelled) return;
+      if (error) { console.warn("get_popular_products failed:", error); setPopular([]); return; }
+      setPopular((data || []) as RecRow[]);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Add a recommended product using its default brand, matching how the
+  // product cards build a cart item (selectedBrand flows through checkout).
+  const addRecommendation = (row: RecRow) => {
+    addToCart({
+      id: row.product_id,
+      name: row.name,
+      price: row.price,
+      category: row.category,
+      subcategory: row.subcategory,
+      image_url: row.image_url,
+      imageUrl: row.image_url,
+      selectedBrand: {
+        id: row.brand_id,
+        label: row.brand_name || "Standard",
+        price: row.price,
+        image_url: row.image_url,
+        inStock: true,
+      },
+    });
+    toast.success(`${row.name} added to cart`);
+  };
 
   if (!totalItems && savedItems.length === 0) {
     return (
@@ -409,22 +480,17 @@ export default function CartPage() {
             <div className="bg-forest-light rounded-lg px-4 py-3 text-xs text-forest font-semibold">💬 WhatsApp support</div>
           </div>
 
-          {/* Popular items */}
-          {ALL_PRODUCTS.length > 0 && (
+          {/* Popular items — genuinely popular products from the RPC */}
+          {popular.length > 0 && (
             <div>
               <h3 className="pf text-lg text-forest mb-4">✨ Popular Items</h3>
               <div className="overflow-x-auto -mx-4 px-4 scrollbar-hide">
                 <div className="flex gap-3" style={{ minWidth: "max-content" }}>
-                  {ALL_PRODUCTS.filter(p => p.badge || p.rating >= 4.8).slice(0, 6).map(p => {
-                    const brand = p.brands[Math.min(1, p.brands.length - 1)];
-                    return (
-                      <Link to="/shop" key={p.id} className="bg-card rounded-card shadow-card p-3 text-center min-w-[140px] max-w-[160px]">
-                        <ProductImage imageUrl={p.imageUrl} emoji={p.baseImg} alt={p.name} className="h-20 w-full rounded-lg mb-2" emojiClassName="text-3xl" bgColor={brand?.color} />
-                        <p className="text-[11px] font-semibold truncate mb-1">{p.name}</p>
-                        <p className="text-forest text-xs font-bold">{fmt(brand?.price || 0)}</p>
-                      </Link>
-                    );
-                  })}
+                  {popular.map(row => (
+                    <div key={row.product_id} className="min-w-[140px] max-w-[160px]">
+                      <RecCard row={row} onAdd={addRecommendation} />
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -628,21 +694,13 @@ export default function CartPage() {
               </div>
             )}
 
-            {crossSell.length > 0 && totalItems > 0 && (
+            {recs.length > 0 && totalItems > 0 && (
               <div className="mt-6">
-                <h3 className="pf text-lg mb-3">💡 {crossSellHeading}</h3>
+                <h3 className="pf text-lg mb-3">💡 You might also like</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {crossSell.map(p => {
-                    const brand = p.brands[Math.min(1, p.brands.length - 1)];
-                    return (
-                      <div key={p.id} className="bg-card rounded-card shadow-card p-3 text-center">
-                        <ProductImage imageUrl={p.imageUrl} emoji={p.baseImg} alt={p.name} className="h-16 w-full rounded-lg" emojiClassName="text-3xl" bgColor={brand.color} />
-                        <p className="text-[11px] font-semibold truncate mb-1">{p.name}</p>
-                        <p className="text-forest text-xs font-bold mb-2">{fmt(brand.price)}</p>
-                        <Link to="/shop" className="text-forest text-[10px] font-semibold hover:underline">View →</Link>
-                      </div>
-                    );
-                  })}
+                  {recs.map(row => (
+                    <RecCard key={row.product_id} row={row} onAdd={addRecommendation} />
+                  ))}
                 </div>
               </div>
             )}
