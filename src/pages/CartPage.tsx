@@ -7,7 +7,18 @@ import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import { useCrossSellRules } from "@/hooks/useHomepage";
-import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText } from "lucide-react";
+import { Minus, Plus, X, ShoppingBag, ArrowLeft, Bookmark, MapPin, Pencil, Share2, FileText, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { decodeCartFromUrl, buildWhatsappMessage } from "@/lib/cartShareUrl";
 import { generateSharedCartUrl, fetchSharedCart, type SharedCartItem as RpcSharedCartItem } from "@/lib/sharedCart";
 import { getBrandImage } from "@/lib/brandImage";
@@ -52,7 +63,7 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
-  const { cart, setCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
+  const { cart, setCart, clearCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
   // Image zoom + Edit modal local state. Both are page-scoped because the
@@ -429,7 +440,38 @@ export default function CartPage() {
         <Link to="/shop" className="inline-flex items-center gap-1.5 text-forest text-sm font-semibold font-body mb-4 hover:underline">
           <ArrowLeft className="h-4 w-4" /> Continue Shopping
         </Link>
-        <h1 className="pf text-2xl md:text-3xl mb-8">Your Cart ({totalItems})</h1>
+        <div className="flex items-center justify-between gap-4 mb-8">
+          <h1 className="pf text-2xl md:text-3xl">Your Cart ({totalItems})</h1>
+          {cart.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold font-body text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                >
+                  <Trash2 className="h-4 w-4" /> Clear cart
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove all items from your cart?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This empties your cart. This can’t be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => clearCart()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Clear cart
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_380px]">
           <div className="space-y-3">
