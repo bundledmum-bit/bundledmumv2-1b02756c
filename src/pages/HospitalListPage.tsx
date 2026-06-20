@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search, Plus, Minus, X, Wallet } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { Search, Plus, Minus, X, Wallet, ShoppingBag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey } from "@/lib/cart";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
@@ -500,6 +500,15 @@ export default function HospitalListPage() {
             ))}
           </>
         )}
+
+        {/* Keep-shopping: same global cart, so the hospital-bag items are
+            preserved when the customer adds more from the storefront. */}
+        <Link
+          to="/shop"
+          className="min-h-12 inline-flex items-center justify-center gap-2 rounded-pill border-2 border-forest text-forest font-semibold text-base px-5 hover:bg-forest-light transition-colors"
+        >
+          <ShoppingBag className="w-4 h-4" /> Add More Products
+        </Link>
 
         {/* WhatsApp fallback */}
         <a
