@@ -896,7 +896,7 @@ function ProductCard({
         {hasMultiple && (
           <div className="mt-2">
             <label className="block text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
-              Option
+              Other Options
             </label>
             <select
               value={chosen.id}
