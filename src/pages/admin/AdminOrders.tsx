@@ -796,6 +796,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
   const [noteText, setNoteText] = useState("");
   const [showCancel, setShowCancel] = useState(false);
   const [showReturn, setShowReturn] = useState(false);
+  const [showShippedModal, setShowShippedModal] = useState(false);
+  const [shippedSaving, setShippedSaving] = useState(false);
   const [showInitiateReturn, setShowInitiateReturn] = useState(false);
   const [cancelReason, setCancelReason] = useState(CANCEL_REASONS[0]);
   const [issueRefund, setIssueRefund] = useState(false);
@@ -843,9 +845,16 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       }
     }
 
+    // Shipping asks for a tracking number first (and sends the shipped
+    // email on confirm). Defer the save to the modal.
+    if (newStatus === "shipped") {
+      setTrackingNumber(o.tracking_number || "");
+      setShowShippedModal(true);
+      return;
+    }
+
     const updates: any = { order_status: newStatus };
     if (newStatus === "packed") updates.packed_at = new Date().toISOString();
-    if (newStatus === "shipped") updates.shipped_at = new Date().toISOString();
     if (newStatus === "delivered") updates.delivered_at = new Date().toISOString();
 
     await supabase.from("orders").update(updates).eq("id", o.id);
@@ -857,6 +866,51 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
     toast.success(`Status updated to ${newStatus}`);
     setStatusNote("");
+  };
+
+  // Confirm "shipped" from the modal. skipTracking → don't write the
+  // tracking number (leaves whatever's stored unchanged-by-omission… but
+  // per spec we explicitly clear to null when the field is empty on Save,
+  // and leave it untouched on Skip).
+  const confirmShipped = async (skipTracking: boolean) => {
+    setShippedSaving(true);
+    try {
+      const updates: any = {
+        order_status: "shipped",
+        shipped_at: new Date().toISOString(),
+      };
+      if (!skipTracking) {
+        // Save: persist the entered value, or null it out if cleared.
+        updates.tracking_number = trackingNumber.trim() || null;
+      }
+
+      const { error: updErr } = await supabase.from("orders").update(updates).eq("id", o.id);
+      if (updErr) { toast.error(updErr.message || "Could not update order"); return; }
+
+      await supabase.from("order_status_history").insert({
+        order_id: o.id, old_status: o.order_status, new_status: "shipped",
+        changed_by: adminUser?.id || null,
+        note: statusNote || (updates.tracking_number ? `Tracking: ${updates.tracking_number}` : null),
+      });
+
+      // Fire the shipped notification email (server template already updated).
+      try {
+        await (supabase as any).functions.invoke("send-transactional-email", {
+          body: { email_type: "order_shipped", order_id: o.id },
+        });
+      } catch (e) {
+        console.warn("[shipped] notification email failed (non-fatal):", e);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
+      queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
+      toast.success("Order marked as shipped. Customer notified.");
+      setStatusNote("");
+      setShowShippedModal(false);
+    } finally {
+      setShippedSaving(false);
+    }
   };
 
   const handleCancel = async () => {
@@ -934,6 +988,20 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         <div>
           <h1 className="pf text-2xl font-bold">{o.order_number || "Order"}</h1>
           <p className="text-muted-foreground text-xs">{new Date(o.created_at).toLocaleString()}</p>
+          {o.tracking_number && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-muted-foreground">Tracking:</span>
+              <span className="text-xs font-semibold font-mono">{o.tracking_number}</span>
+              {can("orders", "edit_status") && (
+                <button
+                  onClick={() => { setTrackingNumber(o.tracking_number || ""); setShowShippedModal(true); }}
+                  className="text-[11px] text-forest underline"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
           <p className="text-xs mt-0.5 inline-flex items-center gap-1 flex-wrap">
             <span>Source:</span>
             {o.is_subscription_order && (
@@ -1256,6 +1324,32 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             <div className="flex gap-2">
               <button onClick={() => setShowCancel(false)} className="flex-1 px-3 py-2 border border-border rounded-lg text-xs font-semibold">Cancel</button>
               <button onClick={handleCancel} className="flex-1 px-3 py-2 bg-destructive text-destructive-foreground rounded-lg text-xs font-semibold">Confirm Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mark as Shipped — capture a tracking number before saving. */}
+      {showShippedModal && (
+        <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => !shippedSaving && setShowShippedModal(false)}>
+          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-sm mb-4">Mark Order as Shipped</h3>
+            <label className="text-xs font-semibold text-muted-foreground">Tracking Number (optional)</label>
+            <input
+              type="text"
+              placeholder="e.g. EF123456789NG"
+              value={trackingNumber}
+              onChange={e => setTrackingNumber(e.target.value)}
+              autoFocus
+              className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mt-1"
+            />
+            <p className="text-sm text-muted-foreground mt-1">
+              Leave blank if no tracking number is available. The customer will still receive a shipped notification.
+            </p>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <button onClick={() => confirmShipped(false)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 bg-forest text-primary-foreground rounded-lg text-xs font-semibold disabled:opacity-50">Save &amp; Mark Shipped</button>
+              <button onClick={() => confirmShipped(true)} disabled={shippedSaving} className="flex-1 min-w-[8rem] px-3 py-2 border border-border rounded-lg text-xs font-semibold disabled:opacity-50">Skip &amp; Mark Shipped</button>
+              <button onClick={() => setShowShippedModal(false)} disabled={shippedSaving} className="px-3 py-2 text-xs font-semibold text-muted-foreground disabled:opacity-50">Cancel</button>
             </div>
           </div>
         </div>
