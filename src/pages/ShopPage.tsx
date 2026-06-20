@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import Seo from "@/components/Seo";
 import { useSearchParams, Link, useLocation } from "react-router-dom";
 import CuratedSections from "@/components/CuratedSections";
 import BundleSections from "@/components/BundleSections";
 import ShopSectionsRenderer from "@/components/ShopSectionsRenderer";
 import type { ShopVariant } from "@/hooks/useMerchandising";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
@@ -33,8 +34,12 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   const [selectedColor, setSelectedColor] = useState("");
   const { cart, setCart, updateQty } = useCart();
 
-  const cartKey = `${product.id}-${selectedBrand.id}-${selectedSize}`;
-  const cartItem = cart.find(c => c._key === cartKey || c.id === product.id);
+  // Variant-aware: the cart line must reflect the CURRENTLY selected brand
+  // (+ size/color), not "any line of this product" — mirrors ProductPage so
+  // switching brand surfaces a fresh Add and each brand is its own line. The
+  // key formula matches what addToCart() writes (see lib/cart.tsx).
+  const cartKey = cartItemKey(product.id, selectedBrand.id, selectedSize || null, selectedColor || null, null);
+  const cartItem = cart.find(c => c._key === cartKey);
   const isInCart = !!cartItem;
 
   const brandOos = !selectedBrand.inStock;
@@ -209,6 +214,33 @@ export default function ShopPage() {
     const t = setTimeout(() => { pixelTrack("Search", { search_string: q }); }, 800);
     return () => clearTimeout(t);
   }, [search]);
+
+  // Active-search now goes through the alias-aware server RPC instead of a
+  // client-side substring filter. Debounce the query so each keystroke
+  // doesn't hit the RPC; the browse view (empty search) is untouched.
+  const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 280);
+    return () => clearTimeout(t);
+  }, [search]);
+  // p_category scopes the RPC: 'baby' on /shop/baby, 'mum' on /shop/mum,
+  // null on /shop (all). Other categories ('both'/'push-gift') aren't a
+  // storefront tab, so they pass through the all-products search.
+  const rpcCategory = pathShop === "baby" ? "baby" : pathShop === "mum" ? "mum" : null;
+  const { data: searchData, isFetching: searchFetching } = useQuery({
+    queryKey: ["product-search", debouncedSearch, rpcCategory],
+    enabled: debouncedSearch.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("search_products", {
+        p_query: debouncedSearch,
+        p_limit: 50,
+        p_category: rpcCategory,
+      });
+      if (error) throw error;
+      return (data || { result_count: 0, products: [] }) as { result_count: number; products: any[] };
+    },
+  });
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
@@ -269,49 +301,55 @@ export default function ShopPage() {
   // both ways, the brand-match version wins.
   type Hit = { product: Product; brandId?: string; isBrandMatch: boolean };
   const filtered = useMemo<Hit[]>(() => {
-    let raw = (allProducts || []);
-    if (tab === "baby") raw = raw.filter(p => p.category === "baby");
-    else if (tab === "mum") raw = raw.filter(p => p.category === "mum");
-    else if (tab === "push-gift") raw = raw.filter(p => p.category === "push-gift");
+    const q = search.trim();
 
-    if (categoryF) raw = raw.filter(p => p.subcategory === categoryF);
-    if (brandF) raw = raw.filter(p => p.brands.some(b => b.label.toLowerCase() === brandF.toLowerCase()));
-
-    if (inStockOnlyF) raw = raw.filter(p => p.brands.some(b => b.inStock));
-
-    if (priceMinF != null || priceMaxF != null) {
-      raw = raw.filter(p => p.brands.some(b => {
-        const pr = Number(b.price) || 0;
-        if (priceMinF != null && pr < priceMinF) return false;
-        if (priceMaxF != null && pr > priceMaxF) return false;
-        return true;
-      }));
-    }
-
-    // Build hits.
-    let hits: Hit[];
-    if (search) {
-      const q = search.toLowerCase().trim();
-      const byProduct = new Map<string, Hit>();   // product_id → name-match hit
-      const byProductBrand = new Map<string, Hit>(); // product_id|brand_id → brand-match hit
-      for (const p of raw) {
-        const nameMatches = p.name.toLowerCase().includes(q);
-        const matchedBrands = p.brands.filter(b =>
-          b.inStock !== false && (b.label || "").toLowerCase().includes(q),
-        );
-        if (matchedBrands.length > 0) {
-          // Brand-match hits — one per matching brand. Takes priority.
-          for (const b of matchedBrands) {
-            byProductBrand.set(`${p.id}|${b.id}`, { product: p, brandId: b.id, isBrandMatch: true });
-          }
-        } else if (nameMatches) {
-          // Plain product-name match.
-          byProduct.set(p.id, { product: p, isBrandMatch: false });
-        }
+    // Shared product-level filters (category chip / brand / stock / price) —
+    // applied identically in browse and search modes so the chips behave the
+    // same whether or not a query is active.
+    const passesFilters = (p: Product): boolean => {
+      if (categoryF && p.subcategory !== categoryF) return false;
+      if (brandF && !p.brands.some(b => b.label.toLowerCase() === brandF.toLowerCase())) return false;
+      if (inStockOnlyF && !p.brands.some(b => b.inStock)) return false;
+      if (priceMinF != null || priceMaxF != null) {
+        const ok = p.brands.some(b => {
+          const pr = Number(b.price) || 0;
+          if (priceMinF != null && pr < priceMinF) return false;
+          if (priceMaxF != null && pr > priceMaxF) return false;
+          return true;
+        });
+        if (!ok) return false;
       }
-      hits = [...byProductBrand.values(), ...byProduct.values()];
+      return true;
+    };
+    const passesTab = (p: Product): boolean => {
+      if (tab === "baby") return p.category === "baby";
+      if (tab === "mum") return p.category === "mum";
+      if (tab === "push-gift") return p.category === "push-gift";
+      return true;
+    };
+
+    let hits: Hit[];
+    if (q) {
+      // SEARCH MODE — the alias-aware server RPC supplies the matched set and
+      // relevance order. Reconcile each product_id back to the in-memory
+      // Product so the card, brand list, CORS-safe images and NAIRA price all
+      // reuse existing data unchanged. Returns [] until the RPC settles (the
+      // loading state is handled separately so we don't flash "no results").
+      if (!searchData) return [];
+      const byId = new Map((allProducts || []).map(p => [p.id, p] as const));
+      hits = [];
+      for (const rp of searchData.products || []) {
+        const p = byId.get(rp.product_id);
+        if (!p) continue;                 // not in the active catalogue
+        if (!passesTab(p)) continue;      // mirror tab scoping client-side
+        if (!passesFilters(p)) continue;  // mirror chip/price/stock filters
+        const matchedBrandId = rp.brand?.id && p.brands.some(b => b.id === rp.brand.id)
+          ? rp.brand.id : undefined;
+        hits.push({ product: p, brandId: matchedBrandId, isBrandMatch: !!matchedBrandId });
+      }
     } else {
-      // No search — emit one hit per product, dedup by name.
+      // BROWSE MODE — unchanged: one hit per product, dedup by name.
+      let raw = (allProducts || []).filter(passesTab).filter(passesFilters);
       const seen = new Set<string>();
       hits = [];
       for (const p of raw) {
@@ -322,7 +360,8 @@ export default function ShopPage() {
       }
     }
 
-    // Sort.
+    // Sort — explicit sorts apply in both modes; the default 'popular' keeps
+    // the RPC relevance order in search mode (display_order while browsing).
     const priceOf = (h: Hit) => {
       if (h.brandId) {
         const b = h.product.brands.find(x => x.id === h.brandId);
@@ -336,15 +375,21 @@ export default function ShopPage() {
     if (sortBy === "name_asc")  hits.sort((a, b) => a.product.name.localeCompare(b.product.name));
     if (sortBy === "newest")    hits.sort((a: any, b: any) => ((b.product as any).created_at || "").localeCompare((a.product as any).created_at || ""));
     return hits;
-  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF]);
+  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF, searchData]);
 
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
 
-  // GA4 search — fires once per stable (debounced) non-empty query.
+  // True while a search query is active but the RPC for that exact term
+  // hasn't settled yet (mid-debounce or in flight) — drives the loading UI
+  // and gates the zero-result capture so it never fires prematurely.
   const trimmedSearch = search.trim();
+  const searchPending = !!trimmedSearch && (searchFetching || debouncedSearch !== trimmedSearch || !searchData);
+
+  // GA4 search + zero-result capture — fires once the RPC for the settled
+  // query has resolved.
   useEffect(() => {
-    if (!trimmedSearch) return;
+    if (!trimmedSearch || searchPending) return;
     const t = setTimeout(() => {
       analytics.push({
         event: "search",
@@ -352,12 +397,11 @@ export default function ShopPage() {
         search_results_count: filtered.length,
       });
       // Capture genuine zero-result searches so the catalogue learns the
-      // real terms customers type (feeds alias learning). Fires once per
-      // settled query (this effect is debounced + keyed on the query), only
-      // for non-empty terms with no matches. Fire-and-forget; the RPC
-      // re-checks against the full active catalogue and no-ops on
+      // real terms customers type (feeds alias learning). Based on the RPC's
+      // own result_count (a true no-match across the full catalogue), not the
+      // post-filter count. Fire-and-forget; the RPC re-checks and no-ops on
       // blank/short/actually-matching terms.
-      if (filtered.length === 0) {
+      if ((searchData?.result_count ?? 0) === 0) {
         try {
           void (supabase as any).rpc("record_search_miss", { p_query: trimmedSearch });
         } catch {
@@ -366,7 +410,7 @@ export default function ShopPage() {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [trimmedSearch, filtered.length]);
+  }, [trimmedSearch, searchPending, searchData, filtered.length]);
 
   // GA4 view_item_list — name varies with the active tab/category/search.
   const listId = trimmedSearch
@@ -682,7 +726,7 @@ export default function ShopPage() {
             shop={tab as ShopVariant}
             onOpenDetail={p => setDetailProduct(p)}
           />
-        ) : isLoading ? (
+        ) : (isLoading || searchPending) ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
               <div key={i} className="bg-card rounded-card shadow-card h-[380px] animate-pulse" />
