@@ -12,6 +12,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
+import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
@@ -350,6 +351,19 @@ export default function ShopPage() {
         search_term: trimmedSearch,
         search_results_count: filtered.length,
       });
+      // Capture genuine zero-result searches so the catalogue learns the
+      // real terms customers type (feeds alias learning). Fires once per
+      // settled query (this effect is debounced + keyed on the query), only
+      // for non-empty terms with no matches. Fire-and-forget; the RPC
+      // re-checks against the full active catalogue and no-ops on
+      // blank/short/actually-matching terms.
+      if (filtered.length === 0) {
+        try {
+          void (supabase as any).rpc("record_search_miss", { p_query: trimmedSearch });
+        } catch {
+          /* ignore — invisible capture must never affect the UI */
+        }
+      }
     }, 800);
     return () => clearTimeout(t);
   }, [trimmedSearch, filtered.length]);
