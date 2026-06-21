@@ -10,12 +10,13 @@ import AdminBundleForm from "./AdminBundleForm";
 import AdminGiftBoxes, { useCanManageGiftBoxes } from "./AdminGiftBoxes";
 import AdminMaternityBundles from "./AdminMaternityBundles";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 
 type Section = "legacy" | "gift-boxes" | "recovery-kits" | "maternity-bundles";
 
 export default function AdminBundles() {
   const queryClient = useQueryClient();
-  const { adminUser } = usePermissions();
+  const { adminUser, isSuperAdmin } = usePermissions();
   const canManageGiftBoxes = useCanManageGiftBoxes(adminUser?.role);
   const [section, setSection] = useState<Section>("legacy");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -59,9 +60,12 @@ export default function AdminBundles() {
   const toggleSelect = (id: string) => { const n = new Set(selected); n.has(id) ? n.delete(id) : n.add(id); setSelected(n); };
   const allSelected = displayList.length > 0 && displayList.every((b: any) => selected.has(b.id));
 
-  const bulkActions = trashTab === "active"
+  // Non-super-admins delete via per-row approval requests, so the
+  // destructive BULK options are hidden for them (they'd bypass approval).
+  const bulkActions = (trashTab === "active"
     ? [{ label: "Activate", value: "activate" }, { label: "Deactivate", value: "deactivate" }, { label: "Move to Trash", value: "trash", destructive: true }]
-    : [{ label: "Restore", value: "restore" }, { label: "Delete Permanently", value: "delete_permanent", destructive: true }];
+    : [{ label: "Restore", value: "restore" }, { label: "Delete Permanently", value: "delete_permanent", destructive: true }]
+  ).filter((a: any) => isSuperAdmin || !a.destructive);
 
   return (
     <div>
@@ -160,14 +164,28 @@ export default function AdminBundles() {
                           <button title="Edit" onClick={() => { setEditingBundle(b); setShowForm(true); }}
                             className="p-1.5 rounded hover:bg-muted"><Pencil className="w-3.5 h-3.5" /></button>
                           <button title="Duplicate" onClick={() => duplicateBundle(b)} className="p-1.5 rounded hover:bg-muted"><Copy className="w-3.5 h-3.5" /></button>
-                          <button title="Trash" onClick={() => bulkMutation.mutate({ ids: [b.id], action: "trash" })}
-                            className="p-1.5 rounded hover:bg-destructive/10 text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <RequestDeleteButton
+                            table="bundles"
+                            recordId={b.id}
+                            recordLabel={b.name || "bundle"}
+                            onDeleted={() => bulkMutation.mutate({ ids: [b.id], action: "trash" })}
+                            className="p-1.5 rounded hover:bg-destructive/10 text-destructive inline-flex items-center cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </RequestDeleteButton>
                         </>
                       ) : (
                         <>
                           <button onClick={() => bulkMutation.mutate({ ids: [b.id], action: "restore" })} className="p-1.5 rounded hover:bg-forest/10 text-forest"><RotateCcw className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => { if (confirm("Permanently delete?")) bulkMutation.mutate({ ids: [b.id], action: "delete_permanent" }); }}
-                            className="p-1.5 rounded hover:bg-destructive/10 text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <RequestDeleteButton
+                            table="bundles"
+                            recordId={b.id}
+                            recordLabel={b.name || "bundle"}
+                            onDeleted={() => { if (confirm("Permanently delete?")) bulkMutation.mutate({ ids: [b.id], action: "delete_permanent" }); }}
+                            className="p-1.5 rounded hover:bg-destructive/10 text-destructive inline-flex items-center cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </RequestDeleteButton>
                         </>
                       )}
                     </div>

@@ -83,7 +83,14 @@ export default function AdminNotificationBell() {
           ) : (
             <ul className="divide-y divide-border">
               {notifs.map(n => {
-                const target = n.link || "/admin/orders";
+                // Notifications carry their destination in `link` (or
+                // `action_url` for approval requests → /admin/approvals).
+                const target = n.link || (n as any).action_url || "/admin/orders";
+                const ctaLabel = /\/admin\/approvals/.test(target)
+                  ? "Review →"
+                  : /\/admin\/orders/.test(target)
+                    ? "Go to order →"
+                    : "View →";
                 return (
                   <li key={n.id} className="p-3 hover:bg-muted/40 transition-colors">
                     <div className="text-xs font-semibold">{n.title || "Notification"}</div>
@@ -109,7 +116,7 @@ export default function AdminNotificationBell() {
                           }}
                           className="text-[10px] text-coral font-semibold hover:underline"
                         >
-                          Go to order →
+                          {ctaLabel}
                         </button>
                       </div>
                     </div>
