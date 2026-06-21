@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -32,6 +32,33 @@ type OrderItem = {
   brand_tier?: string | null;
 };
 
+// Rows from get_order_picking_items — cost + persisted picked state.
+type OrderPickingItem = {
+  item_id: string;
+  product_name: string | null;
+  brand_name: string | null;
+  size: string | null;
+  color: string | null;
+  quantity: number;
+  unit_price: number;   // NAIRA
+  line_total: number;   // NAIRA
+  cost_price: number;   // NAIRA — unit cost
+  line_cost: number;    // NAIRA — cost x qty
+  picked: boolean;
+  picked_at: string | null;
+};
+
+// Response from toggle_order_item_picked — the server owns the transition.
+type ToggleResult = {
+  order_id: string;
+  item_id: string;
+  item_picked: boolean;
+  total_items: number;
+  picked_items: number;
+  all_picked: boolean;
+  order_status: string;
+};
+
 type OrderDetail = {
   id: string;
   order_number: string;
@@ -53,11 +80,72 @@ export default function AdminPickerOrderDetail() {
   const qc = useQueryClient();
 
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
-  const [pickedMap, setPickedMap] = useState<Record<string, boolean>>({});
   const acceptBtnRef = useRef<HTMLButtonElement | null>(null);
   const [pulseAccept, setPulseAccept] = useState(false);
 
   const queryKey = ["picker", "order", orderId];
+  const pickingKey = ["picker", "picking", orderId];
+
+  // Persisted picking data (cost + picked state) from get_order_picking_items.
+  const pickingQuery = useQuery<OrderPickingItem[]>({
+    queryKey: pickingKey,
+    enabled: !!orderId,
+    queryFn: async () => {
+      const { data, error } = await (supabase.rpc as any)("get_order_picking_items", {
+        p_order_id: orderId,
+      });
+      if (error) throw error;
+      return (data || []) as OrderPickingItem[];
+    },
+  });
+  const pickingByItem = useMemo(() => {
+    const m: Record<string, OrderPickingItem> = {};
+    (pickingQuery.data || []).forEach((r) => { m[r.item_id] = r; });
+    return m;
+  }, [pickingQuery.data]);
+  const pickedCount = (pickingQuery.data || []).filter((r) => r.picked).length;
+  const totalCount = (pickingQuery.data || []).length;
+
+  // Toggle an item's picked state. The RPC persists it AND owns the
+  // order auto-advance (all picked → packed; untick → processing). We trust
+  // the returned order_status for the badge.
+  const togglePicked = useMutation({
+    mutationFn: async ({ itemId, picked }: { itemId: string; picked: boolean }) => {
+      const { data, error } = await (supabase.rpc as any)("toggle_order_item_picked", {
+        p_item_id: itemId,
+        p_picked: picked,
+      });
+      if (error) throw error;
+      return data as ToggleResult;
+    },
+    onMutate: async ({ itemId, picked }) => {
+      await qc.cancelQueries({ queryKey: pickingKey });
+      const prevItems = qc.getQueryData<OrderPickingItem[]>(pickingKey);
+      const prevStatus = qc.getQueryData<OrderDetail | null>(queryKey)?.order_status;
+      qc.setQueryData<OrderPickingItem[]>(pickingKey, (old) =>
+        (old || []).map((r) =>
+          r.item_id === itemId
+            ? { ...r, picked, picked_at: picked ? new Date().toISOString() : null }
+            : r,
+        ),
+      );
+      return { prevItems, prevStatus };
+    },
+    onError: (e: any, _vars, ctx) => {
+      if (ctx?.prevItems) qc.setQueryData(pickingKey, ctx.prevItems);
+      toast.error(e?.message || "Could not update item");
+    },
+    onSuccess: (res, _vars, ctx) => {
+      // Auto-advance: reflect the server's new order status in the badge.
+      qc.setQueryData<OrderDetail | null>(queryKey, (old) =>
+        old ? { ...old, order_status: res.order_status } : old,
+      );
+      if (res.order_status !== ctx?.prevStatus) {
+        if (res.all_picked) toast.success("All items picked — order marked as packed");
+        else toast.message(`Order moved to ${titleCase(res.order_status)}`);
+      }
+    },
+  });
 
   const { data: order, isLoading, error } = useQuery<OrderDetail | null>({
     queryKey,
@@ -233,6 +321,11 @@ export default function AdminPickerOrderDetail() {
           Total {fmt(order.total)} · {order.order_items.length} item
           {order.order_items.length === 1 ? "" : "s"}
         </div>
+        {totalCount > 0 && (
+          <div className="text-sm font-semibold text-forest mt-0.5">
+            {pickedCount} / {totalCount} picked
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -240,9 +333,11 @@ export default function AdminPickerOrderDetail() {
           <ItemCard
             key={it.id}
             item={it}
-            picked={!!pickedMap[it.id]}
+            picking={pickingByItem[it.id] || null}
+            picked={!!pickingByItem[it.id]?.picked}
+            busy={togglePicked.isPending}
             onTogglePicked={() =>
-              setPickedMap((m) => ({ ...m, [it.id]: !m[it.id] }))
+              togglePicked.mutate({ itemId: it.id, picked: !pickingByItem[it.id]?.picked })
             }
             onZoom={(src) => setZoomSrc(src)}
           />
@@ -276,12 +371,16 @@ export default function AdminPickerOrderDetail() {
 
 function ItemCard({
   item,
+  picking,
   picked,
+  busy,
   onTogglePicked,
   onZoom,
 }: {
   item: OrderItem;
+  picking: OrderPickingItem | null;
   picked: boolean;
+  busy: boolean;
   onTogglePicked: () => void;
   onZoom: (src: string | null) => void;
 }) {
@@ -355,14 +454,29 @@ function ItemCard({
         </div>
       </div>
 
+      {/* Cost — amber, clearly labelled and distinct from the selling price
+          so a picker never confuses cost with what the customer paid. */}
+      {picking && (
+        <div className="flex items-center justify-between rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Cost</span>
+          <span className="text-sm font-bold text-amber-800">
+            {fmt(picking.line_cost)}
+            {picking.quantity > 1 && (
+              <span className="font-normal text-amber-700"> ({fmt(picking.cost_price)} each)</span>
+            )}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="text-2xl font-bold">Qty: {item.quantity}</div>
         <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer select-none">
           <input
             type="checkbox"
             checked={picked}
+            disabled={busy}
             onChange={onTogglePicked}
-            className="w-5 h-5 accent-forest"
+            className="w-5 h-5 accent-forest disabled:opacity-50"
           />
           Picked ✓
         </label>
