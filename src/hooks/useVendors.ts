@@ -49,7 +49,11 @@ export function useVendorWithBrands(vendorId: string | null | undefined) {
       if (!vendorId) return null;
       const { data, error } = await supabase
         .from("vendors")
-        .select("*, brands(*, products(name, subcategory, image_url))")
+        // brands is the BASE table (has vendor_id); disambiguate the nested
+        // products embed via the brands.product_id FK — a second relationship
+        // (products.hospital_list_default_brand_id → brands) now makes the
+        // plain embed PGRST201-ambiguous.
+        .select("*, brands(*, products!brands_product_id_fkey(name, subcategory, image_url))")
         .eq("id", vendorId)
         .maybeSingle();
       if (error) throw error;
@@ -165,7 +169,7 @@ export function useAllBrandsForPicker() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("brands")
-        .select("id, brand_name, sku, vendor_id, products(name, subcategory)")
+        .select("id, brand_name, sku, vendor_id, products!brands_product_id_fkey(name, subcategory)")
         .order("brand_name");
       if (error) throw error;
       return data || [];
