@@ -77,7 +77,10 @@ export default function AdminPickerOrderDetail() {
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const fromEmail = search.get("from") === "email";
-  const { adminUser } = usePermissions();
+  const { adminUser, can } = usePermissions();
+  // Accepting an order is the picking module's `accept` action; view-only
+  // picking grants must not see the Accept CTA.
+  const canAccept = can("picking", "accept");
   const qc = useQueryClient();
 
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -310,7 +313,7 @@ export default function AdminPickerOrderDetail() {
     );
   }
 
-  const showAcceptCta = eligibleUnassigned;
+  const showAcceptCta = eligibleUnassigned && canAccept;
   const canPick =
     isMine && ["pending", "confirmed", "processing"].includes(order.order_status);
   const canPack = isMine && order.order_status === "picked";
@@ -361,6 +364,7 @@ export default function AdminPickerOrderDetail() {
             item={it}
             picking={pickingByItem[it.id] || null}
             picked={!!pickingByItem[it.id]?.picked}
+            editable={!!isMine}
             busy={togglePicked.isPending}
             onTogglePicked={() =>
               togglePicked.mutate({ itemId: it.id, picked: !pickingByItem[it.id]?.picked })
@@ -400,6 +404,7 @@ function ItemCard({
   item,
   picking,
   picked,
+  editable,
   busy,
   onTogglePicked,
   onSaveCost,
@@ -408,6 +413,7 @@ function ItemCard({
   item: OrderItem;
   picking: OrderPickingItem | null;
   picked: boolean;
+  editable: boolean;
   busy: boolean;
   onTogglePicked: () => void;
   onSaveCost: (unitCost: number) => Promise<unknown>;
@@ -536,7 +542,7 @@ function ItemCard({
             </span>
           </div>
 
-          {!editingCost ? (
+          {!editable ? null : !editingCost ? (
             <button
               type="button"
               onClick={openCostEditor}
@@ -582,7 +588,7 @@ function ItemCard({
           <input
             type="checkbox"
             checked={picked}
-            disabled={busy}
+            disabled={busy || !editable}
             onChange={onTogglePicked}
             className="w-5 h-5 accent-forest disabled:opacity-50"
           />

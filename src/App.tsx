@@ -382,7 +382,7 @@ const App = () => (
                 <Route path="pages" element={<PermissionGate module="content" action="view"><AdminPages /></PermissionGate>} />
                 <Route path="promotions" element={<PermissionGate module="promotions" action="view"><AdminPromotions /></PermissionGate>} />
                 <Route path="quiz-leads" element={<PermissionGate module="content" action="manage_quiz"><AdminQuizLeads /></PermissionGate>} />
-                <Route path="quiz-engine" element={<PermissionGate module="content" action="manage_quiz"><AdminQuizEngine /></PermissionGate>} />
+                <Route path="quiz-engine" element={<PermissionGate module="quiz" action="manage"><AdminQuizEngine /></PermissionGate>} />
                 <Route path="email-templates" element={<PermissionGate module="content" action="edit_settings"><AdminEmailTemplates /></PermissionGate>} />
                 <Route path="email-logs" element={<PermissionGate module="email_templates" action="view"><AdminEmailLogs /></PermissionGate>} />
                 <Route path="coming-soon" element={<PermissionGate module="settings" action="manage_coming_soon"><AdminComingSoon /></PermissionGate>} />

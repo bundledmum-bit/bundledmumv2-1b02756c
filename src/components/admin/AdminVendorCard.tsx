@@ -37,6 +37,7 @@ export function buildWhatsappLink(raw: string | null | undefined): string | null
 
 interface AdminVendorCardProps {
   vendor: any;
+  canManage?: boolean;
   onEdit: () => void;
   onViewProducts: () => void;
   onToggleActive: () => void;
@@ -70,7 +71,7 @@ function ContactIcon({ href, label, children, external }: { href: string | null;
   );
 }
 
-export default function AdminVendorCard({ vendor: v, onEdit, onViewProducts, onToggleActive }: AdminVendorCardProps) {
+export default function AdminVendorCard({ vendor: v, canManage = true, onEdit, onViewProducts, onToggleActive }: AdminVendorCardProps) {
   const telHref = v.phone ? `tel:${v.phone}` : null;
   const waHref = buildWhatsappLink(v.whatsapp || v.phone);
   const mailHref = v.email ? `mailto:${v.email}` : null;
@@ -113,15 +114,19 @@ export default function AdminVendorCard({ vendor: v, onEdit, onViewProducts, onT
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-              <Edit2 className="w-4 h-4 mr-2" /> Edit
-            </DropdownMenuItem>
+            {canManage && (
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+                <Edit2 className="w-4 h-4 mr-2" /> Edit
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onViewProducts(); }}>
               <Eye className="w-4 h-4 mr-2" /> View Products
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onToggleActive(); }}>
-              <Power className="w-4 h-4 mr-2" /> {v.is_active ? "Deactivate" : "Activate"}
-            </DropdownMenuItem>
+            {canManage && (
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onToggleActive(); }}>
+                <Power className="w-4 h-4 mr-2" /> {v.is_active ? "Deactivate" : "Activate"}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

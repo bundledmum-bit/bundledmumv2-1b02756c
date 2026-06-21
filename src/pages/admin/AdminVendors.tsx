@@ -19,6 +19,7 @@ import {
   type Vendor,
 } from "@/hooks/useVendors";
 import { useVendorMetrics } from "@/hooks/useVendorMetrics";
+import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import VendorMetricsStrip, { type VendorFilter } from "@/components/admin/vendors/VendorMetricsStrip";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 
@@ -34,6 +35,9 @@ export default function AdminVendors() {
   const { data: vendors = [], isLoading } = useVendors(false);
   const { data: adminUser } = useAdminUser();
   const isSuperAdmin = adminUser?.role === "super_admin";
+  const { can } = usePermissions();
+  // Write controls require the vendors module's write action (manage).
+  const canManage = can("vendors", "manage");
   const toggleActive = useToggleVendorActive();
   const { data: metrics, isLoading: metricsLoading, isError: metricsError, error: metricsErr } = useVendorMetrics();
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive" | "no_brands">("all");
@@ -91,9 +95,11 @@ export default function AdminVendors() {
           <h1 className="text-2xl font-bold">Vendors</h1>
           <p className="text-sm text-muted-foreground">Suppliers, brand assignments, and orders per vendor.</p>
         </div>
-        <Button onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-1.5" /> {isSuperAdmin ? "Add Vendor" : "Request to add Vendor"}
-        </Button>
+        {canManage && (
+          <Button onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-1.5" /> {isSuperAdmin ? "Add Vendor" : "Request to add Vendor"}
+          </Button>
+        )}
       </div>
 
       <VendorMetricsStrip
@@ -158,6 +164,7 @@ export default function AdminVendors() {
                     <VendorRow
                       key={v.id}
                       vendor={v}
+                      canManage={canManage}
                       onEdit={() => openEdit(v)}
                       onViewProducts={() => viewProducts(v)}
                       onToggleActive={() => toggleActive.mutate(
@@ -179,6 +186,7 @@ export default function AdminVendors() {
                 <AdminVendorCard
                   key={v.id}
                   vendor={v}
+                  canManage={canManage}
                   onEdit={() => openEdit(v)}
                   onViewProducts={() => viewProducts(v)}
                   onToggleActive={() => toggleActive.mutate(
@@ -197,6 +205,7 @@ export default function AdminVendors() {
             vendors={vendors}
             selectedVendorId={selectedVendorId}
             setSelectedVendorId={setSelectedVendorId}
+            canManage={canManage}
           />
         </TabsContent>
 
@@ -216,11 +225,13 @@ export default function AdminVendors() {
 
 function VendorRow({
   vendor,
+  canManage,
   onEdit,
   onViewProducts,
   onToggleActive,
 }: {
   vendor: Vendor;
+  canManage: boolean;
   onEdit: () => void;
   onViewProducts: () => void;
   onToggleActive: () => void;
@@ -243,15 +254,19 @@ function VendorRow({
       </td>
       <td className="p-2">
         <div className="flex items-center justify-end gap-2">
-          <button onClick={onEdit} className="text-forest hover:underline text-xs flex items-center gap-1">
-            <Edit2 className="w-3 h-3" /> Edit
-          </button>
+          {canManage && (
+            <button onClick={onEdit} className="text-forest hover:underline text-xs flex items-center gap-1">
+              <Edit2 className="w-3 h-3" /> Edit
+            </button>
+          )}
           <button onClick={onViewProducts} className="text-forest hover:underline text-xs flex items-center gap-1">
             <Eye className="w-3 h-3" /> View Products
           </button>
-          <button onClick={onToggleActive} className="text-forest hover:underline text-xs flex items-center gap-1">
-            <Power className="w-3 h-3" /> {vendor.is_active ? "Deactivate" : "Activate"}
-          </button>
+          {canManage && (
+            <button onClick={onToggleActive} className="text-forest hover:underline text-xs flex items-center gap-1">
+              <Power className="w-3 h-3" /> {vendor.is_active ? "Deactivate" : "Activate"}
+            </button>
+          )}
         </div>
       </td>
     </tr>
@@ -262,10 +277,12 @@ function ProductsPerVendorTab({
   vendors,
   selectedVendorId,
   setSelectedVendorId,
+  canManage,
 }: {
   vendors: Vendor[];
   selectedVendorId: string | null;
   setSelectedVendorId: (id: string | null) => void;
+  canManage: boolean;
 }) {
   const { data: vendor, isLoading } = useVendorWithBrands(selectedVendorId);
   const link = useLinkBrandToVendor();
@@ -290,9 +307,11 @@ function ProductsPerVendorTab({
             ))}
           </SelectContent>
         </Select>
-        <Button disabled={!selectedVendorId} onClick={() => setPickerOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> Add Product
-        </Button>
+        {canManage && (
+          <Button disabled={!selectedVendorId} onClick={() => setPickerOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> Add Product
+          </Button>
+        )}
       </div>
 
       {!selectedVendorId ? (
@@ -331,15 +350,19 @@ function ProductsPerVendorTab({
                     </span>
                   </td>
                   <td className="p-2 text-right">
-                    <button
-                      onClick={() => unlink.mutate(
-                        { brandId: b.id },
-                        { onSuccess: () => toast.success("Unlinked") },
-                      )}
-                      className="text-coral hover:underline text-xs"
-                    >
-                      Unlink
-                    </button>
+                    {canManage ? (
+                      <button
+                        onClick={() => unlink.mutate(
+                          { brandId: b.id },
+                          { onSuccess: () => toast.success("Unlinked") },
+                        )}
+                        className="text-coral hover:underline text-xs"
+                      >
+                        Unlink
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
