@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -259,6 +259,8 @@ const ELIG_SECTIONS: { key: SectionKey; label: string }[] = [
 const deriveSection = (cat: string | null): SectionKey =>
   cat === "baby" ? "baby" : cat === "mum" ? "mother" : "hospital";
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+// Naira (prices are already in NAIRA — never /100).
+const naira = (n: number | null | undefined) => "₦" + Number(n || 0).toLocaleString();
 
 interface EligibilityRow {
   product_id: string;
@@ -268,6 +270,109 @@ interface EligibilityRow {
   on_hospital_list: boolean;
   section_override: string | null;
   resolved_section: SectionKey;
+  // Display-brand fields (added to the RPC). pinned_brand_id null = auto
+  // (cheapest). display_brand_* = what currently shows on the public card.
+  pinned_brand_id: string | null;
+  display_brand_id: string | null;
+  display_brand_name: string | null;
+  display_brand_price: number | null;
+  brand_count: number;
+}
+
+// One brand option from admin_list_product_brands_for_hospital_list.
+interface BrandOpt {
+  brand_id: string;
+  brand_name: string | null;
+  price: number;
+  in_stock: boolean;
+  is_pinned: boolean;
+  is_cheapest: boolean;
+}
+
+// Per-product "Display brand" dropdown. Options load lazily from
+// admin_list_product_brands_for_hospital_list on first open/focus (never on
+// initial list render). Until loaded, it renders just enough to show the
+// current display brand correctly.
+function BrandSelect({
+  row,
+  disabled,
+  onPick,
+}: {
+  row: EligibilityRow;
+  disabled: boolean;
+  onPick: (pinnedId: string | null, display: { id: string | null; name: string | null; price: number | null } | null) => void;
+}) {
+  const [options, setOptions] = useState<BrandOpt[] | null>(null);
+  const loadedRef = useRef(false);
+
+  const load = async () => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    const { data, error } = await (supabase as any).rpc("admin_list_product_brands_for_hospital_list", {
+      p_product_id: row.product_id,
+    });
+    if (error) {
+      loadedRef.current = false;
+      console.warn("brand options load failed:", error);
+      return;
+    }
+    setOptions((data || []) as BrandOpt[]);
+  };
+
+  const value = row.pinned_brand_id ?? "auto";
+  const cheapest = options?.find((o) => o.is_cheapest && o.in_stock) || options?.find((o) => o.in_stock) || null;
+
+  const handleChange = (v: string) => {
+    const opts = options || [];
+    if (v === "auto") {
+      const disp = cheapest
+        ? { id: cheapest.brand_id, name: cheapest.brand_name, price: cheapest.price }
+        : { id: row.display_brand_id, name: row.display_brand_name, price: row.display_brand_price };
+      onPick(null, disp);
+      return;
+    }
+    const picked = opts.find((o) => o.brand_id === v);
+    // A pinned out-of-stock brand won't actually show — the card falls back
+    // to cheapest; reflect that in the optimistic display.
+    const shown = picked && picked.in_stock ? picked : cheapest;
+    const disp = shown
+      ? { id: shown.brand_id, name: shown.brand_name, price: shown.price }
+      : { id: v, name: null, price: null };
+    onPick(v, disp);
+  };
+
+  // "Auto" label shows which brand it resolves to (cheapest), so the admin
+  // sees the effective brand even before expanding.
+  const autoBrandName = cheapest?.brand_name ?? (row.pinned_brand_id == null ? row.display_brand_name : null);
+
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onFocus={load}
+      onMouseDown={load}
+      onChange={(e) => handleChange(e.target.value)}
+      className="border border-input rounded-lg px-2 py-1.5 text-xs bg-background disabled:opacity-50 max-w-[190px] truncate"
+      aria-label={`Display brand for ${row.name}`}
+      title="Display brand on the public hospital-list card"
+    >
+      <option value="auto">Auto (cheapest){autoBrandName ? ` — ${autoBrandName}` : ""}</option>
+      {options ? (
+        options.map((o) => (
+          <option key={o.brand_id} value={o.brand_id} disabled={!o.in_stock}>
+            {(o.brand_name || "Brand") + " — " + naira(o.price) + (o.in_stock ? "" : " (out of stock)")}
+          </option>
+        ))
+      ) : row.pinned_brand_id ? (
+        // Not loaded yet but a brand is pinned — render it so the collapsed
+        // select shows the right current value/label.
+        <option value={row.pinned_brand_id}>
+          {(row.display_brand_name || "Pinned brand") +
+            (row.display_brand_price != null ? " — " + naira(row.display_brand_price) : "")}
+        </option>
+      ) : null}
+    </select>
+  );
 }
 
 export function ProductEligibility() {
@@ -350,6 +455,51 @@ export function ProductEligibility() {
       ),
     );
     toast.success(`${row.name} → ${cap(resolved)}${optimisticOverride ? "" : " (auto)"}`);
+  };
+
+  // Pin a display brand (or null = auto/cheapest). `display` is the
+  // optimistic display brand computed from the loaded options in BrandSelect.
+  const setBrand = async (
+    row: EligibilityRow,
+    pinnedId: string | null,
+    display: { id: string | null; name: string | null; price: number | null } | null,
+  ) => {
+    const snapshot = {
+      pinned_brand_id: row.pinned_brand_id,
+      display_brand_id: row.display_brand_id,
+      display_brand_name: row.display_brand_name,
+      display_brand_price: row.display_brand_price,
+    };
+    setRows((prev) =>
+      prev.map((r) =>
+        r.product_id === row.product_id
+          ? {
+              ...r,
+              pinned_brand_id: pinnedId,
+              display_brand_id: display?.id ?? r.display_brand_id,
+              display_brand_name: display?.name ?? r.display_brand_name,
+              display_brand_price: display?.price ?? r.display_brand_price,
+            }
+          : r,
+      ),
+    );
+    markPending(row.product_id, true);
+    const { data, error } = await (supabase as any).rpc("admin_set_hospital_list_brand", {
+      p_product_id: row.product_id,
+      p_brand_id: pinnedId,
+    });
+    markPending(row.product_id, false);
+    if (error) {
+      setRows((prev) => prev.map((r) => (r.product_id === row.product_id ? { ...r, ...snapshot } : r)));
+      toast.error(error.message || "Could not set display brand");
+      return;
+    }
+    // Reconcile the resolved display brand id from the server.
+    const resolvedId = typeof data === "string" ? data : display?.id ?? null;
+    setRows((prev) =>
+      prev.map((r) => (r.product_id === row.product_id ? { ...r, display_brand_id: resolvedId } : r)),
+    );
+    toast.success(`${row.name}: display brand ${pinnedId ? "pinned" : "set to cheapest"}`);
   };
 
   const matchesQuery = (r: EligibilityRow, q: string) =>
@@ -481,7 +631,7 @@ export function ProductEligibility() {
                               {row.subcategory ? ` · ${row.subcategory}` : ""}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
                             <select
                               value={row.section_override ?? "auto"}
                               disabled={pending.has(row.product_id)}
@@ -494,6 +644,13 @@ export function ProductEligibility() {
                               <option value="hospital">Hospital</option>
                               <option value="auto">Auto ({cap(deriveSection(row.category))})</option>
                             </select>
+                            {row.brand_count > 1 && (
+                              <BrandSelect
+                                row={row}
+                                disabled={pending.has(row.product_id)}
+                                onPick={(pid, disp) => setBrand(row, pid, disp)}
+                              />
+                            )}
                             <button
                               onClick={() => setOnList(row, false)}
                               disabled={pending.has(row.product_id)}
