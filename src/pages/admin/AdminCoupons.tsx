@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Plus, Search, Trash2, Edit2, X } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
-import { useRequestAdminAction, notifyApproval } from "@/hooks/useApprovals";
+import { useRequestAdminAction, notifyApproval, superAdminPermanentDelete } from "@/hooks/useApprovals";
 import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
 
 const TYPES = ["percentage", "fixed_amount", "free_delivery"] as const;
@@ -82,8 +82,13 @@ export default function AdminCoupons() {
   });
 
   const deleteCoupon = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("coupons").delete().eq("id", id); if (error) throw error; },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }); toast.success("Coupon deleted"); },
+    mutationFn: async (id: string) => {
+      const r = await superAdminPermanentDelete("coupons", id);
+      if (!r.success) throw new Error(r.error || "Could not delete coupon");
+      return r;
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }); toast.success("Permanently deleted"); },
+    onError: (e: any) => toast.error(e?.message || "Could not delete coupon"),
   });
 
   const filtered = (coupons || []).filter((c: any) =>

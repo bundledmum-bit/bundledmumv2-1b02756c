@@ -11,6 +11,7 @@ import AdminGiftBoxes, { useCanManageGiftBoxes } from "./AdminGiftBoxes";
 import AdminMaternityBundles from "./AdminMaternityBundles";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
+import { superAdminPermanentDelete } from "@/hooks/useApprovals";
 
 type Section = "legacy" | "gift-boxes" | "recovery-kits" | "maternity-bundles";
 
@@ -35,13 +36,32 @@ export default function AdminBundles() {
 
   const bulkMutation = useMutation({
     mutationFn: async ({ ids, action }: { ids: string[]; action: string }) => {
+      // Permanent delete (super-admin) routes through the smart RPC, which
+      // refuses (per record) when a bundle is referenced by orders etc.
+      if (action === "delete_permanent") {
+        let deleted = 0; const blocked: string[] = [];
+        for (const id of ids) {
+          const r = await superAdminPermanentDelete("bundles", id);
+          if (r.success) deleted++; else blocked.push(r.error || "Could not delete");
+        }
+        return { action, deleted, blocked };
+      }
       if (action === "activate") await supabase.from("bundles").update({ is_active: true, deleted_at: null }).in("id", ids);
       else if (action === "deactivate") await supabase.from("bundles").update({ is_active: false }).in("id", ids);
       else if (action === "trash") await supabase.from("bundles").update({ is_active: false, deleted_at: new Date().toISOString() }).in("id", ids);
       else if (action === "restore") await supabase.from("bundles").update({ is_active: true, deleted_at: null }).in("id", ids);
-      else if (action === "delete_permanent") await supabase.from("bundles").delete().in("id", ids);
+      return { action };
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-bundles"] }); setSelected(new Set()); toast.success("Done"); },
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-bundles"] });
+      setSelected(new Set());
+      if (res?.action === "delete_permanent") {
+        if (res.deleted > 0) toast.success(`Permanently deleted ${res.deleted} bundle${res.deleted === 1 ? "" : "s"}`);
+        (res.blocked || []).forEach((m: string) => toast.error(m));
+        return;
+      }
+      toast.success("Done");
+    },
   });
 
   const duplicateBundle = async (b: any) => {

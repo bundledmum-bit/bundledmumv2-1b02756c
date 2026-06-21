@@ -135,6 +135,29 @@ export function useProcessApproval() {
   });
 }
 
+// Super-admin direct permanent delete. The RPC hard-deletes when safe, or
+// refuses with a human-readable reason when the record is referenced by
+// orders/subscriptions/finance (success:false, blocked:true). Separate from
+// the soft-delete approval workflow used by non-super-admins.
+export interface PermanentDeleteResult {
+  success: boolean;
+  deleted?: boolean;
+  blocked?: boolean;
+  error?: string;
+}
+
+export async function superAdminPermanentDelete(
+  table: string,
+  recordId: string,
+): Promise<PermanentDeleteResult> {
+  const { data, error } = await supabase.rpc("super_admin_permanent_delete", {
+    p_target_table: table,
+    p_record_id: recordId,
+  });
+  if (error) return { success: false, error: error.message };
+  return (data ?? { success: false, error: "No response from server" }) as PermanentDeleteResult;
+}
+
 export interface RequestAdminActionVars {
   action: "delete" | "add";
   table: string;

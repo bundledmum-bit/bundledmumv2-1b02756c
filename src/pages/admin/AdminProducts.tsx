@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import AdminProductCard from "@/components/admin/AdminProductCard";
 import { ExportButton, ImportButton } from "@/components/admin/ExcelImportExport";
 import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
+import { superAdminPermanentDelete } from "@/hooks/useApprovals";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { useProductCategories } from "@/hooks/useProductCategories";
@@ -64,19 +65,34 @@ export default function AdminProducts() {
 
   const bulkMutation = useMutation({
     mutationFn: async ({ ids, action, value }: { ids: string[]; action: string; value?: string }) => {
+      // Permanent delete (super-admin) goes through the smart RPC, which
+      // refuses (per record) when referenced by orders/finance.
+      if (action === "delete_permanent") {
+        let deleted = 0; const blocked: string[] = [];
+        for (const id of ids) {
+          const r = await superAdminPermanentDelete("products", id);
+          if (r.success) deleted++; else blocked.push(r.error || "Could not delete");
+        }
+        return { action, deleted, blocked };
+      }
       if (action === "activate") await supabase.from("products").update({ is_active: true, deleted_at: null }).in("id", ids);
       else if (action === "deactivate") await supabase.from("products").update({ is_active: false }).in("id", ids);
       else if (action === "trash") await supabase.from("products").update({ is_active: false, deleted_at: new Date().toISOString() }).in("id", ids);
       else if (action === "restore") await supabase.from("products").update({ is_active: true, deleted_at: null }).in("id", ids);
-      else if (action === "delete_permanent") await supabase.from("products").delete().in("id", ids);
       else if (action === "change_category" && value) await supabase.from("products").update({ subcategory: value }).in("id", ids);
       else if (action === "mark_oos") await supabase.from("products").update({ is_out_of_stock: true } as any).in("id", ids);
       else if (action === "mark_in_stock") await supabase.from("products").update({ is_out_of_stock: false } as any).in("id", ids);
+      return { action };
     },
-    onSuccess: (_d, vars) => {
+    onSuccess: (res: any, vars) => {
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
-      const n = vars.ids.length;
       setSelected(new Set());
+      if (res?.action === "delete_permanent") {
+        if (res.deleted > 0) toast.success(`Permanently deleted ${res.deleted} product${res.deleted === 1 ? "" : "s"}`);
+        (res.blocked || []).forEach((m: string) => toast.error(m));
+        return;
+      }
+      const n = vars.ids.length;
       toast.success(`Updated ${n} product${n === 1 ? "" : "s"} successfully`);
     },
   });

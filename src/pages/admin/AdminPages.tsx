@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Plus, Edit2, Trash2, X, Eye, FileText, ArrowUp, ArrowDown } from "lucide-react";
 import { ABOUT_DEFAULTS, type AboutBlocks } from "@/pages/AboutPage";
 import RequestDeleteButton from "@/components/admin/RequestDeleteButton";
+import { superAdminPermanentDelete } from "@/hooks/useApprovals";
 
 // Generated supabase types may not yet include `body_blocks` /
 // `last_updated_label`; cast the client like useMerchandising does.
@@ -102,10 +103,12 @@ export default function AdminPages() {
 
   const deletePage = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("pages").delete().eq("id", id);
-      if (error) throw error;
+      const r = await superAdminPermanentDelete("pages", id);
+      if (!r.success) throw new Error(r.error || "Could not delete page");
+      return r;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-pages"] }); toast.success("Deleted"); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-pages"] }); toast.success("Permanently deleted"); },
+    onError: (e: any) => toast.error(e?.message || "Could not delete page"),
   });
 
   return (
