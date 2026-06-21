@@ -138,7 +138,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select(`id, name, brands ( id, sku, brand_name, price, tier, in_stock, size_variant )`)
+        .select(`id, name, brands!brands_product_id_fkey ( id, sku, brand_name, price, tier, in_stock, size_variant )`)
         .ilike("name", `%${debouncedSearch}%`)
         .eq("is_active", true)
         .eq("is_gift_box", false)

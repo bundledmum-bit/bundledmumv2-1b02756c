@@ -1258,7 +1258,7 @@ function QuoteEditor({
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, name, subcategory, brands!inner(id, brand_name, price, in_stock)")
+        .select("id, name, subcategory, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock)")
         .eq("is_active", true)
         .eq("brands.in_stock", true)
         .gt("brands.price", 0)

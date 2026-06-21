@@ -125,7 +125,7 @@ export default function AdminBundleForm({ bundle, onClose, onSaved }: Props) {
   const { data: allProducts } = useQuery({
     queryKey: ["admin-products-picker"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("products").select("id, name, emoji, category, subcategory, product_slot, brands(id, brand_name, price, tier)").eq("is_active", true).is("deleted_at", null).order("display_order");
+      const { data, error } = await supabase.from("products").select("id, name, emoji, category, subcategory, product_slot, brands!brands_product_id_fkey(id, brand_name, price, tier)").eq("is_active", true).is("deleted_at", null).order("display_order");
       if (error) throw error;
       return data;
     },

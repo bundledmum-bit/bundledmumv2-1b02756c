@@ -60,7 +60,7 @@ export default function AdminMaternityBundles() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, name, slug, bundle_discount_pct, brands ( id, sku, price, tier )")
+        .select("id, name, slug, bundle_discount_pct, brands!brands_product_id_fkey ( id, sku, price, tier )")
         .eq("is_gift_box", true)
         .eq("is_active", true)
         .ilike("slug", "maternity-bundle-%")

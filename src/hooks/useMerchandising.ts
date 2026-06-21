@@ -331,7 +331,7 @@ export function useCategoryPagePinsAdmin(categorySlug: string, enabled = true) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("merch_category_products")
-        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${ADMIN_BRAND_COLS}))`)
+        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands!brands_product_id_fkey(${ADMIN_BRAND_COLS}))`)
         .eq("category_slug", categorySlug)
         .order("product_order");
       if (error) throw error;
@@ -438,7 +438,7 @@ export function useAdminSectionProducts(shop: ShopVariant, categorySlug: string,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("merch_section_products")
-        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands(${ADMIN_BRAND_COLS}))`)
+        .select(`id, product_id, product_order, is_active, display_label, default_brand_id, products(id, name, emoji, image_url, subcategory, is_active, deleted_at, brands!brands_product_id_fkey(${ADMIN_BRAND_COLS}))`)
         .eq("shop", shop)
         .eq("category_slug", categorySlug)
         .order("product_order");
