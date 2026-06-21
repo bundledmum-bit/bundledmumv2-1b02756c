@@ -414,16 +414,22 @@ export default function SubscriptionCheckout() {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs text-muted-foreground">Frequency:</span>
-                      <select
-                        value={it.frequency || draft.frequency || "monthly"}
-                        onChange={e => handleItemFrequencyChange(it.product_id, it.brand_id, e.target.value)}
-                        className="text-xs border border-border rounded-md px-2 py-1 bg-card focus:border-forest outline-none"
-                        aria-label="Item frequency"
-                      >
-                        {settings?.weekly_enabled && <option value="weekly">Every week</option>}
-                        {settings?.biweekly_enabled && <option value="biweekly">Every 2 weeks</option>}
-                        <option value="monthly">Every month</option>
-                      </select>
+                      {/* Picker only when more than one frequency is enabled;
+                          otherwise a fixed label (monthly-only). */}
+                      {(settings?.weekly_enabled || settings?.biweekly_enabled) ? (
+                        <select
+                          value={it.frequency || draft.frequency || "monthly"}
+                          onChange={e => handleItemFrequencyChange(it.product_id, it.brand_id, e.target.value)}
+                          className="text-xs border border-border rounded-md px-2 py-1 bg-card focus:border-forest outline-none"
+                          aria-label="Item frequency"
+                        >
+                          {settings?.weekly_enabled && <option value="weekly">Every week</option>}
+                          {settings?.biweekly_enabled && <option value="biweekly">Every 2 weeks</option>}
+                          {settings?.monthly_enabled && <option value="monthly">Every month</option>}
+                        </select>
+                      ) : (
+                        <span className="text-xs font-semibold text-text-dark">Every month</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs text-muted-foreground">Delivers:</span>

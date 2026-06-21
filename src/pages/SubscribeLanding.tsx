@@ -139,7 +139,7 @@ export default function SubscribeLanding() {
           <h2 className="pf text-2xl md:text-3xl font-bold mb-8">Three steps. Then it just runs.</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
             <Step n={1} Icon={PackageOpen} title="Pick Your Essentials" body="Browse consumable products — nappies, wipes, breast pads, formula, maternity pads and more. Tick what you need, set quantities." />
-            <Step n={2} Icon={CalendarCheck} title="Choose Your Schedule" body="Weekly, every 2 weeks, or monthly. Pick your delivery day. Pay upfront for your cycle." />
+            <Step n={2} Icon={CalendarCheck} title="Choose Your Schedule" body="Pick your delivery day and we deliver every month. Pay upfront for your cycle." />
             <Step n={3} Icon={Smile} title="We Deliver. You Rest." body="Your box arrives on your chosen day, automatically, every cycle. Free delivery, every time." />
           </div>
 
@@ -292,7 +292,7 @@ export default function SubscribeLanding() {
           <h2 className="pf text-2xl md:text-3xl font-bold text-center mb-8">Common questions</h2>
           <div className="space-y-2">
             <Faq q="How many deliveries do I pay for?">
-              A minimum of 4 deliveries per cycle. You can choose up to 13 deliveries for weekly, 7 for every 2 weeks, or 6 for monthly — all paid upfront at the start of each cycle.
+              A minimum of 4 deliveries per cycle, up to 6 — all paid upfront at the start of each cycle.
             </Faq>
             <Faq q="Can I cancel?">
               Yes. After your minimum 4 deliveries, cancel any time from your account. Your remaining paid deliveries will still arrive. No refund is issued for deliveries already paid for.

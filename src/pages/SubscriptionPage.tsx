@@ -237,19 +237,27 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
     || null;
   const cadence = product.reorder_label || (product.reorder_days ? `Restocks every ${product.reorder_days} days` : null);
 
+  // Frequencies offered are driven entirely by the *_enabled settings, so
+  // disabling weekly/biweekly (or re-enabling later) needs no code change.
   const enabledFreqs: Frequency[] = useMemo(() => {
     const list: Frequency[] = [];
     if (settings.weekly_enabled) list.push("weekly");
     if (settings.biweekly_enabled) list.push("biweekly");
-    list.push("monthly");
+    if (settings.monthly_enabled) list.push("monthly");
     return list;
-  }, [settings.weekly_enabled, settings.biweekly_enabled]);
+  }, [settings.weekly_enabled, settings.biweekly_enabled, settings.monthly_enabled]);
+  const onlyFreq = enabledFreqs.length === 1 ? enabledFreqs[0] : null;
 
   const [brandId, setBrandId] = useState<string>("");
   const [sizeId, setSizeId] = useState<string>("");
   const [colorId, setColorId] = useState<string>("");
   const [frequency, setFrequency] = useState<Frequency | "">("");
   const [deliveryDay, setDeliveryDay] = useState<string>("");
+
+  // When only one frequency is enabled, preselect it (no picker is shown).
+  useEffect(() => {
+    if (onlyFreq && !frequency) setFrequency(onlyFreq);
+  }, [onlyFreq, frequency]);
 
   const brand = orderedBrands.find(b => b.id === brandId) || null;
   const size = sizes.find(s => s.id === sizeId) || null;
@@ -406,11 +414,18 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
             </select>
           )}
 
-          {/* Frequency */}
-          <select className={selectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
-            <option value="">Choose Frequency</option>
-            {enabledFreqs.map(f => <option key={f} value={f}>{FREQ_OPT[f]}</option>)}
-          </select>
+          {/* Frequency — a picker only when there's a genuine choice; a
+              fixed label when a single frequency is enabled (monthly-only). */}
+          {onlyFreq ? (
+            <div className={`${selectCls} flex items-center text-text-dark`} aria-label="Delivery frequency">
+              {FREQ_OPT[onlyFreq]}
+            </div>
+          ) : (
+            <select className={selectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
+              <option value="">Choose Frequency</option>
+              {enabledFreqs.map(f => <option key={f} value={f}>{FREQ_OPT[f]}</option>)}
+            </select>
+          )}
 
           {/* Delivery day — Mon–Sat */}
           <select className={selectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">

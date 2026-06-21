@@ -1418,17 +1418,23 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
 }) {
   const { data: settings } = useSubscriptionSettings();
   const navigate = useNavigate();
+  // Offered frequencies are driven by the *_enabled settings only.
   const enabledFreqs: Frequency[] = useMemo(() => {
     const list: Frequency[] = [];
     if (settings?.weekly_enabled) list.push("weekly");
     if (settings?.biweekly_enabled) list.push("biweekly");
-    list.push("monthly");
+    if (settings?.monthly_enabled) list.push("monthly");
     return list;
-  }, [settings?.weekly_enabled, settings?.biweekly_enabled]);
+  }, [settings?.weekly_enabled, settings?.biweekly_enabled, settings?.monthly_enabled]);
+  const onlyFreq = enabledFreqs.length === 1 ? enabledFreqs[0] : null;
   // Always start empty — the shopper actively chooses cadence + day for each
   // product, never inherited/pre-filled from an existing draft.
   const [frequency, setFrequency] = useState<Frequency | "">("");
   const [deliveryDay, setDeliveryDay] = useState<string>("");
+  // Single enabled frequency → preselect it (no picker shown).
+  useEffect(() => {
+    if (onlyFreq && !frequency) setFrequency(onlyFreq);
+  }, [onlyFreq, frequency]);
   const draft = useSubscriptionDraft();
 
   // Default-hidden until the programme is confirmed on.
@@ -1519,10 +1525,14 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
         /* Pick cadence + delivery day (always fresh), then add to the draft */
         <>
           <div className="flex flex-col gap-2">
-            <select className={subSelectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
-              <option value="">Choose Frequency</option>
-              {enabledFreqs.map(f => <option key={f} value={f}>{SUB_FREQ_OPT[f]}</option>)}
-            </select>
+            {onlyFreq ? (
+              <div className={`${subSelectCls} flex items-center`} aria-label="Delivery frequency">{SUB_FREQ_OPT[onlyFreq]}</div>
+            ) : (
+              <select className={subSelectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
+                <option value="">Choose Frequency</option>
+                {enabledFreqs.map(f => <option key={f} value={f}>{SUB_FREQ_OPT[f]}</option>)}
+              </select>
+            )}
             <select className={subSelectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">
               <option value="">Choose Delivery Day</option>
               {WEEKDAYS.slice(0, 6).map(d => <option key={d.v} value={d.v}>{d.long}</option>)}
@@ -1568,9 +1578,10 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
     const list: Frequency[] = [];
     if (settings?.weekly_enabled) list.push("weekly");
     if (settings?.biweekly_enabled) list.push("biweekly");
-    list.push("monthly");
+    if (settings?.monthly_enabled) list.push("monthly");
     return list;
-  }, [settings?.weekly_enabled, settings?.biweekly_enabled]);
+  }, [settings?.weekly_enabled, settings?.biweekly_enabled, settings?.monthly_enabled]);
+  const onlyFreq = enabledFreqs.length === 1 ? enabledFreqs[0] : null;
 
   // Related products: prefer the same subcategory; backfill from the same
   // category up to 8. `related` is true when at least one same-subcategory
@@ -1685,9 +1696,13 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
             <h3 className="font-bold text-sm">Subscribe to {sheetProduct.name}</h3>
             <div>
               <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Frequency</div>
-              <div className="flex flex-wrap gap-1.5">
-                {enabledFreqs.map(f => <button key={f} type="button" onClick={() => setSheetFreq(f)} className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${sheetFreq === f ? pillSel : pillIdle}`}>{FREQUENCY_LABEL[f]}</button>)}
-              </div>
+              {onlyFreq ? (
+                <div className="text-sm font-semibold text-text-dark">{FREQUENCY_LABEL[onlyFreq]}</div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {enabledFreqs.map(f => <button key={f} type="button" onClick={() => setSheetFreq(f)} className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${sheetFreq === f ? pillSel : pillIdle}`}>{FREQUENCY_LABEL[f]}</button>)}
+                </div>
+              )}
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Delivery day</div>
