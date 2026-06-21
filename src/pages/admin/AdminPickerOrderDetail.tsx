@@ -44,6 +44,7 @@ type OrderPickingItem = {
   line_total: number;   // NAIRA
   cost_price: number;   // NAIRA — unit cost
   line_cost: number;    // NAIRA — cost x qty
+  picker_cost_price: number | null; // NAIRA — unit cost the picker entered (null = none)
   picked: boolean;
   picked_at: string | null;
 };
@@ -145,6 +146,31 @@ export default function AdminPickerOrderDetail() {
         else toast.message(`Order moved to ${titleCase(res.order_status)}`);
       }
     },
+  });
+
+  // Picker records a changed (per-unit) cost. The RPC persists the picker
+  // field AND pushes it into the order item's cost so Profit per Order
+  // reflects it. We only ever surface picker_cost_price back to the picker.
+  const saveCost = useMutation({
+    mutationFn: async ({ itemId, unitCost }: { itemId: string; unitCost: number }) => {
+      const { data, error } = await (supabase.rpc as any)("set_picker_item_cost", {
+        p_item_id: itemId,
+        p_new_unit_cost: unitCost,
+      });
+      if (error) throw error;
+      return data as { item_id: string; order_id: string; new_unit_cost: number; new_line_cost: number };
+    },
+    onSuccess: (res) => {
+      qc.setQueryData<OrderPickingItem[]>(pickingKey, (old) =>
+        (old || []).map((r) =>
+          r.item_id === res.item_id
+            ? { ...r, picker_cost_price: res.new_unit_cost, cost_price: res.new_unit_cost, line_cost: res.new_line_cost }
+            : r,
+        ),
+      );
+      toast.success("Cost updated");
+    },
+    onError: (e: any) => toast.error(e?.message || "Could not update cost"),
   });
 
   const { data: order, isLoading, error } = useQuery<OrderDetail | null>({
@@ -339,6 +365,7 @@ export default function AdminPickerOrderDetail() {
             onTogglePicked={() =>
               togglePicked.mutate({ itemId: it.id, picked: !pickingByItem[it.id]?.picked })
             }
+            onSaveCost={(unitCost) => saveCost.mutateAsync({ itemId: it.id, unitCost })}
             onZoom={(src) => setZoomSrc(src)}
           />
         ))}
@@ -375,6 +402,7 @@ function ItemCard({
   picked,
   busy,
   onTogglePicked,
+  onSaveCost,
   onZoom,
 }: {
   item: OrderItem;
@@ -382,10 +410,47 @@ function ItemCard({
   picked: boolean;
   busy: boolean;
   onTogglePicked: () => void;
+  onSaveCost: (unitCost: number) => Promise<unknown>;
   onZoom: (src: string | null) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // Inline "price changed" editor state.
+  const [editingCost, setEditingCost] = useState(false);
+  const [costInput, setCostInput] = useState("");
+  const [costErr, setCostErr] = useState<string | null>(null);
+  const [savingCost, setSavingCost] = useState(false);
   const img = item.brand_image_url || "/no-image.png";
+
+  // The picker always sees their own entered value when present, never
+  // finance's later edits. Effective unit cost drives the displayed line cost.
+  const qty = picking?.quantity ?? item.quantity ?? 1;
+  const changed = picking?.picker_cost_price != null;
+  const unitCost = picking ? (picking.picker_cost_price ?? picking.cost_price) : 0;
+  const lineCost = unitCost * qty;
+
+  const openCostEditor = () => {
+    setCostInput(String(Math.round(unitCost || 0)));
+    setCostErr(null);
+    setEditingCost(true);
+  };
+  const parsedCost = Number(costInput);
+  const previewLine = Number.isFinite(parsedCost) ? Math.round(parsedCost) * qty : 0;
+  const saveCost = async () => {
+    const v = Number(costInput);
+    if (costInput.trim() === "" || !Number.isFinite(v) || v < 0 || !Number.isInteger(v)) {
+      setCostErr("Enter a whole number, ₦0 or more.");
+      return;
+    }
+    setSavingCost(true);
+    try {
+      await onSaveCost(v);
+      setEditingCost(false);
+    } catch {
+      /* parent toasts; keep the field open so the picker can retry */
+    } finally {
+      setSavingCost(false);
+    }
+  };
 
   const variantsQuery = useQuery({
     queryKey: ["picker", "other-variants", item.product_id, item.brand_id],
@@ -457,14 +522,57 @@ function ItemCard({
       {/* Cost — amber, clearly labelled and distinct from the selling price
           so a picker never confuses cost with what the customer paid. */}
       {picking && (
-        <div className="flex items-center justify-between rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">Cost</span>
-          <span className="text-sm font-bold text-amber-800">
-            {fmt(picking.line_cost)}
-            {picking.quantity > 1 && (
-              <span className="font-normal text-amber-700"> ({fmt(picking.cost_price)} each)</span>
-            )}
-          </span>
+        <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              Cost
+              {changed && (
+                <span className="ml-1.5 normal-case font-semibold text-[10px] px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">changed</span>
+              )}
+            </span>
+            <span className="text-sm font-bold text-amber-800">
+              {fmt(lineCost)}
+              {qty > 1 && <span className="font-normal text-amber-700"> ({fmt(unitCost)} each)</span>}
+            </span>
+          </div>
+
+          {!editingCost ? (
+            <button
+              type="button"
+              onClick={openCostEditor}
+              className="mt-1 text-xs font-semibold text-amber-700 underline underline-offset-2"
+            >
+              The price changed
+            </button>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <label className="block text-xs font-semibold text-amber-800">New cost per unit (₦)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={1}
+                value={costInput}
+                onChange={(e) => { setCostInput(e.target.value); setCostErr(null); }}
+                autoFocus
+                disabled={savingCost}
+                className="w-full min-h-[44px] border border-input rounded-lg px-3 py-2 text-sm bg-background"
+                aria-label="New cost per unit in naira"
+              />
+              <div className="text-[11px] text-amber-700">
+                Line cost: <span className="font-semibold">{fmt(previewLine)}</span> ({qty} × per unit)
+              </div>
+              {costErr && <div className="text-[11px] text-destructive">{costErr}</div>}
+              <div className="flex gap-2">
+                <Button size="sm" className="h-9" disabled={savingCost} onClick={saveCost}>
+                  {savingCost ? "Saving…" : "Save"}
+                </Button>
+                <Button size="sm" variant="outline" className="h-9" disabled={savingCost} onClick={() => setEditingCost(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
