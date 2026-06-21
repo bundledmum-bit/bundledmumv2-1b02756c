@@ -102,7 +102,7 @@ export function useFeaturedProducts() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("*, brands:brands_public(*)")
+        .select("*, brands:brands_public!brands_product_id_fkey(*)")
         .eq("is_featured", true)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -120,7 +120,7 @@ export function useBestsellers() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("*, brands:brands_public(*)")
+        .select("*, brands:brands_public!brands_product_id_fkey(*)")
         .eq("is_bestseller", true)
         .eq("is_active", true)
         .is("deleted_at", null)

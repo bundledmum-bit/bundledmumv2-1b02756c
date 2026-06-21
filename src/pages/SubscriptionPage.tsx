@@ -82,7 +82,7 @@ export default function SubscriptionPage() {
         .select(`
           id, slug, name, category, subcategory, reorder_days, reorder_label,
           why_included, is_consumable,
-          brands:brands_public(id, brand_name, price, size_variant, in_stock, image_url, stored_image_url, images),
+          brands:brands_public!brands_product_id_fkey(id, brand_name, price, size_variant, in_stock, image_url, stored_image_url, images),
           product_sizes(id, size_label, size_code, in_stock, display_order),
           product_colors(id, color_name, color_hex, in_stock, display_order)
         `)

@@ -561,7 +561,7 @@ function AddProductsModal({ row, onClose }: { row: SubscriptionRow; onClose: () 
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, name, category, subcategory, brands:brands_public(id, brand_name, price, in_stock)")
+        .select("id, name, category, subcategory, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock)")
         .eq("is_subscribable", true)
         .eq("is_active", true)
         .order("category")

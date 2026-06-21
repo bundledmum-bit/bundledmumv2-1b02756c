@@ -31,7 +31,7 @@ function useProduct(slug: string) {
     queryFn: async () => {
       let { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -40,7 +40,7 @@ function useProduct(slug: string) {
       if (!data) {
         const res = await supabase
           .from("products")
-          .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+          .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
           .eq("id", slug)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -1586,7 +1586,7 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
   // Related products: prefer the same subcategory; backfill from the same
   // category up to 8. `related` is true when at least one same-subcategory
   // match exists (drives the heading copy).
-  const SELECT = "id, slug, name, reorder_days, reorder_label, brands:brands_public(id, brand_name, price, in_stock, image_url, stored_image_url, images)";
+  const SELECT = "id, slug, name, reorder_days, reorder_label, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images)";
   const { data: result } = useQuery({
     queryKey: ["other-subscribable", currentId, category, subcategory],
     enabled: settings?.subscription_enabled === true && !!currentId,

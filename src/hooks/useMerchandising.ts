@@ -31,10 +31,10 @@ const BRAND_COLS =
 // the public `brands_public` view. Used only by admin section/category hooks.
 const ADMIN_BRAND_COLS = `${BRAND_COLS}, cost_price, sku`;
 
-// Storefront PRODUCT_COLS: aliased embed (`brands:brands_public(...)`) keeps
+// Storefront PRODUCT_COLS: aliased embed (`brands:brands_public!brands_product_id_fkey(...)`) keeps
 // the JSON key as `brands` so adapters/consumers don't need to change.
 const PRODUCT_COLS =
-  `*, brands:brands_public(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
+  `*, brands:brands_public!brands_product_id_fkey(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
 
 export type ShopVariant = "all" | "baby" | "mum";
 

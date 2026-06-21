@@ -17,7 +17,7 @@ function usePushGiftProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("category", "push-gift")
         .eq("is_active", true)
         .is("deleted_at", null)
