@@ -27,6 +27,7 @@ interface Brand {
   id: string;
   brand_name: string;
   price: number;            // NAIRA
+  tier: string | null;      // "premium" | "standard" | "starter"
   size_variant: string | null;
   in_stock: boolean | null;
   image_url: string | null;
@@ -82,7 +83,7 @@ export default function SubscriptionPage() {
         .select(`
           id, slug, name, category, subcategory, reorder_days, reorder_label,
           why_included, is_consumable,
-          brands:brands_public!brands_product_id_fkey(id, brand_name, price, size_variant, in_stock, image_url, stored_image_url, images),
+          brands:brands_public!brands_product_id_fkey(id, brand_name, price, tier, size_variant, in_stock, image_url, stored_image_url, images),
           product_sizes(id, size_label, size_code, in_stock, display_order),
           product_colors(id, color_name, color_hex, in_stock, display_order)
         `)
@@ -229,12 +230,25 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   );
   const sizes = [...(product.product_sizes || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
   const colors = [...(product.product_colors || [])].sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-  // Cheapest in-stock brand drives the "From ₦X" + the default image only.
+  // Cheapest in-stock brand drives the "From ₦X" price only.
   const cheapest = [...product.brands]
     .filter(b => b.in_stock !== false)
     .sort((a, b) => (a.price || 0) - (b.price || 0))[0]
     || [...product.brands].sort((a, b) => (a.price || 0) - (b.price || 0))[0]
     || null;
+
+  // Default DISPLAY IMAGE brand — prefer a premium, then standard, then any
+  // in-stock brand that has an image (a handful of products only have starter
+  // brands), else the cheapest. This only sets the card photo; it does NOT
+  // pre-select a brand. Once the customer picks a brand, theirs takes over.
+  const displayImageBrand = useMemo(() => {
+    const hasImg = (b: Brand) => !!(getBrandImage(b) || b.images?.[0]);
+    const inStock = product.brands.filter(b => b.in_stock !== false);
+    const byTier = (t: string) =>
+      inStock.filter(b => (b.tier || "").toLowerCase() === t && hasImg(b))
+        .sort((a, b) => (a.price || 0) - (b.price || 0))[0];
+    return byTier("premium") || byTier("standard") || inStock.find(hasImg) || cheapest || null;
+  }, [product.brands, cheapest]);
   const cadence = product.reorder_label || (product.reorder_days ? `Restocks every ${product.reorder_days} days` : null);
 
   // Frequencies offered are driven entirely by the *_enabled settings, so
@@ -261,8 +275,9 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   const brand = orderedBrands.find(b => b.id === brandId) || null;
   const size = sizes.find(s => s.id === sizeId) || null;
   const color = colors.find(c => c.id === colorId) || null;
-  // Image: the chosen brand's, else the cheapest brand's (for display + zoom).
-  const displayBrand = brand || cheapest;
+  // Image: the chosen brand's, else the premium/standard display brand (the
+  // selected brand still drives its own image/price once picked).
+  const displayBrand = brand || displayImageBrand;
   const img = displayBrand ? (getBrandImage(displayBrand) || displayBrand.images?.[0] || null) : null;
 
   const needsSize = sizes.length > 0;
