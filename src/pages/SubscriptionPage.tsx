@@ -334,15 +334,18 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
       id={`sub-product-${product.slug}`}
       className={`bg-card border rounded-card overflow-hidden flex flex-col scroll-mt-24 transition-all duration-500 ${highlight ? "border-coral ring-2 ring-coral ring-offset-2 shadow-lg" : "border-border"}`}
     >
-      {/* Image — bigger, click to zoom */}
+      {/* Uniform image tile — one fixed square across all cards, product
+          centered and fully visible (object-contain, no crop), floated with
+          padding on one calm neutral surface so mixed photo backgrounds read
+          consistently. Click to zoom. */}
       <button
         type="button"
         onClick={() => img && setZoomed(true)}
-        className="block w-full aspect-[4/3] md:aspect-square bg-warm-cream overflow-hidden"
+        className="flex w-full aspect-square items-center justify-center bg-warm-cream border-b border-border p-4 overflow-hidden"
         aria-label={`Zoom ${product.name} image`}
       >
         {img && (
-          <img src={img} alt={product.name} loading="lazy" className="w-full h-full object-cover"
+          <img src={img} alt={product.name} loading="lazy" className="w-full h-full object-contain"
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
         )}
       </button>
