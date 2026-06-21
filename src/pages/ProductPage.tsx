@@ -1430,7 +1430,6 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
   // Always start empty — the shopper actively chooses cadence + day for each
   // product, never inherited/pre-filled from an existing draft.
   const [frequency, setFrequency] = useState<Frequency | "">("");
-  const [deliveryDay, setDeliveryDay] = useState<string>("");
   // Single enabled frequency → preselect it (no picker shown).
   useEffect(() => {
     if (onlyFreq && !frequency) setFrequency(onlyFreq);
@@ -1456,31 +1455,29 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
     brand_name: selectedBrand!.label,
     image_url: selectedBrand!.imageUrl ?? null,
     size_variant: selectedBrand!.sizeVariant ?? null,
-    delivery_day: deliveryDay || undefined,
   });
 
   const missing: string[] = [];
   if (!selectedBrand) missing.push("a brand");
   if (!frequency) missing.push("frequency");
-  if (!deliveryDay) missing.push("delivery day");
   const canSubscribe = missing.length === 0;
 
   // Add this product to the subscription. First product of the session creates
-  // the draft (owns the top-level frequency/day) and goes to checkout; a later
-  // product appends per-item (carrying its own day) and stays on the page.
+  // the draft (owns the top-level frequency) and goes to checkout, where the
+  // customer picks their first delivery date; later products append per-item.
   const handleSubscribe = () => {
-    if (!selectedBrand || !frequency || !deliveryDay) return;
+    if (!selectedBrand || !frequency) return;
     const item = buildItem(quantity, frequency);
     if (draftExists) {
       addToDraft(item);
       toast.success(`Added ${productName} to your subscription`);
-      setFrequency(""); setDeliveryDay("");
+      setFrequency("");
     } else {
       const subtotal = selectedBrand.price * quantity;
       writeDraft({
         items: [item],
         frequency,
-        delivery_day: deliveryDay,
+        delivery_day: "",
         subtotal_per_delivery: subtotal,
         discount_pct: settings.discount_pct,
         total_per_delivery: Math.round(subtotal * (1 - settings.discount_pct / 100)),
@@ -1533,10 +1530,7 @@ function SubscribeInline({ productId, productName, isSubscribable, selectedBrand
                 {enabledFreqs.map(f => <option key={f} value={f}>{SUB_FREQ_OPT[f]}</option>)}
               </select>
             )}
-            <select className={subSelectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">
-              <option value="">Choose Delivery Day</option>
-              {WEEKDAYS.slice(0, 6).map(d => <option key={d.v} value={d.v}>{d.long}</option>)}
-            </select>
+            <p className="text-[11px] text-text-light">You'll pick your first delivery date at checkout.</p>
           </div>
 
           <button
@@ -1572,7 +1566,6 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
   const draft = useSubscriptionDraft();
   const [sheetProduct, setSheetProduct] = useState<any | null>(null);
   const [sheetFreq, setSheetFreq] = useState<Frequency>("monthly");
-  const [sheetDay, setSheetDay] = useState<string | null>(null);
 
   const enabledFreqs: Frequency[] = useMemo(() => {
     const list: Frequency[] = [];
@@ -1640,19 +1633,20 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
       addToDraft(itemFor(p, b, draft.frequency));
       toast.success(`Added ${p.name} to your subscription`);
     } else {
-      setSheetFreq("monthly"); setSheetDay(null); setSheetProduct(p);
+      setSheetFreq("monthly"); setSheetProduct(p);
     }
   };
 
   const confirmSheet = () => {
-    if (!sheetProduct || !sheetDay) return;
+    if (!sheetProduct) return;
     const b = cheapest(sheetProduct);
     if (!b) return;
     const item = itemFor(sheetProduct, b, sheetFreq);
     writeDraft({
       items: [item],
       frequency: sheetFreq,
-      delivery_day: sheetDay,
+      // First delivery date is chosen at checkout.
+      delivery_day: "",
       subtotal_per_delivery: item.unit_price,
       discount_pct: settings.discount_pct,
       total_per_delivery: Math.round(item.unit_price * (1 - settings.discount_pct / 100)),
@@ -1704,13 +1698,8 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
                 </div>
               )}
             </div>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Delivery day</div>
-              <div className="flex flex-wrap gap-1.5">
-                {WEEKDAYS.slice(0, 6).map(d => <button key={d.v} type="button" onClick={() => setSheetDay(d.v)} className={`px-3 min-h-9 min-w-[52px] rounded-pill text-xs font-semibold border ${sheetDay === d.v ? pillSel : pillIdle}`}>{d.short}</button>)}
-              </div>
-            </div>
-            <button type="button" onClick={confirmSheet} disabled={!sheetDay} className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50">
+            <p className="text-[11px] text-text-light">You'll pick your first delivery date at checkout.</p>
+            <button type="button" onClick={confirmSheet} className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50">
               Subscribe &amp; go to checkout
             </button>
           </div>

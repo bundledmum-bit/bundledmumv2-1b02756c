@@ -136,7 +136,7 @@ export default function AccountSubscriptions() {
               <CheckCircle2 className="w-5 h-5 text-emerald-700" />
               <h2 className="pf text-lg font-bold text-emerald-800">Your subscription is active!</h2>
             </div>
-            <p className="text-xs text-emerald-900/80">We'll deliver every {WEEKDAY_LABEL[latest.delivery_day || ""] || latest.delivery_day} starting {formatDate(latest.next_charge_date)}.</p>
+            <p className="text-xs text-emerald-900/80">Your next delivery is {formatDate(latest.next_charge_date)}, then the same date each month.</p>
           </section>
         )}
 
@@ -178,7 +178,6 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
   const { data: settings } = useSubscriptionSettings();
   const qc = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [dayOpen, setDayOpen] = useState(false);
   const [brandEditFor, setBrandEditFor] = useState<SubscriptionItemRow | null>(null);
   const [addProductsOpen, setAddProductsOpen] = useState(false);
 
@@ -217,7 +216,7 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
       )}
 
       <dl className="text-xs space-y-1">
-        <div className="flex items-center justify-between"><dt className="text-text-light">Delivery day</dt><dd className="font-semibold">{WEEKDAY_LABEL[row.delivery_day || ""] || row.delivery_day || "—"} · every {freqLabel.toLowerCase()}</dd></div>
+        <div className="flex items-center justify-between"><dt className="text-text-light">Schedule</dt><dd className="font-semibold">Every {freqLabel.toLowerCase()}</dd></div>
         <div className="flex items-center justify-between"><dt className="text-text-light">Next delivery</dt><dd className="inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(row.next_charge_date)}</dd></div>
         {row.paystack_card_brand && row.paystack_card_last4 && (
           <div className="flex items-center justify-between"><dt className="text-text-light">Card</dt><dd className="inline-flex items-center gap-1"><CreditCard className="w-3 h-3" /> {row.paystack_card_brand} ending {row.paystack_card_last4}</dd></div>
@@ -294,11 +293,6 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
 
       {/* Actions */}
       <div className="flex items-center gap-2 flex-wrap pt-1">
-        {settings?.delivery_day_changeable && row.status !== "cancelled" && !row.cancellation_requested_at && (
-          <button onClick={() => setDayOpen(true)} className="inline-flex items-center gap-1.5 border border-input rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-            <CalendarDays className="w-3.5 h-3.5" /> Change delivery day
-          </button>
-        )}
         {row.status !== "cancelled" && !row.cancellation_requested_at && (
           <button onClick={() => setCancelOpen(true)} className="inline-flex items-center gap-1.5 text-destructive border border-destructive/40 rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-destructive/10 ml-auto">
             <XCircle className="w-3.5 h-3.5" /> Cancel subscription
@@ -306,7 +300,6 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
         )}
       </div>
 
-      {dayOpen && <ChangeDeliveryDayModal row={row} onClose={() => setDayOpen(false)} />}
       {cancelOpen && <CancelModal row={row} onClose={() => setCancelOpen(false)} />}
       {brandEditFor && <ChangeBrandModal item={brandEditFor} onClose={() => setBrandEditFor(null)} />}
       {addProductsOpen && <AddProductsModal row={row} onClose={() => setAddProductsOpen(false)} />}
@@ -318,59 +311,6 @@ function SubscriptionCard({ row }: { row: SubscriptionRow }) {
 // Change delivery day modal
 // -------------------------------------------------------------------------
 
-function ChangeDeliveryDayModal({ row, onClose }: { row: SubscriptionRow; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [day, setDay] = useState<string>(row.delivery_day || "monday");
-  const [saving, setSaving] = useState(false);
-
-  const save = async () => {
-    setSaving(true);
-    const { error } = await (supabase as any)
-      .from("subscriptions")
-      .update({ delivery_day: day })
-      .eq("id", row.id);
-    setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Delivery day updated");
-    qc.invalidateQueries({ queryKey: ["my-subscriptions"] });
-    onClose();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-foreground/60 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
-      <div className="bg-card border border-border rounded-xl w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="font-bold text-sm">Change delivery day</h3>
-          <button onClick={onClose} aria-label="Close" className="w-7 h-7 rounded-full hover:bg-muted flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
-        </div>
-        <div className="p-5 space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {WEEKDAYS.map(d => (
-              <button
-                key={d.v}
-                onClick={() => setDay(d.v)}
-                className={`px-3 py-2 rounded-pill text-xs font-semibold border min-w-[52px] ${
-                  day === d.v
-                    ? "bg-forest text-primary-foreground border-forest"
-                    : "bg-background text-text-med border-input hover:border-forest/60"
-                }`}
-              >
-                {d.short}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-text-light">Change applies to your next delivery onwards.</p>
-          <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="text-xs text-text-med hover:text-foreground px-3 py-2">Cancel</button>
-            <button onClick={save} disabled={saving || day === row.delivery_day} className="inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-3 py-2 rounded-lg text-xs font-semibold hover:bg-forest-deep disabled:opacity-40">
-              <Save className="w-3.5 h-3.5" /> Save
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // -------------------------------------------------------------------------
 // Cancel modal

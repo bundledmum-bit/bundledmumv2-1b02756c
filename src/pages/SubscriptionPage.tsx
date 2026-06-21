@@ -252,7 +252,6 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   const [sizeId, setSizeId] = useState<string>("");
   const [colorId, setColorId] = useState<string>("");
   const [frequency, setFrequency] = useState<Frequency | "">("");
-  const [deliveryDay, setDeliveryDay] = useState<string>("");
 
   // When only one frequency is enabled, preselect it (no picker is shown).
   useEffect(() => {
@@ -274,7 +273,7 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   const hasSubscribed = subscribedItems.length > 0;
 
   const resetSelection = () => {
-    setBrandId(""); setSizeId(""); setColorId(""); setFrequency(""); setDeliveryDay("");
+    setBrandId(""); setSizeId(""); setColorId(""); setFrequency("");
   };
 
   const missing: string[] = [];
@@ -282,11 +281,10 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   if (needsSize && !size) missing.push("size");
   if (needsColor && !color) missing.push("colour");
   if (!frequency) missing.push("frequency");
-  if (!deliveryDay) missing.push("delivery day");
   const canSubscribe = missing.length === 0;
 
   const handleSubscribe = () => {
-    if (!brand || !frequency || !deliveryDay) return;
+    if (!brand || !frequency) return;
     const item: SubscriptionDraftItem = {
       product_id: product.id,
       brand_id: brand.id,
@@ -298,7 +296,6 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
       image_url: getBrandImage(brand) || brand.images?.[0] || null,
       size_variant: size?.size_label ?? brand.size_variant ?? null,
       color: color?.color_name ?? null,
-      delivery_day: deliveryDay,
     };
     if (draft && draft.items.length > 0) {
       addToDraft(item);
@@ -306,7 +303,8 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
       writeDraft({
         items: [item],
         frequency,
-        delivery_day: deliveryDay,
+        // First delivery date is chosen at checkout (subscription-level).
+        delivery_day: "",
         subtotal_per_delivery: item.unit_price,
         discount_pct: settings.discount_pct,
         total_per_delivery: Math.round(item.unit_price * (1 - settings.discount_pct / 100)),
@@ -427,11 +425,8 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
             </select>
           )}
 
-          {/* Delivery day — Mon–Sat */}
-          <select className={selectCls} value={deliveryDay} onChange={e => setDeliveryDay(e.target.value)} aria-label="Choose Delivery Day">
-            <option value="">Choose Delivery Day</option>
-            {WEEKDAYS.slice(0, 6).map(d => <option key={d.v} value={d.v}>{d.long}</option>)}
-          </select>
+          {/* Delivery timing is chosen as a first-delivery DATE at checkout. */}
+          <p className="text-[11px] text-text-light">You'll pick your first delivery date at checkout.</p>
         </div>
 
         <button type="button" onClick={handleSubscribe} disabled={!canSubscribe}

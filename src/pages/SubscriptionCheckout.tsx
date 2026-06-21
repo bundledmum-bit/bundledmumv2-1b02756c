@@ -17,19 +17,13 @@ import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel
 // First delivery = the next occurrence of the chosen weekday that is at least
 // `minLead` days from today. Mirrors the create-subscription server rule so the
 // pre-payment estimate matches the confirmation email.
-function computeFirstDeliveryDate(deliveryDay: string, minLead: number): Date {
-  const dayMap: Record<string, number> = {
-    sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
-  };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = dayMap[deliveryDay.toLowerCase()] ?? today.getDay();
-  let daysAhead = target - today.getDay();
-  if (daysAhead <= 0) daysAhead += 7;
-  while (daysAhead < minLead) daysAhead += 7;
-  const d = new Date(today);
-  d.setDate(d.getDate() + daysAhead);
-  return d;
+// Local-date <-> "YYYY-MM-DD" helpers (avoid UTC shifting the calendar day).
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function parseYMD(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
 }
 
 // Form styling matched to CheckoutPage's address form (InputField).
@@ -108,15 +102,6 @@ export default function SubscriptionCheckout() {
     writeDraft(existing);
     setDraft(readDraft());
   };
-  const handleItemDeliveryDayChange = (productId: string, brandId: string, value: string) => {
-    const existing = readDraft();
-    if (!existing) return;
-    const idx = existing.items.findIndex(i => i.product_id === productId && i.brand_id === brandId);
-    if (idx < 0) return;
-    existing.items[idx].delivery_day = value;
-    writeDraft(existing);
-    setDraft(readDraft());
-  };
 
   // Meta Pixel InitiateCheckout + Schedule once the draft loads.
   useEffect(() => {
@@ -132,7 +117,6 @@ export default function SubscriptionCheckout() {
       content_type: "subscription",
     }));
     pixelTrack("Schedule", {
-      delivery_day: draft.delivery_day,
       frequency: draft.frequency,
     });
   }, [hydrated, draft?.items.length]);
@@ -233,20 +217,26 @@ export default function SubscriptionCheckout() {
     return () => { cancelled = true; };
   }, [user]);
 
-  // Dates — first delivery = next occurrence of the chosen weekday that is at
-  // least min_lead_days from today (mirrors the create-subscription server
-  // rule, so the customer sees the correct date before paying). First cycle
-  // end = first delivery + frequency_days × (count − 1).
-  const safeDeliveryDay = draft?.delivery_day || "monday";
-
-  const firstDelivery = useMemo(() => {
-    if (!draft) return null;
-    return computeFirstDeliveryDate(safeDeliveryDay, minLeadDays);
-  }, [draft, safeDeliveryDay, minLeadDays]);
+  // First delivery DATE — chosen by the customer (calendar date). Must be at
+  // least min_lead_days out; the server re-validates and bills monthly from it.
+  const [firstDeliveryDate, setFirstDeliveryDate] = useState<string>("");
+  const minDateStr = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + minLeadDays);
+    return toYMD(d);
+  }, [minLeadDays]);
+  const dateTooSoon = !!firstDeliveryDate && firstDeliveryDate < minDateStr;
+  const firstDelivery = useMemo(
+    () => (firstDeliveryDate ? parseYMD(firstDeliveryDate) : null),
+    [firstDeliveryDate],
+  );
+  // Last delivery of the first cycle = first delivery + (count − 1) calendar
+  // months (monthly cadence; JS clamps to valid month-ends).
   const cycleEnd = useMemo(() => {
-    if (!firstDelivery || !draft) return null;
-    return projectCycleEnd(firstDelivery, safeFrequency, count);
-  }, [firstDelivery, draft, safeFrequency, count]);
+    if (!firstDelivery) return null;
+    const d = new Date(firstDelivery);
+    d.setMonth(d.getMonth() + (count - 1));
+    return d;
+  }, [firstDelivery, count]);
 
   const fmtLongDate = (d: Date | null) => d
     ? d.toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" })
@@ -294,6 +284,7 @@ export default function SubscriptionCheckout() {
   };
 
   const canPay =
+    !!firstDeliveryDate && !dateTooSoon &&
     !!form.firstName.trim() && !!form.lastName.trim() &&
     phoneDigits.length >= 10 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
@@ -337,7 +328,7 @@ export default function SubscriptionCheckout() {
                 reference: tx.reference,
                 items: draft.items,
                 frequency: safeFrequency,
-                delivery_day: safeDeliveryDay,
+                first_delivery_date: firstDeliveryDate,
                 number_of_deliveries: count,
                 customer_name: `${form.firstName} ${form.lastName}`.trim(),
                 customer_phone: form.phone.trim(),
@@ -347,6 +338,13 @@ export default function SubscriptionCheckout() {
               },
             });
 
+            // Server re-validates the first delivery date; if it's too soon,
+            // keep the customer on this page to pick a later date.
+            if ((data as any)?.code === "FIRST_DATE_TOO_SOON") {
+              toast.error((data as any)?.error || `Please choose a first delivery date at least ${minLeadDays} days from today.`);
+              setProcessing(false);
+              return;
+            }
             if (error || !(data as any)?.success) {
               toast.error("Subscription setup failed. Please contact us on WhatsApp with reference: " + tx.reference);
               setProcessing(false);
@@ -359,8 +357,8 @@ export default function SubscriptionCheckout() {
               cycle_size: count,
               total_per_delivery: draft.total_per_delivery,
               total_paid: firstPayment,
-              first_delivery_date: firstDelivery?.toISOString().slice(0, 10) ?? null,
-              last_delivery_date: cycleEnd?.toISOString().slice(0, 10) ?? null,
+              first_delivery_date: firstDeliveryDate || null,
+              last_delivery_date: cycleEnd ? toYMD(cycleEnd) : null,
               customer_email: form.email.trim(),
             }));
             clearDraft();
@@ -385,20 +383,35 @@ export default function SubscriptionCheckout() {
           <Link to="/subscriptions" className="w-9 h-9 rounded-full hover:bg-muted inline-flex items-center justify-center" aria-label="Back"><ArrowLeft className="w-4 h-4" /></Link>
           <div>
             <h1 className="pf text-xl font-bold">Confirm &amp; pay</h1>
-            <p className="text-[11px] text-text-light">{FREQUENCY_LABEL[safeFrequency]} · {WEEKDAY_LABEL[safeDeliveryDay] || safeDeliveryDay}</p>
+            <p className="text-[11px] text-text-light">{FREQUENCY_LABEL[safeFrequency]}</p>
           </div>
         </header>
 
-        {/* First delivery — applies the minimum lead time (matches the server). */}
-        <section className="bg-forest/5 border border-forest/20 rounded-card p-4 flex items-start gap-3">
-          <Calendar className="w-5 h-5 text-forest flex-shrink-0 mt-0.5" />
-          <div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-forest">Your first delivery</div>
-            <div className="text-sm font-bold">{fmtFirstDelivery(firstDelivery)}</div>
-            <p className="text-[11px] text-text-light mt-0.5">
-              Chosen {WEEKDAY_LABEL[safeDeliveryDay] || safeDeliveryDay}, at least {minLeadDays} days from today so we can prepare your box.
-            </p>
+        {/* First delivery DATE — customer picks the calendar date. */}
+        <section className="bg-forest/5 border border-forest/20 rounded-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-5 h-5 text-forest flex-shrink-0" />
+            <div className="text-[10px] uppercase tracking-widest font-bold text-forest">Your first delivery date</div>
           </div>
+          <input
+            type="date"
+            value={firstDeliveryDate}
+            min={minDateStr}
+            onChange={e => setFirstDeliveryDate(e.target.value)}
+            aria-label="First delivery date"
+            className={`${fieldInputCls} ${dateTooSoon ? "border-destructive" : "border-border"}`}
+          />
+          <p className="text-[11px] text-text-light mt-1.5">
+            Choose your first delivery date (at least {minLeadDays} days from today so we can prepare your box).
+          </p>
+          {dateTooSoon && (
+            <p className="text-[11px] text-destructive mt-1">Please pick a date on or after {fmtLongDate(parseYMD(minDateStr))}.</p>
+          )}
+          {firstDelivery && !dateTooSoon && (
+            <p className="text-xs text-text-dark mt-2">
+              Your first delivery is on <span className="font-bold">{fmtFirstDelivery(firstDelivery)}</span>. After that, you'll get a delivery on the same date each month.
+            </p>
+          )}
         </section>
 
         {/* Order summary */}
@@ -430,20 +443,6 @@ export default function SubscriptionCheckout() {
                       ) : (
                         <span className="text-xs font-semibold text-text-dark">Every month</span>
                       )}
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">Delivers:</span>
-                      <select
-                        value={it.delivery_day || draft.delivery_day || ""}
-                        onChange={e => handleItemDeliveryDayChange(it.product_id, it.brand_id, e.target.value)}
-                        className="text-xs border border-border rounded-md px-2 py-1 bg-card focus:border-forest outline-none"
-                        aria-label="Item delivery day"
-                      >
-                        <option value="" disabled>Choose day</option>
-                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map(day => (
-                          <option key={day} value={day.toLowerCase()}>{day}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1.5">
