@@ -279,6 +279,9 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
   // selected brand still drives its own image/price once picked).
   const displayBrand = brand || displayImageBrand;
   const img = displayBrand ? (getBrandImage(displayBrand) || displayBrand.images?.[0] || null) : null;
+  // Price is independent of the image brand: the floor (cheapest in-stock)
+  // when nothing is selected, else the brand the customer picked.
+  const priceBrand = brand || cheapest;
 
   const needsSize = sizes.length > 0;
   const needsColor = colors.length > 0;
@@ -353,7 +356,7 @@ function SubscribableProductCard({ product, settings, highlight = false }: { pro
       <div className="p-3 flex flex-col">
         <div className="font-semibold text-sm leading-snug text-foreground line-clamp-2">{product.name}</div>
         {cadence && <div className="text-[11px] text-text-light mt-0.5">{cadence}</div>}
-        {displayBrand?.price != null && <div className="text-sm text-forest font-bold mt-1">From {fmtN(displayBrand.price)}</div>}
+        {priceBrand?.price != null && <div className="text-sm text-forest font-bold mt-1">From {fmtN(priceBrand.price)}</div>}
         <Link to={`/products/${product.slug}`} className="text-xs text-muted-foreground underline hover:text-foreground transition-colors mt-1 self-start">
           View product
         </Link>
