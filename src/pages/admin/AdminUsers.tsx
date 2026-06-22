@@ -9,16 +9,17 @@ import AdminPermissionsManager from "@/components/admin/AdminPermissionsManager"
 import { Skeleton } from "@/components/ui/skeleton";
 import AdminUserCard from "@/components/admin/AdminUserCard";
 
-const ROLES = ["super_admin", "admin", "fulfilment", "customer_service", "analyst", "content_manager", "custom"];
+const ROLES = ["super_admin", "admin", "fulfilment", "picker", "customer_service", "analyst", "content_manager", "custom"];
 // Exported so the mobile AdminUserCard renders role labels + colours
 // (and last-login) IDENTICALLY to the desktop table rows.
 export const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin", admin: "Admin", fulfilment: "Fulfilment",
+  super_admin: "Super Admin", admin: "Admin", fulfilment: "Fulfilment", picker: "Picker",
   customer_service: "Customer Service", analyst: "Analyst", content_manager: "Content Manager", custom: "Custom",
 };
 export const ROLE_COLORS: Record<string, string> = {
   super_admin: "bg-purple-100 text-purple-700", admin: "bg-blue-100 text-blue-700",
-  fulfilment: "bg-green-100 text-green-700", customer_service: "bg-yellow-100 text-yellow-700",
+  fulfilment: "bg-green-100 text-green-700", picker: "bg-teal-100 text-teal-700",
+  customer_service: "bg-yellow-100 text-yellow-700",
   analyst: "bg-cyan-100 text-cyan-700", content_manager: "bg-orange-100 text-orange-700", custom: "bg-gray-100 text-gray-700",
 };
 
@@ -42,12 +43,51 @@ export default function AdminUsers() {
     refetchOnWindowFocus: true,
   });
 
+  // Activate/deactivate via the super-admin-gated RPC (enforces: can't
+  // deactivate yourself or the last active super admin).
   const toggleActive = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("admin_users").update({ is_active }).eq("id", id);
-      if (error) throw error;
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { data, error } = await (supabase as any).rpc("set_admin_active", {
+        p_admin_user_id: id,
+        p_active: active,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as any;
+      if (!r?.success) throw new Error(r?.error || "Could not update user");
+      return r;
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-users"] }); toast.success("Updated"); },
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success(r.active ? "User activated" : "User deactivated");
+    },
+    onError: (e: any) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.error(e?.message || "Could not update user");
+    },
+  });
+
+  // Reassign role via the super-admin-gated RPC (enforces: can't change your
+  // own role, can't demote the last active super admin, valid role only).
+  const setRole = useMutation({
+    mutationFn: async ({ id, role }: { id: string; role: string }) => {
+      const { data, error } = await (supabase as any).rpc("set_admin_role", {
+        p_admin_user_id: id,
+        p_new_role: role,
+      });
+      if (error) throw new Error(error.message);
+      const r = data as any;
+      if (!r?.success) throw new Error(r?.error || "Could not change role");
+      return r;
+    },
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.success(`Role updated to ${ROLE_LABELS[r.new_role] || r.new_role}`);
+    },
+    onError: (e: any) => {
+      // Revert the (controlled) dropdown to server truth + surface the reason.
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toast.error(e?.message || "Could not change role");
+    },
   });
 
   if (!can("admin", "view_users")) {
@@ -121,15 +161,28 @@ export default function AdminUsers() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[u.role] || "bg-gray-100 text-gray-700"}`}>
-                          {ROLE_LABELS[u.role] || u.role}
-                        </span>
+                        {isSuperAdmin ? (
+                          <select
+                            value={u.role}
+                            disabled={u.auth_user_id === currentAdmin?.auth_user_id || setRole.isPending}
+                            onChange={e => setRole.mutate({ id: u.id, role: e.target.value })}
+                            title={u.auth_user_id === currentAdmin?.auth_user_id ? "You can't change your own role" : "Reassign role"}
+                            className="border border-input rounded-lg px-2 py-1 text-xs bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label={`Role for ${u.display_name || u.email}`}
+                          >
+                            {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+                          </select>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[u.role] || "bg-gray-100 text-gray-700"}`}>
+                            {ROLE_LABELS[u.role] || u.role}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         {can("admin", "deactivate_users") ? (
                           <button onClick={() => {
                             if (u.auth_user_id === currentAdmin?.auth_user_id) return;
-                            toggleActive.mutate({ id: u.id, is_active: !u.is_active });
+                            toggleActive.mutate({ id: u.id, active: !u.is_active });
                           }}
                             className={`w-10 h-5 rounded-full relative transition-colors ${u.is_active ? "bg-forest" : "bg-border"} ${u.auth_user_id === currentAdmin?.auth_user_id ? "opacity-50 cursor-not-allowed" : ""}`}>
                             <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-primary-foreground shadow transition-transform ${u.is_active ? "left-5" : "left-0.5"}`} />
@@ -166,8 +219,11 @@ export default function AdminUsers() {
                   currentAuthUserId={currentAdmin?.auth_user_id}
                   canEdit={can("admin", "edit_users")}
                   canDeactivate={can("admin", "deactivate_users")}
+                  isSuperAdmin={isSuperAdmin}
+                  roles={ROLES}
                   onEdit={(usr) => { setEditUser(usr); setShowForm(true); }}
-                  onToggleActive={(usr) => toggleActive.mutate({ id: usr.id, is_active: !usr.is_active })}
+                  onToggleActive={(usr) => toggleActive.mutate({ id: usr.id, active: !usr.is_active })}
+                  onSetRole={(usr, role) => setRole.mutate({ id: usr.id, role })}
                 />
               ))}
             </div>

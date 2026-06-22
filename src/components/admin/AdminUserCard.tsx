@@ -31,8 +31,11 @@ interface AdminUserCardProps {
   currentAuthUserId?: string | null;
   canEdit?: boolean;
   canDeactivate?: boolean;
+  isSuperAdmin?: boolean;
+  roles?: string[];
   onEdit: (u: any) => void;
   onToggleActive: (u: any) => void;
+  onSetRole?: (u: any, role: string) => void;
 }
 
 export default function AdminUserCard({
@@ -40,8 +43,11 @@ export default function AdminUserCard({
   currentAuthUserId,
   canEdit = false,
   canDeactivate = false,
+  isSuperAdmin = false,
+  roles = [],
   onEdit,
   onToggleActive,
+  onSetRole,
 }: AdminUserCardProps) {
   // Self-guard — same comparison field as the desktop table.
   const isSelf = !!currentAuthUserId && u.auth_user_id === currentAuthUserId;
@@ -73,9 +79,22 @@ export default function AdminUserCard({
           <p className="font-medium truncate">{u.display_name || "—"}</p>
           <p className="text-xs text-text-light truncate">{u.email}</p>
           <div className="flex items-center gap-1.5 flex-wrap mt-1 text-xs">
-            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[u.role] || "bg-gray-100 text-gray-700"}`}>
-              {ROLE_LABELS[u.role] || u.role}
-            </span>
+            {isSuperAdmin && onSetRole ? (
+              <select
+                value={u.role}
+                disabled={isSelf}
+                onChange={e => onSetRole(u, e.target.value)}
+                title={isSelf ? "You can't change your own role" : "Reassign role"}
+                className="border border-input rounded-lg px-2 py-1 text-xs bg-background disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label={`Role for ${u.display_name || u.email}`}
+              >
+                {roles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              </select>
+            ) : (
+              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${ROLE_COLORS[u.role] || "bg-gray-100 text-gray-700"}`}>
+                {ROLE_LABELS[u.role] || u.role}
+              </span>
+            )}
             <span className="text-text-light">·</span>
             <LastLoginCell value={u.last_login_at} />
           </div>
