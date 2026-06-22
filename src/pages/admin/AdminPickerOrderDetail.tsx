@@ -107,7 +107,10 @@ export default function AdminPickerOrderDetail() {
     (pickingQuery.data || []).forEach((r) => { m[r.item_id] = r; });
     return m;
   }, [pickingQuery.data]);
-  const pickedCount = (pickingQuery.data || []).filter((r) => r.picked).length;
+  // An item counts as picked ONLY when picked_at is set (the RPC's source of
+  // truth). Never default undefined/null to picked.
+  const isItemPicked = (r: OrderPickingItem | null | undefined) => !!r && r.picked_at != null;
+  const pickedCount = (pickingQuery.data || []).filter(isItemPicked).length;
   const totalCount = (pickingQuery.data || []).length;
 
   // Toggle an item's picked state. The RPC persists it AND owns the
@@ -365,11 +368,11 @@ export default function AdminPickerOrderDetail() {
             key={it.id}
             item={it}
             picking={pickingByItem[it.id] || null}
-            picked={!!pickingByItem[it.id]?.picked}
+            picked={isItemPicked(pickingByItem[it.id])}
             editable={canWork}
             busy={togglePicked.isPending}
             onTogglePicked={() =>
-              togglePicked.mutate({ itemId: it.id, picked: !pickingByItem[it.id]?.picked })
+              togglePicked.mutate({ itemId: it.id, picked: !isItemPicked(pickingByItem[it.id]) })
             }
             onSaveCost={(unitCost) => saveCost.mutateAsync({ itemId: it.id, unitCost })}
             onZoom={(src) => setZoomSrc(src)}
