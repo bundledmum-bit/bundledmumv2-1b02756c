@@ -77,7 +77,7 @@ export default function AdminPickerOrderDetail() {
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const fromEmail = search.get("from") === "email";
-  const { adminUser, can } = usePermissions();
+  const { adminUser, can, isSuperAdmin } = usePermissions();
   // Accepting an order is the picking module's `accept` action; view-only
   // picking grants must not see the Accept CTA.
   const canAccept = can("picking", "accept");
@@ -301,8 +301,10 @@ export default function AdminPickerOrderDetail() {
   const isMine = order.assigned_picker_id && order.assigned_picker_id === adminUser?.id;
   const isOtherPickerAssigned =
     order.assigned_picker_id && order.assigned_picker_id !== adminUser?.id;
+  // A super admin can view and work any order regardless of assignee.
+  const canWork = isMine || isSuperAdmin;
 
-  if (isOtherPickerAssigned) {
+  if (isOtherPickerAssigned && !isSuperAdmin) {
     return (
       <div className="p-4 md:p-6 max-w-[720px] mx-auto space-y-3">
         <p className="text-sm text-text-med">Already assigned to another picker.</p>
@@ -315,8 +317,8 @@ export default function AdminPickerOrderDetail() {
 
   const showAcceptCta = eligibleUnassigned && canAccept;
   const canPick =
-    isMine && ["pending", "confirmed", "processing"].includes(order.order_status);
-  const canPack = isMine && order.order_status === "picked";
+    canWork && ["pending", "confirmed", "processing"].includes(order.order_status);
+  const canPack = canWork && order.order_status === "picked";
 
   return (
     <div className="p-4 md:p-6 max-w-[720px] mx-auto space-y-4 pb-24 md:pb-6">
@@ -364,7 +366,7 @@ export default function AdminPickerOrderDetail() {
             item={it}
             picking={pickingByItem[it.id] || null}
             picked={!!pickingByItem[it.id]?.picked}
-            editable={!!isMine}
+            editable={canWork}
             busy={togglePicked.isPending}
             onTogglePicked={() =>
               togglePicked.mutate({ itemId: it.id, picked: !pickingByItem[it.id]?.picked })
@@ -375,7 +377,7 @@ export default function AdminPickerOrderDetail() {
         ))}
       </div>
 
-      {isMine && (
+      {canWork && (
         <div className="fixed bottom-0 left-0 right-0 md:static border-t md:border-0 border-border bg-card md:bg-transparent p-3 md:p-0 flex gap-2 z-40">
           <Button
             className="flex-1"

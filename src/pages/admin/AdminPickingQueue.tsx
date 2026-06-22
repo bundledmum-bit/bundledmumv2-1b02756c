@@ -28,7 +28,7 @@ function relTime(iso?: string | null) {
 
 export default function AdminPickingQueue() {
   const { loading: permLoading, allowed } = usePagePermission("picking", "view");
-  const { adminUser } = usePermissions();
+  const { adminUser, isSuperAdmin } = usePermissions();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -48,11 +48,23 @@ export default function AdminPickingQueue() {
     },
   });
 
+  // Non-super-admins see only orders assigned to them. A super admin sees
+  // EVERY in-progress (assigned) order regardless of assignee, with the
+  // assignee's name so they know who is on it.
   const mineQuery = useQuery({
-    queryKey: ["picking", "queue", "mine", adminUser?.id],
+    queryKey: ["picking", "queue", "mine", isSuperAdmin ? "all" : adminUser?.id],
     enabled: !!allowed && !!adminUser?.id,
     refetchInterval: 30_000,
     queryFn: async () => {
+      if (isSuperAdmin) {
+        const { data, error } = await (supabase.from("orders") as any)
+          .select("id, order_number, order_status, assigned_at, assigned_picker_id, assignee:admin_users!orders_assigned_picker_id_fkey(display_name, email)")
+          .not("assigned_picker_id", "is", null)
+          .not("order_status", "in", "(delivered,cancelled,returned,refunded)")
+          .order("assigned_at", { ascending: false });
+        if (error) throw error;
+        return (data || []) as any[];
+      }
       const { data, error } = await (supabase.from("orders") as any)
         .select("id, order_number, order_status, assigned_at")
         .eq("assigned_picker_id", adminUser.id)
@@ -168,7 +180,7 @@ export default function AdminPickingQueue() {
 
       <section className="space-y-2">
         <h2 className="text-sm font-bold text-text-med uppercase tracking-wide">
-          My orders in progress ({mine.length})
+          {isSuperAdmin ? "All orders in progress" : "My orders in progress"} ({mine.length})
         </h2>
         {mineQuery.isLoading ? (
           <div className="space-y-2">
@@ -178,7 +190,7 @@ export default function AdminPickingQueue() {
           </div>
         ) : mine.length === 0 ? (
           <div className="border border-dashed border-border rounded-lg py-10 text-center text-sm text-text-med">
-            You have no in-progress orders.
+            {isSuperAdmin ? "No orders in progress." : "You have no in-progress orders."}
           </div>
         ) : (
           <div className="space-y-2">
@@ -193,7 +205,12 @@ export default function AdminPickingQueue() {
                 <span className="ml-2 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-forest/10 text-forest">
                   {titleCase(o.order_status || "")}
                 </span>
-                <span className="ml-auto text-xs text-text-med">
+                {isSuperAdmin && o.assignee && (
+                  <span className="ml-2 text-[11px] text-text-light truncate">
+                    Assigned to {o.assignee.display_name || o.assignee.email}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-text-med shrink-0">
                   {o.assigned_at ? `Claimed ${relTime(o.assigned_at)}` : ""}
                 </span>
               </button>
