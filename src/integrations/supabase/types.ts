@@ -2752,6 +2752,87 @@ export type Database = {
         }
         Relationships: []
       }
+      hospital_list_config: {
+        Row: {
+          add_more_enabled: boolean
+          add_more_label: string
+          add_more_path: string
+          budget_enabled: boolean
+          budget_prompt_label: string
+          budget_summary_template: string
+          empty_state_text: string
+          heading: string
+          id: number
+          page_enabled: boolean
+          search_placeholder: string
+          section_heading_baby: string
+          section_heading_hospital: string
+          section_heading_mother: string
+          subheading: string
+          tab_label_all: string
+          tab_label_baby: string
+          tab_label_hospital: string
+          tab_label_mother: string
+          tabs_enabled: boolean
+          updated_at: string
+          whatsapp_enabled: boolean
+          whatsapp_label: string
+          whatsapp_number: string
+        }
+        Insert: {
+          add_more_enabled?: boolean
+          add_more_label?: string
+          add_more_path?: string
+          budget_enabled?: boolean
+          budget_prompt_label?: string
+          budget_summary_template?: string
+          empty_state_text?: string
+          heading?: string
+          id?: number
+          page_enabled?: boolean
+          search_placeholder?: string
+          section_heading_baby?: string
+          section_heading_hospital?: string
+          section_heading_mother?: string
+          subheading?: string
+          tab_label_all?: string
+          tab_label_baby?: string
+          tab_label_hospital?: string
+          tab_label_mother?: string
+          tabs_enabled?: boolean
+          updated_at?: string
+          whatsapp_enabled?: boolean
+          whatsapp_label?: string
+          whatsapp_number?: string
+        }
+        Update: {
+          add_more_enabled?: boolean
+          add_more_label?: string
+          add_more_path?: string
+          budget_enabled?: boolean
+          budget_prompt_label?: string
+          budget_summary_template?: string
+          empty_state_text?: string
+          heading?: string
+          id?: number
+          page_enabled?: boolean
+          search_placeholder?: string
+          section_heading_baby?: string
+          section_heading_hospital?: string
+          section_heading_mother?: string
+          subheading?: string
+          tab_label_all?: string
+          tab_label_baby?: string
+          tab_label_hospital?: string
+          tab_label_mother?: string
+          tabs_enabled?: boolean
+          updated_at?: string
+          whatsapp_enabled?: boolean
+          whatsapp_label?: string
+          whatsapp_number?: string
+        }
+        Relationships: []
+      }
       how_it_works_steps: {
         Row: {
           created_at: string | null
@@ -3904,6 +3985,36 @@ export type Database = {
           },
         ]
       }
+      logistics_companies: {
+        Row: {
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          short_name: string | null
+          tracking_url: string | null
+          website_url: string | null
+        }
+        Insert: {
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          short_name?: string | null
+          tracking_url?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          short_name?: string | null
+          tracking_url?: string | null
+          website_url?: string | null
+        }
+        Relationships: []
+      }
       marketing_email_log: {
         Row: {
           customer_email: string
@@ -4398,6 +4509,8 @@ export type Database = {
           line_total: number
           net_sales: number | null
           order_id: string
+          picked_at: string | null
+          picker_cost_price: number | null
           product_id: string | null
           product_name: string
           quantity: number
@@ -4422,6 +4535,8 @@ export type Database = {
           line_total: number
           net_sales?: number | null
           order_id: string
+          picked_at?: string | null
+          picker_cost_price?: number | null
           product_id?: string | null
           product_name: string
           quantity?: number
@@ -4446,6 +4561,8 @@ export type Database = {
           line_total?: number
           net_sales?: number | null
           order_id?: string
+          picked_at?: string | null
+          picker_cost_price?: number | null
           product_id?: string | null
           product_name?: string
           quantity?: number
@@ -4986,6 +5103,7 @@ export type Database = {
           last_edit_notified_at: string | null
           last_edited_at: string | null
           last_edited_by: string | null
+          logistics_company: string | null
           order_number: string | null
           order_status: string | null
           packaging_cost: number | null
@@ -5073,6 +5191,7 @@ export type Database = {
           last_edit_notified_at?: string | null
           last_edited_at?: string | null
           last_edited_by?: string | null
+          logistics_company?: string | null
           order_number?: string | null
           order_status?: string | null
           packaging_cost?: number | null
@@ -5160,6 +5279,7 @@ export type Database = {
           last_edit_notified_at?: string | null
           last_edited_at?: string | null
           last_edited_by?: string | null
+          logistics_company?: string | null
           order_number?: string | null
           order_status?: string | null
           packaging_cost?: number | null
@@ -5364,6 +5484,44 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_aliases: {
+        Row: {
+          alias: string
+          created_at: string
+          id: string
+          is_approved: boolean
+          normalised_alias: string
+          product_id: string
+          source: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          id?: string
+          is_approved?: boolean
+          normalised_alias: string
+          product_id: string
+          source?: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          id?: string
+          is_approved?: boolean
+          normalised_alias?: string
+          product_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_aliases_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -5606,6 +5764,8 @@ export type Database = {
           gender_colors: Json | null
           gender_relevant: boolean | null
           gift_box_markup_pct: number | null
+          hospital_list_default_brand_id: string | null
+          hospital_list_section: string | null
           hospital_types: string[] | null
           how_to_use: string | null
           id: string
@@ -5671,6 +5831,8 @@ export type Database = {
           gender_colors?: Json | null
           gender_relevant?: boolean | null
           gift_box_markup_pct?: number | null
+          hospital_list_default_brand_id?: string | null
+          hospital_list_section?: string | null
           hospital_types?: string[] | null
           how_to_use?: string | null
           id?: string
@@ -5736,6 +5898,8 @@ export type Database = {
           gender_colors?: Json | null
           gender_relevant?: boolean | null
           gift_box_markup_pct?: number | null
+          hospital_list_default_brand_id?: string | null
+          hospital_list_section?: string | null
           hospital_types?: string[] | null
           how_to_use?: string | null
           id?: string
@@ -5781,7 +5945,22 @@ export type Database = {
           why_included?: string | null
           why_included_variants?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_hospital_list_default_brand_id_fkey"
+            columns: ["hospital_list_default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_hospital_list_default_brand_id_fkey"
+            columns: ["hospital_list_default_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       quiz_adjustment_rules: {
         Row: {
@@ -6000,6 +6179,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      quiz_quantity_defaults: {
+        Row: {
+          created_at: string
+          default_quantity: number
+          id: string
+          is_active: boolean
+          scope_value: string
+          target_product_slug: string
+        }
+        Insert: {
+          created_at?: string
+          default_quantity: number
+          id?: string
+          is_active?: boolean
+          scope_value: string
+          target_product_slug: string
+        }
+        Update: {
+          created_at?: string
+          default_quantity?: number
+          id?: string
+          is_active?: boolean
+          scope_value?: string
+          target_product_slug?: string
+        }
+        Relationships: []
       }
       quiz_questions: {
         Row: {
@@ -6220,6 +6426,114 @@ export type Database = {
         }
         Relationships: []
       }
+      quiz_training_category_coverage: {
+        Row: {
+          avg_items_when_present: number | null
+          category: string | null
+          computed_at: string | null
+          coverage_pct: number | null
+          distinct_products: number | null
+          in_quotes: number | null
+          subcategory: string | null
+        }
+        Insert: {
+          avg_items_when_present?: number | null
+          category?: string | null
+          computed_at?: string | null
+          coverage_pct?: number | null
+          distinct_products?: number | null
+          in_quotes?: number | null
+          subcategory?: string | null
+        }
+        Update: {
+          avg_items_when_present?: number | null
+          category?: string | null
+          computed_at?: string | null
+          coverage_pct?: number | null
+          distinct_products?: number | null
+          in_quotes?: number | null
+          subcategory?: string | null
+        }
+        Relationships: []
+      }
+      quiz_training_cooccurrence: {
+        Row: {
+          computed_at: string | null
+          confidence_a_to_b_pct: number | null
+          confidence_b_to_a_pct: number | null
+          product_a: string | null
+          product_a_id: string | null
+          product_b: string | null
+          product_b_id: string | null
+          support_pct: number | null
+          together: number | null
+        }
+        Insert: {
+          computed_at?: string | null
+          confidence_a_to_b_pct?: number | null
+          confidence_b_to_a_pct?: number | null
+          product_a?: string | null
+          product_a_id?: string | null
+          product_b?: string | null
+          product_b_id?: string | null
+          support_pct?: number | null
+          together?: number | null
+        }
+        Update: {
+          computed_at?: string | null
+          confidence_a_to_b_pct?: number | null
+          confidence_b_to_a_pct?: number | null
+          product_a?: string | null
+          product_a_id?: string | null
+          product_b?: string | null
+          product_b_id?: string | null
+          support_pct?: number | null
+          together?: number | null
+        }
+        Relationships: []
+      }
+      quiz_training_staples: {
+        Row: {
+          avg_qty: number | null
+          category: string | null
+          computed_at: string | null
+          in_quotes: number | null
+          inclusion_pct: number | null
+          max_qty: number | null
+          product_id: string | null
+          product_name: string | null
+          subcategory: string | null
+          training_quotes: number | null
+          typical_qty: number | null
+        }
+        Insert: {
+          avg_qty?: number | null
+          category?: string | null
+          computed_at?: string | null
+          in_quotes?: number | null
+          inclusion_pct?: number | null
+          max_qty?: number | null
+          product_id?: string | null
+          product_name?: string | null
+          subcategory?: string | null
+          training_quotes?: number | null
+          typical_qty?: number | null
+        }
+        Update: {
+          avg_qty?: number | null
+          category?: string | null
+          computed_at?: string | null
+          in_quotes?: number | null
+          inclusion_pct?: number | null
+          max_qty?: number | null
+          product_id?: string | null
+          product_name?: string | null
+          subcategory?: string | null
+          training_quotes?: number | null
+          typical_qty?: number | null
+        }
+        Relationships: []
+      }
       quote_items: {
         Row: {
           brand_id: string | null
@@ -6233,6 +6547,7 @@ export type Database = {
           product_name: string
           quantity: number
           quote_id: string
+          section: string | null
           size: string | null
           unit_price: number
         }
@@ -6248,6 +6563,7 @@ export type Database = {
           product_name: string
           quantity?: number
           quote_id: string
+          section?: string | null
           size?: string | null
           unit_price: number
         }
@@ -6263,6 +6579,7 @@ export type Database = {
           product_name?: string
           quantity?: number
           quote_id?: string
+          section?: string | null
           size?: string | null
           unit_price?: number
         }
@@ -6377,6 +6694,8 @@ export type Database = {
           internal_notes: string | null
           last_downloaded_at: string | null
           last_viewed_at: string | null
+          other_cost: number
+          other_cost_note: string | null
           quote_number: string
           sent_at: string | null
           service_fee: number
@@ -6414,6 +6733,8 @@ export type Database = {
           internal_notes?: string | null
           last_downloaded_at?: string | null
           last_viewed_at?: string | null
+          other_cost?: number
+          other_cost_note?: string | null
           quote_number: string
           sent_at?: string | null
           service_fee?: number
@@ -6451,6 +6772,8 @@ export type Database = {
           internal_notes?: string | null
           last_downloaded_at?: string | null
           last_viewed_at?: string | null
+          other_cost?: number
+          other_cost_note?: string | null
           quote_number?: string
           sent_at?: string | null
           service_fee?: number
@@ -6889,6 +7212,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      search_category_phrases: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          normalised_phrase: string
+          phrase: string
+          subcategory: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalised_phrase: string
+          phrase: string
+          subcategory: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          normalised_phrase?: string
+          phrase?: string
+          subcategory?: string
+        }
+        Relationships: []
+      }
+      search_misses: {
+        Row: {
+          first_seen: string
+          id: string
+          last_seen: string
+          miss_count: number
+          normalised_query: string
+          raw_query_sample: string
+          resolved: boolean
+        }
+        Insert: {
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          miss_count?: number
+          normalised_query: string
+          raw_query_sample: string
+          resolved?: boolean
+        }
+        Update: {
+          first_seen?: string
+          id?: string
+          last_seen?: string
+          miss_count?: number
+          normalised_query?: string
+          raw_query_sample?: string
+          resolved?: boolean
+        }
+        Relationships: []
       }
       sessions: {
         Row: {
@@ -8635,14 +9015,26 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_channel_performance: {
+        Row: {
+          avg_order_value: number | null
+          channel: string | null
+          orders: number | null
+          paid_orders: number | null
+          revenue: number | null
+          session_to_paid_pct: number | null
+          sessions: number | null
+        }
+        Relationships: []
+      }
       marketing_customer_acquisition: {
         Row: {
           avg_lifetime_value_naira: number | null
+          avg_orders_per_customer: number | null
           channel: string | null
           customers: number | null
-          customers_who_ordered: number | null
-          order_conversion_pct: number | null
           repeat_customers: number | null
+          total_revenue_naira: number | null
         }
         Relationships: []
       }
@@ -8715,23 +9107,21 @@ export type Database = {
       }
       marketing_traffic_sources: {
         Row: {
-          medium: string | null
-          sessions: number | null
-          source: string | null
+          channel: string | null
+          events: number | null
           unique_sessions: number | null
         }
         Relationships: []
       }
       marketing_utm_performance: {
         Row: {
+          campaign: string | null
+          channel: string | null
           checkouts: number | null
-          orders: number | null
-          quiz_completions: number | null
+          paid_orders: number | null
           quiz_starts: number | null
+          revenue: number | null
           sessions: number | null
-          utm_campaign: string | null
-          utm_medium: string | null
-          utm_source: string | null
         }
         Relationships: []
       }
@@ -8793,11 +9183,13 @@ export type Database = {
           gross_profit_stored: number | null
           has_refund: boolean | null
           net_profit: number | null
+          net_profit_margin_pct: number | null
           order_id: string | null
           order_number: string | null
           order_status: string | null
           payment_status: string | null
           profit_as_ordered: number | null
+          profit_as_ordered_margin_pct: number | null
           refund_adjusted_profit: number | null
           refunded_lines: number | null
           refunded_profit_removed: number | null
@@ -8871,6 +9263,54 @@ export type Database = {
     }
     Functions: {
       accept_order_for_picking: { Args: { p_order_id: string }; Returns: Json }
+      add_alias_from_miss: {
+        Args: { p_normalised_query: string; p_product_id: string }
+        Returns: string
+      }
+      add_calendar_months: {
+        Args: { p_from_date: string; p_months: number }
+        Returns: string
+      }
+      admin_list_hospital_list_eligibility: {
+        Args: never
+        Returns: {
+          brand_count: number
+          category: string
+          display_brand_id: string
+          display_brand_name: string
+          display_brand_price: number
+          name: string
+          on_hospital_list: boolean
+          pinned_brand_id: string
+          product_id: string
+          resolved_section: string
+          section_override: string
+          subcategory: string
+        }[]
+      }
+      admin_list_product_brands_for_hospital_list: {
+        Args: { p_product_id: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          in_stock: boolean
+          is_cheapest: boolean
+          is_pinned: boolean
+          price: number
+        }[]
+      }
+      admin_set_hospital_list_brand: {
+        Args: { p_brand_id: string; p_product_id: string }
+        Returns: string
+      }
+      admin_set_hospital_list_section: {
+        Args: { p_product_id: string; p_section: string }
+        Returns: string
+      }
+      admin_toggle_hospital_list_eligibility: {
+        Args: { p_on: boolean; p_product_id: string }
+        Returns: boolean
+      }
       apply_referral_credit: {
         Args: {
           p_credit_amount: number
@@ -8910,6 +9350,7 @@ export type Database = {
         Returns: boolean
       }
       check_stock_availability: { Args: { p_items: Json }; Returns: Json }
+      clean_campaign: { Args: { p_campaign: string }; Returns: string }
       complete_order_picking: {
         Args: { p_session_id: string }
         Returns: undefined
@@ -9049,6 +9490,20 @@ export type Database = {
         }
         Returns: Json
       }
+      get_cart_recommendations: {
+        Args: { p_limit?: number; p_product_ids: string[] }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          image_url: string
+          name: string
+          price: number
+          product_id: string
+          slug: string
+          subcategory: string
+        }[]
+      }
       get_courier_assignment: {
         Args: {
           p_bundle_tier?: string
@@ -9088,6 +9543,39 @@ export type Database = {
         Args: { p_budget_amount?: number; p_category: string }
         Returns: Json
       }
+      get_hospital_list_config: { Args: never; Returns: Json }
+      get_order_picking_items: {
+        Args: { p_order_id: string }
+        Returns: {
+          brand_name: string
+          color: string
+          cost_price: number
+          item_id: string
+          line_cost: number
+          line_total: number
+          picked: boolean
+          picked_at: string
+          picker_cost_price: number
+          product_name: string
+          quantity: number
+          size: string
+          unit_price: number
+        }[]
+      }
+      get_popular_products: {
+        Args: { p_limit?: number }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          image_url: string
+          name: string
+          price: number
+          product_id: string
+          slug: string
+          subcategory: string
+        }[]
+      }
       get_quote_by_share_token: {
         Args: { p_share_token: string }
         Returns: {
@@ -9126,10 +9614,12 @@ export type Database = {
           product_id: string
           product_name: string
           quantity: number
+          section: string
           size: string
           unit_price: number
         }[]
       }
+      get_quote_profit: { Args: { p_quote_id: string }; Returns: Json }
       get_shared_cart: { Args: { p_share_token: string }; Returns: Json }
       get_shop_page: { Args: { p_shop: string }; Returns: Json }
       get_subscription_settings: { Args: never; Returns: Json }
@@ -9149,6 +9639,22 @@ export type Database = {
       has_admin_permission: {
         Args: { p_action?: string; p_section: string }
         Returns: boolean
+      }
+      hospital_list_budget_fit: {
+        Args: { p_budget_amount: number }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          image_url: string
+          name: string
+          price: number
+          product_id: string
+          quantity: number
+          section: string
+          slug: string
+          subcategory: string
+        }[]
       }
       initiate_return:
         | {
@@ -9172,6 +9678,7 @@ export type Database = {
           }
       is_admin: { Args: never; Returns: boolean }
       is_admin_user: { Args: never; Returns: boolean }
+      is_bot_ua: { Args: { p_ua: string }; Returns: boolean }
       is_sensitive_realtime_topic: { Args: { topic: string }; Returns: boolean }
       link_my_employee_account: { Args: never; Returns: Json }
       link_order_to_quote: {
@@ -9186,11 +9693,29 @@ export type Database = {
         }
         Returns: boolean
       }
+      mark_session_converted: {
+        Args: { p_order_id?: string; p_session_id: string }
+        Returns: undefined
+      }
       next_delivery_date: {
         Args: {
           p_delivery_day: string
           p_from_date?: string
           p_min_lead_days?: number
+        }
+        Returns: string
+      }
+      next_monthly_delivery_date: {
+        Args: { p_from_date: string }
+        Returns: string
+      }
+      normalise_search_term: { Args: { p_text: string }; Returns: string }
+      normalize_channel: {
+        Args: {
+          p_referrer: string
+          p_traffic_source: string
+          p_utm_medium: string
+          p_utm_source: string
         }
         Returns: string
       }
@@ -9213,6 +9738,7 @@ export type Database = {
         Returns: undefined
       }
       record_quote_view: { Args: { p_share_token: string }; Returns: undefined }
+      record_search_miss: { Args: { p_query: string }; Returns: undefined }
       refresh_maternity_bundle_prices: { Args: never; Returns: Json }
       request_admin_action: {
         Args: {
@@ -9300,8 +9826,40 @@ export type Database = {
         }
         Returns: Json
       }
+      search_hospital_list_products: {
+        Args: { p_query?: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          image_url: string
+          match_source: string
+          name: string
+          price: number
+          product_id: string
+          section: string
+          slug: string
+          subcategory: string
+        }[]
+      }
       search_products: {
-        Args: { p_limit?: number; p_query: string }
+        Args: { p_category?: string; p_limit?: number; p_query: string }
+        Returns: Json
+      }
+      set_order_item_cost: {
+        Args: { p_cost_price: number; p_item_id: string }
+        Returns: Json
+      }
+      set_picker_item_cost: {
+        Args: { p_item_id: string; p_new_unit_cost: number }
+        Returns: Json
+      }
+      set_quote_other_cost: {
+        Args: {
+          p_other_cost: number
+          p_other_cost_note?: string
+          p_quote_id: string
+        }
         Returns: Json
       }
       set_session_context: {
@@ -9312,9 +9870,49 @@ export type Database = {
         Args: { p_email: string }
         Returns: boolean
       }
+      super_admin_permanent_delete: {
+        Args: { p_record_id: string; p_target_table: string }
+        Returns: Json
+      }
+      toggle_order_item_picked: {
+        Args: { p_item_id: string; p_picked: boolean }
+        Returns: Json
+      }
+      update_hospital_list_config: { Args: { p_patch: Json }; Returns: Json }
+      upsert_session: {
+        Args: {
+          p_browser?: string
+          p_city?: string
+          p_country?: string
+          p_device_type?: string
+          p_exit_page?: string
+          p_landing_page?: string
+          p_os?: string
+          p_referrer?: string
+          p_session_id: string
+          p_traffic_campaign?: string
+          p_traffic_medium?: string
+          p_traffic_source?: string
+          p_user_agent?: string
+          p_utm_campaign?: string
+          p_utm_content?: string
+          p_utm_medium?: string
+          p_utm_source?: string
+          p_utm_term?: string
+        }
+        Returns: undefined
+      }
       validate_coupon: {
         Args: { coupon_code: string; order_amount: number }
         Returns: Json
+      }
+      validate_first_delivery_date: {
+        Args: {
+          p_chosen_date: string
+          p_from_date?: string
+          p_min_lead_days?: number
+        }
+        Returns: string
       }
       validate_preview_token: { Args: { p_token: string }; Returns: Json }
       validate_referral_code:
