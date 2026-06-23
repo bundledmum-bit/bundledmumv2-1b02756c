@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { PROMPT_COPY_DEFAULTS, coercePromptValue, type PromptCopyKey } from "@/hooks/usePromptCopy";
+import { PROMPT_POSITIONS, DEFAULT_PROMPT_POSITION } from "@/lib/promptPosition";
+import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,10 +41,15 @@ type Campaign = {
   title: string;
   body: string;
   url: string | null;
+  image: string | null;
   audience: string;
   source: string;
+  status: string | null;
+  scheduled_for: string | null;
   sent_count: number | null;
   failed_count: number | null;
+  delivered_count: number | null;
+  opened_count: number | null;
   created_at: string;
 };
 
@@ -100,7 +107,7 @@ export default function AdminPushNotifications() {
     queryKey: ["push", "campaigns"],
     queryFn: async () => {
       const { data, error } = await (supabase as any).from("push_campaigns")
-        .select("id, title, body, url, audience, source, sent_count, failed_count, created_at")
+        .select("id, title, body, url, image, audience, source, status, scheduled_for, sent_count, failed_count, delivered_count, opened_count, created_at")
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -119,7 +126,10 @@ export default function AdminPushNotifications() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
+  const [image, setImage] = useState("");
   const [audience, setAudience] = useState<"all" | "customers">("all");
+  const [scheduleLater, setScheduleLater] = useState(false);
+  const [scheduledFor, setScheduledFor] = useState(""); // datetime-local value
   const [sending, setSending] = useState(false);
 
   const audienceCount = audience === "customers"
@@ -129,22 +139,61 @@ export default function AdminPushNotifications() {
   const send = async () => {
     if (!canManage) { toast.error("You don't have permission to send."); return; }
     if (!title.trim() || !body.trim()) { toast.error("Title and message are required."); return; }
-    if (!window.confirm(`Send "${title.trim()}" to ${audienceCount} subscriber${audienceCount === 1 ? "" : "s"} (${audience})?`)) return;
+
+    let scheduledIso: string | undefined;
+    if (scheduleLater) {
+      if (!scheduledFor) { toast.error("Pick a date & time to schedule."); return; }
+      const when = new Date(scheduledFor);
+      if (isNaN(when.getTime()) || when.getTime() <= Date.now()) { toast.error("Schedule time must be in the future."); return; }
+      scheduledIso = when.toISOString();
+    }
+
+    const confirmMsg = scheduledIso
+      ? `Schedule "${title.trim()}" for ${new Date(scheduledIso).toLocaleString()} to ${audienceCount} subscriber${audienceCount === 1 ? "" : "s"} (${audience})?`
+      : `Send "${title.trim()}" to ${audienceCount} subscriber${audienceCount === 1 ? "" : "s"} (${audience})?`;
+    if (!window.confirm(confirmMsg)) return;
+
     setSending(true);
     try {
       const { data, error } = await supabase.functions.invoke("send-push", {
-        body: { mode: "broadcast", title: title.trim(), body: body.trim(), url: url.trim() || undefined, audience },
+        body: {
+          mode: "broadcast",
+          title: title.trim(),
+          body: body.trim(),
+          url: url.trim() || undefined,
+          icon: undefined,
+          image: image || undefined,
+          audience,
+          scheduled_for: scheduledIso,
+        },
       });
       if (error) throw error;
-      const res = (data || {}) as { sent?: number; failed?: number };
-      toast.success(`Sent to ${res.sent ?? 0} device${res.sent === 1 ? "" : "s"}${res.failed ? ` · ${res.failed} failed` : ""}.`);
-      setTitle(""); setBody(""); setUrl("");
+      const res = (data || {}) as { sent?: number; failed?: number; scheduled?: boolean };
+      if (res.scheduled || scheduledIso) {
+        toast.success(`Scheduled for ${new Date(scheduledIso as string).toLocaleString()}.`);
+      } else {
+        toast.success(`Sent to ${res.sent ?? 0} device${res.sent === 1 ? "" : "s"}${res.failed ? ` · ${res.failed} failed` : ""}.`);
+      }
+      setTitle(""); setBody(""); setUrl(""); setImage(""); setScheduleLater(false); setScheduledFor("");
       qc.invalidateQueries({ queryKey: ["push", "campaigns"] });
       qc.invalidateQueries({ queryKey: ["push", "subscriptions"] });
     } catch (e: any) {
       toast.error(e?.message || "Could not send broadcast.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const cancelScheduled = async (id: string) => {
+    if (!canManage) return;
+    if (!window.confirm("Cancel this scheduled broadcast?")) return;
+    try {
+      const { error } = await (supabase as any).from("push_campaigns").update({ status: "cancelled" }).eq("id", id);
+      if (error) throw error;
+      toast.success("Scheduled broadcast cancelled.");
+      qc.invalidateQueries({ queryKey: ["push", "campaigns"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Could not cancel.");
     }
   };
 
@@ -217,6 +266,39 @@ export default function AdminPushNotifications() {
           <Input placeholder="Title (e.g. New bundles just dropped 🎉)" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!canManage} maxLength={80} />
           <Textarea placeholder="Message body" value={body} onChange={(e) => setBody(e.target.value)} disabled={!canManage} rows={3} maxLength={250} />
           <Input placeholder="Destination URL (optional, e.g. /bundles)" value={url} onChange={(e) => setUrl(e.target.value)} disabled={!canManage} />
+
+          {/* Notification image (reuses the standard admin upload → product-images bucket) */}
+          <div className="flex items-center gap-3">
+            <BrandImageUpload
+              label="Image (optional)"
+              currentUrl={image || null}
+              onUploaded={(u) => setImage(u)}
+              onRemove={() => setImage("")}
+              bucket="product-images"
+              folder="push"
+            />
+            <p className="text-[11px] text-text-med">Shown as a large image on the notification (Android/desktop).</p>
+          </div>
+
+          {/* Schedule toggle */}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-1.5 text-sm">
+              <input type="radio" checked={!scheduleLater} onChange={() => setScheduleLater(false)} disabled={!canManage} /> Send now
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-sm">
+              <input type="radio" checked={scheduleLater} onChange={() => setScheduleLater(true)} disabled={!canManage} /> Schedule for later
+            </label>
+            {scheduleLater && (
+              <Input
+                type="datetime-local"
+                value={scheduledFor}
+                onChange={(e) => setScheduledFor(e.target.value)}
+                disabled={!canManage}
+                className="h-10 w-auto text-sm"
+              />
+            )}
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <select
               value={audience}
@@ -228,7 +310,8 @@ export default function AdminPushNotifications() {
               <option value="customers">Customers only ({subs.filter((s) => !!s.customer_email).length})</option>
             </select>
             <Button onClick={send} disabled={!canManage || sending || !title.trim() || !body.trim()} className="sm:ml-auto bg-forest hover:bg-forest/90">
-              <Send className="w-4 h-4 mr-1.5" /> {sending ? "Sending…" : `Send to ${audienceCount}`}
+              <Send className="w-4 h-4 mr-1.5" />
+              {sending ? "Working…" : scheduleLater ? "Schedule" : `Send to ${audienceCount}`}
             </Button>
           </div>
         </div>
@@ -266,26 +349,51 @@ export default function AdminPushNotifications() {
                   <th className="py-2 pr-3 font-semibold">When</th>
                   <th className="py-2 pr-3 font-semibold">Title</th>
                   <th className="py-2 pr-3 font-semibold">Source</th>
+                  <th className="py-2 pr-3 font-semibold">Status</th>
                   <th className="py-2 pr-3 font-semibold">Audience</th>
                   <th className="py-2 pr-3 font-semibold text-right">Sent</th>
-                  <th className="py-2 font-semibold text-right">Failed</th>
+                  <th className="py-2 pr-3 font-semibold text-right">Failed</th>
+                  <th className="py-2 pr-3 font-semibold text-right">Delivered</th>
+                  <th className="py-2 font-semibold text-right">Opened</th>
                 </tr>
               </thead>
               <tbody>
-                {(campaignsQuery.data || []).map((c) => (
-                  <tr key={c.id} className="border-b border-border/50">
-                    <td className="py-2 pr-3 text-text-med whitespace-nowrap">{relTime(c.created_at)}</td>
-                    <td className="py-2 pr-3 font-medium truncate max-w-[160px]">{c.title}</td>
-                    <td className="py-2 pr-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.source === "broadcast" ? "bg-forest/10 text-forest" : "bg-coral/10 text-coral"}`}>
-                        {c.source === "broadcast" ? "Broadcast" : c.source}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-text-med">{c.audience}</td>
-                    <td className="py-2 pr-3 text-right font-semibold">{c.sent_count ?? 0}</td>
-                    <td className="py-2 text-right text-destructive">{c.failed_count ?? 0}</td>
-                  </tr>
-                ))}
+                {(campaignsQuery.data || []).map((c) => {
+                  const isScheduled = c.status === "scheduled";
+                  const isCancelled = c.status === "cancelled";
+                  return (
+                    <tr key={c.id} className={`border-b border-border/50 ${isScheduled || isCancelled ? "text-text-light" : ""}`}>
+                      <td className="py-2 pr-3 text-text-med whitespace-nowrap">
+                        {isScheduled && c.scheduled_for
+                          ? `⏰ ${new Date(c.scheduled_for).toLocaleString()}`
+                          : relTime(c.created_at)}
+                      </td>
+                      <td className="py-2 pr-3 font-medium truncate max-w-[160px]">
+                        {c.image && <span className="mr-1" title="Has image">🖼️</span>}{c.title}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.source === "broadcast" ? "bg-forest/10 text-forest" : "bg-coral/10 text-coral"}`}>
+                          {c.source === "broadcast" ? "Broadcast" : c.source}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          isScheduled ? "bg-amber-100 text-amber-800" : isCancelled ? "bg-muted text-text-med" : "bg-forest/10 text-forest"
+                        }`}>
+                          {c.status || "sent"}
+                        </span>
+                        {isScheduled && canManage && (
+                          <button onClick={() => cancelScheduled(c.id)} className="ml-1.5 text-[10px] text-destructive underline">Cancel</button>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3 text-text-med">{c.audience}</td>
+                      <td className="py-2 pr-3 text-right font-semibold">{isScheduled ? "—" : (c.sent_count ?? 0)}</td>
+                      <td className="py-2 pr-3 text-right text-destructive">{isScheduled ? "—" : (c.failed_count ?? 0)}</td>
+                      <td className="py-2 pr-3 text-right">{isScheduled ? "—" : (c.delivered_count ?? 0)}</td>
+                      <td className="py-2 text-right font-semibold text-forest">{isScheduled ? "—" : (c.opened_count ?? 0)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -305,6 +413,11 @@ const COPY_FIELDS: { key: PromptCopyKey; label: string; type: "input" | "textare
   { key: "push_optin_decline", label: "Push opt-in · Decline label", type: "input" },
 ];
 
+const POSITION_FIELDS: { key: string; label: string }[] = [
+  { key: "push_optin_position", label: "Subscribe pop-up position" },
+  { key: "pwa_install_position", label: "Install pop-up position" },
+];
+
 function PromptCopyEditor({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient();
   const { data: settings, isLoading } = useSiteSettings();
@@ -316,6 +429,7 @@ function PromptCopyEditor({ canManage }: { canManage: boolean }) {
     if (!settings || seeded) return;
     const next: Record<string, string> = {};
     for (const f of COPY_FIELDS) next[f.key] = coercePromptValue(settings[f.key]) || PROMPT_COPY_DEFAULTS[f.key];
+    for (const f of POSITION_FIELDS) next[f.key] = coercePromptValue(settings[f.key]) || DEFAULT_PROMPT_POSITION;
     setVals(next);
     setSeeded(true);
   }, [settings, seeded]);
@@ -325,7 +439,10 @@ function PromptCopyEditor({ canManage }: { canManage: boolean }) {
     setSaving(true);
     try {
       // Store each as a plain string (jsonb) — matches the existing settings format.
-      const rows = COPY_FIELDS.map((f) => ({ key: f.key, value: (vals[f.key] ?? "").trim() }));
+      const rows = [
+        ...COPY_FIELDS.map((f) => ({ key: f.key, value: (vals[f.key] ?? "").trim() })),
+        ...POSITION_FIELDS.map((f) => ({ key: f.key, value: vals[f.key] || DEFAULT_PROMPT_POSITION })),
+      ];
       const { error } = await (supabase as any).from("site_settings").upsert(rows, { onConflict: "key" });
       if (error) throw error;
       toast.success("Prompt copy saved.");
@@ -367,6 +484,26 @@ function PromptCopyEditor({ canManage }: { canManage: boolean }) {
               )}
             </div>
           ))}
+
+          {/* Pop-up positions */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {POSITION_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <label className="text-xs font-semibold text-text-med">{f.label}</label>
+                <select
+                  value={vals[f.key] || DEFAULT_PROMPT_POSITION}
+                  onChange={(e) => setVals((p) => ({ ...p, [f.key]: e.target.value }))}
+                  disabled={!canManage}
+                  className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                >
+                  {PROMPT_POSITIONS.map((pos) => (
+                    <option key={pos} value={pos}>{pos}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+
           {canManage && (
             <div className="flex justify-end">
               <Button onClick={save} disabled={saving} className="bg-forest hover:bg-forest/90">

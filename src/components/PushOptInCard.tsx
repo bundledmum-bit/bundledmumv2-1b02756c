@@ -4,6 +4,7 @@ import { Bell, X, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { usePush } from "@/hooks/usePush";
 import { usePromptCopy } from "@/hooks/usePromptCopy";
+import { promptWrapperClasses } from "@/lib/promptPosition";
 
 // Soft, dismissible push opt-in. Never calls requestPermission on load — it
 // only shows a small card; the browser permission prompt fires solely when the
@@ -13,7 +14,7 @@ const DISMISS_KEY = "bm-push-optin-dismissed";
 
 export default function PushOptInCard() {
   const { status, busy, subscribe, iosNeedsInstall, supported } = usePush();
-  const { optinTitle, optinBody, optinCta, optinDecline } = usePromptCopy();
+  const { optinTitle, optinBody, optinCta, optinDecline, optinPosition } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
@@ -45,8 +46,8 @@ export default function PushOptInCard() {
   };
 
   return (
-    <div className="fixed left-3 right-3 sm:left-auto sm:right-4 bottom-20 sm:bottom-4 z-50 pointer-events-none">
-      <div className="mx-auto sm:mx-0 max-w-sm pointer-events-auto rounded-2xl border border-border bg-card shadow-lg p-3 flex items-center gap-3">
+    <div className={promptWrapperClasses(optinPosition)}>
+      <div className="w-full max-w-sm pointer-events-auto rounded-2xl border border-border bg-card shadow-lg p-3 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-forest/10 flex items-center justify-center shrink-0">
           <Bell className="w-5 h-5 text-forest" />
         </div>

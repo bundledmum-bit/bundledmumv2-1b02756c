@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Download, X, Share } from "lucide-react";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import { usePromptCopy } from "@/hooks/usePromptCopy";
+import { promptWrapperClasses } from "@/lib/promptPosition";
 
 // A non-intrusive, dismissible "Install BundledMum" prompt that complements the
 // persistent "Install App" entry point (footer / PwaInstallButton + /install
@@ -16,7 +17,7 @@ const DISMISS_KEY = "bm-pwa-install-dismissed";
 
 export default function PwaInstallBanner() {
   const { canInstallNative, promptInstall, isStandalone, isIosSafari } = usePwaInstall();
-  const { installTitle, installBody, installCta } = usePromptCopy();
+  const { installTitle, installBody, installCta, installPosition } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
     try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
@@ -40,8 +41,8 @@ export default function PwaInstallBanner() {
   };
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[60] px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pointer-events-none">
-      <div className="mx-auto max-w-md pointer-events-auto rounded-2xl border border-border bg-card shadow-lg p-3 flex items-center gap-3">
+    <div className={promptWrapperClasses(installPosition)}>
+      <div className="w-full max-w-md pointer-events-auto rounded-2xl border border-border bg-card shadow-lg p-3 flex items-center gap-3">
         <img src="/bm-pwa-192.png" alt="" className="w-10 h-10 rounded-xl shrink-0" />
         {showInstall ? (
           <>

@@ -1,4 +1,5 @@
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { normalizePosition } from "@/lib/promptPosition";
 
 // Admin-editable copy for the PWA install prompt and the push opt-in card.
 // Values live in site_settings (Public read) as JSON strings. We render the
@@ -41,5 +42,7 @@ export function usePromptCopy() {
     optinBody: get("push_optin_body"),
     optinCta: get("push_optin_cta"),
     optinDecline: get("push_optin_decline"),
+    optinPosition: normalizePosition(coercePromptValue(data?.["push_optin_position"])),
+    installPosition: normalizePosition(coercePromptValue(data?.["pwa_install_position"])),
   };
 }
