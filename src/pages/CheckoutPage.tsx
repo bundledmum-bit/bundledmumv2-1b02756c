@@ -853,7 +853,12 @@ export default function CheckoutPage() {
         // can surface product images + deep-link to the product page. The
         // edge function falls back to name+qty+price for legacy thin rows.
         cart_items: cart.map((i: any) => {
-          const img = cartItemImage(i);
+          // Same thumbnail resolver the cart UI uses (brand image → product
+          // image → legacy item.img). Already in memory — no extra fetch.
+          // Only emit a real URL; the placeholder counts as "no image" so the
+          // email falls back to enrich-by-id / name-match gracefully.
+          const resolved = cartItemImage(i);
+          const img = resolved && resolved !== "/placeholder.svg" ? resolved : null;
           return {
             product_id: i.id != null ? String(i.id) : null,
             brand_id: i.selectedBrand?.id || null,
@@ -861,7 +866,10 @@ export default function CheckoutPage() {
             qty: i.qty,
             price: i.price,
             slug: i.slug || null,
-            image_url: img && img !== "/placeholder.svg" ? img : null,
+            // `image` is the key the recovery email reads first; `image_url`
+            // kept as an alias for any legacy/back-compat readers.
+            image: img,
+            image_url: img,
             size: i.selectedSize || null,
             color: i.selectedColor || null,
           };
