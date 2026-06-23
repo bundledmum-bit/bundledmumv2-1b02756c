@@ -829,37 +829,49 @@ export default function CheckoutPage() {
     setErrors(p => ({ ...p, [key]: error }));
   };
 
+  // sessionStorage key tracking the email already captured this checkout
+  // session, so a re-blur / reload doesn't create duplicate rows.
+  const ABANDONED_CART_KEY = "bm_abandoned_cart_email";
+
   const saveAbandonedCart = async () => {
-    if (!form.email?.includes("@") || cart.length === 0) return;
+    const email = form.email?.toLowerCase().trim() || "";
+    // Only capture a real email + a real, non-empty cart.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || cart.length === 0 || subtotal <= 0) return;
+    // Anon RLS on abandoned_carts allows INSERT but NOT SELECT/UPDATE, so a
+    // PostgREST upsert (ON CONFLICT DO UPDATE) is rejected (42501) — which is
+    // why nothing was captured. Insert instead, and dedupe per email per
+    // session in sessionStorage so we write ONE row per customer, not one
+    // per keystroke/blur/reload.
+    let captured = "";
+    try { captured = sessionStorage.getItem(ABANDONED_CART_KEY) || ""; } catch { /* ignore */ }
+    if (captured === email) return;
     try {
-      await (supabase as any).from("abandoned_carts").upsert(
-        {
-          email: form.email.toLowerCase().trim(),
-          phone: form.phone || null,
-          // Richer per-item payload so the send-abandoned-cart edge
-          // function can surface product images + deep-link to the
-          // product page. The edge function falls back to name+qty
-          // +price for legacy thin rows, so we don't need a schema
-          // migration to roll this forward.
-          cart_items: cart.map((i: any) => {
-            const img = cartItemImage(i);
-            return {
-              product_id: i.id != null ? String(i.id) : null,
-              brand_id: i.selectedBrand?.id || null,
-              name: i.name,
-              qty: i.qty,
-              price: i.price,
-              slug: i.slug || null,
-              image_url: img && img !== "/placeholder.svg" ? img : null,
-              size: i.selectedSize || null,
-              color: i.selectedColor || null,
-            };
-          }),
-          cart_total: subtotal,
-          recovered: false,
-        },
-        { onConflict: "email" }
-      );
+      const { error } = await (supabase as any).from("abandoned_carts").insert({
+        email,
+        phone: form.phone || null,
+        // Richer per-item payload so the send-abandoned-cart edge function
+        // can surface product images + deep-link to the product page. The
+        // edge function falls back to name+qty+price for legacy thin rows.
+        cart_items: cart.map((i: any) => {
+          const img = cartItemImage(i);
+          return {
+            product_id: i.id != null ? String(i.id) : null,
+            brand_id: i.selectedBrand?.id || null,
+            name: i.name,
+            qty: i.qty,
+            price: i.price,
+            slug: i.slug || null,
+            image_url: img && img !== "/placeholder.svg" ? img : null,
+            size: i.selectedSize || null,
+            color: i.selectedColor || null,
+          };
+        }),
+        cart_total: subtotal,
+        recovered: false,
+      });
+      if (!error) {
+        try { sessionStorage.setItem(ABANDONED_CART_KEY, email); } catch { /* ignore */ }
+      }
     } catch (e) {
       // Silent fail — never block checkout
     }
@@ -1244,6 +1256,24 @@ export default function CheckoutPage() {
   // endpoint) comes straight from the place-order response — no extra fetch.
   // Stash it for the confirmation page and pass it in the URL.
   const navigateToConfirmation = (savedOrder: SavedOrderResult) => {
+    // The customer completed payment — mark their abandoned-cart row (if any)
+    // recovered so the hourly recovery cron never emails a buyer. Best-effort
+    // and fire-and-forget: for pure guest (anon) sessions RLS may make this a
+    // no-op, in which case the send-abandoned-cart function is expected to
+    // skip carts whose email has a paid order. We also clear the session
+    // capture guard.
+    const email = form.email?.toLowerCase().trim() || "";
+    if (email) {
+      try {
+        void (supabase as any)
+          .from("abandoned_carts")
+          .update({ recovered: true, recovered_at: new Date().toISOString() })
+          .eq("email", email)
+          .eq("recovered", false);
+      } catch { /* never block confirmation */ }
+      try { sessionStorage.removeItem(ABANDONED_CART_KEY); } catch { /* ignore */ }
+    }
+
     const num = savedOrder.orderNumber || "";
     const shareToken = savedOrder.share_token || "";
     if (num && shareToken) {
