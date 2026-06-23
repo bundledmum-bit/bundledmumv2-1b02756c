@@ -1,78 +1,41 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Download, X, Share } from "lucide-react";
-import { trackEvent } from "@/lib/analytics";
-import { isStandalone, isIosSafari } from "@/lib/pwa";
+import { usePwaInstall } from "@/hooks/usePwaInstall";
 
-// A non-intrusive, dismissible "Install BundledMum" prompt.
-//  • Android / desktop Chrome: captures beforeinstallprompt and offers a button
-//    that calls the stashed native prompt; logs pwa_install_available once.
-//  • iOS Safari: shows a tiny one-time "Add to Home Screen via Share" hint
-//    (iOS can't fire beforeinstallprompt).
+// A non-intrusive, dismissible "Install BundledMum" prompt that complements the
+// persistent "Install App" entry point (footer / PwaInstallButton + /install
+// page). Install availability + the pwa_install_available analytics event are
+// owned by the global capture in lib/pwa; this banner is purely presentational.
+//  • Android / desktop Chrome: offers a button that fires the stashed prompt.
+//  • iOS Safari: shows a tiny "Add to Home Screen via Share" hint.
 // Dismissal is remembered for the session so it never nags.
 
 const DISMISS_KEY = "bm-pwa-install-dismissed";
-const AVAIL_LOGGED_KEY = "bm-pwa-available-logged";
-
-type BipEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
 export default function PwaInstallBanner() {
-  const [deferred, setDeferred] = useState<BipEvent | null>(null);
-  const [showInstall, setShowInstall] = useState(false);
-  const [showIosHint, setShowIosHint] = useState(false);
+  const { canInstallNative, promptInstall, isStandalone, isIosSafari } = usePwaInstall();
+  const { pathname } = useLocation();
+  const [dismissed, setDismissed] = useState(() => {
+    try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
+  });
 
-  useEffect(() => {
-    // Never show inside the installed app, on admin routes, or once dismissed.
-    if (isStandalone()) return;
-    if (typeof window !== "undefined" && window.location.pathname.startsWith("/admin")) return;
-    let dismissed = false;
-    try { dismissed = sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { /* ignore */ }
-    if (dismissed) return;
+  // Hide inside the installed app, once dismissed, on admin, and on the
+  // dedicated /install page (which already shows the full install UX).
+  if (isStandalone || dismissed || pathname.startsWith("/admin") || pathname.startsWith("/install")) return null;
 
-    const onPrompt = (e: Event) => {
-      // Stop Chrome's default mini-infobar; we present our own button.
-      e.preventDefault();
-      setDeferred(e as BipEvent);
-      setShowInstall(true);
-      try {
-        if (!sessionStorage.getItem(AVAIL_LOGGED_KEY)) {
-          sessionStorage.setItem(AVAIL_LOGGED_KEY, "1");
-          trackEvent("pwa_install_available", { display_mode: "browser" });
-        }
-      } catch {
-        trackEvent("pwa_install_available", { display_mode: "browser" });
-      }
-    };
-    const onInstalled = () => { setShowInstall(false); setShowIosHint(false); setDeferred(null); };
-
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-
-    // iOS Safari can't fire beforeinstallprompt — offer the subtle A2HS hint.
-    if (isIosSafari()) setShowIosHint(true);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
+  const showInstall = canInstallNative;
+  const showIosHint = isIosSafari && !canInstallNative;
+  if (!showInstall && !showIosHint) return null;
 
   const dismiss = () => {
-    setShowInstall(false);
-    setShowIosHint(false);
+    setDismissed(true);
     try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
   };
 
   const install = async () => {
-    if (!deferred) return;
-    try {
-      await deferred.prompt();
-      await deferred.userChoice; // appinstalled fires separately → logs pwa_installed
-    } catch { /* user dismissed native dialog */ }
-    setDeferred(null);
-    setShowInstall(false);
+    await promptInstall(); // appinstalled fires separately → logs pwa_installed
   };
-
-  if (!showInstall && !showIosHint) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[60] px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pointer-events-none">

@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
+import InstallApp from "@/pages/InstallApp";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import AuthAnalyticsListener from "@/components/AuthAnalyticsListener";
@@ -309,6 +310,7 @@ function StorefrontShell() {
           <Route path="/articles" element={<ArticlesIndexPage />} />
           <Route path="/articles/:slug" element={<ArticleDetailPage />} />
           <Route path="/track-order" element={<TrackOrderPage />} />
+          <Route path="/install" element={<InstallApp />} />
           <Route path="/account/login" element={<AccountLoginPage />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/account/subscriptions" element={<RequireCustomerAuth><AccountSubscriptions /></RequireCustomerAuth>} />

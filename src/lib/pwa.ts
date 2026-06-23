@@ -68,9 +68,87 @@ export function listenForAppInstalled(): void {
   });
 }
 
+// ── Global install-prompt store ────────────────────────────────────────────
+// beforeinstallprompt fires ONCE, early, before most UI mounts. We capture it
+// at startup into a module-level store so any control mounted later (footer
+// button, /install page, banner) can read the SAME stashed event and trigger
+// the native prompt. Components subscribe; the snapshot is the deferred event.
+
+export type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform?: string }>;
+};
+
+const AVAIL_LOGGED_KEY = "bm-pwa-available-logged";
+let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let captureInitialised = false;
+const installListeners = new Set<() => void>();
+
+function emitInstallChange() {
+  installListeners.forEach((cb) => cb());
+}
+
+/** Capture beforeinstallprompt once (logs pwa_install_available once/session). */
+export function initInstallCapture(): void {
+  if (typeof window === "undefined" || captureInitialised) return;
+  captureInitialised = true;
+
+  window.addEventListener("beforeinstallprompt", (e: Event) => {
+    e.preventDefault(); // suppress Chrome's default mini-infobar; we present our own
+    deferredPrompt = e as BeforeInstallPromptEvent;
+    try {
+      if (!sessionStorage.getItem(AVAIL_LOGGED_KEY)) {
+        sessionStorage.setItem(AVAIL_LOGGED_KEY, "1");
+        trackEvent("pwa_install_available", { display_mode: "browser" });
+      }
+    } catch {
+      trackEvent("pwa_install_available", { display_mode: "browser" });
+    }
+    emitInstallChange();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    emitInstallChange();
+  });
+}
+
+/** Subscribe to install-availability changes (for useSyncExternalStore). */
+export function subscribeInstall(cb: () => void): () => void {
+  installListeners.add(cb);
+  return () => installListeners.delete(cb);
+}
+
+/** Current stashed beforeinstallprompt event (or null if not available). */
+export function getDeferredPrompt(): BeforeInstallPromptEvent | null {
+  return deferredPrompt;
+}
+
+/**
+ * Fire the native install prompt. Returns the user's choice, or "unavailable"
+ * when no prompt is stashed (e.g. iOS, or already installed). pwa_installed is
+ * logged separately by listenForAppInstalled on the appinstalled event.
+ */
+export async function fireInstallPrompt(): Promise<"accepted" | "dismissed" | "unavailable"> {
+  if (!deferredPrompt) return "unavailable";
+  const evt = deferredPrompt;
+  try {
+    await evt.prompt();
+    const choice = await evt.userChoice;
+    deferredPrompt = null; // a prompt can only be used once
+    emitInstallChange();
+    return choice.outcome;
+  } catch {
+    deferredPrompt = null;
+    emitInstallChange();
+    return "dismissed";
+  }
+}
+
 /** One-shot init: register SW, count standalone sessions, watch for install. */
 export function initPwa(): void {
   registerServiceWorker();
   trackPwaSession();
   listenForAppInstalled();
+  initInstallCapture();
 }
