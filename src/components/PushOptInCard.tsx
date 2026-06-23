@@ -3,6 +3,7 @@ import { useLocation, Link } from "react-router-dom";
 import { Bell, X, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { usePush } from "@/hooks/usePush";
+import { usePromptCopy } from "@/hooks/usePromptCopy";
 
 // Soft, dismissible push opt-in. Never calls requestPermission on load — it
 // only shows a small card; the browser permission prompt fires solely when the
@@ -12,6 +13,7 @@ const DISMISS_KEY = "bm-push-optin-dismissed";
 
 export default function PushOptInCard() {
   const { status, busy, subscribe, iosNeedsInstall, supported } = usePush();
+  const { optinTitle, optinBody, optinCta, optinDecline } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
     try { return localStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
@@ -65,19 +67,19 @@ export default function PushOptInCard() {
         ) : (
           <>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-forest leading-tight">Get notified?</p>
-              <p className="text-[11px] text-text-med leading-tight">Order updates, restocks and offers.</p>
+              <p className="text-sm font-bold text-forest leading-tight">{optinTitle}</p>
+              <p className="text-[11px] text-text-med leading-tight">{optinBody}</p>
             </div>
             <button
               onClick={allow}
               disabled={busy}
               className="shrink-0 inline-flex items-center rounded-full bg-forest text-white text-xs font-semibold px-3.5 h-9 disabled:opacity-60"
             >
-              {busy ? "…" : "Allow"}
+              {busy ? "…" : optinCta}
             </button>
           </>
         )}
-        <button onClick={dismiss} aria-label="Not now" className="shrink-0 p-1.5 rounded-full hover:bg-muted/40 text-text-med">
+        <button onClick={dismiss} aria-label={optinDecline} title={optinDecline} className="shrink-0 p-1.5 rounded-full hover:bg-muted/40 text-text-med">
           <X className="w-4 h-4" />
         </button>
       </div>

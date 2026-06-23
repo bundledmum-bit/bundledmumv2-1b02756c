@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Download } from "lucide-react";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { usePromptCopy } from "@/hooks/usePromptCopy";
 
 /**
  * Persistent storefront "Install App" entry point (matches the admin pattern):
@@ -10,6 +11,7 @@ import { usePwaInstall } from "@/hooks/usePwaInstall";
  */
 export default function PwaInstallButton({ className }: { className?: string }) {
   const { canInstallNative, promptInstall, isStandalone } = usePwaInstall();
+  const { installCta } = usePromptCopy();
   const navigate = useNavigate();
 
   if (isStandalone) return null;
@@ -31,7 +33,7 @@ export default function PwaInstallButton({ className }: { className?: string }) 
       className={className ?? "inline-flex items-center gap-1.5 text-sm font-semibold text-forest hover:text-coral transition-colors"}
     >
       <Download className="w-4 h-4" />
-      Install App
+      {installCta}
     </button>
   );
 }

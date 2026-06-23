@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Smartphone, Share, Plus, Download, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { usePromptCopy } from "@/hooks/usePromptCopy";
 
 /**
  * Storefront "Install BundledMum" page — mirrors the admin install screen
@@ -12,6 +13,7 @@ import { usePwaInstall } from "@/hooks/usePwaInstall";
  */
 export default function InstallApp() {
   const { canInstallNative, promptInstall, isStandalone, isIos } = usePwaInstall();
+  const { installTitle, installBody, installCta } = usePromptCopy();
   const [installed, setInstalled] = useState(false);
 
   useEffect(() => {
@@ -34,10 +36,8 @@ export default function InstallApp() {
         <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-3 bg-forest">
           <Smartphone className="w-8 h-8 text-white" />
         </div>
-        <h1 className="text-2xl font-bold text-forest">Install BundledMum</h1>
-        <p className="text-sm text-text-med mt-1">
-          Add BundledMum to your home screen — open it like an app, one tap, no browser bar.
-        </p>
+        <h1 className="text-2xl font-bold text-forest">{installTitle}</h1>
+        <p className="text-sm text-text-med mt-1">{installBody}</p>
       </header>
 
       {(installed || isStandalone) && (
@@ -58,7 +58,7 @@ export default function InstallApp() {
           className="w-full bg-forest hover:bg-forest/90 text-white font-semibold rounded-xl py-3 flex items-center justify-center gap-2 transition-colors"
         >
           <Download className="w-4 h-4" />
-          Install app
+          {installCta}
         </button>
       )}
 

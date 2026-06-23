@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Download, X, Share } from "lucide-react";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
+import { usePromptCopy } from "@/hooks/usePromptCopy";
 
 // A non-intrusive, dismissible "Install BundledMum" prompt that complements the
 // persistent "Install App" entry point (footer / PwaInstallButton + /install
@@ -15,6 +16,7 @@ const DISMISS_KEY = "bm-pwa-install-dismissed";
 
 export default function PwaInstallBanner() {
   const { canInstallNative, promptInstall, isStandalone, isIosSafari } = usePwaInstall();
+  const { installTitle, installBody, installCta } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
     try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
@@ -44,14 +46,14 @@ export default function PwaInstallBanner() {
         {showInstall ? (
           <>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-forest leading-tight">Install BundledMum</p>
-              <p className="text-[11px] text-text-med leading-tight">Add the app to your home screen for faster shopping.</p>
+              <p className="text-sm font-bold text-forest leading-tight">{installTitle}</p>
+              <p className="text-[11px] text-text-med leading-tight">{installBody}</p>
             </div>
             <button
               onClick={install}
               className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-forest text-white text-sm font-semibold px-3.5 h-9"
             >
-              <Download className="w-4 h-4" /> Install
+              <Download className="w-4 h-4" /> {installCta}
             </button>
           </>
         ) : (

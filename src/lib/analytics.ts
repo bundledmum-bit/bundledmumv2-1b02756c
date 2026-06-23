@@ -79,12 +79,15 @@ function parseUserAgent() {
   else if (/Firefox\//.test(ua)) browser = "firefox";
   else if (/Edg\//.test(ua)) browser = "edge";
 
+  // Order matters: iPhone UAs contain "like Mac OS X" and Android UAs contain
+  // "Linux", so iOS and Android must be checked BEFORE macOS/Linux/Windows or
+  // they get mislabelled. iPadOS 13+ reports a Mac UA but exposes multitouch.
   let os = "other";
-  if (/Windows/.test(ua)) os = "windows";
-  else if (/Mac OS/.test(ua)) os = "macos";
-  else if (/Linux/.test(ua)) os = "linux";
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && maxTouch > 1)) os = "ios";
   else if (/Android/.test(ua)) os = "android";
-  else if (/iPhone|iPad/.test(ua)) os = "ios";
+  else if (/Windows/.test(ua)) os = "windows";
+  else if (/Mac OS|Macintosh/.test(ua)) os = "macos";
+  else if (/Linux/.test(ua)) os = "linux";
 
   return { device_type, browser, os, user_agent: ua };
 }

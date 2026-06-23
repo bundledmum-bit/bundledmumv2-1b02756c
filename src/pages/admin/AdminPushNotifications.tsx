@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { PROMPT_COPY_DEFAULTS, coercePromptValue, type PromptCopyKey } from "@/hooks/usePromptCopy";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -232,6 +234,9 @@ export default function AdminPushNotifications() {
         </div>
       </SectionCard>
 
+      {/* Prompt copy */}
+      <PromptCopyEditor canManage={canManage} />
+
       {/* Automated triggers */}
       <SectionCard title="Automated triggers" desc="Templates support {{first_name}} and {{order_number}}.">
         {triggersQuery.isLoading ? (
@@ -287,6 +292,91 @@ export default function AdminPushNotifications() {
         )}
       </SectionCard>
     </div>
+  );
+}
+
+const COPY_FIELDS: { key: PromptCopyKey; label: string; type: "input" | "textarea" }[] = [
+  { key: "pwa_install_title", label: "Install prompt · Title", type: "input" },
+  { key: "pwa_install_body", label: "Install prompt · Body", type: "textarea" },
+  { key: "pwa_install_cta", label: "Install prompt · Button", type: "input" },
+  { key: "push_optin_title", label: "Push opt-in · Title", type: "input" },
+  { key: "push_optin_body", label: "Push opt-in · Body", type: "textarea" },
+  { key: "push_optin_cta", label: "Push opt-in · Allow button", type: "input" },
+  { key: "push_optin_decline", label: "Push opt-in · Decline label", type: "input" },
+];
+
+function PromptCopyEditor({ canManage }: { canManage: boolean }) {
+  const qc = useQueryClient();
+  const { data: settings, isLoading } = useSiteSettings();
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!settings || seeded) return;
+    const next: Record<string, string> = {};
+    for (const f of COPY_FIELDS) next[f.key] = coercePromptValue(settings[f.key]) || PROMPT_COPY_DEFAULTS[f.key];
+    setVals(next);
+    setSeeded(true);
+  }, [settings, seeded]);
+
+  const save = async () => {
+    if (!canManage) return;
+    setSaving(true);
+    try {
+      // Store each as a plain string (jsonb) — matches the existing settings format.
+      const rows = COPY_FIELDS.map((f) => ({ key: f.key, value: (vals[f.key] ?? "").trim() }));
+      const { error } = await (supabase as any).from("site_settings").upsert(rows, { onConflict: "key" });
+      if (error) throw error;
+      toast.success("Prompt copy saved.");
+      qc.invalidateQueries({ queryKey: ["site_settings"] });
+      qc.invalidateQueries({ queryKey: ["admin-settings"] });
+    } catch (e: any) {
+      toast.error(e?.message || "Could not save copy.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionCard title="Prompt Copy" desc="Text shown on the install prompt and the push opt-in card. Leave blank to use the default.">
+      {isLoading ? (
+        <Skeleton className="h-40 w-full rounded-lg" />
+      ) : (
+        <div className="space-y-3">
+          {COPY_FIELDS.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <label className="text-xs font-semibold text-text-med">{f.label}</label>
+              {f.type === "textarea" ? (
+                <Textarea
+                  value={vals[f.key] ?? ""}
+                  onChange={(e) => setVals((p) => ({ ...p, [f.key]: e.target.value }))}
+                  disabled={!canManage}
+                  rows={2}
+                  placeholder={PROMPT_COPY_DEFAULTS[f.key]}
+                  className="text-sm"
+                />
+              ) : (
+                <Input
+                  value={vals[f.key] ?? ""}
+                  onChange={(e) => setVals((p) => ({ ...p, [f.key]: e.target.value }))}
+                  disabled={!canManage}
+                  placeholder={PROMPT_COPY_DEFAULTS[f.key]}
+                  className="text-sm"
+                />
+              )}
+            </div>
+          ))}
+          {canManage && (
+            <div className="flex justify-end">
+              <Button onClick={save} disabled={saving} className="bg-forest hover:bg-forest/90">
+                {saving ? "Saving…" : "Save copy"}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </SectionCard>
   );
 }
 
