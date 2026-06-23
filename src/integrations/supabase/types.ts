@@ -25,6 +25,10 @@ export type Database = {
           phone: string | null
           recovered: boolean
           recovered_at: string | null
+          stage_sent: number
+          stage1_sent_at: string | null
+          stage2_sent_at: string | null
+          stage3_sent_at: string | null
           updated_at: string | null
         }
         Insert: {
@@ -37,6 +41,10 @@ export type Database = {
           phone?: string | null
           recovered?: boolean
           recovered_at?: string | null
+          stage_sent?: number
+          stage1_sent_at?: string | null
+          stage2_sent_at?: string | null
+          stage3_sent_at?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -49,6 +57,10 @@ export type Database = {
           phone?: string | null
           recovered?: boolean
           recovered_at?: string | null
+          stage_sent?: number
+          stage1_sent_at?: string | null
+          stage2_sent_at?: string | null
+          stage3_sent_at?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -5962,6 +5974,187 @@ export type Database = {
           },
         ]
       }
+      push_campaigns: {
+        Row: {
+          audience: string
+          body: string
+          created_at: string
+          created_by: string | null
+          delivered_count: number
+          failed_count: number
+          icon: string | null
+          id: string
+          image: string | null
+          opened_count: number
+          scheduled_for: string | null
+          sent_count: number
+          source: string
+          status: string
+          title: string
+          url: string | null
+        }
+        Insert: {
+          audience?: string
+          body: string
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          failed_count?: number
+          icon?: string | null
+          id?: string
+          image?: string | null
+          opened_count?: number
+          scheduled_for?: string | null
+          sent_count?: number
+          source?: string
+          status?: string
+          title: string
+          url?: string | null
+        }
+        Update: {
+          audience?: string
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          delivered_count?: number
+          failed_count?: number
+          icon?: string | null
+          id?: string
+          image?: string | null
+          opened_count?: number
+          scheduled_for?: string | null
+          sent_count?: number
+          source?: string
+          status?: string
+          title?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_events: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          endpoint: string | null
+          event_type: string
+          id: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          endpoint?: string | null
+          event_type: string
+          id?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          endpoint?: string | null
+          event_type?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "push_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          browser: string | null
+          created_at: string
+          customer_email: string | null
+          device_type: string | null
+          endpoint: string
+          id: string
+          is_active: boolean
+          last_sent_at: string | null
+          os: string | null
+          p256dh: string
+          session_id: string | null
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth: string
+          browser?: string | null
+          created_at?: string
+          customer_email?: string | null
+          device_type?: string | null
+          endpoint: string
+          id?: string
+          is_active?: boolean
+          last_sent_at?: string | null
+          os?: string | null
+          p256dh: string
+          session_id?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth?: string
+          browser?: string | null
+          created_at?: string
+          customer_email?: string | null
+          device_type?: string | null
+          endpoint?: string
+          id?: string
+          is_active?: boolean
+          last_sent_at?: string | null
+          os?: string | null
+          p256dh?: string
+          session_id?: string | null
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      push_triggers: {
+        Row: {
+          body_template: string
+          id: string
+          is_enabled: boolean
+          label: string
+          title_template: string
+          trigger_key: string
+          updated_at: string
+          url_template: string | null
+        }
+        Insert: {
+          body_template: string
+          id?: string
+          is_enabled?: boolean
+          label: string
+          title_template: string
+          trigger_key: string
+          updated_at?: string
+          url_template?: string | null
+        }
+        Update: {
+          body_template?: string
+          id?: string
+          is_enabled?: boolean
+          label?: string
+          title_template?: string
+          trigger_key?: string
+          updated_at?: string
+          url_template?: string | null
+        }
+        Relationships: []
+      }
       quiz_adjustment_rules: {
         Row: {
           action: string
@@ -9260,6 +9453,29 @@ export type Database = {
         }
         Relationships: []
       }
+      pwa_analytics_daily: {
+        Row: {
+          day: string | null
+          distinct_pwa_sessions: number | null
+          install_prompts_available: number | null
+          installs_captured: number | null
+          platform: string | null
+          pwa_sessions: number | null
+        }
+        Relationships: []
+      }
+      pwa_analytics_summary: {
+        Row: {
+          android_installs: number | null
+          installs_last_30d: number | null
+          ios_pwa_sessions: number | null
+          pwa_sessions_last_30d: number | null
+          total_install_prompts_available: number | null
+          total_installs_captured: number | null
+          total_pwa_sessions: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_order_for_picking: { Args: { p_order_id: string }; Returns: Json }
@@ -9427,6 +9643,14 @@ export type Database = {
           weighted_at_historical_rate: number
           weighted_pipeline_value: number
         }[]
+      }
+      fire_push_trigger: {
+        Args: {
+          p_customer_email: string
+          p_order_number?: string
+          p_trigger_key: string
+        }
+        Returns: undefined
       }
       generate_compliance_notifications: { Args: never; Returns: undefined }
       generate_employment_letter_data: {
@@ -9656,6 +9880,10 @@ export type Database = {
           subcategory: string
         }[]
       }
+      increment_push_campaign_counter: {
+        Args: { p_campaign_id: string; p_column: string }
+        Returns: undefined
+      }
       initiate_return:
         | {
             Args: {
@@ -9844,6 +10072,14 @@ export type Database = {
       }
       search_products: {
         Args: { p_category?: string; p_limit?: number; p_query: string }
+        Returns: Json
+      }
+      set_admin_active: {
+        Args: { p_active: boolean; p_admin_user_id: string }
+        Returns: Json
+      }
+      set_admin_role: {
+        Args: { p_admin_user_id: string; p_new_role: string }
         Returns: Json
       }
       set_order_item_cost: {
