@@ -72,6 +72,86 @@ const StatCard = ({ label, value, change, showChange }: { label: string; value: 
   </div>
 );
 
+// ── PWA / App installs ──────────────────────────────────────────────────────
+// Reads the pre-built pwa_analytics_summary / pwa_analytics_daily views. Installs
+// captured (Android/desktop) and PWA sessions (all platforms) are shown as
+// SEPARATE numbers — iOS installs can't be detected at install time, only later
+// as standalone PWA sessions.
+function PwaAnalyticsTab() {
+  const summaryQuery = useQuery({
+    queryKey: ["pwa-analytics-summary"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("pwa_analytics_summary").select("*").maybeSingle();
+      if (error) throw error;
+      return (data || {}) as Record<string, number>;
+    },
+  });
+  const dailyQuery = useQuery({
+    queryKey: ["pwa-analytics-daily"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("pwa_analytics_daily").select("*");
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  const s = summaryQuery.data || {};
+  const num = (k: string) => Number(s[k] || 0);
+
+  // Defensive daily trend: the view's column names aren't in the generated
+  // types, so detect a date-ish key + numeric series at runtime.
+  const daily = dailyQuery.data || [];
+  const dateKey = daily.length ? (Object.keys(daily[0]).find((k) => /day|date/i.test(k)) || "") : "";
+  const seriesKeys = daily.length
+    ? Object.keys(daily[0]).filter((k) => k !== dateKey && typeof daily[0][k] === "number")
+    : [];
+  const trend = dateKey
+    ? [...daily].sort((a, b) => String(a[dateKey]).localeCompare(String(b[dateKey])))
+    : [];
+
+  if (summaryQuery.isLoading) {
+    return <Skeleton className="h-40 w-full rounded-xl" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <ChartCard title="PWA / App Installs">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <StatCard label="Installs captured (Android/desktop)" value={num("total_installs_captured")} />
+          <StatCard label="PWA sessions (all platforms)" value={num("total_pwa_sessions")} />
+          <StatCard label="Install prompts shown" value={num("total_install_prompts_available")} />
+          <StatCard label="Installs · last 30d" value={num("installs_last_30d")} />
+          <StatCard label="PWA sessions · last 30d" value={num("pwa_sessions_last_30d")} />
+          <StatCard label="Android installs" value={num("android_installs")} />
+          <StatCard label="iOS PWA sessions" value={num("ios_pwa_sessions")} />
+        </div>
+        <p className="text-[11px] text-muted-foreground mt-3 leading-snug">
+          “Installs captured” and “PWA sessions” are separate counts. iOS installs appear as PWA
+          sessions, not install events (Apple limitation), so they’re counted when the app is opened
+          from the home screen rather than at install time.
+        </p>
+      </ChartCard>
+
+      {trend.length > 0 && seriesKeys.length > 0 && (
+        <ChartCard title="PWA activity over time">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={trend}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey={dateKey} tick={{ fontSize: 11 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              {seriesKeys.map((k, i) => (
+                <Line key={k} type="monotone" dataKey={k} stroke={COLORS[i % COLORS.length]} dot={false} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+    </div>
+  );
+}
+
 // Paginated & sortable table
 function DataTable({ columns, data, pageSize = 25, preserveOrder = false }: { columns: { key: string; label: string; format?: (v: any) => string }[]; data: any[]; pageSize?: number; preserveOrder?: boolean }) {
   const [page, setPage] = useState(0);
@@ -354,6 +434,7 @@ export default function AdminAnalytics() {
           <TabsTrigger value="acquisition">Acquisition</TabsTrigger>
           <TabsTrigger value="behaviour">Behaviour</TabsTrigger>
           <TabsTrigger value="audience">Audience</TabsTrigger>
+          <TabsTrigger value="pwa">App / PWA</TabsTrigger>
         </TabsList>
 
         {/* ═══ ORDERS REPORT ═══ */}
@@ -975,6 +1056,10 @@ export default function AdminAnalytics() {
               </div>
             );
           })()}
+        </TabsContent>
+
+        <TabsContent value="pwa">
+          <PwaAnalyticsTab />
         </TabsContent>
       </Tabs>
     </div>

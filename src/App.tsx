@@ -10,6 +10,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
+import PwaInstallBanner from "@/components/PwaInstallBanner";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
 import AuthAnalyticsListener from "@/components/AuthAnalyticsListener";
@@ -430,6 +431,7 @@ const App = () => (
               {/* Storefront routes (wrapped in Coming Soon redirect gate) */}
               <Route path="*" element={<ComingSoonGate><StorefrontShell /></ComingSoonGate>} />
             </Routes>
+            <PwaInstallBanner />
             </PageTracker>
           </BrowserRouter>
         </CartProvider>
