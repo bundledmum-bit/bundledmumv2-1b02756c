@@ -162,15 +162,32 @@ function AdminLayoutInner() {
     return tree;
   }, [dbNavItems]);
 
+  // The DB nav is the source of truth, but the Push Notifications page is a
+  // frontend addition (no admin_nav_items row / not yet is_built). Append a
+  // static entry when the user can see settings and the DB nav doesn't already
+  // include it, so it's discoverable without duplicating a seeded row.
+  const navTree = useMemo<NavTreeEntry[]>(() => {
+    const base = visibleNav;
+    const hasPush = base.some(
+      (e) => e.to === "/admin/push" || e.navKey === "push_notifications" || e.children.some((c) => c.to === "/admin/push"),
+    );
+    const canSeePush = isSuperAdmin || can("settings", "view") || can("settings", "manage");
+    if (hasPush || !canSeePush) return base;
+    return [
+      ...base,
+      { to: "/admin/push", label: "Push Notifications", icon: Bell, exact: false, navKey: "push_notifications", children: [] },
+    ];
+  }, [visibleNav, isSuperAdmin, can]);
+
   // Flat lookup for the search palette (parents + children).
   const flatNav = useMemo<NavEntry[]>(() => {
     const out: NavEntry[] = [];
-    for (const p of visibleNav) {
+    for (const p of navTree) {
       out.push({ to: p.to, label: p.label, icon: p.icon, exact: p.exact, navKey: p.navKey });
       for (const c of p.children) out.push(c);
     }
     return out;
-  }, [visibleNav]);
+  }, [navTree]);
 
   // Track which parents are user-expanded. A parent auto-expands when the
   // current route matches itself or any of its children.
@@ -299,7 +316,7 @@ function AdminLayoutInner() {
           <div className="px-4 mb-2">
             <span className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">Menu</span>
           </div>
-          {visibleNav.map(item => {
+          {navTree.map(item => {
             const isActiveSelf = item.exact
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to) && item.to !== "/admin";

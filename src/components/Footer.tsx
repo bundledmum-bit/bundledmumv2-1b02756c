@@ -3,6 +3,7 @@ import logoWhite from "@/assets/logos/footer-logo.png";
 import { Facebook, Instagram, MessageCircle } from "lucide-react";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import PwaInstallButton from "@/components/PwaInstallButton";
+import PushSubscribeToggle from "@/components/PushSubscribeToggle";
 
 export default function Footer() {
   const { data: settings } = useSiteSettings();
@@ -35,7 +36,10 @@ export default function Footer() {
                 </a>
               )}
             </div>
-            <PwaInstallButton className="mt-4 inline-flex items-center gap-1.5 text-primary-foreground/70 text-xs font-semibold hover:text-primary-foreground transition-colors" />
+            <div className="mt-4 flex flex-col gap-2">
+              <PwaInstallButton className="inline-flex items-center gap-1.5 text-primary-foreground/70 text-xs font-semibold hover:text-primary-foreground transition-colors" />
+              <PushSubscribeToggle className="inline-flex items-center gap-1.5 text-primary-foreground/70 text-xs font-semibold hover:text-primary-foreground transition-colors" />
+            </div>
           </div>
           {[
             { title: "Shop", links: [{ label: "Baby Items", to: "/shop?tab=baby" }, { label: "Mum Items", to: "/shop?tab=mum" }, { label: "Bundles & Kits", to: "/bundles" }, { label: "Gift Ideas", to: "/bundles?hospital=gift" }] },

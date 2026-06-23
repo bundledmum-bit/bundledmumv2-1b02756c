@@ -24,6 +24,49 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// ── Web push ────────────────────────────────────────────────────────────────
+// Render a notification from the payload sent by the send-push edge function.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (e) {
+    payload = { title: "BundledMum", body: event.data ? event.data.text() : "" };
+  }
+  const title = payload.title || "BundledMum";
+  const options = {
+    body: payload.body || "",
+    icon: payload.icon || "/bm-pwa-192.png",
+    badge: "/bm-pwa-192.png",
+    data: { url: payload.url || "/" },
+    tag: payload.tag || undefined,
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Focus an existing tab on the target URL, or open a new one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        // Reuse a same-origin tab if one is open.
+        if ("focus" in client) {
+          try {
+            client.navigate(url);
+            return client.focus();
+          } catch (e) {
+            return client.focus();
+          }
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+      return undefined;
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   // Only handle GET; let everything else (POST analytics inserts, etc.) pass.

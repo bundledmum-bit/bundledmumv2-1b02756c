@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
+import PushOptInCard from "@/components/PushOptInCard";
 import InstallApp from "@/pages/InstallApp";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import { AnalyticsRouteListener } from "@/components/AnalyticsRouteListener";
@@ -88,6 +89,7 @@ import AdminBlog from "@/pages/admin/AdminBlog";
 import AdminArticlesPage from "@/pages/admin/AdminArticlesPage";
 import AdminArticleEditorPage from "@/pages/admin/AdminArticleEditorPage";
 import AdminSettings from "@/pages/admin/AdminSettings";
+import AdminPushNotifications from "@/pages/admin/AdminPushNotifications";
 import AdminHospitalList from "@/pages/admin/AdminHospitalList";
 import AdminPermissions from "@/pages/admin/AdminPermissions";
 import AdminApprovals from "@/pages/admin/AdminApprovals";
@@ -367,6 +369,7 @@ const App = () => (
                 <Route path="articles/:id" element={<PermissionGate module="content" action="view"><AdminArticleEditorPage /></PermissionGate>} />
                 <Route path="settings" element={<PermissionGate module="content" action="edit_settings"><AdminSettings /></PermissionGate>} />
                 <Route path="settings/permissions" element={<AdminPermissions />} />
+                <Route path="push" element={<PermissionGate module="settings" action="view"><AdminPushNotifications /></PermissionGate>} />
                 <Route path="approvals" element={<AdminApprovals />} />
                 <Route path="referrals" element={<PermissionGate module="customers" action="view"><AdminReferrals /></PermissionGate>} />
                 <Route path="analytics" element={<PermissionGate module="analytics" action="view"><AdminAnalytics /></PermissionGate>} />
@@ -434,6 +437,7 @@ const App = () => (
               <Route path="*" element={<ComingSoonGate><StorefrontShell /></ComingSoonGate>} />
             </Routes>
             <PwaInstallBanner />
+            <PushOptInCard />
             </PageTracker>
           </BrowserRouter>
         </CartProvider>
