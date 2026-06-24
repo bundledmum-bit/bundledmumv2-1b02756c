@@ -852,6 +852,9 @@ function QuoteEditor({
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
+  // Quantity to insert with the next picked product. Defaults to 1 so picking a
+  // product adds qty 1 in one action; change it before picking to add more.
+  const [addQty, setAddQty] = useState(1);
   // Active section for newly-added items ('baby'|'mother'|'hospital'|null). Items
   // added fall under this until it's changed; null = ungrouped ("Other Items").
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -1331,9 +1334,12 @@ function QuoteEditor({
   const addItem = useMutation({
     mutationFn: async (item: {
       productId: string; productName: string; brandId: string; brandName: string;
-      price: number; size?: string | null;
+      price: number; size?: string | null; quantity?: number;
     }) => {
       if (!currentId) throw new Error("Save the quote first");
+      // line_total is recomputed by a DB trigger from quantity * unit_price, so
+      // we only pass quantity (clamped to a positive integer) here.
+      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
       const { error } = await (supabase as any).from("quote_items").insert({
         quote_id: currentId,
         product_id: item.productId,
@@ -1341,7 +1347,7 @@ function QuoteEditor({
         product_name: item.productName,
         brand_name: item.brandName,
         size: item.size || null,
-        quantity: 1,
+        quantity: qty,
         unit_price: item.price,
         display_order: items.length,
         section: activeSection || null, // 'baby'|'mother'|'hospital'|null — never any other value
@@ -1431,8 +1437,10 @@ function QuoteEditor({
       addItem.mutate({
         productId: row.productId, productName: row.productName,
         brandId: row.brandId, brandName: row.brandName, price: row.price,
+        quantity: addQty,
       });
       setProductSearch("");
+      setAddQty(1);
     }
   };
 
@@ -1445,9 +1453,11 @@ function QuoteEditor({
       brandName: pendingSizeProduct.brandName,
       price: pendingSizeProduct.price,
       size,
+      quantity: addQty,
     });
     setPendingSizeProduct(null);
     setProductSearch("");
+    setAddQty(1);
   };
 
   const update = (patch: Partial<QuoteForm>) => setForm((p) => ({ ...p, ...patch }));
@@ -1620,7 +1630,8 @@ function QuoteEditor({
                 Save the quote first to start adding products.
               </p>
             )}
-            <div className="relative">
+            <div className="flex gap-2">
+            <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={productSearch}
@@ -1644,6 +1655,24 @@ function QuoteEditor({
                   ))}
                 </div>
               )}
+            </div>
+            <div className="shrink-0">
+              <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-0.5 text-center">Qty</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={addQty}
+                onChange={(e) => {
+                  const n = Math.floor(Number(e.target.value));
+                  setAddQty(e.target.value === "" || !Number.isFinite(n) || n < 1 ? 1 : n);
+                }}
+                title="Quantity to add"
+                aria-label="Quantity to add"
+                className="w-16 border border-input rounded-lg px-2 py-2 text-sm bg-background text-center"
+                disabled={!canEdit || !currentId}
+              />
+            </div>
             </div>
 
             {/* Active section — newly-added items are filed under this. */}
