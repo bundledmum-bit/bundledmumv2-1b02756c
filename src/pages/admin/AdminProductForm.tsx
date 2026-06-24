@@ -16,6 +16,28 @@ interface Props {
   onSaved: () => void;
 }
 
+// ── Brand image helpers ──────────────────────────────────────────────────────
+// `images` (text[]) is the single source of truth for a brand's gallery and
+// `image_url` is always its first/primary entry. These keep the two in sync so
+// a deleted image can never reappear from a stale image_url.
+const brandGallery = (b: any): string[] => (Array.isArray(b.images) ? b.images.filter(Boolean) : []);
+// Seed on load: fold a divergent image_url into the gallery (primary first).
+const seedBrandImages = (b: any): any => {
+  const gallery = brandGallery(b);
+  const merged = b.image_url && !gallery.includes(b.image_url) ? [b.image_url, ...gallery] : gallery;
+  return { ...b, images: merged, image_url: merged[0] || null };
+};
+// Add/replace the primary image (used by the "Product Photo" uploader).
+const setBrandPrimary = (b: any, url: string): any => {
+  const next = [url, ...brandGallery(b).filter((u) => u !== url)];
+  return { ...b, images: next, image_url: next[0] || null };
+};
+// Remove an image and recompute the primary.
+const removeBrandImage = (b: any, url: string | null): any => {
+  const next = brandGallery(b).filter((u) => u !== url);
+  return { ...b, images: next, image_url: next[0] || null };
+};
+
 const CATEGORIES = ["baby", "mum", "both", "push-gift"];
 const PRIORITIES = ["essential", "recommended", "nice-to-have"];
 const BADGES = ["bestseller", "essential", "new", "popular", "mum-pick"];
@@ -54,7 +76,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
     is_out_of_stock: product?.is_out_of_stock ?? false,
   });
 
-  const [brands, setBrands] = useState<any[]>(product?.brands?.map((b: any) => ({ ...b })) || []);
+  const [brands, setBrands] = useState<any[]>(product?.brands?.map((b: any) => seedBrandImages({ ...b })) || []);
   const [sizes, setSizes] = useState<any[]>(product?.product_sizes?.map((s: any) => ({ ...s })) || []);
   const [colors, setColors] = useState<any[]>(product?.product_colors?.map((c: any) => ({ ...c })) || []);
   const [selectedTags, setSelectedTags] = useState<Record<string, string[]>>(() => {
@@ -166,8 +188,9 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
       // toggles. Existing rows are now UPDATEd in place by id, new
       // rows (no id) are INSERTed, removed rows are DELETEd by id.
       const buildBrandPayload = (b: any, i: number) => {
-        const existing: string[] = Array.isArray(b.images) ? b.images.filter(Boolean) : [];
-        const images = existing.length > 0 ? existing : (b.image_url ? [b.image_url] : []);
+        // Full overwrite of the gallery with EXACTLY the current UI state — never
+        // merge with the previously-stored array, so deletions actually persist.
+        const images = brandGallery(b);
         return {
           product_id: productId,
           brand_name: b.brand_name,
@@ -176,7 +199,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
           is_default_for_tier: b.is_default_for_tier || false,
           size_variant: b.size_variant || null,
           display_order: i,
-          image_url: b.image_url || images[0] || null,
+          image_url: images[0] || null,
           logo_url: b.logo_url || null,
           thumbnail_url: b.thumbnail_url || null,
           compare_at_price: b.compare_at_price || null,
@@ -509,8 +532,8 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                   </div>
                   <div className="flex gap-3">
                     <BrandImageUpload label="Product Photo" currentUrl={b.image_url} folder={`brands/${b.brand_name || 'brand'}`}
-                      onUploaded={url => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, image_url: url } : br))}
-                      onRemove={() => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, image_url: null } : br))} />
+                      onUploaded={url => setBrands(bs => bs.map((br, idx) => idx === i ? setBrandPrimary(br, url) : br))}
+                      onRemove={() => setBrands(bs => bs.map((br, idx) => idx === i ? removeBrandImage(br, br.image_url) : br))} />
                     <BrandImageUpload label="Brand Logo" currentUrl={b.logo_url} folder={`logos/${b.brand_name || 'brand'}`} bucket="brand-logos"
                       onUploaded={url => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, logo_url: url } : br))}
                       onRemove={() => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, logo_url: null } : br))} />
@@ -519,7 +542,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                   <BrandGalleryEditor
                     images={Array.isArray(b.images) ? b.images : []}
                     fallback={b.image_url}
-                    onChange={next => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, images: next } : br))}
+                    onChange={next => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, images: next, image_url: next[0] || null } : br))}
                   />
                 </div>
               ))}

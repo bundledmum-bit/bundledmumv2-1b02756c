@@ -20,12 +20,20 @@ export default function BrandImageUpload({ label, currentUrl, onUploaded, onRemo
     if (!file) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from(bucket).upload(path, file);
+      // Deterministic path (brands/{Brand}/{filename}) so re-uploading the same
+      // file overwrites the existing object instead of piling up duplicates.
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${folder}/${safeName}`;
+      const { error } = await supabase.storage.from(bucket).upload(path, file, {
+        upsert: true,            // overwrite same path instead of 409 "resource already exists"
+        cacheControl: "3600",
+        contentType: file.type || undefined,
+      });
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path);
-      onUploaded(publicUrl);
+      // An overwritten object keeps the SAME public URL, so the CDN/browser would
+      // serve the stale image — append a cache-bust param so the new one shows.
+      onUploaded(`${publicUrl}?v=${Date.now()}`);
       toast.success(`${label} uploaded`);
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
