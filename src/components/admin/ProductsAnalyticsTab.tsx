@@ -109,6 +109,7 @@ const Card = ({ title, children, caption }: { title: string; children: React.Rea
 type ColType = "text" | "num" | "pct" | "naira" | "days";
 const COLUMNS: { key: string; label: string; type: ColType }[] = [
   { key: "product_name", label: "Product", type: "text" },
+  { key: "brands_sold", label: "Brand", type: "text" },
   { key: "category", label: "Category", type: "text" },
   { key: "detail_views", label: "Views", type: "num" },
   { key: "add_to_cart", label: "Add to Cart", type: "num" },
@@ -148,7 +149,7 @@ export default function ProductsAnalyticsTab() {
   });
 
   // table state
-  const [sortKey, setSortKey] = useState("revenue");
+  const [sortKey, setSortKey] = useState("detail_views");
   const [sortAsc, setSortAsc] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -171,7 +172,7 @@ export default function ProductsAnalyticsTab() {
 
   const filteredSorted = useMemo(() => {
     const s = search.trim().toLowerCase();
-    const rows = s ? products.filter((p) => String(p.product_name || "").toLowerCase().includes(s) || String(p.category || "").toLowerCase().includes(s)) : products;
+    const rows = s ? products.filter((p) => String(p.product_name || "").toLowerCase().includes(s) || String(p.category || "").toLowerCase().includes(s) || String(p.brands_sold || "").toLowerCase().includes(s)) : products;
     const col = COLUMNS.find((c) => c.key === sortKey);
     const numeric = col && col.type !== "text";
     return [...rows].sort((a, b) => {
@@ -181,7 +182,11 @@ export default function ProductsAnalyticsTab() {
         const bn = bv == null ? -Infinity : Number(bv);
         return sortAsc ? an - bn : bn - an;
       }
-      const as = String(av || ""), bs = String(bv || "");
+      // Empty/null text (e.g. no brand sold → "—") always sorts last, both directions.
+      const as = String(av ?? "").trim(), bs = String(bv ?? "").trim();
+      if (!as && !bs) return 0;
+      if (!as) return 1;
+      if (!bs) return -1;
       return sortAsc ? as.localeCompare(bs) : bs.localeCompare(as);
     });
   }, [products, search, sortKey, sortAsc]);
