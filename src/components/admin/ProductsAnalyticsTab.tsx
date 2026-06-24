@@ -109,7 +109,6 @@ const Card = ({ title, children, caption }: { title: string; children: React.Rea
 type ColType = "text" | "num" | "pct" | "naira" | "days";
 const COLUMNS: { key: string; label: string; type: ColType }[] = [
   { key: "product_name", label: "Product", type: "text" },
-  { key: "brands_sold", label: "Brand", type: "text" },
   { key: "category", label: "Category", type: "text" },
   { key: "detail_views", label: "Views", type: "num" },
   { key: "add_to_cart", label: "Add to Cart", type: "num" },
@@ -124,6 +123,18 @@ const COLUMNS: { key: string; label: string; type: ColType }[] = [
   { key: "avg_days_to_repurchase", label: "Days to Repurchase", type: "days" },
   { key: "subscription_starts", label: "Sub Starts", type: "num" },
 ];
+
+const BRAND_COLUMNS: { key: string; label: string; type: ColType }[] = [
+  { key: "brand_name", label: "Brand", type: "text" },
+  { key: "orders", label: "Orders", type: "num" },
+  { key: "units", label: "Units", type: "num" },
+  { key: "revenue", label: "Revenue", type: "naira" },
+  { key: "asp", label: "ASP", type: "naira" },
+  { key: "attach_rate", label: "Attach %", type: "pct" },
+  { key: "avg_days_to_repurchase", label: "Days to Repurchase", type: "days" },
+  { key: "subscription_starts", label: "Sub Starts", type: "num" },
+];
+
 const renderCell = (type: ColType, v: unknown) => {
   if (type === "naira") return naira(v);
   if (type === "pct") return pct(v);
@@ -148,15 +159,11 @@ export default function ProductsAnalyticsTab() {
     },
   });
 
-  // table state
-  const [sortKey, setSortKey] = useState("detail_views");
-  const [sortAsc, setSortAsc] = useState(false);
-  const [search, setSearch] = useState("");
-
   const overview = data?.overview || {};
   const funnel = data?.funnel || {};
   const subs = data?.subscriptions || {};
   const products: any[] = data?.products || [];
+  const brands: any[] = data?.brands || [];
 
   const topRevenue = useMemo(
     () => [...products].sort((a, b) => (Number(b.revenue) || 0) - (Number(a.revenue) || 0)).slice(0, 10)
@@ -169,32 +176,6 @@ export default function ProductsAnalyticsTab() {
       .map((p) => ({ name: p.product_name, atc_rate: Number(p.atc_rate) || 0 })),
     [products],
   );
-
-  const filteredSorted = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    const rows = s ? products.filter((p) => String(p.product_name || "").toLowerCase().includes(s) || String(p.category || "").toLowerCase().includes(s) || String(p.brands_sold || "").toLowerCase().includes(s)) : products;
-    const col = COLUMNS.find((c) => c.key === sortKey);
-    const numeric = col && col.type !== "text";
-    return [...rows].sort((a, b) => {
-      const av = a[sortKey], bv = b[sortKey];
-      if (numeric) {
-        const an = av == null ? -Infinity : Number(av);
-        const bn = bv == null ? -Infinity : Number(bv);
-        return sortAsc ? an - bn : bn - an;
-      }
-      // Empty/null text (e.g. no brand sold → "—") always sorts last, both directions.
-      const as = String(av ?? "").trim(), bs = String(bv ?? "").trim();
-      if (!as && !bs) return 0;
-      if (!as) return 1;
-      if (!bs) return -1;
-      return sortAsc ? as.localeCompare(bs) : bs.localeCompare(as);
-    });
-  }, [products, search, sortKey, sortAsc]);
-
-  const toggleSort = (key: string) => {
-    if (sortKey === key) setSortAsc((p) => !p);
-    else { setSortKey(key); setSortAsc(false); }
-  };
 
   const rangeCaption = start
     ? `${fmtCaption(start, "")} → ${end ? fmtCaption(end, "now") : "now"} · Africa/Lagos`
@@ -312,54 +293,127 @@ export default function ProductsAnalyticsTab() {
 
           {/* 6) Product performance table */}
           <Card title="Product Performance">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search product or category" className="h-9 pl-8 text-sm" />
-              </div>
-              <span className="text-[11px] text-muted-foreground shrink-0">
-                {filteredSorted.length} of {products.length} products
-              </span>
-            </div>
-            {products.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No product data in this range.</p>
-            ) : (
-              <div className="overflow-x-auto max-h-[600px] overflow-y-auto rounded-lg border border-border">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
-                    <tr className="text-left">
-                      {COLUMNS.map((c) => (
-                        <th
-                          key={c.key}
-                          onClick={() => toggleSort(c.key)}
-                          className={`py-2 px-3 font-semibold whitespace-nowrap cursor-pointer select-none hover:text-forest ${c.type !== "text" ? "text-right" : ""}`}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {c.label}
-                            {sortKey === c.key && (sortAsc ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
-                          </span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredSorted.map((p, idx) => (
-                      <tr key={p.product_id || idx} className="border-t border-border/50 hover:bg-muted/20">
-                        {COLUMNS.map((c) => (
-                          <td key={c.key} className={`py-2 px-3 whitespace-nowrap ${c.type !== "text" ? "text-right tabular-nums" : "font-medium"} ${c.key === "revenue" ? "text-forest font-semibold" : ""}`}>
-                            {renderCell(c.type, p[c.key])}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <AnalyticsTable
+              columns={COLUMNS}
+              rows={products}
+              defaultSortKey="revenue"
+              searchKeys={["product_name", "category"]}
+              searchPlaceholder="Search product or category"
+              rowNoun="products"
+              emptyMessage="No product data in this range."
+              idField="product_id"
+            />
+          </Card>
+
+          {/* 7) Brand performance table */}
+          <Card title="Brand Performance" caption="Sales by brand actually sold. View/cart funnel metrics are product-level and not shown here.">
+            <AnalyticsTable
+              columns={BRAND_COLUMNS}
+              rows={brands}
+              defaultSortKey="revenue"
+              searchKeys={["brand_name"]}
+              searchPlaceholder="Search brand"
+              rowNoun="brands"
+              emptyMessage="No brand sales in this range."
+              idField="brand_name"
+            />
           </Card>
         </>
       )}
     </div>
+  );
+}
+
+// Reusable sortable/searchable analytics table (Product + Brand performance).
+function AnalyticsTable({
+  columns, rows, defaultSortKey, searchKeys, searchPlaceholder, rowNoun, emptyMessage, idField,
+}: {
+  columns: { key: string; label: string; type: ColType }[];
+  rows: any[];
+  defaultSortKey: string;
+  searchKeys: string[];
+  searchPlaceholder: string;
+  rowNoun: string;
+  emptyMessage: string;
+  idField?: string;
+}) {
+  const [sortKey, setSortKey] = useState(defaultSortKey);
+  const [sortAsc, setSortAsc] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredSorted = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    const rws = s ? rows.filter((r) => searchKeys.some((k) => String(r[k] ?? "").toLowerCase().includes(s))) : rows;
+    const col = columns.find((c) => c.key === sortKey);
+    const numeric = col && col.type !== "text";
+    return [...rws].sort((a, b) => {
+      const av = a[sortKey], bv = b[sortKey];
+      if (numeric) {
+        const an = av == null ? -Infinity : Number(av);
+        const bn = bv == null ? -Infinity : Number(bv);
+        return sortAsc ? an - bn : bn - an;
+      }
+      // Empty/null text always sorts last, both directions.
+      const as = String(av ?? "").trim(), bs = String(bv ?? "").trim();
+      if (!as && !bs) return 0;
+      if (!as) return 1;
+      if (!bs) return -1;
+      return sortAsc ? as.localeCompare(bs) : bs.localeCompare(as);
+    });
+  }, [rows, search, sortKey, sortAsc, columns, searchKeys]);
+
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortAsc((p) => !p);
+    else { setSortKey(key); setSortAsc(false); }
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={searchPlaceholder} className="h-9 pl-8 text-sm" />
+        </div>
+        <span className="text-[11px] text-muted-foreground shrink-0">
+          {filteredSorted.length} of {rows.length} {rowNoun}
+        </span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-8 text-center">{emptyMessage}</p>
+      ) : (
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto rounded-lg border border-border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
+              <tr className="text-left">
+                {columns.map((c) => (
+                  <th
+                    key={c.key}
+                    onClick={() => toggleSort(c.key)}
+                    className={`py-2 px-3 font-semibold whitespace-nowrap cursor-pointer select-none hover:text-forest ${c.type !== "text" ? "text-right" : ""}`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {c.label}
+                      {sortKey === c.key && (sortAsc ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSorted.map((r, idx) => (
+                <tr key={(idField && r[idField]) || idx} className="border-t border-border/50 hover:bg-muted/20">
+                  {columns.map((c) => (
+                    <td key={c.key} className={`py-2 px-3 whitespace-nowrap ${c.type !== "text" ? "text-right tabular-nums" : "font-medium"} ${c.key === "revenue" ? "text-forest font-semibold" : ""}`}>
+                      {renderCell(c.type, r[c.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
