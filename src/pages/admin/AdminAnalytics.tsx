@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import OrdersReportTab from "@/components/admin/OrdersReportTab";
+import ProductsAnalyticsTab from "@/components/admin/ProductsAnalyticsTab";
 import OrderLinesReportTab from "@/components/admin/OrderLinesReportTab";
 import CustomerReportTab from "@/components/admin/CustomerReportTab";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -601,60 +602,7 @@ export default function AdminAnalytics() {
 
         {/* ═══ TAB 4: PRODUCTS ═══ */}
         <TabsContent value="products">
-          {(() => {
-            const paidItems = items.filter((i: any) => (i.orders as any)?.payment_status === "paid");
-            const productRevenue: Record<string, { name: string; revenue: number; units: number }> = {};
-            paidItems.forEach((i: any) => {
-              if (!productRevenue[i.product_name]) productRevenue[i.product_name] = { name: i.product_name, revenue: 0, units: 0 };
-              productRevenue[i.product_name].revenue += i.line_total || 0;
-              productRevenue[i.product_name].units += i.quantity || 0;
-            });
-            const topByRevenue = Object.values(productRevenue).sort((a,b) => b.revenue - a.revenue).slice(0, 10);
-            const topByFreq = Object.values(productRevenue).sort((a,b) => b.units - a.units).slice(0, 10);
-            const tierCounts: Record<string, number> = {};
-            const hospitalCounts: Record<string, number> = {};
-            o.forEach((x: any) => {
-              const qa = x.quiz_answers as any;
-              if (qa?.budget_tier) tierCounts[qa.budget_tier] = (tierCounts[qa.budget_tier] || 0) + 1;
-              if (qa?.hospital_type) hospitalCounts[qa.hospital_type] = (hospitalCounts[qa.hospital_type] || 0) + 1;
-            });
-            return (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ChartCard title="Top 10 Products by Revenue" empty={topByRevenue.length === 0}>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={topByRevenue} layout="vertical">
-                      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `₦${(v/1000).toFixed(0)}k`} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
-                      <Tooltip formatter={(v: number) => fmt(v)} /><Bar dataKey="revenue" fill="#2D6A4F" radius={[0,4,4,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-                <ChartCard title="Top 10 Products by Frequency" empty={topByFreq.length === 0}>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={topByFreq} layout="vertical">
-                      <XAxis type="number" tick={{ fontSize: 10 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={120} />
-                      <Tooltip /><Bar dataKey="units" fill="#F4845F" radius={[0,4,4,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-                <ChartCard title="Tier Breakdown" empty={Object.keys(tierCounts).length === 0}>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart><Pie data={Object.entries(tierCounts).map(([name,value])=>({name,value}))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                      {Object.keys(tierCounts).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]} />)}
-                    </Pie><Tooltip /></PieChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-                <ChartCard title="Hospital Type" empty={Object.keys(hospitalCounts).length === 0}>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart><Pie data={Object.entries(hospitalCounts).map(([name,value])=>({name,value}))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                      {Object.keys(hospitalCounts).map((_,i)=><Cell key={i} fill={COLORS[i%COLORS.length]} />)}
-                    </Pie><Tooltip /></PieChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-              </div>
-            );
-          })()}
+          <ProductsAnalyticsTab />
         </TabsContent>
 
         {/* ═══ TAB 5: MARKETING ═══ */}
