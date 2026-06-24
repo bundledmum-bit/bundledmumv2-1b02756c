@@ -10,11 +10,12 @@ import { usePromptCopy } from "@/hooks/usePromptCopy";
  *  • Already installed (standalone) → renders nothing.
  */
 export default function PwaInstallButton({ className }: { className?: string }) {
-  const { canInstallNative, promptInstall, isStandalone } = usePwaInstall();
+  const { canInstallNative, promptInstall, installed } = usePwaInstall();
   const { installCta } = usePromptCopy();
   const navigate = useNavigate();
 
-  if (isStandalone) return null;
+  // Hide when already installed (standalone, remembered flag, or related app).
+  if (installed) return null;
 
   const onClick = async () => {
     if (canInstallNative) {

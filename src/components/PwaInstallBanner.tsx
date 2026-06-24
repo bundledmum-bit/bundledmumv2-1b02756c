@@ -16,16 +16,16 @@ import { promptWrapperClasses } from "@/lib/promptPosition";
 const DISMISS_KEY = "bm-pwa-install-dismissed";
 
 export default function PwaInstallBanner() {
-  const { canInstallNative, promptInstall, isStandalone, isIosSafari } = usePwaInstall();
+  const { canInstallNative, promptInstall, installed, isIosSafari } = usePwaInstall();
   const { installTitle, installBody, installCta, installPosition } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
     try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
   });
 
-  // Hide inside the installed app, once dismissed, on admin, and on the
-  // dedicated /install page (which already shows the full install UX).
-  if (isStandalone || dismissed || pathname.startsWith("/admin") || pathname.startsWith("/install")) return null;
+  // Hide when already installed (standalone, remembered flag, or related app),
+  // once dismissed, on admin, and on the dedicated /install page.
+  if (installed || dismissed || pathname.startsWith("/admin") || pathname.startsWith("/install")) return null;
 
   const showInstall = canInstallNative;
   const showIosHint = isIosSafari && !canInstallNative;

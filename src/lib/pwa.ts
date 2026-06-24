@@ -61,10 +61,41 @@ export function trackPwaSession(): void {
 }
 
 /** Log pwa_installed when the app is installed (Android / desktop Chrome). */
+// Remembered across tabs/visits on this browser profile (the only cross-tab
+// signal we have — standalone mode only proves install while running in-app).
+export const PWA_INSTALLED_KEY = "bm_pwa_installed";
+
+/** True if a previous appinstalled event was recorded on this browser profile. */
+export function isPwaInstalledFlag(): boolean {
+  try {
+    return localStorage.getItem(PWA_INSTALLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Best-effort: ask the browser whether a related installed app exists
+ * (Chromium-only API; absent on iOS/older browsers). Resolves quickly; never
+ * throws. Returns false when unsupported or on error.
+ */
+export async function hasRelatedInstalledApp(): Promise<boolean> {
+  try {
+    const nav = navigator as any;
+    if (typeof nav.getInstalledRelatedApps !== "function") return false;
+    const apps = await nav.getInstalledRelatedApps();
+    return Array.isArray(apps) && apps.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function listenForAppInstalled(): void {
   if (typeof window === "undefined") return;
   window.addEventListener("appinstalled", () => {
     trackEvent("pwa_installed", { source: "appinstalled" });
+    // Remember the install so later normal-tab visits suppress the prompts.
+    try { localStorage.setItem(PWA_INSTALLED_KEY, "1"); } catch { /* ignore */ }
   });
 }
 
