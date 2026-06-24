@@ -57,6 +57,10 @@ export interface Product {
   deliveryMethod: string[];
   genderRelevant: boolean;
   genderColors?: { boy: string; girl: string; neutral: string };
+  // Catalog colours from product_colors (e.g. Nylon Bag: Black/Red). Distinct
+  // from genderColors (boy/girl/neutral). A product "has colours" iff this is
+  // non-empty, which drives the data-driven colour-required rule.
+  colors?: { name: string; hex?: string | null }[];
   multiplesBump: number;
   scope: string[];
   firstBaby: boolean | null;
@@ -230,6 +234,11 @@ export function adaptProduct(row: any): Product {
     .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
     .map((s: any) => s.size_label);
 
+  const colors = ((row.product_colors || []) as any[])
+    .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0))
+    .map((c: any) => ({ name: c.color_name, hex: c.color_hex || null }))
+    .filter((c: any) => !!c.name);
+
   const genderColors = row.gender_colors as any;
   const contentsArr = row.contents
     ? row.contents.split(",").map((c: string) => c.trim()).filter(Boolean)
@@ -262,6 +271,7 @@ export function adaptProduct(row: any): Product {
     description: row.description || "",
     whyIncluded: row.why_included_variants || row.why_included || "",
     sizes: sizes.length ? sizes : undefined,
+    colors: colors.length ? colors : undefined,
     contents: contentsArr,
     material: row.material || undefined,
     allergenInfo: row.allergen_info || undefined,

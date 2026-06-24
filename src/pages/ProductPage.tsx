@@ -353,8 +353,17 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // pattern; without this, switching products would carry an irrelevant
   // size selection across).
   useEffect(() => { setSelectedSize(""); }, [product.id]);
+  // Catalogue colour (product_colors, e.g. Nylon Bag Black/Red) — separate from
+  // the gender selector. Never pre-selected; must be explicitly chosen.
+  const [selectedColorName, setSelectedColorName] = useState<string>("");
+  useEffect(() => { setSelectedColorName(""); }, [product.id]);
+  // Data-driven attribute requirements: require an attribute ONLY when the
+  // product actually has rows for it.
   const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
+  const requiresColorChoice = !!(product.colors && product.colors.length > 0);
   const sizeMissing = requiresSizeChoice && !selectedSize;
+  const colorMissing = requiresColorChoice && !selectedColorName;
+  const attrMissing = sizeMissing || colorMissing;
   const { cart, addToCart, updateQty } = useCart();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -368,7 +377,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     product.id,
     selectedBrand?.id,
     selectedSize || (hasVariants ? selectedVariant : selectedBrand?.sizeVariant) || null,
-    selectedGender || null,
+    selectedColorName || selectedGender || null,
     hasVariants ? selectedVariant : null,
   );
   const cartItem = cart.find(c => c._key === currentVariantKey);
@@ -411,8 +420,13 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
   const handleAdd = () => {
     if (isOutOfStock) return;
-    if (product.sizes && product.sizes.length > 0 && !selectedSize) {
+    // Data-driven: only require attributes the product actually has.
+    if (requiresSizeChoice && !selectedSize) {
       toast.error("Please select a size.");
+      return;
+    }
+    if (requiresColorChoice && !selectedColorName) {
+      toast.error("Please select a color.");
       return;
     }
     // Persist all three variant axes onto the cart item so the cart UI,
@@ -430,7 +444,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       price: selectedBrand.price,
       name: `${product.name} (${selectedBrand.label})`,
       selectedSize: sizeForCart,
-      selectedColor: selectedGender || null,
+      // Catalogue colour wins over the gender axis (they never co-occur today);
+      // both map to order_items.color.
+      selectedColor: selectedColorName || selectedGender || null,
       selectedVariant: hasVariants ? selectedVariant : null,
     });
     toast.success(`✓ ${product.name} added to cart`, {
@@ -1148,6 +1164,27 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             )}
 
+            {/* Colour Selector (product_colors) — no auto-pick. */}
+            {requiresColorChoice && (
+              <div className="mb-4">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  Select Color {colorMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {product.colors!.map(c => (
+                    <button key={c.name} onClick={() => setSelectedColorName(c.name)}
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body inline-flex items-center gap-1.5 ${selectedColorName === c.name ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}>
+                      {c.hex && <span className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: c.hex }} />}
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+                {colorMissing && (
+                  <p className="text-[11px] text-muted-foreground mt-2">Select a color to continue.</p>
+                )}
+              </div>
+            )}
+
             {isLowStock && (
               <p className="text-[#E65100] text-xs font-semibold mb-3">🔥 Only {selectedBrand.stockQuantity} left!</p>
             )}
@@ -1165,12 +1202,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
                   <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">View Cart →</Link>
                 </div>
-              ) : sizeMissing ? (
+              ) : attrMissing ? (
                 <button
                   disabled
                   className="rounded-pill bg-border px-8 py-3.5 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[48px] flex-1"
                 >
-                  Select a Size
+                  {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
                 </button>
               ) : (
                 <button onClick={handleAdd} className="rounded-pill px-8 py-3.5 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[48px] flex-1 justify-center" style={{ backgroundColor: "#F4845F" }}>

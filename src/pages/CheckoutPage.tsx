@@ -100,30 +100,45 @@ export default function CheckoutPage() {
   });
 
   const itemsMissingVariants = useMemo(() => {
-    if (!variantReq) return [] as Array<{ key: string; name: string; slug: string | null }>;
-    const out: Array<{ key: string; name: string; slug: string | null }> = [];
+    if (!variantReq) return [] as Array<{ key: string; name: string; slug: string | null; missing: string[] }>;
+    const out: Array<{ key: string; name: string; slug: string | null; missing: string[] }> = [];
+    const missingFor = (req: { requiresSize: boolean; requiresColor: boolean }, size: any, color: any) => {
+      const m: string[] = [];
+      if (req.requiresSize && !size) m.push("size");
+      if (req.requiresColor && !color) m.push("color");
+      return m;
+    };
     (cart || []).forEach((it: any) => {
       // Bundle row: check each child against its product's requirements.
       if (it?.bundleItems?.length) {
         it.bundleItems.forEach((bi: any) => {
           const req = variantReq.get(String(bi.productId));
           if (!req) return;
-          if ((req.requiresSize && !bi.size) || (req.requiresColor && !bi.color)) {
-            out.push({ key: `${it._key}-${bi.productId}`, name: `${bi.productName || "Item"} (in ${it.bundleName || it.name})`, slug: req.slug });
+          const missing = missingFor(req, bi.size, bi.color);
+          if (missing.length) {
+            out.push({ key: `${it._key}-${bi.productId}`, name: `${bi.productName || "Item"} (in ${it.bundleName || it.name})`, slug: req.slug, missing });
           }
         });
         return;
       }
       const req = variantReq.get(String(it.id));
       if (!req) return;
-      if ((req.requiresSize && !it.selectedSize) || (req.requiresColor && !it.selectedColor)) {
-        out.push({ key: it._key, name: it.name, slug: it.slug || req.slug });
+      const missing = missingFor(req, it.selectedSize, it.selectedColor);
+      if (missing.length) {
+        out.push({ key: it._key, name: it.name, slug: it.slug || req.slug, missing });
       }
     });
     return out;
   }, [cart, variantReq]);
 
   const hasMissingVariants = itemsMissingVariants.length > 0;
+  // Human label for the union of missing attributes across flagged items.
+  const missingAttrLabel = useMemo(() => {
+    const all = new Set<string>();
+    itemsMissingVariants.forEach((it) => it.missing.forEach((m) => all.add(m)));
+    const parts = ["size", "color"].filter((a) => all.has(a));
+    return parts.length === 0 ? "options" : parts.join(" & ");
+  }, [itemsMissingVariants]);
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
   const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
   const [giftWrap, setGiftWrap] = useState(false);
@@ -1299,7 +1314,7 @@ export default function CheckoutPage() {
     }
     // Client-side variant gate (server place-order v38 is the backstop).
     if (hasMissingVariants) {
-      toast.error("Please choose a size for the highlighted item(s) before checking out.");
+      toast.error(`Please choose ${missingAttrLabel} for the highlighted item(s) before checking out.`);
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -1548,7 +1563,7 @@ export default function CheckoutPage() {
         {hasMissingVariants && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
             <div className="font-semibold text-amber-900 mb-2">
-              Please choose a size for {itemsMissingVariants.length} item{itemsMissingVariants.length > 1 ? "s" : ""} before checking out
+              Please choose {missingAttrLabel} for {itemsMissingVariants.length} item{itemsMissingVariants.length > 1 ? "s" : ""} before checking out
             </div>
             <ul className="space-y-2">
               {itemsMissingVariants.map((it) => (
@@ -1559,7 +1574,7 @@ export default function CheckoutPage() {
                       to={`/products/${it.slug}`}
                       className="text-sm text-coral font-semibold underline-offset-2 hover:underline whitespace-nowrap flex-shrink-0"
                     >
-                      Pick size →
+                      Pick {it.missing.join(" & ")} →
                     </Link>
                   )}
                 </li>
