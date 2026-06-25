@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Search, Plus, Minus, X, Wallet, ShoppingBag } from "lucide-react";
+import { Search, Plus, Minus, X, Wallet, ShoppingBag, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey } from "@/lib/cart";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalListExitPopup";
+import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "@/lib/customItemsRequest";
 import ImageZoomModal from "@/components/ImageZoomModal";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -144,6 +145,11 @@ export default function HospitalListPage() {
   const [budgetAmount, setBudgetAmount] = useState<number | null>(null);
   const [budgetItems, setBudgetItems] = useState<HLBudgetItem[] | null>(null);
   const [budgetLoading, setBudgetLoading] = useState(false);
+  // Budget builder is collapsed by default behind an "I have a budget" toggle.
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  // Free-text "other items not listed" — persisted to localStorage so it
+  // survives the trip to checkout. Unpriced; never affects any total.
+  const [customItems, setCustomItems] = useState<string>(() => getCustomItemsRequest());
 
   // product_ids that have >1 in-stock brand — so "Other Options" only
   // appears where there's actually an alternative to choose.
@@ -384,12 +390,18 @@ export default function HospitalListPage() {
 
   // WhatsApp link: build wa.me from the configured number, else fall back
   // to the sitewide WHATSAPP_BASE.
-  const waText = encodeURIComponent("Hi BundledMum, I need help building my hospital bag.");
   // Digits-only number: configured number wins, else the sitewide fallback.
   const waDigits = cfg.whatsapp_number
     ? String(cfg.whatsapp_number).replace(/[^\d]/g, "")
     : WHATSAPP_BASE.replace(/[^\d]/g, "");
-  const waHref = `https://wa.me/${waDigits}?text=${waText}`;
+  // Optional "other items not listed" block, appended to both WhatsApp messages.
+  const customItemsBlock = (() => {
+    const lines = customItemsLines(customItems);
+    return lines.length
+      ? `\n\n*Other items I'd like (not listed):*\n${lines.map((l) => `- ${l}`).join("\n")}`
+      : "";
+  })();
+  const waHref = `https://wa.me/${waDigits}?text=${encodeURIComponent("Hi BundledMum, I need help building my hospital bag." + customItemsBlock)}`;
 
   // Exit-intent WhatsApp message: the current cart grouped by the page's
   // sections (skipping empties), or a generic purchase note when empty.
@@ -414,7 +426,7 @@ export default function HospitalListPage() {
     } else {
       message = "Hi BundledMum, I'd like to purchase my delivery items. Please help me get started.";
     }
-    return `https://wa.me/${waDigits}?text=${encodeURIComponent(message)}`;
+    return `https://wa.me/${waDigits}?text=${encodeURIComponent(message + customItemsBlock)}`;
   };
 
   const whatsappLink = cfg.whatsapp_enabled ? (
@@ -448,10 +460,20 @@ export default function HospitalListPage() {
         <p className="text-base text-text-med mt-1">{cfg.subheading}</p>
       </header>
 
-      {/* Budget builder (Change 1) */}
+      {/* Budget builder (Change 1) — collapsed behind an "I have a budget" toggle */}
       {cfg.budget_enabled && (
       <div className="px-4 max-w-screen-sm mx-auto">
-        <div className="bg-forest-light/60 border border-forest/20 rounded-card p-3">
+        <button
+          type="button"
+          onClick={() => setBudgetOpen((v) => !v)}
+          aria-expanded={budgetOpen}
+          className="w-full flex items-center justify-between gap-2 bg-forest-light/60 border border-forest/20 rounded-card px-4 py-3 text-sm font-semibold text-forest hover:bg-forest-light transition-colors"
+        >
+          <span className="inline-flex items-center gap-2"><Wallet className="w-4 h-4" /> I have a budget</span>
+          <ChevronDown className={`w-4 h-4 transition-transform ${budgetOpen ? "rotate-180" : ""}`} />
+        </button>
+        {budgetOpen && (
+        <div className="bg-forest-light/60 border border-forest/20 rounded-card p-3 mt-2">
           <label htmlFor="budget" className="block text-sm font-semibold text-forest mb-1.5">
             {cfg.budget_prompt_label}
           </label>
@@ -485,6 +507,7 @@ export default function HospitalListPage() {
             </button>
           </div>
         </div>
+        )}
       </div>
       )}
 
@@ -632,6 +655,23 @@ export default function HospitalListPage() {
             ))}
           </>
         )}
+
+        {/* Other items not listed — free text, unpriced; carried to checkout +
+            WhatsApp. Never affects any total. */}
+        <div className="bg-card border border-border rounded-card p-3" style={{ backgroundColor: "#FFF8F4" }}>
+          <label htmlFor="hl-custom-items" className="block text-sm font-semibold text-forest mb-1">
+            Need something not listed here?
+          </label>
+          <p className="text-xs text-text-med mb-2">Tell us what else you'd like and we'll source it for you — one item per line.</p>
+          <textarea
+            id="hl-custom-items"
+            value={customItems}
+            onChange={(e) => { setCustomItems(e.target.value); setCustomItemsRequest(e.target.value); }}
+            rows={3}
+            placeholder={"e.g.\nNursing pillow\nBaby nail clippers"}
+            className="w-full rounded-card border-2 border-border bg-card text-sm text-text-dark placeholder:text-text-light focus:border-forest focus:outline-none p-3 resize-y"
+          />
+        </div>
 
         {/* Keep-shopping: same global cart, so the hospital-bag items are
             preserved when the customer adds more from the storefront. */}

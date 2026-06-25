@@ -1107,6 +1107,12 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 <a href="/admin/customers" className="text-xs text-forest font-semibold hover:underline mt-1 inline-block">View full profile →</a>
               )}
             </div>
+            {o.custom_items_request && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                <div className="text-xs font-bold text-amber-900 uppercase tracking-wide">Customer's additional item request (needs pricing)</div>
+                <p className="text-sm text-amber-900 mt-1 whitespace-pre-line">{o.custom_items_request}</p>
+              </div>
+            )}
           </div>
         )}
 

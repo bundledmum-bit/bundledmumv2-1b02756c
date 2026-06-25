@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
+import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { toast } from "sonner";
@@ -140,6 +141,9 @@ export default function CheckoutPage() {
     return parts.length === 0 ? "options" : parts.join(" & ");
   }, [itemsMissingVariants]);
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
+  // Unpriced "other items not listed" note from /hospital-list. Forwarded onto
+  // the order as custom_items_request; NEVER added to any total.
+  const [customItemsRequest] = useState<string>(() => getCustomItemsRequest().trim());
   const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
   const [giftWrap, setGiftWrap] = useState(false);
   // Session-scoped: once the customer makes any explicit choice on the
@@ -1084,6 +1088,9 @@ export default function CheckoutPage() {
             delivery_city: form.city,
             delivery_state: form.state,
             delivery_notes: form.notes || null,
+            // Unpriced free-text request — admin quotes these separately. Does
+            // not affect subtotal/total/delivery and never becomes an order_item.
+            custom_items_request: customItemsRequest || null,
             subtotal: orderData.subtotal,
             delivery_fee: orderData.deliveryFee,
             service_fee: orderData.serviceFee,
@@ -1305,6 +1312,9 @@ export default function CheckoutPage() {
       } catch { /* never block confirmation */ }
       try { sessionStorage.removeItem(ABANDONED_CART_KEY); } catch { /* ignore */ }
     }
+    // The custom-items request is now persisted on the order; clear the carrier
+    // so it doesn't leak into a later, unrelated order.
+    clearCustomItemsRequest();
 
     const num = savedOrder.orderNumber || "";
     const shareToken = savedOrder.share_token || "";
@@ -1982,6 +1992,15 @@ export default function CheckoutPage() {
                   })}
                 </ul>
                 <Link to="/cart" className="inline-block mt-2 text-destructive font-semibold underline">Update your cart →</Link>
+              </div>
+            )}
+
+            {customItemsRequest && (
+              <div className="mb-3 rounded-xl border border-coral/40 bg-coral/10 p-3 text-[13px] text-foreground leading-relaxed">
+                <p className="font-semibold text-forest flex items-center gap-1.5">🛍️ About your extra items</p>
+                <p className="mt-1">
+                  You've added items we don't list yet. You can pay now for your listed items — our team will reach out with prices for the extra items, which you can pay for separately.
+                </p>
               </div>
             )}
 
