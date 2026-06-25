@@ -852,13 +852,12 @@ function QuoteEditor({
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
-  // Quantity to insert with the next picked product. Defaults to 1 so picking a
-  // product adds qty 1 in one action; change it before picking to add more.
-  const [addQty, setAddQty] = useState(1);
   // Active section for newly-added items ('baby'|'mother'|'hospital'|null). Items
   // added fall under this until it's changed; null = ungrouped ("Other Items").
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [pendingSizeProduct, setPendingSizeProduct] = useState<any | null>(null);
+  // The product being added — opens the per-item add dialog (size if any +
+  // quantity) before insertion. Quantity is prompted here, defaulting to 1.
+  const [pendingProduct, setPendingProduct] = useState<any | null>(null);
   const [itemSearchRaw, setItemSearchRaw] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -1431,33 +1430,26 @@ function QuoteEditor({
       return;
     }
     const sizes = (data || []) as Array<{ size_label: string; in_stock: boolean }>;
-    if (sizes.length > 0) {
-      setPendingSizeProduct({ ...row, sizes });
-    } else {
-      addItem.mutate({
-        productId: row.productId, productName: row.productName,
-        brandId: row.brandId, brandName: row.brandName, price: row.price,
-        quantity: addQty,
-      });
-      setProductSearch("");
-      setAddQty(1);
-    }
+    // Always open the per-item add dialog to prompt quantity (and size, when
+    // the product has sizes). Closing the search dropdown keeps focus clean.
+    setPendingProduct({ ...row, sizes });
+    setProductSearch("");
   };
 
-  const handleConfirmSize = (size: string) => {
-    if (!pendingSizeProduct) return;
+  // Confirm from the add dialog: insert with the chosen size (if any) and
+  // quantity. line_total is recomputed by the DB trigger — pass quantity only.
+  const handleConfirmAdd = (size: string | null, quantity: number) => {
+    if (!pendingProduct) return;
     addItem.mutate({
-      productId: pendingSizeProduct.productId,
-      productName: pendingSizeProduct.productName,
-      brandId: pendingSizeProduct.brandId,
-      brandName: pendingSizeProduct.brandName,
-      price: pendingSizeProduct.price,
-      size,
-      quantity: addQty,
+      productId: pendingProduct.productId,
+      productName: pendingProduct.productName,
+      brandId: pendingProduct.brandId,
+      brandName: pendingProduct.brandName,
+      price: pendingProduct.price,
+      size: size || undefined,
+      quantity,
     });
-    setPendingSizeProduct(null);
-    setProductSearch("");
-    setAddQty(1);
+    setPendingProduct(null);
   };
 
   const update = (patch: Partial<QuoteForm>) => setForm((p) => ({ ...p, ...patch }));
@@ -1630,8 +1622,7 @@ function QuoteEditor({
                 Save the quote first to start adding products.
               </p>
             )}
-            <div className="flex gap-2">
-            <div className="relative flex-1">
+            <div className="relative">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={productSearch}
@@ -1655,24 +1646,6 @@ function QuoteEditor({
                   ))}
                 </div>
               )}
-            </div>
-            <div className="shrink-0">
-              <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-0.5 text-center">Qty</label>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                value={addQty}
-                onChange={(e) => {
-                  const n = Math.floor(Number(e.target.value));
-                  setAddQty(e.target.value === "" || !Number.isFinite(n) || n < 1 ? 1 : n);
-                }}
-                title="Quantity to add"
-                aria-label="Quantity to add"
-                className="w-16 border border-input rounded-lg px-2 py-2 text-sm bg-background text-center"
-                disabled={!canEdit || !currentId}
-              />
-            </div>
             </div>
 
             {/* Active section — newly-added items are filed under this. */}
@@ -2196,29 +2169,12 @@ function QuoteEditor({
       )}
 
       {/* Size picker modal */}
-      {pendingSizeProduct && (
-        <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={() => setPendingSizeProduct(null)}>
-          <div className="bg-card border border-border rounded-xl max-w-md w-full p-4 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-sm">Select a size</h3>
-              <button onClick={() => setPendingSizeProduct(null)}><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-xs text-text-med mb-3">{pendingSizeProduct.productName} · {pendingSizeProduct.brandName}</p>
-            <div className="flex flex-wrap gap-2">
-              {pendingSizeProduct.sizes.map((s: any) => (
-                <button
-                  key={s.size_label}
-                  onClick={() => handleConfirmSize(s.size_label)}
-                  disabled={s.in_stock === false}
-                  className={`min-h-[40px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] ${s.in_stock === false ? "opacity-40 cursor-not-allowed line-through" : "border-border bg-card hover:border-forest"}`}
-                  title={s.in_stock === false ? "Out of stock" : ""}
-                >
-                  {s.size_label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+      {pendingProduct && (
+        <AddItemDialog
+          product={pendingProduct}
+          onCancel={() => setPendingProduct(null)}
+          onConfirm={handleConfirmAdd}
+        />
       )}
 
       {editorSend && currentId && (
@@ -2265,6 +2221,98 @@ interface LineItemCardProps {
   onUpdate: (patch: Record<string, any>) => void;
   onRemove: () => void;
   onZoom: (src: string) => void;
+}
+
+// Per-item add dialog: prompts size (when the product has sizes) + quantity in
+// one step. Quantity is focused and defaults to 1, so Enter adds qty 1 in one
+// action; the size (if required) must be chosen before Add enables.
+function AddItemDialog({ product, onCancel, onConfirm }: {
+  product: { productName: string; brandName: string; sizes: Array<{ size_label: string; in_stock: boolean }> };
+  onCancel: () => void;
+  onConfirm: (size: string | null, quantity: number) => void;
+}) {
+  const sizes = product.sizes || [];
+  const hasSizes = sizes.length > 0;
+  const [size, setSize] = useState<string | null>(null);
+  const [qty, setQty] = useState(1);
+  const qtyRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { qtyRef.current?.focus(); qtyRef.current?.select(); }, []);
+
+  const canAdd = !hasSizes || !!size;
+  const submit = () => {
+    if (!canAdd) return;
+    onConfirm(size, Math.max(1, Math.floor(qty || 1)));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onCancel}>
+      <div className="bg-card border border-border rounded-xl max-w-md w-full p-4 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-sm">Add to quote</h3>
+          <button onClick={onCancel} aria-label="Cancel"><X className="w-4 h-4" /></button>
+        </div>
+        <p className="text-xs text-text-med mb-3">{product.productName} · {product.brandName}</p>
+
+        {hasSizes && (
+          <div className="mb-4">
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Size</p>
+            <div className="flex flex-wrap gap-2">
+              {sizes.map((s) => (
+                <button
+                  key={s.size_label}
+                  type="button"
+                  onClick={() => setSize(s.size_label)}
+                  disabled={s.in_stock === false}
+                  className={`min-h-[40px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] ${
+                    s.in_stock === false ? "opacity-40 cursor-not-allowed line-through" :
+                    size === s.size_label ? "border-forest bg-forest text-primary-foreground" :
+                    "border-border bg-card hover:border-forest"
+                  }`}
+                  title={s.in_stock === false ? "Out of stock" : ""}
+                >
+                  {s.size_label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mb-4">
+          <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Quantity</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setQty((q) => Math.max(1, (q || 1) - 1))} disabled={qty <= 1}
+              aria-label="Decrease quantity"
+              className="w-9 h-9 rounded-lg border border-border flex items-center justify-center text-lg font-bold disabled:opacity-40 hover:bg-muted">−</button>
+            <input
+              ref={qtyRef}
+              type="number"
+              min={1}
+              step={1}
+              value={qty}
+              onChange={(e) => {
+                const n = Math.floor(Number(e.target.value));
+                setQty(e.target.value === "" || !Number.isFinite(n) || n < 1 ? 1 : n);
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
+              aria-label="Quantity"
+              className="w-16 border border-input rounded-lg px-2 py-2 text-sm bg-background text-center"
+            />
+            <button type="button" onClick={() => setQty((q) => (q || 1) + 1)}
+              aria-label="Increase quantity"
+              className="w-9 h-9 rounded-lg border border-border flex items-center justify-center text-lg font-bold hover:bg-muted">+</button>
+          </div>
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onCancel} className="px-3 py-2 text-xs font-semibold rounded-lg border border-border hover:bg-muted">Cancel</button>
+          <button type="button" onClick={submit} disabled={!canAdd}
+            className="px-4 py-2 text-xs font-semibold rounded-lg bg-forest text-primary-foreground hover:bg-forest-deep disabled:opacity-40">
+            {hasSizes && !size ? "Select a size" : "Add"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
