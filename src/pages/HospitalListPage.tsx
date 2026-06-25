@@ -4,6 +4,7 @@ import { Search, Plus, Minus, X, Wallet, ShoppingBag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey } from "@/lib/cart";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalListExitPopup";
 import ImageZoomModal from "@/components/ImageZoomModal";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -384,15 +385,44 @@ export default function HospitalListPage() {
   // WhatsApp link: build wa.me from the configured number, else fall back
   // to the sitewide WHATSAPP_BASE.
   const waText = encodeURIComponent("Hi BundledMum, I need help building my hospital bag.");
-  const waHref = cfg.whatsapp_number
-    ? `https://wa.me/${String(cfg.whatsapp_number).replace(/[^\d]/g, "")}?text=${waText}`
-    : `${WHATSAPP_BASE}?text=${waText}`;
+  // Digits-only number: configured number wins, else the sitewide fallback.
+  const waDigits = cfg.whatsapp_number
+    ? String(cfg.whatsapp_number).replace(/[^\d]/g, "")
+    : WHATSAPP_BASE.replace(/[^\d]/g, "");
+  const waHref = `https://wa.me/${waDigits}?text=${waText}`;
+
+  // Exit-intent WhatsApp message: the current cart grouped by the page's
+  // sections (skipping empties), or a generic purchase note when empty.
+  const buildExitWhatsAppHref = (): string => {
+    const bySection: Record<SectionKey, string[]> = { baby: [], mother: [], hospital: [] };
+    (cart || []).forEach((line: any) => {
+      const key = SECTION_KEY_OF({ section: line.section ?? null, category: line.category ?? null });
+      bySection[key].push(`- ${line.name} x${line.qty}`);
+    });
+    const hasItems = SECTION_KEY_ORDER.some((k) => bySection[k].length > 0);
+    let message: string;
+    if (hasItems) {
+      const parts: string[] = ["Hi BundledMum, I'd like to purchase these items from my hospital list:", ""];
+      SECTION_KEY_ORDER.forEach((k) => {
+        if (!bySection[k].length) return;
+        parts.push(`*${sectionHeading(k)}*`);
+        parts.push(...bySection[k]);
+        parts.push("");
+      });
+      parts.push("Please help me complete my order.");
+      message = parts.join("\n");
+    } else {
+      message = "Hi BundledMum, I'd like to purchase my delivery items. Please help me get started.";
+    }
+    return `https://wa.me/${waDigits}?text=${encodeURIComponent(message)}`;
+  };
 
   const whatsappLink = cfg.whatsapp_enabled ? (
     <a
       href={waHref}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={() => { try { sessionStorage.setItem(HL_WA_USED_KEY, "1"); } catch { /* ignore */ } }}
       className="text-center text-forest font-semibold underline underline-offset-4 py-2"
     >
       {cfg.whatsapp_label}
@@ -638,6 +668,9 @@ export default function HospitalListPage() {
         </div>
         <div className="h-[env(safe-area-inset-bottom)] bg-card" />
       </div>
+
+      {/* Exit-intent WhatsApp popup (once per session; respects whatsapp_enabled). */}
+      <HospitalListExitPopup enabled={!!cfg.whatsapp_enabled} getWhatsAppHref={buildExitWhatsAppHref} />
     </div>
   );
 }
