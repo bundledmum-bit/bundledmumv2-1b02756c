@@ -81,6 +81,10 @@ const DATE_PRESET_GROUPS: { label: string; presets: (keyof typeof DATE_PRESET_LA
 ];
 
 export const fmt = (n: number) => `₦${n.toLocaleString()}`;
+// Parse the customer's unlisted-items note into clean lines (strip leading
+// bullets, drop empties). Pure text — never priced, never an order_item.
+const parseUnlistedItems = (text: string | null | undefined): string[] =>
+  String(text || "").split(/\r?\n/).map((l) => l.replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean);
 const formatColor = (color: string | null | undefined): string => {
   if (!color) return "";
   if (color === "boy") return "Boy (Blue)";
@@ -1107,12 +1111,6 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 <a href="/admin/customers" className="text-xs text-forest font-semibold hover:underline mt-1 inline-block">View full profile →</a>
               )}
             </div>
-            {o.custom_items_request && (
-              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                <div className="text-xs font-bold text-amber-900 uppercase tracking-wide">Customer's additional item request (needs pricing)</div>
-                <p className="text-sm text-amber-900 mt-1 whitespace-pre-line">{o.custom_items_request}</p>
-              </div>
-            )}
           </div>
         )}
 
@@ -1166,6 +1164,30 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           </div>
         )}
       </div>
+
+      {/* Unlisted items the customer asked for — a follow-up note that needs
+          pricing. Standalone + ungated so it's always seen during fulfilment.
+          Purely a note: never an order_item, never in any total. */}
+      {(() => {
+        const unlisted = parseUnlistedItems(o.custom_items_request);
+        if (unlisted.length === 0) return null;
+        return (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-5 mb-4">
+            <h3 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+              🛍️ Unlisted items (needs pricing): {unlisted.length}
+            </h3>
+            <p className="text-[11px] text-amber-800/80 mt-0.5">Customer requested these; they aren't priced on this order. Follow up with a quote.</p>
+            <ul className="mt-2 space-y-1">
+              {unlisted.map((line, i) => (
+                <li key={i} className="text-sm text-amber-900 flex gap-2">
+                  <span className="text-amber-500">•</span>
+                  <span className="min-w-0 break-words">{line}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
 
       {/* Edit Order — additive add/remove/qty controls, locked once the
           order is shipped/delivered/cancelled. */}
@@ -2661,6 +2683,26 @@ function EditOrderCard({
   const [showItemsUpdatedConfirm, setShowItemsUpdatedConfirm] = useState(false);
   const [showItemsRemovedConfirm, setShowItemsRemovedConfirm] = useState(false);
 
+  // Unlisted-items note (custom_items_request). A pure text follow-up note —
+  // editing it NEVER touches order_items, subtotal, total, delivery, or COGS.
+  const [customItemsEdit, setCustomItemsEdit] = useState<string>(o.custom_items_request || "");
+  const [savingCustomItems, setSavingCustomItems] = useState(false);
+  const customItemsDirty = customItemsEdit !== (o.custom_items_request || "");
+  const saveCustomItems = async () => {
+    if (!canEdit) return;
+    setSavingCustomItems(true);
+    const value = customItemsEdit.trim();
+    // custom_items_request isn't in the generated types yet — cast to any.
+    const { error } = await (supabase as any)
+      .from("orders")
+      .update({ custom_items_request: value || null })
+      .eq("id", o.id);
+    setSavingCustomItems(false);
+    if (error) { toast.error(error.message); return; }
+    refreshOrder();
+    toast.success("Unlisted items saved");
+  };
+
   const refreshOrder = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
@@ -2815,6 +2857,32 @@ function EditOrderCard({
           {lastEditedLine && (
             <p className="text-[11px] text-text-light mt-1">{lastEditedLine}</p>
           )}
+        </div>
+
+        {/* Unlisted items (customer requested) — a note only; not priced here. */}
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <label htmlFor={`custom-items-${o.id}`} className="block text-xs font-bold text-amber-900 uppercase tracking-wide">
+            Unlisted items (customer requested, needs pricing)
+          </label>
+          <p className="text-[11px] text-amber-800/80 mt-0.5 mb-2">One item per line. These are not priced here; they're a follow-up note.</p>
+          <textarea
+            id={`custom-items-${o.id}`}
+            value={customItemsEdit}
+            onChange={(e) => setCustomItemsEdit(e.target.value)}
+            rows={3}
+            placeholder={"e.g.\nBlue nursing pillow\nRed clothes"}
+            className="w-full rounded-lg border border-amber-300 bg-card text-sm p-2 focus:outline-none focus:border-amber-500 resize-y"
+          />
+          <div className="flex justify-end mt-2">
+            <button
+              type="button"
+              onClick={saveCustomItems}
+              disabled={savingCustomItems || !customItemsDirty}
+              className="h-9 px-4 rounded-pill bg-forest text-primary-foreground text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
+            >
+              {savingCustomItems ? "Saving…" : "Save unlisted items"}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
