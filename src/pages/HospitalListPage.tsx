@@ -660,15 +660,17 @@ export default function HospitalListPage() {
             WhatsApp. Never affects any total. */}
         <div className="bg-card border border-border rounded-card p-3" style={{ backgroundColor: "#FFF8F4" }}>
           <label htmlFor="hl-custom-items" className="block text-sm font-semibold text-forest mb-1">
-            Need something not listed here?
+            Need something that's not listed?
           </label>
-          <p className="text-xs text-text-med mb-2">Tell us what else you'd like and we'll source it for you — one item per line.</p>
+          <p className="text-xs text-text-med mb-2">
+            Add any other items you'd like, and describe them in as much detail as you can (brand, size, quantity, anything helpful). Go ahead and check out, we'll receive your list and reach out with the prices for these extras.
+          </p>
           <textarea
             id="hl-custom-items"
             value={customItems}
             onChange={(e) => { setCustomItems(e.target.value); setCustomItemsRequest(e.target.value); }}
             rows={3}
-            placeholder={"e.g.\nNursing pillow\nBaby nail clippers"}
+            placeholder={"e.g.\nNursing pillow (medium)\nBaby nail clippers x2"}
             className="w-full rounded-card border-2 border-border bg-card text-sm text-text-dark placeholder:text-text-light focus:border-forest focus:outline-none p-3 resize-y"
           />
         </div>

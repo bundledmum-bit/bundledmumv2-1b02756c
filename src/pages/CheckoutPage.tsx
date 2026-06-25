@@ -1479,6 +1479,19 @@ export default function CheckoutPage() {
         </div>
       </div>
 
+      {/* Custom unlisted-items notice — directly under the hero, only when the
+          customer entered extra items on /hospital-list. Never affects totals. */}
+      {customItemsRequest && (
+        <div className="max-w-[1100px] mx-auto px-4 md:px-10 pt-4">
+          <div className="rounded-xl border border-coral/40 bg-coral/10 p-3 text-[13px] text-foreground leading-relaxed">
+            <p className="font-semibold text-forest flex items-center gap-1.5">🛍️ About your extra items</p>
+            <p className="mt-1">
+              You've added items we don't list yet. You can pay now for your listed items — our team will reach out with prices for the extra items, which you can pay for separately.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[1100px] mx-auto px-4 md:px-10 py-6 md:py-10">
         {/* Mobile order summary toggle */}
         <div className="lg:hidden mb-4">
@@ -1992,15 +2005,6 @@ export default function CheckoutPage() {
                   })}
                 </ul>
                 <Link to="/cart" className="inline-block mt-2 text-destructive font-semibold underline">Update your cart →</Link>
-              </div>
-            )}
-
-            {customItemsRequest && (
-              <div className="mb-3 rounded-xl border border-coral/40 bg-coral/10 p-3 text-[13px] text-foreground leading-relaxed">
-                <p className="font-semibold text-forest flex items-center gap-1.5">🛍️ About your extra items</p>
-                <p className="mt-1">
-                  You've added items we don't list yet. You can pay now for your listed items — our team will reach out with prices for the extra items, which you can pay for separately.
-                </p>
               </div>
             )}
 
