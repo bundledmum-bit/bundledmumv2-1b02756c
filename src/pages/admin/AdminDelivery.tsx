@@ -116,6 +116,7 @@ const EXPRESS_KEYS = [
   "express_order_sla_hours",
   "express_order_display_name",
   "express_order_acknowledgment_text",
+  "express_order_unavailable_text",
 ] as const;
 
 type ExpressKey = typeof EXPRESS_KEYS[number];
@@ -127,6 +128,7 @@ interface ExpressSettings {
   express_order_sla_hours: number;
   express_order_display_name: string;
   express_order_acknowledgment_text: string;
+  express_order_unavailable_text: string;
 }
 
 const DEFAULTS: ExpressSettings = {
@@ -137,6 +139,8 @@ const DEFAULTS: ExpressSettings = {
   express_order_display_name: "Express Order",
   express_order_acknowledgment_text:
     "I understand that my delivery fee will be quoted separately and paid via a second Paystack link. My order will not ship until delivery is paid.",
+  express_order_unavailable_text:
+    "Delivery to {area} is available via Express Order only.\nStandard couriers don't deliver to this area. Our team will send your delivery quote within {sla_hours} hours via WhatsApp after you complete payment.",
 };
 
 // site_settings.value is jsonb — could come back as native boolean /
@@ -196,6 +200,7 @@ function ExpressOrderSettingsCard() {
       express_order_sla_hours: asInt(map.express_order_sla_hours, DEFAULTS.express_order_sla_hours),
       express_order_display_name: asString(map.express_order_display_name, DEFAULTS.express_order_display_name),
       express_order_acknowledgment_text: asString(map.express_order_acknowledgment_text, DEFAULTS.express_order_acknowledgment_text),
+      express_order_unavailable_text: asString(map.express_order_unavailable_text, DEFAULTS.express_order_unavailable_text),
     });
   }, [rows]);
 
@@ -219,6 +224,11 @@ function ExpressOrderSettingsCard() {
       return null;
     },
     express_order_acknowledgment_text: (v) => {
+      const s = String(v || "").trim();
+      if (s.length < 10 || s.length > 1000) return "Must be 10–1000 characters";
+      return null;
+    },
+    express_order_unavailable_text: (v) => {
       const s = String(v || "").trim();
       if (s.length < 10 || s.length > 1000) return "Must be 10–1000 characters";
       return null;
@@ -367,6 +377,24 @@ function ExpressOrderSettingsCard() {
               onBlur={(e) => persist("express_order_acknowledgment_text", e.target.value.trim())}
               disabled={!canEdit}
               className={inputClass(!!errors.express_order_acknowledgment_text)}
+            />
+          </FieldRow>
+
+          {/* Row 7 — Express-only unavailable message */}
+          <FieldRow
+            label="Express Order unavailable message"
+            helper="Use {area} for the delivery location and {sla_hours} for the quote time. Line breaks are preserved."
+            error={errors.express_order_unavailable_text}
+            saved={justSaved.express_order_unavailable_text}
+          >
+            <textarea
+              rows={4}
+              maxLength={1000}
+              value={form.express_order_unavailable_text}
+              onChange={(e) => setForm((p) => ({ ...p, express_order_unavailable_text: e.target.value }))}
+              onBlur={(e) => persist("express_order_unavailable_text", e.target.value.trim())}
+              disabled={!canEdit}
+              className={inputClass(!!errors.express_order_unavailable_text)}
             />
           </FieldRow>
         </div>

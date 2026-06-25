@@ -362,6 +362,15 @@ export default function CheckoutPage() {
   const expressSlaHours    = asInt(settings?.express_order_sla_hours, 24);
   const expressDisplayName = asString(settings?.express_order_display_name, "Express Order");
   const expressAckText     = asString(settings?.express_order_acknowledgment_text, "");
+  // Admin-editable "Express Order only" unavailability message. {area} and
+  // {sla_hours} are substituted at render time; line breaks are preserved.
+  // Falls back to the canonical default text if the setting is empty.
+  const EXPRESS_UNAVAILABLE_DEFAULT =
+    "Delivery to {area} is available via Express Order only.\nStandard couriers don't deliver to this area. Our team will send your delivery quote within {sla_hours} hours via WhatsApp after you complete payment.";
+  const expressUnavailableSla = asInt(settings?.express_order_sla_hours, 3);
+  const expressUnavailableText = asString(settings?.express_order_unavailable_text, EXPRESS_UNAVAILABLE_DEFAULT)
+    .replace(/\{area\}/g, form.state || "this area")
+    .replace(/\{sla_hours\}/g, String(expressUnavailableSla));
   // Free Nationwide Delivery — admin-controlled threshold that waives the
   // courier-quote and reads custom marketing copy. Express still wins.
   // Free Nationwide delivery now reads from the admin-managed
@@ -1827,9 +1836,9 @@ export default function CheckoutPage() {
 
                 {stateRequiresExpress && (
                   <div className="mt-4 rounded-xl border border-blue-300 bg-blue-50 p-3 text-blue-900 text-[13px] leading-relaxed">
-                    <p className="font-semibold flex items-center gap-1.5">ℹ️ Delivery to {form.state} is available via {expressDisplayName} only.</p>
-                    <p className="mt-1">
-                      Standard couriers don't deliver to this area. Our team will send your delivery quote {slaLabel} via WhatsApp after you complete payment.
+                    <p className="flex gap-1.5">
+                      <span aria-hidden className="shrink-0">ℹ️</span>
+                      <span className="whitespace-pre-line">{expressUnavailableText}</span>
                     </p>
                   </div>
                 )}
