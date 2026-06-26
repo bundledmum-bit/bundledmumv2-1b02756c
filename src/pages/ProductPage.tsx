@@ -23,7 +23,8 @@ import BundleCustomiser from "@/components/BundleCustomiser";
 import MaternityBundleItemsEditor from "@/components/MaternityBundleItemsEditor";
 import type { MaternityBundleSnapshotItem } from "@/components/MaternityBundleItemsGrid";
 import { useBundleItemsEdit } from "@/hooks/useBundleItemsEdit";
-import { buildWhatsAppOrderHref } from "@/lib/whatsapp";
+import { buildWhatsAppOrderHref, buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
+import whatsappLogo from "@/assets/whatsapp-logo.svg";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -1218,6 +1219,28 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 <Share2 className="h-5 w-5 text-muted-foreground" />
               </button>
             </div>
+            )}
+
+            {/* Order via WhatsApp — MOBILE ONLY secondary option below Add to
+                Cart. Outlined WhatsApp-green; Add to Cart stays the dominant
+                coral CTA. Does not touch cart/variant logic. */}
+            {!raw?.is_gift_box && selectedBrand && (
+              <a
+                href={buildProductOrderWhatsAppHref({
+                  name: product.name,
+                  priceLabel: fmt(selectedBrand.price),
+                  url: `https://bundledmum.com/products/${product.slug || product.id}`,
+                  variant: [selectedBrand.label, selectedSize, selectedColorName].filter(Boolean).join(", "),
+                  whatsappNumber: settings?.whatsapp_number,
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => { try { trackEvent("product_whatsapp_order", { product_id: product.id, source: "pdp" }); } catch { /* fire-and-forget */ } }}
+                className="md:hidden -mt-3 mb-6 w-full flex items-center justify-center gap-2 rounded-pill border h-[42px] text-sm font-semibold"
+                style={{ borderColor: "#25D366", color: "#0F6E56" }}
+              >
+                <img src={whatsappLogo} alt="" className="h-5 w-5" /> Order via WhatsApp
+              </a>
             )}
 
             <SubscribeInline

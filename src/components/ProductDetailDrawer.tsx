@@ -12,6 +12,8 @@ import ProductImage from "@/components/ProductImage";
 import { trackEvent } from "@/lib/analytics";
 import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
+import whatsappLogo from "@/assets/whatsapp-logo.svg";
 
 interface Props {
   product: Product | null;
@@ -343,29 +345,51 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
               <p className="text-muted-foreground text-xs line-through">{fmt(selectedBrand.compareAtPrice!)}</p>
             )}
           </div>
-          {isOutOfStock ? (
-            <button className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]">
-              Out of Stock
-            </button>
-          ) : isInCart && cartItem ? (
-            <div className="flex items-center gap-3">
-              <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
-              <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">
-                Cart →
-              </Link>
-            </div>
-          ) : sizeMissing ? (
-            <button
-              disabled
-              className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
-            >
-              Select a Size
-            </button>
-          ) : (
-            <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
-              <ShoppingBag className="h-4 w-4" /> Add to Cart
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isOutOfStock ? (
+              <button className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]">
+                Out of Stock
+              </button>
+            ) : isInCart && cartItem ? (
+              <div className="flex items-center gap-3">
+                <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
+                <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">
+                  Cart →
+                </Link>
+              </div>
+            ) : sizeMissing ? (
+              <button
+                disabled
+                className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
+              >
+                Select a Size
+              </button>
+            ) : (
+              <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
+                <ShoppingBag className="h-4 w-4" /> Add to Cart
+              </button>
+            )}
+            {/* Order via WhatsApp — MOBILE ONLY compact round secondary option.
+                flex-shrink-0 so it never crowds the primary Add to Cart. */}
+            {!isOutOfStock && (
+              <a
+                href={buildProductOrderWhatsAppHref({
+                  name: product.name,
+                  priceLabel: fmt(selectedBrand.price),
+                  url: `https://bundledmum.com/products/${product.slug || product.id}`,
+                  variant: [selectedBrand.label, selectedSize].filter(Boolean).join(", "),
+                  whatsappNumber: settings?.whatsapp_number,
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Order via WhatsApp"
+                onClick={() => { try { trackEvent("product_whatsapp_order", { product_id: product.id, source: "slider" }); } catch { /* fire-and-forget */ } }}
+                className="md:hidden shrink-0 w-11 h-11 block active:scale-95 transition-transform"
+              >
+                <img src={whatsappLogo} alt="" className="w-full h-full" />
+              </a>
+            )}
+          </div>
         </div>
         {/* Secondary action — demoted from the in-body block button to a
             ghost link that still gives shoppers a way through to the

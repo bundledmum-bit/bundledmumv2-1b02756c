@@ -51,3 +51,24 @@ export function buildBundleWhatsAppMessage(args: BuildBundleMessageArgs): string
 export function buildWhatsAppOrderHref(args: BuildBundleMessageArgs): string {
   return `${WHATSAPP_BASE}?text=${encodeURIComponent(buildBundleWhatsAppMessage(args))}`;
 }
+
+/**
+ * wa.me link for a single product order (PDP + product quick-view). Number is
+ * digits-only — the passed whatsappNumber (e.g. site_settings.whatsapp_number)
+ * wins, else the sitewide WHATSAPP_BASE fallback. Message carries the product
+ * name (+ optional variant), formatted price, and the canonical product URL.
+ */
+export function buildProductOrderWhatsAppHref(opts: {
+  name: string;
+  priceLabel: string; // pre-formatted, e.g. "₦1,234"
+  url: string;
+  variant?: string | null;
+  whatsappNumber?: string | null;
+}): string {
+  const digits = opts.whatsappNumber && String(opts.whatsappNumber).trim()
+    ? String(opts.whatsappNumber).replace(/[^\d]/g, "")
+    : WHATSAPP_BASE.replace(/[^\d]/g, "");
+  const namePart = opts.variant && opts.variant.trim() ? `${opts.name} (${opts.variant.trim()})` : opts.name;
+  const message = `Hi BundledMum, I'd like to order this product: ${namePart} (${opts.priceLabel}). ${opts.url}`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
