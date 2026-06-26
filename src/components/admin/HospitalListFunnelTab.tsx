@@ -368,7 +368,7 @@ export default function HospitalListFunnelTab() {
                         <div className="text-xl font-bold mt-1" style={{ color: "#25D366" }}>{intf(interactions.whatsapp_clicks_total)}</div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">{pct(interactions.whatsapp_click_rate)} of visitors</div>
                         <div className="text-[11px] text-text-med mt-1">
-                          Main button: <span className="font-semibold">{intf(interactions.whatsapp_clicks_main_button)}</span> · Exit popup: <span className="font-semibold">{intf(interactions.whatsapp_clicks_exit_popup)}</span>
+                          Main button: <span className="font-semibold">{intf(interactions.whatsapp_clicks_main_button)}</span> · Exit popup: <span className="font-semibold">{intf(interactions.whatsapp_clicks_exit_popup)}</span> · Sticky button: <span className="font-semibold">{intf(interactions.whatsapp_clicks_sticky_button)}</span>
                         </div>
                       </div>
                       {/* Exit popup shown + recovery rate */}

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { Search, Plus, Minus, X, Wallet, ShoppingBag, ChevronDown } from "lucide-react";
+import { Search, Plus, Minus, X, Wallet, ShoppingBag, ChevronDown, MessageCircle } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey } from "@/lib/cart";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
@@ -116,6 +117,7 @@ const PLACEHOLDER = "/placeholder.svg";
 export default function HospitalListPage() {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty, getCartItem, totalItems, subtotal } = useCart();
+  const isMobile = useIsMobile();
   // Time-on-page + scroll-depth tracking (writes page_views metrics on exit).
   usePageEngagement("/hospital-list");
   // Fire custom-items focus only on the FIRST focus.
@@ -554,7 +556,7 @@ export default function HospitalListPage() {
       </div>
 
       {/* Product list — pad the bottom so the sticky bar never covers the last card */}
-      <main className="max-w-screen-sm mx-auto px-4 pt-4 pb-36 grid grid-cols-1 gap-4">
+      <main className="max-w-screen-sm mx-auto px-4 pt-4 pb-44 md:pb-36 grid grid-cols-1 gap-4">
         {inBudgetMode ? (
           // ── Budget-fitted results (flat) ────────────────────────────
           <div className="grid grid-cols-1 gap-4">
@@ -707,6 +709,25 @@ export default function HospitalListPage() {
 
       {/* Persistent sticky bottom bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
+        {/* Mobile-only secondary action: Order/Checkout via WhatsApp. Sits ABOVE
+            the primary "View Bag / Checkout" row so it never crowds or covers it.
+            Reuses buildExitWhatsAppHref() — same section-grouped message as the
+            (now desktop-only) exit popup. */}
+        {cfg.whatsapp_enabled && (
+          <div className="md:hidden max-w-screen-sm mx-auto px-4 pt-2.5">
+            <a
+              href={buildExitWhatsAppHref()}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackHL("whatsapp_click", { source: "sticky_button" })}
+              className="flex items-center justify-center gap-2 h-11 rounded-pill text-white font-semibold text-sm"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              <MessageCircle className="w-4 h-4" />
+              {totalItems > 0 ? "Checkout via WhatsApp" : "Order via WhatsApp"}
+            </a>
+          </div>
+        )}
         <div className="max-w-screen-sm mx-auto px-4 py-3 flex items-center gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-text-med leading-none">Your bag</p>
@@ -726,8 +747,11 @@ export default function HospitalListPage() {
         <div className="h-[env(safe-area-inset-bottom)] bg-card" />
       </div>
 
-      {/* Exit-intent WhatsApp popup (once per session; respects whatsapp_enabled). */}
-      <HospitalListExitPopup enabled={!!cfg.whatsapp_enabled} getWhatsAppHref={buildExitWhatsAppHref} />
+      {/* Exit-intent WhatsApp popup — DESKTOP ONLY (mobile uses the sticky
+          WhatsApp button above). Respects whatsapp_enabled. */}
+      {!isMobile && (
+        <HospitalListExitPopup enabled={!!cfg.whatsapp_enabled} getWhatsAppHref={buildExitWhatsAppHref} />
+      )}
     </div>
   );
 }
