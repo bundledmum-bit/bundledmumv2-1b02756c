@@ -75,6 +75,20 @@ const DEFAULT_FIELDS: AttrField[] = ["type", "size", "pack_count"];
 const fieldsFor = (subcat: string | null | undefined): AttrField[] =>
   (subcat && SUBCATEGORY_FIELDS[subcat]) || DEFAULT_FIELDS;
 
+// Vendors list (id + name) for the existing-vendor pickers. RLS may limit this
+// for the vendor account; an empty list just hides/empties the picker.
+function useVendorsPicker() {
+  return useQuery({
+    queryKey: ["vendors-picker"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("vendors").select("id, name").order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    staleTime: 60_000,
+  });
+}
+
 const fmtNaira = (n: number | null | undefined) =>
   n == null ? "—" : `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -583,20 +597,7 @@ function ProductEditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // Vendors list for assignment (id + name). RLS may limit this for the vendor
-  // account; an empty list just hides the picker.
-  const { data: vendors = [] } = useQuery({
-    queryKey: ["vendors-picker"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("vendors")
-        .select("id, name")
-        .order("name");
-      if (error) throw error;
-      return (data ?? []) as { id: string; name: string }[];
-    },
-    staleTime: 60_000,
-  });
+  const { data: vendors = [] } = useVendorsPicker();
 
   const [newImage, setNewImage] = useState("");
   const [savingImage, setSavingImage] = useState(false);
@@ -609,8 +610,15 @@ function ProductEditDialog({
   const [savingContact, setSavingContact] = useState(false);
 
   // Assign / reassign vendor (brands.vendor_id — direct for admin, approval for vendor).
+  const [assignMode, setAssignMode] = useState<"existing" | "new">("existing");
   const [assignId, setAssignId] = useState<string>("");
   const [savingAssign, setSavingAssign] = useState(false);
+
+  // Create-new-vendor inputs (assign mode "new").
+  const [nvName, setNvName] = useState("");
+  const [nvPhone, setNvPhone] = useState("");
+  const [nvWhatsapp, setNvWhatsapp] = useState("");
+  const [savingCreate, setSavingCreate] = useState(false);
 
   // Apply a brands patch: admin writes directly, vendor routes through approval.
   async function applyBrandPatch(patch: Record<string, any>, description: string): Promise<"pending" | "applied"> {
@@ -692,6 +700,57 @@ function ProductEditDialog({
     }
   }
 
+  // Create a new vendor and link it. Full admin: insert vendor + write
+  // brands.vendor_id directly. Vendor account: route through approval with the
+  // new_vendor_* keys (no vendors/brands write).
+  async function createAndAssignVendor() {
+    if (!nvName.trim()) { toast.error("Vendor name is required"); return; }
+    setSavingCreate(true);
+    try {
+      if (isVendorManager) {
+        if (!adminUserId) throw new Error("No admin profile");
+        const { error } = await supabase.from("admin_approval_requests").insert({
+          action: "update",
+          target_table: "brands",
+          target_record_id: row.brand_id,
+          proposed_data: {
+            new_vendor_name: nvName.trim(),
+            new_vendor_phone: nvPhone.trim() || null,
+            new_vendor_whatsapp: nvWhatsapp.trim() || null,
+          },
+          requested_by: adminUserId,
+          description: `Vendor create+assign: ${row.brand ?? ""} (${row.sku ?? ""})`,
+        } as any);
+        if (error) throw error;
+        toast.success("New vendor submitted for approval.");
+      } else {
+        const { data: created, error: cErr } = await supabase
+          .from("vendors")
+          .insert({
+            name: nvName.trim(),
+            phone: nvPhone.trim() || null,
+            whatsapp: nvWhatsapp.trim() || null,
+            is_active: true,
+          } as any)
+          .select("id")
+          .single();
+        if (cErr) throw cErr;
+        const { error: bErr } = await supabase
+          .from("brands")
+          .update({ vendor_id: (created as any).id })
+          .eq("id", row.brand_id);
+        if (bErr) throw bErr;
+        toast.success("Vendor created and assigned.");
+      }
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create vendor");
+    } finally {
+      setSavingCreate(false);
+    }
+  }
+
   const currentImg = row.stored_image_url || row.image_url;
 
   return (
@@ -755,31 +814,62 @@ function ProductEditDialog({
           <h3 className="text-sm font-semibold text-[#2D6A4F]">
             {row.vendor_id ? "Reassign vendor" : "Assign vendor"}
           </h3>
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <Label>Vendor</Label>
-              <Select value={assignId} onValueChange={setAssignId}>
-                <SelectTrigger><SelectValue placeholder="Select a vendor" /></SelectTrigger>
-                <SelectContent className="max-h-[260px]">
-                  {vendors.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button onClick={assignVendor} disabled={savingAssign || !assignId}
-              className="bg-[#2D6A4F] hover:bg-[#245840]">
-              {savingAssign && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-              {isVendorManager ? "Submit" : "Assign"}
-            </Button>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant={assignMode === "existing" ? "default" : "outline"}
+              className={assignMode === "existing" ? "bg-[#2D6A4F] hover:bg-[#245840]" : ""}
+              onClick={() => setAssignMode("existing")}>Existing vendor</Button>
+            <Button type="button" size="sm" variant={assignMode === "new" ? "default" : "outline"}
+              className={assignMode === "new" ? "bg-[#2D6A4F] hover:bg-[#245840]" : ""}
+              onClick={() => setAssignMode("new")}>New vendor</Button>
           </div>
+
+          {assignMode === "existing" ? (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label>Vendor</Label>
+                <Select value={assignId} onValueChange={setAssignId}>
+                  <SelectTrigger><SelectValue placeholder="Select a vendor" /></SelectTrigger>
+                  <SelectContent className="max-h-[260px]">
+                    {vendors.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={assignVendor} disabled={savingAssign || !assignId}
+                className="bg-[#2D6A4F] hover:bg-[#245840]">
+                {savingAssign && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                {isVendorManager ? "Submit" : "Assign"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <Label>Name *</Label>
+                  <Input value={nvName} onChange={(e) => setNvName(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input value={nvPhone} onChange={(e) => setNvPhone(e.target.value)} />
+                </div>
+                <div>
+                  <Label>WhatsApp</Label>
+                  <Input value={nvWhatsapp} onChange={(e) => setNvWhatsapp(e.target.value)} />
+                </div>
+              </div>
+              <Button onClick={createAndAssignVendor} disabled={savingCreate || !nvName.trim()}
+                className="bg-[#2D6A4F] hover:bg-[#245840]">
+                {savingCreate && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                {isVendorManager ? "Submit new vendor for approval" : "Create & assign vendor"}
+              </Button>
+            </div>
+          )}
           {isVendorManager && (
             <p className="text-[11px] text-muted-foreground">
-              Vendor assignment is submitted for super-admin approval.
+              Vendor assignment / creation is submitted for super-admin approval.
             </p>
           )}
-          {/* TODO: creating a brand-new vendor record from here (full admin via
-              vendors.insert) is not yet wired; assign an existing vendor for now. */}
         </section>
 
         <DialogFooter>
@@ -799,8 +889,14 @@ function AddProductDialog({
   onSubmitted: () => void;
 }) {
   const { data: products = [] } = useAllProducts();
+  const { data: vendors = [] } = useVendorsPicker();
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [productSearch, setProductSearch] = useState("");
+  const [vendorMode, setVendorMode] = useState<"none" | "existing" | "new">("none");
+  const [addVendorId, setAddVendorId] = useState<string>("");
+  const [addVName, setAddVName] = useState("");
+  const [addVPhone, setAddVPhone] = useState("");
+  const [addVWhatsapp, setAddVWhatsapp] = useState("");
   const [existingId, setExistingId] = useState<string | null>(null);
   const [existingName, setExistingName] = useState<string>("");
   const [existingSubcat, setExistingSubcat] = useState<string | null>(null);
@@ -854,6 +950,8 @@ function AddProductDialog({
     if (!imageUrl) { toast.error("Upload a product image"); return; }
     const wk = Number(weightKg);
     if (!Number.isFinite(wk) || wk <= 0) { toast.error("Enter the weight in kg"); return; }
+    if (vendorMode === "existing" && !addVendorId) { toast.error("Pick a vendor"); return; }
+    if (vendorMode === "new" && !addVName.trim()) { toast.error("Enter the new vendor's name"); return; }
 
     setSaving(true);
     try {
@@ -877,6 +975,12 @@ function AddProductDialog({
           pack_count: has("pack_count") && packCount ? Math.round(Number(packCount)) : null,
           color: has("color") ? (color.trim() || null) : null,
           weight_range_kg: has("weight_range_kg") ? (weightRange.trim() || null) : null,
+          // Vendor: existing → vendor_id; new → vendor_name/phone/whatsapp; none → all null.
+          // The approval promotion links the existing vendor or creates the new one.
+          vendor_id: vendorMode === "existing" ? addVendorId : null,
+          vendor_name: vendorMode === "new" ? addVName.trim() : null,
+          vendor_phone: vendorMode === "new" ? (addVPhone.trim() || null) : null,
+          vendor_whatsapp: vendorMode === "new" ? (addVWhatsapp.trim() || null) : null,
           submitted_by: adminUser.auth_user_id,
           submitted_by_email: adminUser.email,
           status: "pending",
@@ -1038,6 +1142,46 @@ function AddProductDialog({
           <div>
             <BrandImageUpload label="Product image *" currentUrl={imageUrl} onUploaded={setImageUrl}
               onRemove={() => setImageUrl("")} />
+          </div>
+
+          {/* Vendor — optional: none / existing / new */}
+          <div className="border-t pt-3">
+            <Label>Vendor</Label>
+            <div className="flex flex-wrap gap-2 mt-1 mb-2">
+              {(["none", "existing", "new"] as const).map((m) => (
+                <Button key={m} type="button" size="sm" variant={vendorMode === m ? "default" : "outline"}
+                  className={vendorMode === m ? "bg-[#2D6A4F] hover:bg-[#245840]" : ""}
+                  onClick={() => setVendorMode(m)}>
+                  {m === "none" ? "No vendor" : m === "existing" ? "Existing vendor" : "New vendor"}
+                </Button>
+              ))}
+            </div>
+            {vendorMode === "existing" && (
+              <Select value={addVendorId} onValueChange={setAddVendorId}>
+                <SelectTrigger><SelectValue placeholder="Select a vendor" /></SelectTrigger>
+                <SelectContent className="max-h-[260px]">
+                  {vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {vendorMode === "new" && (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <Label>Name *</Label>
+                  <Input value={addVName} onChange={(e) => setAddVName(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Phone</Label>
+                  <Input value={addVPhone} onChange={(e) => setAddVPhone(e.target.value)} />
+                </div>
+                <div>
+                  <Label>WhatsApp</Label>
+                  <Input value={addVWhatsapp} onChange={(e) => setAddVWhatsapp(e.target.value)} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
