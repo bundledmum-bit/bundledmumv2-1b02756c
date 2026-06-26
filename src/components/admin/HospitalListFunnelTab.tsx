@@ -143,6 +143,7 @@ export default function HospitalListFunnelTab() {
   const traffic: any[] = data?.traffic_sources || [];
   const devices: any[] = data?.device_split || [];
   const products: any[] = data?.top_added_products || [];
+  const interactions = data?.interactions || {};
 
   const visitors = Number(funnel.unique_visitors) || 0;
   const addedToCart = Number(funnel.added_to_cart_sessions) || 0;
@@ -350,6 +351,57 @@ export default function HospitalListFunnelTab() {
                     )}
                   </div>
                 </div>
+              </Card>
+
+              {/* Interactions — WhatsApp clicks + exit-popup recovery. Honest about not-yet-tracked. */}
+              <Card title="Interactions" caption="WhatsApp clicks and exit-popup recovery for this period. Tracked going forward.">
+                {!interactions.interaction_tracking_available ? (
+                  <p className="text-sm font-semibold text-text-med">
+                    Not yet tracked <span className="font-normal text-muted-foreground">(collecting from now on)</span>
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* WhatsApp clicks total */}
+                      <div className="rounded-lg border p-4" style={{ borderColor: "#25D366" }}>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">WhatsApp clicks</div>
+                        <div className="text-xl font-bold mt-1" style={{ color: "#25D366" }}>{intf(interactions.whatsapp_clicks_total)}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{pct(interactions.whatsapp_click_rate)} of visitors</div>
+                        <div className="text-[11px] text-text-med mt-1">
+                          Main button: <span className="font-semibold">{intf(interactions.whatsapp_clicks_main_button)}</span> · Exit popup: <span className="font-semibold">{intf(interactions.whatsapp_clicks_exit_popup)}</span>
+                        </div>
+                      </div>
+                      {/* Exit popup shown + recovery rate */}
+                      <div className="rounded-lg border border-border p-4">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Exit popup shown</div>
+                        <div className="text-xl font-bold text-forest mt-1">{intf(interactions.exit_popup_shown)}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{pct(interactions.exit_popup_whatsapp_rate)} clicked WhatsApp</div>
+                        <div className="text-[11px] text-text-med mt-1">{intf(interactions.exit_popup_sessions)} sessions</div>
+                      </div>
+                      {/* WhatsApp click sessions */}
+                      <div className="rounded-lg border border-border p-4">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">WhatsApp click sessions</div>
+                        <div className="text-xl font-bold text-forest mt-1">{intf(interactions.whatsapp_click_sessions)}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">unique sessions that clicked</div>
+                      </div>
+                    </div>
+
+                    {/* Smaller stat chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+                      {([
+                        { label: "Budget toggle opened", value: interactions.budget_toggle_opened },
+                        { label: "Budget applied", value: interactions.budget_applied },
+                        { label: "Add-more clicks", value: interactions.add_more_clicks },
+                        { label: "Custom items focused", value: interactions.custom_items_focused },
+                      ] as const).map((c) => (
+                        <div key={c.label} className="rounded-lg bg-muted/30 border border-border p-2 text-center">
+                          <div className="text-base font-bold text-forest">{intf(c.value)}</div>
+                          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{c.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </Card>
             </>
           )}
