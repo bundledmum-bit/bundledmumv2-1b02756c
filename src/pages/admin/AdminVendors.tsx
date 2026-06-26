@@ -1,481 +1,674 @@
-import { useEffect, useMemo, useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Plus, Pencil, Check, X, Loader2, ImageOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
-import { Plus, Edit2, Eye, Power } from "lucide-react";
-import VendorEditDialog from "@/components/admin/VendorEditDialog";
-import AdminVendorCard from "@/components/admin/AdminVendorCard";
-import BrandPickerDialog from "@/components/admin/BrandPickerDialog";
 import {
-  useVendors,
-  useVendorWithBrands,
-  useToggleVendorActive,
-  useLinkBrandToVendor,
-  useUnlinkBrandFromVendor,
-  useOrdersByVendor,
-  type Vendor,
-} from "@/hooks/useVendors";
-import { useVendorMetrics } from "@/hooks/useVendorMetrics";
-import { usePermissions } from "@/hooks/useAdminPermissionsContext";
-import VendorMetricsStrip, { type VendorFilter } from "@/components/admin/vendors/VendorMetricsStrip";
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
+import { useAllProducts } from "@/hooks/useSupabaseData";
 
-const fmtDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" });
+// The restricted "vendor manager" account. Anyone else reaching this page is a
+// full admin (super_admin / admin) with direct edit rights.
+const VENDOR_MANAGER_EMAIL = "vendorbundledmum@gmail.com";
+
+// Subcategory slugs to filter by. Labels come from the view's category_label
+// when present, else we title-case the slug.
+const SUBCATEGORIES = [
+  "accessories-misc", "baby-clothing", "baby-formula", "baby-skincare-toiletries",
+  "bath-grooming", "bedding-blankets", "beverages", "breastfeeding-equipment",
+  "bundles-kits", "diapers-nappies", "feeding-equipment", "health-safety-baby",
+  "laundry-household", "maternity-clothing", "maternity-postpartum",
+  "mum-gifts-keepsakes", "nursery-furniture", "toys-learning", "travel-gear",
+  "wipes-diaper-care",
+] as const;
+
+const titleCase = (slug: string) =>
+  slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
+const fmtNaira = (n: number | null | undefined) =>
+  n == null ? "—" : `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+const dash = (v: unknown) =>
+  v == null || v === "" ? "—" : String(v);
+
+interface VendorRow {
+  brand_id: string;
+  sku: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  subcategory: string | null;
+  category_label: string | null;
+  brand: string | null;
+  stored_image_url: string | null;
+  image_url: string | null;
+  size_stage: string | null;
+  weight_range_kg: string | null;
+  weight_kg: number | null;
+  pack_count: number | null;
+  diaper_type: string | null;
+  color: string | null;
+  gender_relevant: string | null;
+  cost_price: number | null;
+  retail_price: number | null;
+  cogs_percent: number | null;
+  in_stock: boolean | null;
+  is_active: boolean | null;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  vendor_phone: string | null;
+  vendor_whatsapp: string | null;
+  updated_at: string | null;
+}
 
 export default function AdminVendors() {
-  const [tab, setTab] = useState("all");
-  const [editing, setEditing] = useState<Vendor | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
-
-  const { data: vendors = [], isLoading } = useVendors(false);
+  const qc = useQueryClient();
   const { data: adminUser } = useAdminUser();
-  const isSuperAdmin = adminUser?.role === "super_admin";
-  const { can } = usePermissions();
-  // Write controls require the vendors module's write action (manage).
-  const canManage = can("vendors", "manage");
-  const toggleActive = useToggleVendorActive();
-  const { data: metrics, isLoading: metricsLoading, isError: metricsError, error: metricsErr } = useVendorMetrics();
-  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive" | "no_brands">("all");
+  const isVendorManager = adminUser?.email === VENDOR_MANAGER_EMAIL;
 
-  // Surface a single error toast if the metrics fetch fails — placeholder
-  // cards will still render so the page isn't broken.
-  useEffect(() => {
-    if (metricsError) {
-      toast.error("Couldn't load vendor metrics", {
-        description: (metricsErr as any)?.message || "Some counts are unavailable.",
+  const [subFilter, setSubFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+
+  // --- Rows from the vendor_manager_view (RLS lets both roles read all rows) ---
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["vendor-manager-view"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendor_manager_view" as any)
+        .select("*");
+      if (error) throw error;
+      return (data as unknown as VendorRow[]) ?? [];
+    },
+    staleTime: 30_000,
+  });
+
+  // --- Pending cost-price change requests, mapped by brand_id ---
+  const { data: pendingMap = {} } = useQuery({
+    queryKey: ["vendor-pending-cost-requests"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("admin_approval_requests")
+        .select("target_record_id, proposed_data, status")
+        .eq("target_table", "brands")
+        .eq("action", "update")
+        .eq("status", "pending");
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      for (const r of (data ?? []) as any[]) {
+        const cp = r.proposed_data?.cost_price;
+        if (r.target_record_id != null && cp != null) map[r.target_record_id] = Number(cp);
+      }
+      return map;
+    },
+    staleTime: 15_000,
+  });
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows
+      .filter((r) => subFilter === "all" || r.subcategory === subFilter)
+      .filter((r) => {
+        if (!q) return true;
+        return (
+          (r.brand ?? "").toLowerCase().includes(q) ||
+          (r.product_name ?? "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const p = (a.product_name ?? "").localeCompare(b.product_name ?? "");
+        return p !== 0 ? p : (a.brand ?? "").localeCompare(b.brand ?? "");
       });
-    }
-  }, [metricsError, metricsErr]);
+  }, [rows, subFilter, search]);
 
-  const handleFilterChange = (filter: VendorFilter) => {
-    setActiveFilter(filter);
-    setTab("all");
-  };
+  const refreshRows = () => qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
+  const refreshPending = () => qc.invalidateQueries({ queryKey: ["vendor-pending-cost-requests"] });
 
-  const filteredVendors = useMemo(() => {
-    if (activeFilter === "all") return vendors;
-    if (activeFilter === "active") return vendors.filter(v => v.is_active);
-    if (activeFilter === "inactive") return vendors.filter(v => !v.is_active);
-    if (activeFilter === "no_brands") {
-      const noBrandsSet = new Set(metrics?.vendorsNoBrandsIds || []);
-      return vendors.filter(v => noBrandsSet.has(v.id));
-    }
-    return vendors;
-  }, [vendors, activeFilter, metrics?.vendorsNoBrandsIds]);
-
-  const filterLabel: Record<typeof activeFilter, string> = {
-    all: "All vendors",
-    active: "Active vendors only",
-    inactive: "Inactive vendors only",
-    no_brands: "Vendors with no linked brands",
-  };
-
-  function openAdd() {
-    setEditing(null);
-    setEditorOpen(true);
-  }
-  function openEdit(v: Vendor) {
-    setEditing(v);
-    setEditorOpen(true);
-  }
-  function viewProducts(v: Vendor) {
-    setSelectedVendorId(v.id);
-    setTab("products");
+  // No admin record → don't render the editable surface.
+  if (adminUser === null) {
+    return <div className="p-6 text-sm text-muted-foreground">Not authorized.</div>;
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Vendors</h1>
-          <p className="text-sm text-muted-foreground">Suppliers, brand assignments, and orders per vendor.</p>
+          <h1 className="text-xl font-bold text-[#2D6A4F]">Vendor Products</h1>
+          <p className="text-sm text-muted-foreground">
+            {isVendorManager
+              ? "Cost-price changes and new products are submitted for super-admin approval."
+              : "Full admin — cost-price edits apply immediately."}
+          </p>
         </div>
-        {canManage && (
-          <Button onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-1.5" /> {isSuperAdmin ? "Add Vendor" : "Request to add Vendor"}
-          </Button>
-        )}
+        <Button onClick={() => setAddOpen(true)} className="bg-[#2D6A4F] hover:bg-[#245840]">
+          <Plus className="w-4 h-4 mr-1" /> Add Product
+        </Button>
       </div>
 
-      <VendorMetricsStrip
-        metrics={metrics}
-        isLoading={metricsLoading}
-        isError={metricsError}
-        onFilterChange={handleFilterChange}
-      />
-
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="all">All Vendors</TabsTrigger>
-          <TabsTrigger value="products">Products per Vendor</TabsTrigger>
-          <TabsTrigger value="orders">Orders per Vendor</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="all" className="mt-4">
-          {activeFilter !== "all" && (
-            <div className="flex items-center gap-2 mb-2 text-xs">
-              <span className="text-muted-foreground">Filter:</span>
-              <span className="px-2 py-0.5 rounded bg-forest/10 text-forest font-semibold">
-                {filterLabel[activeFilter]} ({filteredVendors.length})
-              </span>
-              <button
-                onClick={() => setActiveFilter("all")}
-                className="text-muted-foreground hover:text-foreground underline"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-          {isLoading ? (
-            <>
-              <div className="hidden md:block space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-md" />)}</div>
-              <div className="md:hidden flex flex-col gap-3">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[132px] w-full rounded-lg" />)}</div>
-            </>
-          ) : filteredVendors.length === 0 ? (
-            <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-              {activeFilter === "all"
-                ? `No vendors yet. Click "Add Vendor" to create the first one.`
-                : `No vendors match this filter.`}
-            </div>
-          ) : (
-            <>
-            {/* Desktop (md+) — existing table, unchanged. */}
-            <div className="hidden md:block overflow-x-auto border border-border rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/30 sticky top-0 z-10">
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="p-2">Name</th>
-                    <th className="p-2">Contact Person</th>
-                    <th className="p-2">Phone</th>
-                    <th className="p-2">Location</th>
-                    <th className="p-2">Payment Terms</th>
-                    <th className="p-2 text-center">Products</th>
-                    <th className="p-2 text-center">Status</th>
-                    <th className="p-2 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredVendors.map(v => (
-                    <VendorRow
-                      key={v.id}
-                      vendor={v}
-                      canManage={canManage}
-                      onEdit={() => openEdit(v)}
-                      onViewProducts={() => viewProducts(v)}
-                      onToggleActive={() => toggleActive.mutate(
-                        { id: v.id, isActive: !v.is_active },
-                        {
-                          onSuccess: () => toast.success(v.is_active ? "Vendor deactivated" : "Vendor activated"),
-                        },
-                      )}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile (<md) — card list. Consumes the SAME filteredVendors
-                array + the SAME row handlers as the table. */}
-            <div className="md:hidden flex flex-col gap-3">
-              {filteredVendors.map(v => (
-                <AdminVendorCard
-                  key={v.id}
-                  vendor={v}
-                  canManage={canManage}
-                  onEdit={() => openEdit(v)}
-                  onViewProducts={() => viewProducts(v)}
-                  onToggleActive={() => toggleActive.mutate(
-                    { id: v.id, isActive: !v.is_active },
-                    { onSuccess: () => toast.success(v.is_active ? "Vendor deactivated" : "Vendor activated") },
-                  )}
-                />
-              ))}
-            </div>
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="products" className="mt-4">
-          <ProductsPerVendorTab
-            vendors={vendors}
-            selectedVendorId={selectedVendorId}
-            setSelectedVendorId={setSelectedVendorId}
-            canManage={canManage}
-          />
-        </TabsContent>
-
-        <TabsContent value="orders" className="mt-4">
-          <OrdersPerVendorTab
-            vendors={vendors}
-            selectedVendorId={selectedVendorId}
-            setSelectedVendorId={setSelectedVendorId}
-          />
-        </TabsContent>
-      </Tabs>
-
-      <VendorEditDialog open={editorOpen} onOpenChange={setEditorOpen} vendor={editing} />
-    </div>
-  );
-}
-
-function VendorRow({
-  vendor,
-  canManage,
-  onEdit,
-  onViewProducts,
-  onToggleActive,
-}: {
-  vendor: Vendor;
-  canManage: boolean;
-  onEdit: () => void;
-  onViewProducts: () => void;
-  onToggleActive: () => void;
-}) {
-  const { data } = useVendorWithBrands(vendor.id);
-  const productsCount = (data as any)?.brands?.length ?? null;
-
-  return (
-    <tr className="border-t border-border hover:bg-muted/30">
-      <td className="p-2 font-semibold">{vendor.name}</td>
-      <td className="p-2">{vendor.contact_person || "—"}</td>
-      <td className="p-2">{vendor.phone || "—"}</td>
-      <td className="p-2">{vendor.location || "—"}</td>
-      <td className="p-2">{vendor.payment_terms || "—"}</td>
-      <td className="p-2 text-center">{productsCount ?? "…"}</td>
-      <td className="p-2 text-center">
-        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${vendor.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"}`}>
-          {vendor.is_active ? "Active" : "Inactive"}
-        </span>
-      </td>
-      <td className="p-2">
-        <div className="flex items-center justify-end gap-2">
-          {canManage && (
-            <button onClick={onEdit} className="text-forest hover:underline text-xs flex items-center gap-1">
-              <Edit2 className="w-3 h-3" /> Edit
-            </button>
-          )}
-          <button onClick={onViewProducts} className="text-forest hover:underline text-xs flex items-center gap-1">
-            <Eye className="w-3 h-3" /> View Products
-          </button>
-          {canManage && (
-            <button onClick={onToggleActive} className="text-forest hover:underline text-xs flex items-center gap-1">
-              <Power className="w-3 h-3" /> {vendor.is_active ? "Deactivate" : "Activate"}
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function ProductsPerVendorTab({
-  vendors,
-  selectedVendorId,
-  setSelectedVendorId,
-  canManage,
-}: {
-  vendors: Vendor[];
-  selectedVendorId: string | null;
-  setSelectedVendorId: (id: string | null) => void;
-  canManage: boolean;
-}) {
-  const { data: vendor, isLoading } = useVendorWithBrands(selectedVendorId);
-  const link = useLinkBrandToVendor();
-  const unlink = useUnlinkBrandFromVendor();
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  const brands = (vendor as any)?.brands || [];
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <Select
-          value={selectedVendorId || ""}
-          onValueChange={v => setSelectedVendorId(v || null)}
-        >
-          <SelectTrigger className="w-72">
-            <SelectValue placeholder="Choose vendor" />
+      {/* Filter + search */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={subFilter} onValueChange={setSubFilter}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="Subcategory" />
           </SelectTrigger>
-          <SelectContent>
-            {vendors.map(v => (
-              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+          <SelectContent className="max-h-[320px]">
+            <SelectItem value="all">All subcategories</SelectItem>
+            {SUBCATEGORIES.map((s) => (
+              <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {canManage && (
-          <Button disabled={!selectedVendorId} onClick={() => setPickerOpen(true)}>
-            <Plus className="w-4 h-4 mr-1.5" /> Add Product
-          </Button>
-        )}
+        <Input
+          placeholder="Search by brand or product…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full sm:w-[280px]"
+        />
+        <span className="text-xs text-muted-foreground ml-auto">
+          {filtered.length} {filtered.length === 1 ? "row" : "rows"}
+        </span>
       </div>
 
-      {!selectedVendorId ? (
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-          Pick a vendor to view their products.
-        </div>
-      ) : isLoading ? (
-        <Skeleton className="h-32 w-full rounded-md" />
-      ) : brands.length === 0 ? (
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-          No products linked to this vendor.
-        </div>
-      ) : (
-        <div className="overflow-x-auto border border-border rounded-lg">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 sticky top-0 z-10">
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="p-2">SKU</th>
-                <th className="p-2">Product</th>
-                <th className="p-2">Brand</th>
-                <th className="p-2">Category</th>
-                <th className="p-2 text-center">Status</th>
-                <th className="p-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {brands.map((b: any) => (
-                <tr key={b.id} className="border-t border-border">
-                  <td className="p-2 font-mono text-xs">{b.sku || "—"}</td>
-                  <td className="p-2">{b.products?.name || "—"}</td>
-                  <td className="p-2 font-semibold">{b.brand_name}</td>
-                  <td className="p-2 capitalize text-muted-foreground">{b.products?.subcategory || "—"}</td>
-                  <td className="p-2 text-center">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${b.in_stock ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-700"}`}>
-                      {b.in_stock ? "In stock" : "Out"}
+      {/* Table */}
+      <div className="rounded-lg border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="sticky left-0 bg-background z-10 min-w-[110px]">SKU</TableHead>
+              <TableHead>Image</TableHead>
+              <TableHead className="min-w-[180px]">Product Name</TableHead>
+              <TableHead className="min-w-[120px]">Brand</TableHead>
+              <TableHead>Size / Stage</TableHead>
+              <TableHead>Weight Range (kg)</TableHead>
+              <TableHead>Weight (kg)</TableHead>
+              <TableHead>Pack Count</TableHead>
+              <TableHead>Diaper Type</TableHead>
+              <TableHead>Color</TableHead>
+              <TableHead>Gender</TableHead>
+              <TableHead className="min-w-[150px]">Cost Price (₦)</TableHead>
+              <TableHead>Retail Price (₦)</TableHead>
+              <TableHead>In stock</TableHead>
+              <TableHead className="min-w-[140px]">Vendor Name</TableHead>
+              <TableHead className="min-w-[130px]">Vendor Phone</TableHead>
+              <TableHead className="sticky right-0 bg-background z-10"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell colSpan={17}><Skeleton className="h-6 w-full" /></TableCell>
+                </TableRow>
+              ))
+            ) : filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={17} className="text-center text-sm text-muted-foreground py-8">
+                  No products match your filters.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((r) => (
+                <TableRow key={r.brand_id}>
+                  <TableCell className="sticky left-0 bg-background z-10 font-mono text-xs">{dash(r.sku)}</TableCell>
+                  <TableCell><Thumb row={r} /></TableCell>
+                  <TableCell className="font-medium">{dash(r.product_name)}</TableCell>
+                  <TableCell>{dash(r.brand)}</TableCell>
+                  <TableCell>{dash(r.size_stage)}</TableCell>
+                  <TableCell>{dash(r.weight_range_kg)}</TableCell>
+                  <TableCell>{dash(r.weight_kg)}</TableCell>
+                  <TableCell>{dash(r.pack_count)}</TableCell>
+                  <TableCell>{dash(r.diaper_type)}</TableCell>
+                  <TableCell>{dash(r.color)}</TableCell>
+                  <TableCell>{dash(r.gender_relevant)}</TableCell>
+                  <TableCell>
+                    <CostPriceCell
+                      row={r}
+                      pendingValue={pendingMap[r.brand_id]}
+                      isVendorManager={isVendorManager}
+                      adminUserId={adminUser?.id}
+                      onSaved={() => { refreshRows(); refreshPending(); }}
+                    />
+                  </TableCell>
+                  <TableCell>{fmtNaira(r.retail_price)}</TableCell>
+                  <TableCell>
+                    <span className={r.in_stock ? "text-[#2D6A4F] font-medium" : "text-muted-foreground"}>
+                      {r.in_stock ? "Yes" : "No"}
                     </span>
-                  </td>
-                  <td className="p-2 text-right">
-                    {canManage ? (
-                      <button
-                        onClick={() => unlink.mutate(
-                          { brandId: b.id },
-                          { onSuccess: () => toast.success("Unlinked") },
-                        )}
-                        className="text-coral hover:underline text-xs"
-                      >
-                        Unlink
-                      </button>
-                    ) : (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </TableCell>
+                  <TableCell>{dash(r.vendor_name)}</TableCell>
+                  <TableCell>{dash(r.vendor_phone)}</TableCell>
+                  <TableCell className="sticky right-0 bg-background z-10">
+                    {r.vendor_id ? (
+                      <Button variant="ghost" size="sm" onClick={() => setEditingVendor(r)}>
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {editingVendor && (
+        <VendorDetailsDialog
+          row={editingVendor}
+          onClose={() => setEditingVendor(null)}
+          onSaved={() => { setEditingVendor(null); refreshRows(); }}
+        />
       )}
 
-      <BrandPickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        onSelect={(b) => {
-          if (!selectedVendorId) return;
-          link.mutate(
-            { brandId: b.id, vendorId: selectedVendorId },
-            { onSuccess: () => toast.success(`Linked ${b.brand_name}`) },
-          );
-        }}
-      />
+      {addOpen && (
+        <AddProductDialog
+          adminUser={adminUser}
+          onClose={() => setAddOpen(false)}
+          onSubmitted={() => { setAddOpen(false); refreshPending(); }}
+        />
+      )}
     </div>
   );
 }
 
-function OrdersPerVendorTab({
-  vendors,
-  selectedVendorId,
-  setSelectedVendorId,
+/* --------------------------------- Thumb --------------------------------- */
+function Thumb({ row }: { row: VendorRow }) {
+  const src = row.stored_image_url || row.image_url;
+  if (!src) {
+    return (
+      <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center">
+        <ImageOff className="w-4 h-4 text-muted-foreground" />
+      </div>
+    );
+  }
+  return <img src={src} alt={row.brand ?? ""} className="w-10 h-10 rounded-md object-cover border" />;
+}
+
+/* ----------------------------- Cost price cell ---------------------------- */
+function CostPriceCell({
+  row, pendingValue, isVendorManager, adminUserId, onSaved,
 }: {
-  vendors: Vendor[];
-  selectedVendorId: string | null;
-  setSelectedVendorId: (id: string | null) => void;
+  row: VendorRow;
+  pendingValue: number | undefined;
+  isVendorManager: boolean;
+  adminUserId: string | undefined;
+  onSaved: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const [from, setFrom] = useState(monthAgo);
-  const [to, setTo] = useState(today);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(row.cost_price ?? ""));
+  const [saving, setSaving] = useState(false);
 
-  const range = useMemo(() => ({
-    from: from ? new Date(from).toISOString() : undefined,
-    to: to ? new Date(`${to}T23:59:59`).toISOString() : undefined,
-  }), [from, to]);
+  async function save() {
+    const next = Math.round(Number(value));
+    if (!Number.isFinite(next) || next < 0) {
+      toast.error("Enter a valid cost price");
+      return;
+    }
+    if (next === row.cost_price) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      if (isVendorManager) {
+        if (!adminUserId) throw new Error("No admin profile");
+        const { error } = await supabase.from("admin_approval_requests").insert({
+          action: "update",
+          target_table: "brands",
+          target_record_id: row.brand_id,
+          proposed_data: { cost_price: next },
+          requested_by: adminUserId,
+          description: `Vendor cost price change: ${row.brand ?? ""} (${row.sku ?? ""}) → ₦${next.toLocaleString("en-NG")}`,
+        } as any);
+        if (error) throw error;
+        toast.success("Cost price change submitted for approval.");
+      } else {
+        const { error } = await supabase
+          .from("brands")
+          .update({ cost_price: next })
+          .eq("id", row.brand_id);
+        if (error) throw error;
+        toast.success("Cost price updated.");
+      }
+      setEditing(false);
+      onSaved();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save cost price");
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const { data: orders = [], isLoading } = useOrdersByVendor(selectedVendorId, range);
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="h-8 w-24"
+          autoFocus
+        />
+        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={saving} onClick={save}>
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 text-[#2D6A4F]" />}
+        </Button>
+        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={saving}
+          onClick={() => { setValue(String(row.cost_price ?? "")); setEditing(false); }}>
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="text-[11px] text-muted-foreground">Vendor</label>
-          <Select value={selectedVendorId || ""} onValueChange={v => setSelectedVendorId(v || null)}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Choose vendor" />
-            </SelectTrigger>
-            <SelectContent>
-              {vendors.map(v => (
-                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="text-[11px] text-muted-foreground">From</label>
-          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-44" />
-        </div>
-        <div>
-          <label className="text-[11px] text-muted-foreground">To</label>
-          <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-44" />
-        </div>
-      </div>
-
-      {!selectedVendorId ? (
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-          Pick a vendor to see their orders.
-        </div>
-      ) : isLoading ? (
-        <Skeleton className="h-32 w-full rounded-md" />
-      ) : orders.length === 0 ? (
-        <div className="border border-dashed border-border rounded-lg py-10 text-center text-muted-foreground text-sm">
-          No orders for this vendor in the selected range.
-        </div>
-      ) : (
-        <div className="overflow-x-auto border border-border rounded-lg">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 sticky top-0 z-10">
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="p-2">Order #</th>
-                <th className="p-2">Date</th>
-                <th className="p-2">Customer</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Items</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map(o => (
-                <tr key={o.id} className="border-t border-border">
-                  <td className="p-2 font-semibold">{o.order_number}</td>
-                  <td className="p-2 text-muted-foreground">{fmtDate(o.created_at)}</td>
-                  <td className="p-2">{o.customer_name}</td>
-                  <td className="p-2 capitalize">{o.order_status}</td>
-                  <td className="p-2 text-xs text-muted-foreground">
-                    {(o.order_items || []).map((it, i) => (
-                      <span key={i}>
-                        {it.brand_name || it.product_name} × {it.quantity}
-                        {i < (o.order_items.length - 1) ? ", " : ""}
-                      </span>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-left hover:underline decoration-dotted"
+        title="Edit cost price"
+      >
+        {fmtNaira(row.cost_price)}
+      </button>
+      {pendingValue != null && (
+        <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium px-2 py-0.5 whitespace-nowrap">
+          Pending: {fmtNaira(pendingValue)}
+        </span>
       )}
     </div>
+  );
+}
+
+/* --------------------------- Vendor details edit -------------------------- */
+function VendorDetailsDialog({
+  row, onClose, onSaved,
+}: {
+  row: VendorRow;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(row.vendor_name ?? "");
+  const [phone, setPhone] = useState(row.vendor_phone ?? "");
+  const [whatsapp, setWhatsapp] = useState(row.vendor_whatsapp ?? "");
+  const [contact, setContact] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!name.trim()) { toast.error("Vendor name is required"); return; }
+    if (!row.vendor_id) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("vendors")
+        .update({
+          name: name.trim(),
+          phone: phone.trim() || null,
+          whatsapp: whatsapp.trim() || null,
+          contact_person: contact.trim() || null,
+        })
+        .eq("id", row.vendor_id);
+      if (error) throw error;
+      toast.success("Vendor updated.");
+      onSaved();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update vendor");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit vendor</DialogTitle>
+          <DialogDescription>Updates apply immediately to this vendor's details.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="v-name">Name</Label>
+            <Input id="v-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="v-contact">Contact person</Label>
+            <Input id="v-contact" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Optional" />
+          </div>
+          <div>
+            <Label htmlFor="v-phone">Phone</Label>
+            <Input id="v-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div>
+            <Label htmlFor="v-wa">WhatsApp</Label>
+            <Input id="v-wa" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving} className="bg-[#2D6A4F] hover:bg-[#245840]">
+            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ----------------------------- Add new product ---------------------------- */
+function AddProductDialog({
+  adminUser, onClose, onSubmitted,
+}: {
+  adminUser: { id: string; auth_user_id: string; email: string } | null | undefined;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const { data: products = [] } = useAllProducts();
+  const [mode, setMode] = useState<"existing" | "new">("existing");
+  const [productSearch, setProductSearch] = useState("");
+  const [existingId, setExistingId] = useState<string | null>(null);
+  const [existingName, setExistingName] = useState<string>("");
+  const [newName, setNewName] = useState("");
+  const [subcategory, setSubcategory] = useState<string>("");
+  const [brandName, setBrandName] = useState("");
+  const [costPrice, setCostPrice] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [weightKg, setWeightKg] = useState("");
+  const [color, setColor] = useState("");
+  const [sizeVariant, setSizeVariant] = useState("");
+  const [stage, setStage] = useState("");
+  const [packCount, setPackCount] = useState("");
+  const [diaperType, setDiaperType] = useState("");
+  const [weightRange, setWeightRange] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const productMatches = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    const list = (products as any[]).map((p) => ({ id: p.id as string, name: (p.name ?? p.title ?? "") as string }));
+    if (!q) return list.slice(0, 8);
+    return list.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [products, productSearch]);
+
+  async function submit() {
+    if (!adminUser) { toast.error("No admin profile"); return; }
+    if (mode === "existing" && !existingId) { toast.error("Pick an existing product"); return; }
+    if (mode === "new" && !newName.trim()) { toast.error("Enter a new product name"); return; }
+    if (!brandName.trim()) { toast.error("Brand name is required"); return; }
+    const cp = Math.round(Number(costPrice));
+    if (!Number.isFinite(cp) || cp <= 0) { toast.error("Enter a valid cost price"); return; }
+    if (!imageUrl) { toast.error("Upload a product image"); return; }
+    const wk = Number(weightKg);
+    if (!Number.isFinite(wk) || wk <= 0) { toast.error("Enter the weight in kg"); return; }
+
+    setSaving(true);
+    try {
+      const productName = mode === "new" ? newName.trim() : existingName;
+      const { data: pending, error: pErr } = await supabase
+        .from("pending_products" as any)
+        .insert({
+          existing_product_id: mode === "existing" ? existingId : null,
+          new_product_name: mode === "new" ? newName.trim() : null,
+          subcategory: subcategory || null,
+          brand_name: brandName.trim(),
+          cost_price: cp,
+          image_url: imageUrl,
+          weight_kg: wk,
+          color: color.trim() || null,
+          size_variant: sizeVariant.trim() || null,
+          stage: stage.trim() || null,
+          pack_count: packCount ? Math.round(Number(packCount)) : null,
+          diaper_type: diaperType.trim() || null,
+          weight_range_kg: weightRange.trim() || null,
+          submitted_by: adminUser.auth_user_id,
+          submitted_by_email: adminUser.email,
+          status: "pending",
+        } as any)
+        .select("id")
+        .single();
+      if (pErr) throw pErr;
+
+      const { error: aErr } = await supabase.from("admin_approval_requests").insert({
+        action: "create_product",
+        target_table: "pending_products",
+        target_record_id: (pending as any).id,
+        proposed_data: {
+          brand_name: brandName.trim(),
+          cost_price: cp,
+          product: mode === "new" ? newName.trim() : existingId,
+        },
+        requested_by: adminUser.id,
+        description: `Vendor new product: ${brandName.trim()} for ${productName || "(new product)"}`,
+      } as any);
+      if (aErr) throw aErr;
+
+      toast.success("Product submitted for approval.");
+      onSubmitted();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to submit product");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add product</DialogTitle>
+          <DialogDescription>Submitted to the approvals queue. Nothing goes live until approved.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Product: existing or new */}
+          <div>
+            <Label>Product</Label>
+            <div className="flex gap-2 mt-1 mb-2">
+              <Button type="button" size="sm" variant={mode === "existing" ? "default" : "outline"}
+                className={mode === "existing" ? "bg-[#2D6A4F] hover:bg-[#245840]" : ""}
+                onClick={() => setMode("existing")}>Existing</Button>
+              <Button type="button" size="sm" variant={mode === "new" ? "default" : "outline"}
+                className={mode === "new" ? "bg-[#2D6A4F] hover:bg-[#245840]" : ""}
+                onClick={() => setMode("new")}>New product</Button>
+            </div>
+            {mode === "existing" ? (
+              <div>
+                <Input placeholder="Search products…" value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)} />
+                {existingId && (
+                  <p className="text-xs text-[#2D6A4F] mt-1">Selected: {existingName}</p>
+                )}
+                <div className="mt-2 max-h-40 overflow-y-auto rounded-md border divide-y">
+                  {productMatches.map((p) => (
+                    <button key={p.id} type="button"
+                      onClick={() => { setExistingId(p.id); setExistingName(p.name); }}
+                      className={`block w-full text-left px-3 py-2 text-sm hover:bg-muted ${existingId === p.id ? "bg-muted font-medium" : ""}`}>
+                      {p.name}
+                    </button>
+                  ))}
+                  {productMatches.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">No matches</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Input placeholder="New product name" value={newName}
+                onChange={(e) => setNewName(e.target.value)} />
+            )}
+          </div>
+
+          {mode === "new" && (
+            <div>
+              <Label>Subcategory</Label>
+              <Select value={subcategory} onValueChange={setSubcategory}>
+                <SelectTrigger><SelectValue placeholder="Select subcategory" /></SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {SUBCATEGORIES.map((s) => (
+                    <SelectItem key={s} value={s}>{titleCase(s)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Brand name *</Label>
+              <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} />
+            </div>
+            <div>
+              <Label>Cost price (₦) *</Label>
+              <Input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} />
+            </div>
+            <div>
+              <Label>Weight (kg) *</Label>
+              <Input type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+            </div>
+            <div>
+              <Label>Pack count</Label>
+              <Input type="number" value={packCount} onChange={(e) => setPackCount(e.target.value)} />
+            </div>
+            <div>
+              <Label>Color</Label>
+              <Input value={color} onChange={(e) => setColor(e.target.value)} />
+            </div>
+            <div>
+              <Label>Size / variant</Label>
+              <Input value={sizeVariant} onChange={(e) => setSizeVariant(e.target.value)} />
+            </div>
+            <div>
+              <Label>Age range / stage</Label>
+              <Input value={stage} onChange={(e) => setStage(e.target.value)} />
+            </div>
+            <div>
+              <Label>Diaper type</Label>
+              <Input value={diaperType} onChange={(e) => setDiaperType(e.target.value)} />
+            </div>
+            <div className="col-span-2">
+              <Label>Weight range (text)</Label>
+              <Input value={weightRange} onChange={(e) => setWeightRange(e.target.value)} placeholder="e.g. 4–8 kg" />
+            </div>
+          </div>
+
+          <div>
+            <BrandImageUpload label="Product image *" currentUrl={imageUrl} onUploaded={setImageUrl}
+              onRemove={() => setImageUrl("")} />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="bg-[#2D6A4F] hover:bg-[#245840]">
+            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Submit for approval
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
