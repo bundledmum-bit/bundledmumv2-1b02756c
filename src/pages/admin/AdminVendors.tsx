@@ -177,7 +177,9 @@ export default function AdminVendors() {
         const entry = (map[id] ??= {});
         if (pd.cost_price != null) entry.cost_price = Number(pd.cost_price);
         if (pd.stored_image_url != null || pd.image_url != null) entry.image = true;
-        if (pd.vendor_id != null) entry.vendor = true;
+        // Either assigning an existing vendor (vendor_id) or creating a new one
+        // (new_vendor_name) counts as a pending vendor change.
+        if (pd.vendor_id != null || pd.new_vendor_name != null) entry.vendor = true;
       }
       return map;
     },
