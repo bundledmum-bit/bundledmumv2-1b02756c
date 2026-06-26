@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -146,13 +146,41 @@ export default function AdminVendors() {
   const [editingRow, setEditingRow] = useState<VendorRow | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  // --- Rows from the vendor_manager_view (RLS lets both roles read all rows) ---
-  const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["vendor-manager-view"],
+  // Debounce search so we don't refetch on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Total catalog size (Y in "Showing X of Y") — unfiltered count, fetched once.
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ["vendor-manager-total"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { count, error } = await supabase
         .from("vendor_manager_view" as any)
-        .select("*");
+        .select("*", { count: "exact", head: true });
+      if (error) throw error;
+      return count ?? 0;
+    },
+    staleTime: 60_000,
+  });
+
+  // --- Rows from vendor_manager_view, filtered SERVER-SIDE so the default
+  //     1000-row cap can never hide matching products (view has ~1391+ rows).
+  //     range(0, 4999) raises the ceiling even for unfiltered loads.
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["vendor-manager-view", subFilter, statusFilter, stockFilter, debouncedSearch],
+    queryFn: async () => {
+      let qb = supabase.from("vendor_manager_view" as any).select("*");
+      if (subFilter !== "all") qb = qb.eq("subcategory", subFilter);
+      if (statusFilter === "active") qb = qb.eq("is_active", true);
+      else if (statusFilter === "inactive") qb = qb.eq("is_active", false);
+      if (stockFilter === "instock") qb = qb.eq("in_stock", true);
+      else if (stockFilter === "oos") qb = qb.eq("in_stock", false);
+      const q = debouncedSearch.trim().replace(/[(),%*]/g, " ").trim();
+      if (q) qb = qb.or(`product_name.ilike.%${q}%,brand.ilike.%${q}%,sku.ilike.%${q}%`);
+      const { data, error } = await qb.range(0, 4999);
       if (error) throw error;
       return (data as unknown as VendorRow[]) ?? [];
     },
@@ -188,27 +216,14 @@ export default function AdminVendors() {
     staleTime: 15_000,
   });
 
+  // Filtering happens server-side (see the query above), so the returned set is
+  // already complete and uncapped for the active filters — here we only sort.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return rows
-      .filter((r) => subFilter === "all" || r.subcategory === subFilter)
-      // null is_active/in_stock counts as the negative state (inactive / oos).
-      .filter((r) => statusFilter === "all"
-        || (statusFilter === "active" ? r.is_active === true : r.is_active !== true))
-      .filter((r) => stockFilter === "all"
-        || (stockFilter === "instock" ? r.in_stock === true : r.in_stock !== true))
-      .filter((r) => {
-        if (!q) return true;
-        return (
-          (r.brand ?? "").toLowerCase().includes(q) ||
-          (r.product_name ?? "").toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => {
-        const p = (a.product_name ?? "").localeCompare(b.product_name ?? "");
-        return p !== 0 ? p : (a.brand ?? "").localeCompare(b.brand ?? "");
-      });
-  }, [rows, subFilter, search, statusFilter, stockFilter]);
+    return [...rows].sort((a, b) => {
+      const p = (a.product_name ?? "").localeCompare(b.product_name ?? "");
+      return p !== 0 ? p : (a.brand ?? "").localeCompare(b.brand ?? "");
+    });
+  }, [rows]);
 
   const statusFiltered = statusFilter !== "all" || stockFilter !== "all";
   const resetStatusStock = () => { setStatusFilter("all"); setStockFilter("all"); };
@@ -279,7 +294,7 @@ export default function AdminVendors() {
         />
         <div className="flex items-center justify-between gap-2 sm:ml-auto">
           <span className="text-xs text-muted-foreground whitespace-nowrap">
-            Showing {filtered.length} of {rows.length} products
+            Showing {filtered.length} of {totalCount} products
           </span>
           {statusFiltered && (
             <Button variant="outline" size="sm"
