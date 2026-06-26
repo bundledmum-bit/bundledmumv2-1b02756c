@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Pencil, Check, X, Loader2, ImageOff } from "lucide-react";
+import { Plus, Pencil, Check, X, Loader2, ImageOff, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -111,6 +111,12 @@ interface VendorRow {
   updated_at: string | null;
 }
 
+interface PendingFlags {
+  cost_price?: number;
+  image?: boolean;
+  vendor?: boolean;
+}
+
 export default function AdminVendors() {
   const qc = useQueryClient();
   const { data: adminUser } = useAdminUser();
@@ -120,7 +126,8 @@ export default function AdminVendors() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [stockFilter, setStockFilter] = useState<"all" | "instock" | "oos">("instock");
-  const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
+  const [viewingRow, setViewingRow] = useState<VendorRow | null>(null);
+  const [editingRow, setEditingRow] = useState<VendorRow | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   // --- Rows from the vendor_manager_view (RLS lets both roles read all rows) ---
@@ -136,7 +143,8 @@ export default function AdminVendors() {
     staleTime: 30_000,
   });
 
-  // --- Pending cost-price change requests, mapped by brand_id ---
+  // --- Pending brand-update requests, mapped by brand_id. A brand may have
+  //     several pending requests (cost, image, vendor); flag each present key.
   const { data: pendingMap = {} } = useQuery({
     queryKey: ["vendor-pending-cost-requests"],
     queryFn: async () => {
@@ -147,10 +155,15 @@ export default function AdminVendors() {
         .eq("action", "update")
         .eq("status", "pending");
       if (error) throw error;
-      const map: Record<string, number> = {};
+      const map: Record<string, PendingFlags> = {};
       for (const r of (data ?? []) as any[]) {
-        const cp = r.proposed_data?.cost_price;
-        if (r.target_record_id != null && cp != null) map[r.target_record_id] = Number(cp);
+        const id = r.target_record_id;
+        if (id == null) continue;
+        const pd = r.proposed_data ?? {};
+        const entry = (map[id] ??= {});
+        if (pd.cost_price != null) entry.cost_price = Number(pd.cost_price);
+        if (pd.stored_image_url != null || pd.image_url != null) entry.image = true;
+        if (pd.vendor_id != null) entry.vendor = true;
       }
       return map;
     },
@@ -297,9 +310,14 @@ export default function AdminVendors() {
               </TableRow>
             ) : (
               filtered.map((r) => (
-                <TableRow key={r.brand_id}>
+                <TableRow key={r.brand_id} className="cursor-pointer" onClick={() => setViewingRow(r)}>
                   <TableCell className="sticky left-0 bg-background z-10 font-mono text-xs">{dash(r.sku)}</TableCell>
-                  <TableCell><Thumb row={r} /></TableCell>
+                  <TableCell>
+                    <div className="relative w-fit">
+                      <Thumb row={r} />
+                      {pendingMap[r.brand_id]?.image && <PendingBadge label="Image pending" />}
+                    </div>
+                  </TableCell>
                   <TableCell className="font-medium">{dash(r.product_name)}</TableCell>
                   <TableCell>{dash(r.brand)}</TableCell>
                   <TableCell>{dash(r.size_stage)}</TableCell>
@@ -309,10 +327,10 @@ export default function AdminVendors() {
                   <TableCell>{dash(DIAPER_SUBCATS.has(r.subcategory ?? "") ? r.diaper_type : r.item_type)}</TableCell>
                   <TableCell>{dash(r.color)}</TableCell>
                   <TableCell>{dash(r.gender_relevant)}</TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <CostPriceCell
                       row={r}
-                      pendingValue={pendingMap[r.brand_id]}
+                      pendingValue={pendingMap[r.brand_id]?.cost_price}
                       isVendorManager={isVendorManager}
                       adminUserId={adminUser?.id}
                       onSaved={() => { refreshRows(); refreshPending(); }}
@@ -324,14 +342,22 @@ export default function AdminVendors() {
                       {r.in_stock ? "Yes" : "No"}
                     </span>
                   </TableCell>
-                  <TableCell>{dash(r.vendor_name)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {dash(r.vendor_name)}
+                      {pendingMap[r.brand_id]?.vendor && <PendingBadge label="Vendor pending" inline />}
+                    </div>
+                  </TableCell>
                   <TableCell>{dash(r.vendor_phone)}</TableCell>
-                  <TableCell className="sticky right-0 bg-background z-10">
-                    {r.vendor_id ? (
-                      <Button variant="ghost" size="sm" onClick={() => setEditingVendor(r)}>
+                  <TableCell className="sticky right-0 bg-background z-10" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="View" onClick={() => setViewingRow(r)}>
+                        <Eye className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Edit" onClick={() => setEditingRow(r)}>
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
-                    ) : null}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -340,11 +366,17 @@ export default function AdminVendors() {
         </Table>
       </div>
 
-      {editingVendor && (
-        <VendorDetailsDialog
-          row={editingVendor}
-          onClose={() => setEditingVendor(null)}
-          onSaved={() => { setEditingVendor(null); refreshRows(); }}
+      {viewingRow && (
+        <ProductDetailDialog row={viewingRow} onClose={() => setViewingRow(null)} />
+      )}
+
+      {editingRow && (
+        <ProductEditDialog
+          row={editingRow}
+          isVendorManager={isVendorManager}
+          adminUserId={adminUser?.id}
+          onClose={() => setEditingRow(null)}
+          onSaved={() => { refreshRows(); refreshPending(); }}
         />
       )}
 
@@ -464,32 +496,172 @@ function CostPriceCell({
   );
 }
 
-/* --------------------------- Vendor details edit -------------------------- */
-function VendorDetailsDialog({
-  row, onClose, onSaved,
+/* ------------------------------ Pending badge ----------------------------- */
+function PendingBadge({ label, inline = false }: { label: string; inline?: boolean }) {
+  if (inline) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium px-2 py-0.5 whitespace-nowrap">
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="absolute -top-1.5 -right-1.5 rounded-full bg-amber-500 w-3 h-3 ring-2 ring-background"
+      title={label}
+    />
+  );
+}
+
+/* --------------------------- Read-only detail panel ----------------------- */
+function ProductDetailDialog({ row, onClose }: { row: VendorRow; onClose: () => void }) {
+  const src = row.stored_image_url || row.image_url;
+  const typeLabel = DIAPER_SUBCATS.has(row.subcategory ?? "") ? "Diaper type" : "Item type";
+  const typeValue = DIAPER_SUBCATS.has(row.subcategory ?? "") ? row.diaper_type : row.item_type;
+  const Field = ({ label, value }: { label: string; value: ReactNode }) => (
+    <div className="flex flex-col">
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium">{value}</span>
+    </div>
+  );
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{dash(row.product_name)}</DialogTitle>
+          <DialogDescription>{dash(row.brand)} · {dash(row.sku)}</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[200px_1fr]">
+          <div>
+            {src ? (
+              <img src={src} alt={row.brand ?? ""} className="w-full aspect-square rounded-lg object-cover border" />
+            ) : (
+              <div className="w-full aspect-square rounded-lg bg-muted flex items-center justify-center">
+                <ImageOff className="w-8 h-8 text-muted-foreground" />
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Subcategory" value={dash(row.category_label || titleCase(row.subcategory ?? "—"))} />
+            <Field label="Size / Stage" value={dash(row.size_stage)} />
+            <Field label={typeLabel} value={dash(typeValue)} />
+            <Field label="Weight range (kg)" value={dash(row.weight_range_kg)} />
+            <Field label="Weight (kg)" value={dash(row.weight_kg)} />
+            <Field label="Pack count" value={dash(row.pack_count)} />
+            <Field label="Color" value={dash(row.color)} />
+            <Field label="Gender" value={dash(row.gender_relevant)} />
+            <Field label="Cost price" value={fmtNaira(row.cost_price)} />
+            <Field label="Retail price" value={fmtNaira(row.retail_price)} />
+            <Field label="COGS %" value={row.cogs_percent == null ? "—" : `${row.cogs_percent}%`} />
+            <Field label="In stock" value={row.in_stock ? "Yes" : "No"} />
+            <Field label="Active" value={row.is_active ? "Yes" : "No"} />
+          </div>
+        </div>
+        <div className="rounded-lg border p-3 mt-1">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Vendor</p>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Name" value={dash(row.vendor_name)} />
+            <Field label="Phone" value={dash(row.vendor_phone)} />
+            <Field label="WhatsApp" value={dash(row.vendor_whatsapp)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ------------------- Edit: image replace + vendor details ----------------- */
+function ProductEditDialog({
+  row, isVendorManager, adminUserId, onClose, onSaved,
 }: {
   row: VendorRow;
+  isVendorManager: boolean;
+  adminUserId: string | undefined;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(row.vendor_name ?? "");
-  const [phone, setPhone] = useState(row.vendor_phone ?? "");
-  const [whatsapp, setWhatsapp] = useState(row.vendor_whatsapp ?? "");
-  const [contact, setContact] = useState("");
-  const [saving, setSaving] = useState(false);
+  // Vendors list for assignment (id + name). RLS may limit this for the vendor
+  // account; an empty list just hides the picker.
+  const { data: vendors = [] } = useQuery({
+    queryKey: ["vendors-picker"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendors")
+        .select("id, name")
+        .order("name");
+      if (error) throw error;
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    staleTime: 60_000,
+  });
 
-  async function save() {
-    if (!name.trim()) { toast.error("Vendor name is required"); return; }
+  const [newImage, setNewImage] = useState("");
+  const [savingImage, setSavingImage] = useState(false);
+
+  // Linked-vendor contact edit (direct for BOTH roles).
+  const [vName, setVName] = useState(row.vendor_name ?? "");
+  const [vPhone, setVPhone] = useState(row.vendor_phone ?? "");
+  const [vWhatsapp, setVWhatsapp] = useState(row.vendor_whatsapp ?? "");
+  const [vContact, setVContact] = useState("");
+  const [savingContact, setSavingContact] = useState(false);
+
+  // Assign / reassign vendor (brands.vendor_id — direct for admin, approval for vendor).
+  const [assignId, setAssignId] = useState<string>("");
+  const [savingAssign, setSavingAssign] = useState(false);
+
+  // Apply a brands patch: admin writes directly, vendor routes through approval.
+  async function applyBrandPatch(patch: Record<string, any>, description: string): Promise<"pending" | "applied"> {
+    if (isVendorManager) {
+      if (!adminUserId) throw new Error("No admin profile");
+      const { error } = await supabase.from("admin_approval_requests").insert({
+        action: "update",
+        target_table: "brands",
+        target_record_id: row.brand_id,
+        proposed_data: patch,
+        requested_by: adminUserId,
+        description,
+      } as any);
+      if (error) throw error;
+      return "pending";
+    }
+    const { error } = await supabase.from("brands").update(patch as any).eq("id", row.brand_id);
+    if (error) throw error;
+    return "applied";
+  }
+
+  async function saveImage() {
+    if (!newImage) { toast.error("Upload a new image first"); return; }
+    setSavingImage(true);
+    try {
+      const res = await applyBrandPatch(
+        { stored_image_url: newImage, image_url: newImage },
+        `Vendor image change: ${row.brand ?? ""} (${row.sku ?? ""})`,
+      );
+      toast.success(res === "pending" ? "Image change submitted for approval." : "Image updated.");
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save image");
+    } finally {
+      setSavingImage(false);
+    }
+  }
+
+  async function saveContact() {
     if (!row.vendor_id) return;
-    setSaving(true);
+    if (!vName.trim()) { toast.error("Vendor name is required"); return; }
+    setSavingContact(true);
     try {
       const { error } = await supabase
         .from("vendors")
         .update({
-          name: name.trim(),
-          phone: phone.trim() || null,
-          whatsapp: whatsapp.trim() || null,
-          contact_person: contact.trim() || null,
+          name: vName.trim(),
+          phone: vPhone.trim() || null,
+          whatsapp: vWhatsapp.trim() || null,
+          contact_person: vContact.trim() || null,
         })
         .eq("id", row.vendor_id);
       if (error) throw error;
@@ -498,40 +670,120 @@ function VendorDetailsDialog({
     } catch (e: any) {
       toast.error(e?.message || "Failed to update vendor");
     } finally {
-      setSaving(false);
+      setSavingContact(false);
     }
   }
 
+  async function assignVendor() {
+    if (!assignId) { toast.error("Pick a vendor"); return; }
+    setSavingAssign(true);
+    try {
+      const res = await applyBrandPatch(
+        { vendor_id: assignId },
+        `Vendor assignment: ${row.brand ?? ""} (${row.sku ?? ""})`,
+      );
+      toast.success(res === "pending" ? "Vendor assignment submitted for approval." : "Vendor assigned.");
+      onSaved();
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to assign vendor");
+    } finally {
+      setSavingAssign(false);
+    }
+  }
+
+  const currentImg = row.stored_image_url || row.image_url;
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit vendor</DialogTitle>
-          <DialogDescription>Updates apply immediately to this vendor's details.</DialogDescription>
+          <DialogTitle>Edit · {dash(row.brand)}</DialogTitle>
+          <DialogDescription>
+            {isVendorManager
+              ? "Image and vendor assignment are submitted for approval; linked-vendor contact edits apply directly."
+              : "Changes apply immediately."}
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="v-name">Name</Label>
-            <Input id="v-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="v-contact">Contact person</Label>
-            <Input id="v-contact" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Optional" />
-          </div>
-          <div>
-            <Label htmlFor="v-phone">Phone</Label>
-            <Input id="v-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
-          <div>
-            <Label htmlFor="v-wa">WhatsApp</Label>
-            <Input id="v-wa" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving} className="bg-[#2D6A4F] hover:bg-[#245840]">
-            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Save
+
+        {/* Image replace */}
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold text-[#2D6A4F]">Product image</h3>
+          <BrandImageUpload
+            label="Replace image"
+            currentUrl={newImage || currentImg}
+            onUploaded={setNewImage}
+            onRemove={() => setNewImage("")}
+          />
+          <Button onClick={saveImage} disabled={savingImage || !newImage}
+            className="bg-[#2D6A4F] hover:bg-[#245840]">
+            {savingImage && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            {isVendorManager ? "Submit image for approval" : "Save image"}
           </Button>
+        </section>
+
+        {/* Linked-vendor contact edit — direct for both roles */}
+        {row.vendor_id && (
+          <section className="space-y-2 border-t pt-4">
+            <h3 className="text-sm font-semibold text-[#2D6A4F]">Vendor details</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Name</Label>
+                <Input value={vName} onChange={(e) => setVName(e.target.value)} />
+              </div>
+              <div>
+                <Label>Contact person</Label>
+                <Input value={vContact} onChange={(e) => setVContact(e.target.value)} placeholder="Optional" />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={vPhone} onChange={(e) => setVPhone(e.target.value)} />
+              </div>
+              <div>
+                <Label>WhatsApp</Label>
+                <Input value={vWhatsapp} onChange={(e) => setVWhatsapp(e.target.value)} />
+              </div>
+            </div>
+            <Button onClick={saveContact} disabled={savingContact} variant="outline">
+              {savingContact && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Save vendor details
+            </Button>
+          </section>
+        )}
+
+        {/* Assign / reassign vendor — admin direct, vendor via approval */}
+        <section className="space-y-2 border-t pt-4">
+          <h3 className="text-sm font-semibold text-[#2D6A4F]">
+            {row.vendor_id ? "Reassign vendor" : "Assign vendor"}
+          </h3>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Label>Vendor</Label>
+              <Select value={assignId} onValueChange={setAssignId}>
+                <SelectTrigger><SelectValue placeholder="Select a vendor" /></SelectTrigger>
+                <SelectContent className="max-h-[260px]">
+                  {vendors.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={assignVendor} disabled={savingAssign || !assignId}
+              className="bg-[#2D6A4F] hover:bg-[#245840]">
+              {savingAssign && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              {isVendorManager ? "Submit" : "Assign"}
+            </Button>
+          </div>
+          {isVendorManager && (
+            <p className="text-[11px] text-muted-foreground">
+              Vendor assignment is submitted for super-admin approval.
+            </p>
+          )}
+          {/* TODO: creating a brand-new vendor record from here (full admin via
+              vendors.insert) is not yet wired; assign an existing vendor for now. */}
+        </section>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -573,9 +825,15 @@ function AddProductDialog({
       name: (p.name ?? p.title ?? "") as string,
       subcategory: (p.subcategory ?? null) as string | null,
     }));
-    if (!q) return list.slice(0, 8);
+    // Driven by the search text — no query, no list (prevents the full catalog
+    // from bleeding through under the box).
+    if (!q) return [];
     return list.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [products, productSearch]);
+
+  // Show the result list only while actively searching; once a product is
+  // selected the search is cleared and the list collapses to "Selected: X".
+  const showProductResults = productSearch.trim().length >= 1;
 
   // Active subcategory: the picker (new product) or the selected product's own.
   const activeSubcat = mode === "new" ? (subcategory || null) : existingSubcat;
@@ -674,13 +932,14 @@ function AddProductDialog({
               <div>
                 <Input placeholder="Search products…" value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)} />
-                {existingId && (
+                {existingId && !showProductResults && (
                   <p className="text-xs text-[#2D6A4F] mt-1">Selected: {existingName}</p>
                 )}
+                {showProductResults && (
                 <div className="mt-2 max-h-40 overflow-y-auto rounded-md border divide-y">
                   {productMatches.map((p) => (
                     <button key={p.id} type="button"
-                      onClick={() => { setExistingId(p.id); setExistingName(p.name); setExistingSubcat(p.subcategory); }}
+                      onClick={() => { setExistingId(p.id); setExistingName(p.name); setExistingSubcat(p.subcategory); setProductSearch(""); }}
                       className={`block w-full text-left px-3 py-2 text-sm hover:bg-muted ${existingId === p.id ? "bg-muted font-medium" : ""}`}>
                       {p.name}
                     </button>
@@ -689,6 +948,7 @@ function AddProductDialog({
                     <p className="px-3 py-2 text-sm text-muted-foreground">No matches</p>
                   )}
                 </div>
+                )}
               </div>
             ) : (
               <Input placeholder="New product name" value={newName}
