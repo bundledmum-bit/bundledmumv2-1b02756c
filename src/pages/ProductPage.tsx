@@ -18,13 +18,14 @@ import { useSubscriptionSettings, writeDraft, addToDraft, removeFromDraft, useSu
 import SubscriptionBasketBar from "@/components/SubscriptionBasketBar";
 import { getBrandImage } from "@/lib/brandImage";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
-import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
+import { diaperBadges } from "@/lib/diaperBrand";
 import BundleCustomiser from "@/components/BundleCustomiser";
 import MaternityBundleItemsEditor from "@/components/MaternityBundleItemsEditor";
 import type { MaternityBundleSnapshotItem } from "@/components/MaternityBundleItemsGrid";
 import { useBundleItemsEdit } from "@/hooks/useBundleItemsEdit";
 import { buildWhatsAppOrderHref, buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
+import BrandSelect from "@/components/BrandSelect";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -1122,28 +1123,15 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             )}
 
-            {/* Brand Selector */}
-            <div className="mb-4">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">{hasVariants ? "Brand" : "Choose Brand"}</p>
-              <div className="flex flex-wrap gap-2">
-                {filteredBrands.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No brands available for this selection.</p>
-                ) : filteredBrands.map(b => {
-                  const brandOos = !b.inStock || product.isOutOfStock;
-                  const pcLabel = packCountLabel(b);
-                  return (
-                    <button key={b.id} onClick={() => { selectBrand(b); setActiveImageIdx(0); }}
-                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body flex items-center gap-1.5 ${brandOos ? "opacity-50" : ""} ${selectedBrand?.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                      {b.logoUrl && <img src={b.logoUrl} alt="" className="w-4 h-4 object-contain" />}
-                      <span>{b.label}{pcLabel ? ` ${pcLabel}` : ""} — {fmt(b.price)}{brandOos ? " (out of stock)" : ""}</span>
-                      {b.compareAtPrice && b.compareAtPrice > b.price && !brandOos && (
-                        <span className="line-through text-muted-foreground text-[10px]">{fmt(b.compareAtPrice)}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Brand Selector — dropdown (scales to many brands). Wires onSelect
+                to the SAME selectBrand state the pills used. */}
+            <BrandSelect
+              brands={filteredBrands}
+              value={selectedBrand?.id}
+              productOos={product.isOutOfStock}
+              label={hasVariants ? "Brand" : "Choose Brand"}
+              onSelect={(b) => { selectBrand(b as Brand); setActiveImageIdx(0); }}
+            />
 
             {/* Size Selector — no auto-pick; customer must tap a chip. */}
             {requiresSizeChoice && (

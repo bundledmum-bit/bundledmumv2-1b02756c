@@ -10,10 +10,11 @@ import type { Product } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
 import { trackEvent } from "@/lib/analytics";
-import { diaperBadges, packCountLabel } from "@/lib/diaperBrand";
+import { diaperBadges } from "@/lib/diaperBrand";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
+import BrandSelect from "@/components/BrandSelect";
 
 interface Props {
   product: Product | null;
@@ -277,25 +278,16 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             )}
           </div>
 
-          {/* Brand Selector */}
+          {/* Brand Selector — dropdown (scales to many brands). Same selection
+              behaviour as before via setSelectedBrand. */}
           <div className="mb-3">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Choose Brand</p>
-            <div className="flex flex-wrap gap-2">
-              {product.brands.map(b => {
-                const brandOos = !b.inStock || product.isOutOfStock;
-                const pcLabel = packCountLabel(b);
-                return (
-                  <button key={b.id} onClick={() => setSelectedBrand(b)}
-                    className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body flex items-center gap-1.5 ${brandOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                    {b.logoUrl && <img src={b.logoUrl} alt="" className="w-4 h-4 object-contain" />}
-                    <span>{b.label}{pcLabel ? ` ${pcLabel}` : ""} — {fmt(b.price)}{brandOos ? " (out of stock)" : ""}</span>
-                    {b.compareAtPrice && b.compareAtPrice > b.price && !brandOos && (
-                      <span className="line-through text-muted-foreground text-[10px]">{fmt(b.compareAtPrice)}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <BrandSelect
+              brands={product.brands}
+              value={selectedBrand.id}
+              productOos={product.isOutOfStock}
+              label="Choose Brand"
+              onSelect={(b) => setSelectedBrand(b as any)}
+            />
           </div>
 
           {/* Size Selector */}
