@@ -5080,6 +5080,7 @@ export type Database = {
           courier_cost_confirmed: boolean | null
           courier_note: string | null
           created_at: string | null
+          custom_items_request: string | null
           customer_email: string
           customer_name: string
           customer_phone: string
@@ -5168,6 +5169,7 @@ export type Database = {
           courier_cost_confirmed?: boolean | null
           courier_note?: string | null
           created_at?: string | null
+          custom_items_request?: string | null
           customer_email: string
           customer_name: string
           customer_phone: string
@@ -5256,6 +5258,7 @@ export type Database = {
           courier_cost_confirmed?: boolean | null
           courier_note?: string | null
           created_at?: string | null
+          custom_items_request?: string | null
           customer_email?: string
           customer_name?: string
           customer_phone?: string
@@ -6087,6 +6090,7 @@ export type Database = {
           session_id: string | null
           updated_at: string
           user_agent: string | null
+          welcomed_at: string | null
         }
         Insert: {
           auth: string
@@ -6103,6 +6107,7 @@ export type Database = {
           session_id?: string | null
           updated_at?: string
           user_agent?: string | null
+          welcomed_at?: string | null
         }
         Update: {
           auth?: string
@@ -6119,6 +6124,7 @@ export type Database = {
           session_id?: string | null
           updated_at?: string
           user_agent?: string | null
+          welcomed_at?: string | null
         }
         Relationships: []
       }
@@ -9768,6 +9774,10 @@ export type Database = {
         Returns: Json
       }
       get_hospital_list_config: { Args: never; Returns: Json }
+      get_hospital_list_funnel: {
+        Args: { p_end?: string; p_source?: string; p_start?: string }
+        Returns: Json
+      }
       get_order_picking_items: {
         Args: { p_order_id: string }
         Returns: {
@@ -9799,6 +9809,10 @@ export type Database = {
           slug: string
           subcategory: string
         }[]
+      }
+      get_product_analytics: {
+        Args: { p_end?: string; p_start?: string }
+        Returns: Json
       }
       get_quote_by_share_token: {
         Args: { p_share_token: string }
