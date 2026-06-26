@@ -118,6 +118,8 @@ export default function AdminVendors() {
 
   const [subFilter, setSubFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
+  const [stockFilter, setStockFilter] = useState<"all" | "instock" | "oos">("instock");
   const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -159,6 +161,11 @@ export default function AdminVendors() {
     const q = search.trim().toLowerCase();
     return rows
       .filter((r) => subFilter === "all" || r.subcategory === subFilter)
+      // null is_active/in_stock counts as the negative state (inactive / oos).
+      .filter((r) => statusFilter === "all"
+        || (statusFilter === "active" ? r.is_active === true : r.is_active !== true))
+      .filter((r) => stockFilter === "all"
+        || (stockFilter === "instock" ? r.in_stock === true : r.in_stock !== true))
       .filter((r) => {
         if (!q) return true;
         return (
@@ -170,7 +177,10 @@ export default function AdminVendors() {
         const p = (a.product_name ?? "").localeCompare(b.product_name ?? "");
         return p !== 0 ? p : (a.brand ?? "").localeCompare(b.brand ?? "");
       });
-  }, [rows, subFilter, search]);
+  }, [rows, subFilter, search, statusFilter, stockFilter]);
+
+  const statusFiltered = statusFilter !== "all" || stockFilter !== "all";
+  const resetStatusStock = () => { setStatusFilter("all"); setStockFilter("all"); };
 
   const refreshRows = () => qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
   const refreshPending = () => qc.invalidateQueries({ queryKey: ["vendor-pending-cost-requests"] });
@@ -209,15 +219,43 @@ export default function AdminVendors() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as typeof stockFilter)}>
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Stock" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All stock</SelectItem>
+            <SelectItem value="instock">In stock</SelectItem>
+            <SelectItem value="oos">Out of stock</SelectItem>
+          </SelectContent>
+        </Select>
         <Input
           placeholder="Search by brand or product…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-[280px]"
         />
-        <span className="text-xs text-muted-foreground ml-auto">
-          {filtered.length} {filtered.length === 1 ? "row" : "rows"}
-        </span>
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            Showing {filtered.length} of {rows.length} products
+          </span>
+          {statusFiltered && (
+            <Button variant="outline" size="sm" className="h-7 border-[#F4845F] text-[#F4845F] hover:bg-[#F4845F]/10"
+              onClick={resetStatusStock}>
+              Show all
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Table */}
