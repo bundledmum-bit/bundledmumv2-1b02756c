@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,20 +102,40 @@ const fmtDuration = (secs: unknown): string => {
   return `${m}m ${s % 60}s`;
 };
 
+// Readable labels for known traffic sources; unknown values fall back to raw.
+const SOURCE_LABELS: Record<string, string> = {
+  direct: "Direct",
+  meta: "Meta (social)",
+  meta_ads: "Meta Ads (paid)",
+  referral: "Referral",
+};
+const sourceLabel = (s: string) => SOURCE_LABELS[s] || s;
+const ALL_SOURCES = "__all__";
+
 export default function HospitalListFunnelTab() {
   const [rangeKey, setRangeKey] = useState<RangeKey>("lifetime");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const { start, end } = useMemo(() => resolveRange(rangeKey, customStart, customEnd), [rangeKey, customStart, customEnd]);
+  // null = all sources. Source filter is part of the query key so it refetches.
+  const [source, setSource] = useState<string | null>(null);
+  // available_sources is always the FULL list in every response; persist it so
+  // the dropdown keeps all options while a filtered fetch is loading.
+  const [knownSources, setKnownSources] = useState<string[]>([]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["hospital-list-funnel", start, end],
+    queryKey: ["hospital-list-funnel", start, end, source],
     queryFn: async () => {
-      const { data, error } = await (supabase.rpc as any)("get_hospital_list_funnel", { p_start: start, p_end: end });
+      const { data, error } = await (supabase.rpc as any)("get_hospital_list_funnel", { p_start: start, p_end: end, p_source: source });
       if (error) throw error;
       return data as any;
     },
   });
+
+  useEffect(() => {
+    const list = data?.available_sources;
+    if (Array.isArray(list) && list.length) setKnownSources(list);
+  }, [data]);
 
   const funnel = data?.funnel || {};
   const engagement = data?.engagement || {};
@@ -138,6 +158,9 @@ export default function HospitalListFunnelTab() {
     ? `${fmtCaption(start, "")} → ${end ? fmtCaption(end, "now") : "now"} · Africa/Lagos`
     : "All time (lifetime)";
 
+  // A selected source with no visitors in the range → clean empty state.
+  const noVisitorsForSource = !!source && visitors === 0;
+
   return (
     <div className="space-y-6">
       {/* Date range selector */}
@@ -147,6 +170,15 @@ export default function HospitalListFunnelTab() {
           <p className="text-[11px] text-muted-foreground">{rangeCaption}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={source ?? ALL_SOURCES}
+            onChange={(e) => setSource(e.target.value === ALL_SOURCES ? null : e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-3 text-sm"
+            aria-label="Traffic source"
+          >
+            <option value={ALL_SOURCES}>All sources</option>
+            {knownSources.map((s) => <option key={s} value={s}>{sourceLabel(s)}</option>)}
+          </select>
           <select
             value={rangeKey}
             onChange={(e) => setRangeKey(e.target.value as RangeKey)}
@@ -178,154 +210,179 @@ export default function HospitalListFunnelTab() {
         </div>
       ) : (
         <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Visitors" value={intf(visitors)} sub={`${intf(funnel.landings)} landings`} />
-            <Kpi label="Added to Cart" value={intf(addedToCart)} sub={`${pct(funnel.visitor_to_cart_rate)} of visitors`} />
-            <Kpi label="Converted" value={intf(converted)} sub={`${pct(funnel.visitor_to_purchase_rate)} of visitors`} />
-            <Kpi label="Cart → Purchase" value={pct(funnel.cart_to_purchase_rate)} sub={`${intf(funnel.add_to_cart_events)} add events`} />
-          </div>
-
-          {/* Stepped funnel bar */}
-          <Card title="Conversion funnel" caption="Visitors → Added to Cart → Converted (unique sessions).">
-            <div className="space-y-3">
-              {stages.map((s, i) => (
-                <div key={s.label}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-semibold text-text-med">{s.label}</span>
-                    <span className="font-bold">{intf(s.value)}</span>
-                  </div>
-                  <div className="h-6 rounded-md bg-muted/40 overflow-hidden">
-                    <div className="h-full rounded-md" style={{ width: `${Math.max(2, (s.value / funnelMax) * 100)}%`, background: s.color }} />
-                  </div>
-                  {i > 0 && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                      {pct(s.rate)} of visitors reached this step
-                    </div>
-                  )}
-                </div>
-              ))}
+          {/* Active-source caption + clear */}
+          {source && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-coral/10 text-coral font-semibold px-3 py-1">
+                Showing: {sourceLabel(source)}
+              </span>
+              <button type="button" onClick={() => setSource(null)} className="text-forest font-semibold underline underline-offset-2">
+                Clear (All sources)
+              </button>
             </div>
-          </Card>
+          )}
 
-          {/* Daily landings */}
-          <Card title="Daily visitors" caption="Unique visitors landing on the hospital list per day.">
-            {daily.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-8 text-center">No landings in this range.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={daily} margin={{ left: 0, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                  <Tooltip />
-                  <Bar dataKey="visitors" fill="#2D6A4F" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Traffic sources */}
-            <Card title="Traffic sources">
-              {traffic.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No data yet</p>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-text-med border-b border-border">
-                      <th className="py-2 pr-3 font-semibold">Source</th>
-                      <th className="py-2 pr-3 font-semibold">Medium</th>
-                      <th className="py-2 font-semibold text-right">Visitors</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {traffic.map((t, i) => (
-                      <tr key={i} className="border-b border-border/50">
-                        <td className="py-2 pr-3 font-medium">{t.source || "—"}</td>
-                        <td className="py-2 pr-3 text-text-med">{t.medium || "—"}</td>
-                        <td className="py-2 text-right font-semibold">{intf(t.visitors)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+          {noVisitorsForSource ? (
+            <Card title="No visitors">
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No visitors from {sourceLabel(source as string)} in this period.
+              </p>
             </Card>
+          ) : (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Kpi label="Visitors" value={intf(visitors)} sub={`${intf(funnel.landings)} landings`} />
+                <Kpi label="Added to Cart" value={intf(addedToCart)} sub={`${pct(funnel.visitor_to_cart_rate)} of visitors`} />
+                <Kpi label="Converted" value={intf(converted)} sub={`${pct(funnel.visitor_to_purchase_rate)} of visitors`} />
+                <Kpi label="Cart → Purchase" value={pct(funnel.cart_to_purchase_rate)} sub={`${intf(funnel.add_to_cart_events)} add events`} />
+              </div>
 
-            {/* Device split */}
-            <Card title="Device split">
-              {devices.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No data yet</p>
-              ) : (
-                <div className="space-y-2">
-                  {(() => {
-                    const total = devices.reduce((s, d) => s + (Number(d.visitors) || 0), 0) || 1;
-                    return devices.map((d, i) => {
-                      const v = Number(d.visitors) || 0;
-                      return (
-                        <div key={i}>
-                          <div className="flex items-center justify-between text-xs mb-0.5">
-                            <span className="font-semibold capitalize">{d.device || "unknown"}</span>
-                            <span className="text-text-med">{intf(v)} ({Math.round((v / total) * 100)}%)</span>
-                          </div>
-                          <div className="h-2.5 rounded-full bg-muted/40 overflow-hidden">
-                            <div className="h-full rounded-full bg-forest" style={{ width: `${Math.max(2, (v / total) * 100)}%` }} />
-                          </div>
+              {/* Stepped funnel bar */}
+              <Card title="Conversion funnel" caption="Visitors → Added to Cart → Converted (unique sessions).">
+                <div className="space-y-3">
+                  {stages.map((s, i) => (
+                    <div key={s.label}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-semibold text-text-med">{s.label}</span>
+                        <span className="font-bold">{intf(s.value)}</span>
+                      </div>
+                      <div className="h-6 rounded-md bg-muted/40 overflow-hidden">
+                        <div className="h-full rounded-md" style={{ width: `${Math.max(2, (s.value / funnelMax) * 100)}%`, background: s.color }} />
+                      </div>
+                      {i > 0 && (
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {pct(s.rate)} of visitors reached this step
                         </div>
-                      );
-                    });
-                  })()}
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </Card>
-          </div>
+              </Card>
 
-          {/* Top added products */}
-          <Card title="Top added products" caption="Most-added items from the hospital list.">
-            {products.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">No add-to-cart events yet</p>
+              {/* Daily landings */}
+              <Card title="Daily visitors" caption="Unique visitors landing on the hospital list per day.">
+                {daily.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">No landings in this range.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={daily} margin={{ left: 0, right: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fontSize: 10 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                      <Tooltip />
+                      <Bar dataKey="visitors" fill="#2D6A4F" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+
+              {/* Device split */}
+              <Card title="Device split">
+                {devices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">No data yet</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(() => {
+                      const total = devices.reduce((s, d) => s + (Number(d.visitors) || 0), 0) || 1;
+                      return devices.map((d, i) => {
+                        const v = Number(d.visitors) || 0;
+                        return (
+                          <div key={i}>
+                            <div className="flex items-center justify-between text-xs mb-0.5">
+                              <span className="font-semibold capitalize">{d.device || "unknown"}</span>
+                              <span className="text-text-med">{intf(v)} ({Math.round((v / total) * 100)}%)</span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-muted/40 overflow-hidden">
+                              <div className="h-full rounded-full bg-forest" style={{ width: `${Math.max(2, (v / total) * 100)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </Card>
+
+              {/* Top added products */}
+              <Card title="Top added products" caption="Most-added items from the hospital list.">
+                {products.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">No add-to-cart events yet</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-text-med border-b border-border">
+                        <th className="py-2 pr-3 font-semibold w-8">#</th>
+                        <th className="py-2 pr-3 font-semibold">Product</th>
+                        <th className="py-2 font-semibold text-right">Adds</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map((p, i) => (
+                        <tr key={i} className="border-b border-border/50">
+                          <td className="py-2 pr-3 text-text-light">{i + 1}</td>
+                          <td className="py-2 pr-3 font-medium">{p.product_name || "(unknown)"}</td>
+                          <td className="py-2 text-right font-semibold text-forest">{intf(p.adds)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </Card>
+
+              {/* Engagement — honest about not-yet-tracked */}
+              <Card title="Engagement" caption="Time-on-page and scroll are captured going forward; older sessions weren't tracked.">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-border p-4">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg time on page</div>
+                    {engagement.time_tracking_available ? (
+                      <div className="text-xl font-bold text-forest mt-1">{fmtDuration(engagement.avg_time_on_page_seconds)}</div>
+                    ) : (
+                      <div className="text-sm font-semibold text-text-med mt-1">Not yet tracked <span className="font-normal text-muted-foreground">(collecting from now on)</span></div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-border p-4">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Scroll depth</div>
+                    {engagement.scroll_tracking_available ? (
+                      <div className="text-xl font-bold text-forest mt-1">{intf(engagement.sessions_with_scroll_tracked)} <span className="text-xs font-normal text-muted-foreground">sessions tracked</span></div>
+                    ) : (
+                      <div className="text-sm font-semibold text-text-med mt-1">Not yet tracked <span className="font-normal text-muted-foreground">(collecting from now on)</span></div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+
+          {/* Traffic sources — ALWAYS the all-sources overview; click a row to filter. */}
+          <Card title="Traffic sources" caption="All sources for this period (overview — not affected by the filter above). Click a row to filter.">
+            {traffic.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No data yet</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-text-med border-b border-border">
-                    <th className="py-2 pr-3 font-semibold w-8">#</th>
-                    <th className="py-2 pr-3 font-semibold">Product</th>
-                    <th className="py-2 font-semibold text-right">Adds</th>
+                    <th className="py-2 pr-3 font-semibold">Source</th>
+                    <th className="py-2 font-semibold text-right">Visitors</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((p, i) => (
-                    <tr key={i} className="border-b border-border/50">
-                      <td className="py-2 pr-3 text-text-light">{i + 1}</td>
-                      <td className="py-2 pr-3 font-medium">{p.product_name || "(unknown)"}</td>
-                      <td className="py-2 text-right font-semibold text-forest">{intf(p.adds)}</td>
-                    </tr>
-                  ))}
+                  {traffic.map((t, i) => {
+                    const isSelected = source === t.source;
+                    return (
+                      <tr
+                        key={i}
+                        onClick={() => setSource(t.source || null)}
+                        className={`border-b border-border/50 cursor-pointer hover:bg-muted/30 ${isSelected ? "bg-coral/10" : ""}`}
+                      >
+                        <td className="py-2 pr-3 font-medium">{t.source ? sourceLabel(t.source) : "—"}</td>
+                        <td className="py-2 text-right font-semibold">{intf(t.visitors)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
-          </Card>
-
-          {/* Engagement — honest about not-yet-tracked */}
-          <Card title="Engagement" caption="Time-on-page and scroll are captured going forward; older sessions weren't tracked.">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-lg border border-border p-4">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg time on page</div>
-                {engagement.time_tracking_available ? (
-                  <div className="text-xl font-bold text-forest mt-1">{fmtDuration(engagement.avg_time_on_page_seconds)}</div>
-                ) : (
-                  <div className="text-sm font-semibold text-text-med mt-1">Not yet tracked <span className="font-normal text-muted-foreground">(collecting from now on)</span></div>
-                )}
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Scroll depth</div>
-                {engagement.scroll_tracking_available ? (
-                  <div className="text-xl font-bold text-forest mt-1">{intf(engagement.sessions_with_scroll_tracked)} <span className="text-xs font-normal text-muted-foreground">sessions tracked</span></div>
-                ) : (
-                  <div className="text-sm font-semibold text-text-med mt-1">Not yet tracked <span className="font-normal text-muted-foreground">(collecting from now on)</span></div>
-                )}
-              </div>
-            </div>
           </Card>
         </>
       )}
