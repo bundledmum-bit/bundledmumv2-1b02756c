@@ -38,6 +38,43 @@ const SUBCATEGORIES = [
 const titleCase = (slug: string) =>
   slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
+// Subcategories whose product type is a *diaper* type (Tape/Pant/Wet wipes…),
+// stored on brands.diaper_type. Every other subcategory uses item_type instead.
+const DIAPER_SUBCATS = new Set(["diapers-nappies", "wipes-diaper-care"]);
+
+// Reasoned per-subcategory attribute map (authoritative; amend here).
+// Universal fields (brand, cost_price, image, weight_kg) are ALWAYS shown and
+// are not listed. Possible extra fields: type (diaper_type | item_type — chosen
+// by DIAPER_SUBCATS, never both), size (→ size_variant), weight_range_kg,
+// pack_count, color, gender.
+type AttrField = "type" | "size" | "weight_range_kg" | "pack_count" | "color" | "gender";
+const SUBCATEGORY_FIELDS: Record<string, AttrField[]> = {
+  "diapers-nappies": ["type", "size", "weight_range_kg", "pack_count"],
+  "wipes-diaper-care": ["type", "size", "pack_count"],
+  "baby-formula": ["type", "size", "pack_count"], // size labeled "Stage"
+  "feeding-equipment": ["type", "size", "pack_count"],
+  "maternity-postpartum": ["type", "size", "pack_count"],
+  "maternity-clothing": ["type", "size", "pack_count"],
+  "baby-skincare-toiletries": ["type", "size", "pack_count"],
+  "health-safety-baby": ["type", "size", "pack_count", "gender"],
+  "baby-clothing": ["type", "size", "pack_count", "color", "gender"],
+  "breastfeeding-equipment": ["type", "size", "pack_count"],
+  "nursery-furniture": ["type", "size", "pack_count"],
+  "toys-learning": ["type", "size", "pack_count"],
+  "travel-gear": ["type", "size"],
+  "bath-grooming": ["type", "size", "pack_count"],
+  "bedding-blankets": ["type", "size", "pack_count", "gender"],
+  "laundry-household": ["type", "size", "color", "pack_count"],
+  "accessories-misc": ["type", "size"],
+  "mum-gifts-keepsakes": ["type", "gender"],
+  "bundles-kits": ["type"],
+  "beverages": ["type"],
+};
+// Permissive default for null / unknown / unlisted subcategories.
+const DEFAULT_FIELDS: AttrField[] = ["type", "size", "pack_count"];
+const fieldsFor = (subcat: string | null | undefined): AttrField[] =>
+  (subcat && SUBCATEGORY_FIELDS[subcat]) || DEFAULT_FIELDS;
+
 const fmtNaira = (n: number | null | undefined) =>
   n == null ? "—" : `₦${Math.round(n).toLocaleString("en-NG")}`;
 
@@ -59,6 +96,7 @@ interface VendorRow {
   weight_kg: number | null;
   pack_count: number | null;
   diaper_type: string | null;
+  item_type: string | null;
   color: string | null;
   gender_relevant: string | null;
   cost_price: number | null;
@@ -195,7 +233,7 @@ export default function AdminVendors() {
               <TableHead>Weight Range (kg)</TableHead>
               <TableHead>Weight (kg)</TableHead>
               <TableHead>Pack Count</TableHead>
-              <TableHead>Diaper Type</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Color</TableHead>
               <TableHead>Gender</TableHead>
               <TableHead className="min-w-[150px]">Cost Price (₦)</TableHead>
@@ -230,7 +268,7 @@ export default function AdminVendors() {
                   <TableCell>{dash(r.weight_range_kg)}</TableCell>
                   <TableCell>{dash(r.weight_kg)}</TableCell>
                   <TableCell>{dash(r.pack_count)}</TableCell>
-                  <TableCell>{dash(r.diaper_type)}</TableCell>
+                  <TableCell>{dash(DIAPER_SUBCATS.has(r.subcategory ?? "") ? r.diaper_type : r.item_type)}</TableCell>
                   <TableCell>{dash(r.color)}</TableCell>
                   <TableCell>{dash(r.gender_relevant)}</TableCell>
                   <TableCell>
@@ -475,6 +513,7 @@ function AddProductDialog({
   const [productSearch, setProductSearch] = useState("");
   const [existingId, setExistingId] = useState<string | null>(null);
   const [existingName, setExistingName] = useState<string>("");
+  const [existingSubcat, setExistingSubcat] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [subcategory, setSubcategory] = useState<string>("");
   const [brandName, setBrandName] = useState("");
@@ -483,7 +522,7 @@ function AddProductDialog({
   const [weightKg, setWeightKg] = useState("");
   const [color, setColor] = useState("");
   const [sizeVariant, setSizeVariant] = useState("");
-  const [stage, setStage] = useState("");
+  const [itemType, setItemType] = useState("");
   const [packCount, setPackCount] = useState("");
   const [diaperType, setDiaperType] = useState("");
   const [weightRange, setWeightRange] = useState("");
@@ -491,15 +530,28 @@ function AddProductDialog({
 
   const productMatches = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
-    const list = (products as any[]).map((p) => ({ id: p.id as string, name: (p.name ?? p.title ?? "") as string }));
+    const list = (products as any[]).map((p) => ({
+      id: p.id as string,
+      name: (p.name ?? p.title ?? "") as string,
+      subcategory: (p.subcategory ?? null) as string | null,
+    }));
     if (!q) return list.slice(0, 8);
     return list.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [products, productSearch]);
+
+  // Active subcategory: the picker (new product) or the selected product's own.
+  const activeSubcat = mode === "new" ? (subcategory || null) : existingSubcat;
+  const hasSubcat = mode === "new" ? !!subcategory : !!existingId;
+  const fields = fieldsFor(activeSubcat);
+  const has = (f: AttrField) => fields.includes(f);
+  const isDiaperCat = DIAPER_SUBCATS.has(activeSubcat ?? "");
+  const sizeLabel = activeSubcat === "baby-formula" ? "Stage" : "Size / Variant";
 
   async function submit() {
     if (!adminUser) { toast.error("No admin profile"); return; }
     if (mode === "existing" && !existingId) { toast.error("Pick an existing product"); return; }
     if (mode === "new" && !newName.trim()) { toast.error("Enter a new product name"); return; }
+    if (mode === "new" && !subcategory) { toast.error("Choose a subcategory"); return; }
     if (!brandName.trim()) { toast.error("Brand name is required"); return; }
     const cp = Math.round(Number(costPrice));
     if (!Number.isFinite(cp) || cp <= 0) { toast.error("Enter a valid cost price"); return; }
@@ -515,17 +567,20 @@ function AddProductDialog({
         .insert({
           existing_product_id: mode === "existing" ? existingId : null,
           new_product_name: mode === "new" ? newName.trim() : null,
-          subcategory: subcategory || null,
+          subcategory: activeSubcat,
           brand_name: brandName.trim(),
           cost_price: cp,
           image_url: imageUrl,
           weight_kg: wk,
-          color: color.trim() || null,
-          size_variant: sizeVariant.trim() || null,
-          stage: stage.trim() || null,
-          pack_count: packCount ? Math.round(Number(packCount)) : null,
-          diaper_type: diaperType.trim() || null,
-          weight_range_kg: weightRange.trim() || null,
+          // Only the fields relevant to this subcategory are populated; the rest
+          // stay null. Type routes to diaper_type for diapers/wipes, else item_type.
+          diaper_type: isDiaperCat ? (diaperType.trim() || null) : null,
+          item_type: !isDiaperCat ? (itemType.trim() || null) : null,
+          size_variant: has("size") ? (sizeVariant.trim() || null) : null,
+          stage: null,
+          pack_count: has("pack_count") && packCount ? Math.round(Number(packCount)) : null,
+          color: has("color") ? (color.trim() || null) : null,
+          weight_range_kg: has("weight_range_kg") ? (weightRange.trim() || null) : null,
           submitted_by: adminUser.auth_user_id,
           submitted_by_email: adminUser.email,
           status: "pending",
@@ -587,7 +642,7 @@ function AddProductDialog({
                 <div className="mt-2 max-h-40 overflow-y-auto rounded-md border divide-y">
                   {productMatches.map((p) => (
                     <button key={p.id} type="button"
-                      onClick={() => { setExistingId(p.id); setExistingName(p.name); }}
+                      onClick={() => { setExistingId(p.id); setExistingName(p.name); setExistingSubcat(p.subcategory); }}
                       className={`block w-full text-left px-3 py-2 text-sm hover:bg-muted ${existingId === p.id ? "bg-muted font-medium" : ""}`}>
                       {p.name}
                     </button>
@@ -617,6 +672,7 @@ function AddProductDialog({
             </div>
           )}
 
+          {/* Universal fields — always shown */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Brand name *</Label>
@@ -630,31 +686,56 @@ function AddProductDialog({
               <Label>Weight (kg) *</Label>
               <Input type="number" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
             </div>
-            <div>
-              <Label>Pack count</Label>
-              <Input type="number" value={packCount} onChange={(e) => setPackCount(e.target.value)} />
-            </div>
-            <div>
-              <Label>Color</Label>
-              <Input value={color} onChange={(e) => setColor(e.target.value)} />
-            </div>
-            <div>
-              <Label>Size / variant</Label>
-              <Input value={sizeVariant} onChange={(e) => setSizeVariant(e.target.value)} />
-            </div>
-            <div>
-              <Label>Age range / stage</Label>
-              <Input value={stage} onChange={(e) => setStage(e.target.value)} />
-            </div>
-            <div>
-              <Label>Diaper type</Label>
-              <Input value={diaperType} onChange={(e) => setDiaperType(e.target.value)} />
-            </div>
-            <div className="col-span-2">
-              <Label>Weight range (text)</Label>
-              <Input value={weightRange} onChange={(e) => setWeightRange(e.target.value)} placeholder="e.g. 4–8 kg" />
-            </div>
           </div>
+
+          {/* Category-aware attributes — only those relevant to the subcategory */}
+          {!hasSubcat ? (
+            <p className="text-sm text-muted-foreground rounded-md border border-dashed p-3">
+              {mode === "new" ? "Choose a subcategory" : "Pick a product"} to see the relevant attributes.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {has("type") && (
+                <div>
+                  <Label>{isDiaperCat ? "Diaper type" : "Item type"}</Label>
+                  {isDiaperCat ? (
+                    <Input value={diaperType} onChange={(e) => setDiaperType(e.target.value)}
+                      placeholder="e.g. Tape, Pant, Wet wipes" />
+                  ) : (
+                    <Input value={itemType} onChange={(e) => setItemType(e.target.value)}
+                      placeholder="e.g. Formula, Onesie, Electric Pump" />
+                  )}
+                </div>
+              )}
+              {has("size") && (
+                <div>
+                  <Label>{sizeLabel}</Label>
+                  <Input value={sizeVariant} onChange={(e) => setSizeVariant(e.target.value)} />
+                </div>
+              )}
+              {has("pack_count") && (
+                <div>
+                  <Label>Pack count</Label>
+                  <Input type="number" value={packCount} onChange={(e) => setPackCount(e.target.value)} />
+                </div>
+              )}
+              {has("color") && (
+                <div>
+                  <Label>Color</Label>
+                  <Input value={color} onChange={(e) => setColor(e.target.value)} />
+                </div>
+              )}
+              {has("weight_range_kg") && (
+                <div className="col-span-2">
+                  <Label>Weight range (kg)</Label>
+                  <Input value={weightRange} onChange={(e) => setWeightRange(e.target.value)} placeholder="e.g. 4–8 kg" />
+                </div>
+              )}
+              {/* TODO: gender is product-level (products.gender_relevant) and has no
+                  pending_products column, so it isn't wired into this brand-oriented
+                  submission form. Offer where the map lists "gender" once supported. */}
+            </div>
+          )}
 
           <div>
             <BrandImageUpload label="Product image *" currentUrl={imageUrl} onUploaded={setImageUrl}
