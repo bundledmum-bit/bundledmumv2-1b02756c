@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import OrdersReportTab from "@/components/admin/OrdersReportTab";
 import ProductsAnalyticsTab from "@/components/admin/ProductsAnalyticsTab";
+import HospitalListFunnelTab from "@/components/admin/HospitalListFunnelTab";
 import OrderLinesReportTab from "@/components/admin/OrderLinesReportTab";
 import CustomerReportTab from "@/components/admin/CustomerReportTab";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -436,6 +437,7 @@ export default function AdminAnalytics() {
           <TabsTrigger value="behaviour">Behaviour</TabsTrigger>
           <TabsTrigger value="audience">Audience</TabsTrigger>
           <TabsTrigger value="pwa">App / PWA</TabsTrigger>
+          <TabsTrigger value="hospital-funnel">Hospital List Funnel</TabsTrigger>
         </TabsList>
 
         {/* ═══ ORDERS REPORT ═══ */}
@@ -1008,6 +1010,10 @@ export default function AdminAnalytics() {
 
         <TabsContent value="pwa">
           <PwaAnalyticsTab />
+        </TabsContent>
+
+        <TabsContent value="hospital-funnel">
+          <HospitalListFunnelTab />
         </TabsContent>
       </Tabs>
     </div>
