@@ -19,6 +19,7 @@ import {
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { useAllProducts } from "@/hooks/useSupabaseData";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // The restricted "vendor manager" account. Anyone else reaching this page is a
 // full admin (super_admin / admin) with direct edit rights.
@@ -135,6 +136,7 @@ export default function AdminVendors() {
   const qc = useQueryClient();
   const { data: adminUser } = useAdminUser();
   const isVendorManager = adminUser?.email === VENDOR_MANAGER_EMAIL;
+  const isMobile = useIsMobile();
 
   const [subFilter, setSubFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -221,7 +223,7 @@ export default function AdminVendors() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#2D6A4F]">Vendor Products</h1>
           <p className="text-sm text-muted-foreground">
@@ -230,15 +232,16 @@ export default function AdminVendors() {
               : "Full admin — cost-price edits apply immediately."}
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-[#2D6A4F] hover:bg-[#245840]">
+        <Button onClick={() => setAddOpen(true)}
+          className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
           <Plus className="w-4 h-4 mr-1" /> Add Product
         </Button>
       </div>
 
-      {/* Filter + search */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Filter + search — stacks full-width on mobile, inline row on desktop */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         <Select value={subFilter} onValueChange={setSubFilter}>
-          <SelectTrigger className="w-[220px]">
+          <SelectTrigger className="w-full sm:w-[220px] max-md:min-h-[44px]">
             <SelectValue placeholder="Subcategory" />
           </SelectTrigger>
           <SelectContent className="max-h-[320px]">
@@ -249,7 +252,7 @@ export default function AdminVendors() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-full sm:w-[150px] max-md:min-h-[44px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -259,7 +262,7 @@ export default function AdminVendors() {
           </SelectContent>
         </Select>
         <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as typeof stockFilter)}>
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-full sm:w-[150px] max-md:min-h-[44px]">
             <SelectValue placeholder="Stock" />
           </SelectTrigger>
           <SelectContent>
@@ -272,14 +275,15 @@ export default function AdminVendors() {
           placeholder="Search by brand or product…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full sm:w-[280px]"
+          className="w-full sm:w-[280px] max-md:min-h-[44px] order-first sm:order-none"
         />
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center justify-between gap-2 sm:ml-auto">
           <span className="text-xs text-muted-foreground whitespace-nowrap">
             Showing {filtered.length} of {rows.length} products
           </span>
           {statusFiltered && (
-            <Button variant="outline" size="sm" className="h-7 border-[#F4845F] text-[#F4845F] hover:bg-[#F4845F]/10"
+            <Button variant="outline" size="sm"
+              className="border-[#F4845F] text-[#F4845F] hover:bg-[#F4845F]/10 max-md:min-h-[44px] max-md:px-4"
               onClick={resetStatusStock}>
               Show all
             </Button>
@@ -287,7 +291,8 @@ export default function AdminVendors() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Desktop: full table. Mobile: card list (no 16-col horizontal scroll). */}
+      {!isMobile ? (
       <div className="rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
@@ -381,6 +386,18 @@ export default function AdminVendors() {
           </TableBody>
         </Table>
       </div>
+      ) : (
+        <VendorCardList
+          rows={filtered}
+          isLoading={isLoading}
+          pendingMap={pendingMap}
+          isVendorManager={isVendorManager}
+          adminUserId={adminUser?.id}
+          onView={setViewingRow}
+          onEdit={setEditingRow}
+          onSaved={() => { refreshRows(); refreshPending(); }}
+        />
+      )}
 
       {viewingRow && (
         <ProductDetailDialog row={viewingRow} onClose={() => setViewingRow(null)} />
@@ -408,16 +425,111 @@ export default function AdminVendors() {
 }
 
 /* --------------------------------- Thumb --------------------------------- */
-function Thumb({ row }: { row: VendorRow }) {
+function Thumb({ row, className = "w-10 h-10" }: { row: VendorRow; className?: string }) {
   const src = row.stored_image_url || row.image_url;
   if (!src) {
     return (
-      <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center">
+      <div className={`${className} rounded-md bg-muted flex items-center justify-center`}>
         <ImageOff className="w-4 h-4 text-muted-foreground" />
       </div>
     );
   }
-  return <img src={src} alt={row.brand ?? ""} className="w-10 h-10 rounded-md object-cover border" />;
+  return <img src={src} alt={row.brand ?? ""} className={`${className} rounded-md object-cover border`} />;
+}
+
+/* ------------------------------- Mobile chip ------------------------------ */
+function Chip({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "forest" | "amber" | "red" }) {
+  const tones: Record<string, string> = {
+    muted: "bg-muted text-muted-foreground",
+    forest: "bg-[#2D6A4F]/10 text-[#2D6A4F]",
+    amber: "bg-amber-100 text-amber-800",
+    red: "bg-red-100 text-red-700",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${tones[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+/* ----------------------------- Mobile card list --------------------------- */
+function VendorCardList({
+  rows, isLoading, pendingMap, isVendorManager, adminUserId, onView, onEdit, onSaved,
+}: {
+  rows: VendorRow[];
+  isLoading: boolean;
+  pendingMap: Record<string, PendingFlags>;
+  isVendorManager: boolean;
+  adminUserId: string | undefined;
+  onView: (r: VendorRow) => void;
+  onEdit: (r: VendorRow) => void;
+  onSaved: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-lg" />)}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return <p className="text-center text-sm text-muted-foreground py-10">No products match your filters.</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {rows.map((r) => {
+        const p = pendingMap[r.brand_id];
+        return (
+          <div key={r.brand_id} onClick={() => onView(r)}
+            className="rounded-lg border p-3 active:bg-muted/50 cursor-pointer">
+            <div className="flex gap-3">
+              <div className="relative shrink-0">
+                <Thumb row={r} className="w-16 h-16" />
+                {p?.image && <PendingBadge label="Image pending" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium leading-snug line-clamp-2">{dash(r.product_name)}</p>
+                <p className="text-sm text-muted-foreground truncate">{dash(r.brand)}</p>
+                <p className="text-[11px] font-mono text-muted-foreground truncate">{dash(r.sku)}</p>
+              </div>
+              <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" title="Edit"
+                onClick={(e) => { e.stopPropagation(); onEdit(r); }}>
+                <Pencil className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <Chip>{r.category_label || titleCase(r.subcategory ?? "—")}</Chip>
+              <Chip tone={r.in_stock ? "forest" : "muted"}>{r.in_stock ? "In stock" : "Out of stock"}</Chip>
+              <Chip tone={r.is_active ? "forest" : "red"}>{r.is_active ? "Active" : "Inactive"}</Chip>
+              {p?.image && <Chip tone="amber">Image pending</Chip>}
+              {p?.vendor && <Chip tone="amber">Vendor pending</Chip>}
+            </div>
+
+            <div className="flex items-center justify-between mt-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Cost</span>
+                <CostPriceCell
+                  row={r}
+                  pendingValue={p?.cost_price}
+                  isVendorManager={isVendorManager}
+                  adminUserId={adminUserId}
+                  onSaved={onSaved}
+                />
+              </div>
+              <span className="text-sm text-muted-foreground">Retail {fmtNaira(r.retail_price)}</span>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-2 truncate">
+              {r.vendor_name
+                ? `${r.vendor_name}${r.vendor_phone ? ` · ${r.vendor_phone}` : ""}`
+                : "No vendor"}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ----------------------------- Cost price cell ---------------------------- */
@@ -542,7 +654,7 @@ function ProductDetailDialog({ row, onClose }: { row: VendorRow; onClose: () => 
   );
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto max-md:[&_input]:min-h-[44px]">
         <DialogHeader>
           <DialogTitle>{dash(row.product_name)}</DialogTitle>
           <DialogDescription>{dash(row.brand)} · {dash(row.sku)}</DialogDescription>
@@ -557,7 +669,7 @@ function ProductDetailDialog({ row, onClose }: { row: VendorRow; onClose: () => 
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Subcategory" value={dash(row.category_label || titleCase(row.subcategory ?? "—"))} />
             <Field label="Size / Stage" value={dash(row.size_stage)} />
             <Field label={typeLabel} value={dash(typeValue)} />
@@ -575,7 +687,7 @@ function ProductDetailDialog({ row, onClose }: { row: VendorRow; onClose: () => 
         </div>
         <div className="rounded-lg border p-3 mt-1">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Vendor</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Field label="Name" value={dash(row.vendor_name)} />
             <Field label="Phone" value={dash(row.vendor_phone)} />
             <Field label="WhatsApp" value={dash(row.vendor_whatsapp)} />
@@ -757,7 +869,7 @@ function ProductEditDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto max-md:[&_input]:min-h-[44px]">
         <DialogHeader>
           <DialogTitle>Edit · {dash(row.brand)}</DialogTitle>
           <DialogDescription>
@@ -787,7 +899,7 @@ function ProductEditDialog({
         {row.vendor_id && (
           <section className="space-y-2 border-t pt-4">
             <h3 className="text-sm font-semibold text-[#2D6A4F]">Vendor details</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Name</Label>
                 <Input value={vName} onChange={(e) => setVName(e.target.value)} />
@@ -1016,7 +1128,7 @@ function AddProductDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto max-md:[&_input]:min-h-[44px]">
         <DialogHeader>
           <DialogTitle>Add product</DialogTitle>
           <DialogDescription>Submitted to the approvals queue. Nothing goes live until approved.</DialogDescription>
@@ -1077,7 +1189,7 @@ function AddProductDialog({
           )}
 
           {/* Universal fields — always shown */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label>Brand name *</Label>
               <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} />
@@ -1098,7 +1210,7 @@ function AddProductDialog({
               {mode === "new" ? "Choose a subcategory" : "Pick a product"} to see the relevant attributes.
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {has("type") && (
                 <div>
                   <Label>{isDiaperCat ? "Diaper type" : "Item type"}</Label>
