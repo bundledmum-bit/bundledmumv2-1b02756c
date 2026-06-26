@@ -14,7 +14,7 @@ import { diaperBadges } from "@/lib/diaperBrand";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
-import BrandSelect from "@/components/BrandSelect";
+import BrandSelectNative from "@/components/BrandSelectNative";
 
 interface Props {
   product: Product | null;
@@ -278,17 +278,16 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             )}
           </div>
 
-          {/* Brand Selector — dropdown (scales to many brands). Same selection
+          {/* Brand Selector — native <select> (the drawer is a vaul portal;
+              a nested Radix Select fails to open reliably here). Same selection
               behaviour as before via setSelectedBrand. */}
-          <div className="mb-3">
-            <BrandSelect
-              brands={product.brands}
-              value={selectedBrand.id}
-              productOos={product.isOutOfStock}
-              label="Choose Brand"
-              onSelect={(b) => setSelectedBrand(b as any)}
-            />
-          </div>
+          <BrandSelectNative
+            brands={product.brands}
+            value={selectedBrand.id}
+            productOos={product.isOutOfStock}
+            label="Choose Brand"
+            onSelect={(b) => setSelectedBrand(b as any)}
+          />
 
           {/* Size Selector */}
           {requiresSizeChoice && (
