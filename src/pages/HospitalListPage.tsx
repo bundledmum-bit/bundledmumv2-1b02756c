@@ -10,6 +10,7 @@ import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "
 import ImageZoomModal from "@/components/ImageZoomModal";
 import { trackEvent } from "@/lib/analytics";
 import { usePageEngagement } from "@/hooks/usePageEngagement";
+import whatsappLogo from "@/assets/whatsapp-logo.svg";
 
 // Fire-and-forget hospital-list interaction event (reuses the shared analytics
 // helper; page_url is set by trackEvent and also echoed into event_data).
