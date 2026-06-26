@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle, X } from "lucide-react";
+import { trackEvent } from "@/lib/analytics";
+
+const trackHL = (action: string, extra?: Record<string, unknown>) => {
+  try { trackEvent("hospital_list_interaction", { action, page_url: "/hospital-list", ...extra }); } catch { /* ignore */ }
+};
 
 // Session flags shared with the page: only ever show once, and never after the
 // customer has actually used the WhatsApp action (the page sets WA_USED on its
@@ -41,6 +46,7 @@ export default function HospitalListExitPopup({
       if (triggeredRef.current || alreadyDone()) return;
       triggeredRef.current = true;
       try { sessionStorage.setItem(HL_EXIT_SHOWN_KEY, "1"); } catch { /* ignore */ }
+      trackHL("exit_popup_shown");
       setOpen(true);
     };
 
@@ -109,6 +115,7 @@ export default function HospitalListExitPopup({
 
   const chat = () => {
     try { sessionStorage.setItem(HL_WA_USED_KEY, "1"); } catch { /* ignore */ }
+    trackHL("whatsapp_click", { source: "exit_popup" });
     window.open(getWhatsAppHref(), "_blank", "noopener,noreferrer");
     setOpen(false);
   };

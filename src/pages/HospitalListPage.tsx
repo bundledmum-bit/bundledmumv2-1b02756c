@@ -7,6 +7,14 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalListExitPopup";
 import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "@/lib/customItemsRequest";
 import ImageZoomModal from "@/components/ImageZoomModal";
+import { trackEvent } from "@/lib/analytics";
+import { usePageEngagement } from "@/hooks/usePageEngagement";
+
+// Fire-and-forget hospital-list interaction event (reuses the shared analytics
+// helper; page_url is set by trackEvent and also echoed into event_data).
+const trackHL = (action: string, extra?: Record<string, unknown>) => {
+  try { trackEvent("hospital_list_interaction", { action, page_url: "/hospital-list", ...extra }); } catch { /* ignore */ }
+};
 
 // ── Types ────────────────────────────────────────────────────────────
 // Rows returned by the search_hospital_list_products RPC. `price` is in
@@ -108,6 +116,10 @@ const PLACEHOLDER = "/placeholder.svg";
 export default function HospitalListPage() {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty, getCartItem, totalItems, subtotal } = useCart();
+  // Time-on-page + scroll-depth tracking (writes page_views metrics on exit).
+  usePageEngagement("/hospital-list");
+  // Fire custom-items focus only on the FIRST focus.
+  const customItemsFocusedRef = useRef(false);
 
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -350,6 +362,7 @@ export default function HospitalListPage() {
   const applyBudget = async () => {
     const amt = parseInt(budgetInput.replace(/[^\d]/g, ""), 10);
     if (!amt || amt <= 0) return;
+    trackHL("budget_applied", { amount: amt });
     setBudgetLoading(true);
     // Budget + search are alternate ways to populate the list — entering
     // budget mode clears any active search.
@@ -434,7 +447,7 @@ export default function HospitalListPage() {
       href={waHref}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => { try { sessionStorage.setItem(HL_WA_USED_KEY, "1"); } catch { /* ignore */ } }}
+      onClick={() => { try { sessionStorage.setItem(HL_WA_USED_KEY, "1"); } catch { /* ignore */ } trackHL("whatsapp_click", { source: "main_button" }); }}
       className="text-center text-forest font-semibold underline underline-offset-4 py-2"
     >
       {cfg.whatsapp_label}
@@ -465,7 +478,7 @@ export default function HospitalListPage() {
       <div className="px-4 max-w-screen-sm mx-auto">
         <button
           type="button"
-          onClick={() => setBudgetOpen((v) => !v)}
+          onClick={() => setBudgetOpen((v) => { if (!v) trackHL("budget_toggle_open"); return !v; })}
           aria-expanded={budgetOpen}
           className="w-full flex items-center justify-between gap-2 bg-forest-light/60 border border-forest/20 rounded-card px-4 py-3 text-sm font-semibold text-forest hover:bg-forest-light transition-colors"
         >
@@ -620,7 +633,7 @@ export default function HospitalListPage() {
                     type="button"
                     role="tab"
                     aria-selected={active}
-                    onClick={() => setActiveTab(t.key)}
+                    onClick={() => { setActiveTab(t.key); trackHL("section_tab", { tab: t.key }); }}
                     className={`h-10 px-4 rounded-pill text-sm font-semibold border-2 transition-colors ${
                       active
                         ? "bg-forest text-primary-foreground border-forest"
@@ -668,6 +681,7 @@ export default function HospitalListPage() {
           <textarea
             id="hl-custom-items"
             value={customItems}
+            onFocus={() => { if (!customItemsFocusedRef.current) { customItemsFocusedRef.current = true; trackHL("custom_items_focused"); } }}
             onChange={(e) => { setCustomItems(e.target.value); setCustomItemsRequest(e.target.value); }}
             rows={3}
             placeholder={"e.g.\nNursing pillow (medium)\nBaby nail clippers x2"}
@@ -680,6 +694,7 @@ export default function HospitalListPage() {
         {cfg.add_more_enabled && (
           <Link
             to={cfg.add_more_path}
+            onClick={() => trackHL("add_more_click")}
             className="min-h-12 inline-flex items-center justify-center gap-2 rounded-pill border-2 border-forest text-forest font-semibold text-base px-5 hover:bg-forest-light transition-colors"
           >
             <ShoppingBag className="w-4 h-4" /> {cfg.add_more_label}
