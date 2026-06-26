@@ -556,7 +556,7 @@ export default function HospitalListPage() {
       </div>
 
       {/* Product list — pad the bottom so the sticky bar never covers the last card */}
-      <main className="max-w-screen-sm mx-auto px-4 pt-4 pb-44 md:pb-36 grid grid-cols-1 gap-4">
+      <main className="max-w-screen-sm mx-auto px-4 pt-4 pb-40 md:pb-36 grid grid-cols-1 gap-4">
         {inBudgetMode ? (
           // ── Budget-fitted results (flat) ────────────────────────────
           <div className="grid grid-cols-1 gap-4">
@@ -709,26 +709,31 @@ export default function HospitalListPage() {
 
       {/* Persistent sticky bottom bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-2px_12px_rgba(0,0,0,0.08)]">
-        {/* Mobile-only secondary action: Order/Checkout via WhatsApp. Sits ABOVE
-            the primary "View Bag / Checkout" row so it never crowds or covers it.
-            Reuses buildExitWhatsAppHref() — same section-grouped message as the
-            (now desktop-only) exit popup. */}
-        {cfg.whatsapp_enabled && (
-          <div className="md:hidden max-w-screen-sm mx-auto px-4 pt-2.5">
-            <a
-              href={buildExitWhatsAppHref()}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => trackHL("whatsapp_click", { source: "sticky_button" })}
-              className="flex items-center justify-center gap-2 h-11 rounded-pill text-white font-semibold text-sm"
-              style={{ backgroundColor: "#25D366" }}
-            >
-              <MessageCircle className="w-4 h-4" />
-              {totalItems > 0 ? "Checkout via WhatsApp" : "Order via WhatsApp"}
-            </a>
-          </div>
-        )}
+        {/* Checkout row. On MOBILE a round WhatsApp secondary action (label
+            stacked above the button) sits on the left; the primary CORAL
+            "View Bag / Checkout" button stays dominant on the right. The
+            WhatsApp message + source:'sticky_button' tracking are unchanged
+            (reuse buildExitWhatsAppHref()). The round control is md:hidden so
+            desktop keeps the original [Your bag][checkout] layout. */}
         <div className="max-w-screen-sm mx-auto px-4 py-3 flex items-center gap-3">
+          {cfg.whatsapp_enabled && (
+            <div className="md:hidden flex flex-col items-center shrink-0">
+              <span className="text-[10px] font-semibold text-text-med leading-tight text-center mb-1 max-w-[64px]">
+                {totalItems > 0 ? "Checkout via WhatsApp" : "Order via WhatsApp"}
+              </span>
+              <a
+                href={buildExitWhatsAppHref()}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackHL("whatsapp_click", { source: "sticky_button" })}
+                aria-label={totalItems > 0 ? "Checkout via WhatsApp" : "Order via WhatsApp"}
+                className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-md active:scale-95 transition-transform"
+                style={{ backgroundColor: "#25D366" }}
+              >
+                <MessageCircle className="w-6 h-6" />
+              </a>
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-xs text-text-med leading-none">Your bag</p>
             <p className="text-base font-bold text-text-dark leading-tight mt-0.5">
@@ -739,7 +744,8 @@ export default function HospitalListPage() {
             type="button"
             disabled={totalItems === 0}
             onClick={goToCheckout}
-            className="h-12 px-5 rounded-pill bg-forest text-primary-foreground font-semibold text-base hover:bg-forest-deep disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            className="h-12 px-5 rounded-pill text-white font-semibold text-base hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+            style={{ backgroundColor: "#F4845F" }}
           >
             View Bag / Checkout
           </button>
