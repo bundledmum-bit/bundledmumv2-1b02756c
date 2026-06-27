@@ -412,6 +412,23 @@ export default function AdminOrders() {
     enabled: !!detailOrder,
   });
 
+  // Outstanding cancellation refunds (paid, refund_amount>0, refunded_at NULL).
+  // Safety net so a manual transfer isn't forgotten.
+  const canSeeRefunds = can("finance", "view") || can("orders", "refund") || can("finance", "process_refunds");
+  const { data: pendingRefunds = [] } = useQuery({
+    queryKey: ["pending-refunds"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pending_refunds" as any)
+        .select("*")
+        .order("cancelled_at", { ascending: true });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    enabled: canSeeRefunds,
+    staleTime: 30_000,
+  });
+
   if (detailOrder) {
     if (!detailOrderData) return <div className="flex justify-center py-20"><Skeleton className="h-8 w-48" /></div>;
     return <OrderDetailPage order={detailOrderData} adminUser={adminUser} can={can} isSuperAdmin={isSuperAdmin} onBack={() => setDetailOrder(null)} onPrint={() => openBrandedInvoice(detailOrderData, adminUser?.id)} />;
@@ -552,6 +569,39 @@ export default function AdminOrders() {
           </div>
         ))}
       </div>
+
+      {canSeeRefunds && pendingRefunds.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center rounded-full bg-amber-500 text-white text-[11px] font-bold px-2 py-0.5">
+              {pendingRefunds.length}
+            </span>
+            <span className="text-xs font-semibold text-amber-800">
+              Pending refund{pendingRefunds.length === 1 ? "" : "s"} — money owed to customers
+            </span>
+          </div>
+          <div className="space-y-1">
+            {pendingRefunds.map((r) => {
+              const days = r.cancelled_at
+                ? Math.max(0, Math.floor((Date.now() - new Date(r.cancelled_at).getTime()) / 86_400_000))
+                : null;
+              return (
+                <button key={r.order_id} onClick={() => setDetailOrder(r.order_id)}
+                  className="w-full flex items-center justify-between gap-3 rounded-lg bg-card border border-amber-100 px-3 py-2 text-left hover:border-amber-300">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold truncate">{r.order_number} · {r.customer_name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Cancelled {r.cancelled_at ? new Date(r.cancelled_at).toLocaleDateString("en-NG", { month: "short", day: "numeric" }) : "—"}
+                      {days != null && ` · pending ${days} day${days === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{fmt(r.refund_amount || 0)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {isPaidOnlyRestricted && (
         <div className="flex items-center gap-2 mb-4 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-medium">
@@ -952,16 +1002,24 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
 
   const handleCancel = async () => {
     const updates: any = { order_status: "cancelled", cancellation_reason: cancelReason, cancelled_at: new Date().toISOString(), cancelled_by: adminUser?.id || null };
-    if (issueRefund && o.payment_status === "paid") {
-      updates.payment_status = "refunded";
+    // Paid order → record the refund owed. Default: refunded_at stays NULL =
+    // PENDING (surfaces in pending_refunds). If the admin already sent the money
+    // (issueRefund), mark it complete now. Unpaid orders never get a refund_amount.
+    if (o.payment_status === "paid") {
       updates.refund_amount = o.total;
-      updates.refunded_at = new Date().toISOString();
+      if (issueRefund) {
+        updates.payment_status = "refunded";
+        updates.refunded_at = new Date().toISOString();
+      }
     }
     const { error: updErr } = await supabase.from("orders").update(updates).eq("id", o.id);
     if (updErr) { toast.error(updErr.message || "Could not cancel order"); return; }
+    const refundNote = o.payment_status === "paid"
+      ? (issueRefund ? " (refund issued)" : ` (refund pending ${fmt(o.total)})`)
+      : "";
     await supabase.from("order_status_history").insert({
       order_id: o.id, old_status: o.order_status, new_status: "cancelled",
-      changed_by: adminUser?.id || null, note: `Reason: ${cancelReason}${issueRefund ? " (refund issued)" : ""}`,
+      changed_by: adminUser?.id || null, note: `Reason: ${cancelReason}${refundNote}`,
     });
 
     // Notify the customer — same invoke pattern as 'order_shipped'. Non-blocking:
@@ -979,9 +1037,22 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
     queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
     queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
+    queryClient.invalidateQueries({ queryKey: ["pending-refunds"] });
     if (emailed) toast.success("Order cancelled. Customer notified.");
     else toast.warning("Order cancelled, but the cancellation email could not be sent.");
     setShowCancel(false);
+  };
+
+  // Mark a pending cancellation refund as paid out. Sets refunded_at (completes
+  // it); the row then drops out of pending_refunds.
+  const handleMarkRefundComplete = async () => {
+    if (!confirm(`Confirm you have sent the ${fmt(o.refund_amount || 0)} refund to ${o.customer_name}?`)) return;
+    const { error } = await supabase.from("orders").update({ refunded_at: new Date().toISOString() }).eq("id", o.id);
+    if (error) { toast.error(error.message || "Could not mark refund complete"); return; }
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
+    queryClient.invalidateQueries({ queryKey: ["pending-refunds"] });
+    toast.success("Refund marked complete.");
   };
 
   const handleReturn = async () => {
@@ -1364,6 +1435,18 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             Cancel Order
           </button>
         )}
+        {o.order_status === "cancelled" && o.payment_status === "paid" && (o.refund_amount || 0) > 0 && (
+          o.refunded_at ? (
+            <span className="flex items-center gap-1 text-xs font-semibold text-[#2D6A4F]">
+              Refunded on {new Date(o.refunded_at).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" })}
+            </span>
+          ) : (
+            <button onClick={handleMarkRefundComplete}
+              className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:underline">
+              Mark refund completed ({fmt(o.refund_amount)})
+            </button>
+          )
+        )}
         {(can("orders", "refund") || can("finance", "process_refunds")) && o.order_status !== "returned" && (
           <button onClick={() => setShowReturn(true)} className="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:underline">
             Process Return
@@ -1401,7 +1484,7 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
             {o.payment_status === "paid" && (
               <label className="flex items-center gap-2 text-xs mb-4">
                 <input type="checkbox" checked={issueRefund} onChange={e => setIssueRefund(e.target.checked)} />
-                Issue refund ({fmt(o.total)})
+                Refund already sent ({fmt(o.total)}) — otherwise tracked as pending
               </label>
             )}
             <div className="flex gap-2">
