@@ -957,14 +957,30 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       updates.refund_amount = o.total;
       updates.refunded_at = new Date().toISOString();
     }
-    await supabase.from("orders").update(updates).eq("id", o.id);
+    const { error: updErr } = await supabase.from("orders").update(updates).eq("id", o.id);
+    if (updErr) { toast.error(updErr.message || "Could not cancel order"); return; }
     await supabase.from("order_status_history").insert({
       order_id: o.id, old_status: o.order_status, new_status: "cancelled",
       changed_by: adminUser?.id || null, note: `Reason: ${cancelReason}${issueRefund ? " (refund issued)" : ""}`,
     });
+
+    // Notify the customer — same invoke pattern as 'order_shipped'. Non-blocking:
+    // the cancellation stands even if the email fails.
+    let emailed = true;
+    try {
+      await (supabase as any).functions.invoke("send-transactional-email", {
+        body: { email_type: "order_cancelled", order_id: o.id },
+      });
+    } catch (e) {
+      emailed = false;
+      console.warn("[cancel] order_cancelled email failed (non-fatal):", e);
+    }
+
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
     queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
-    toast.success("Order cancelled");
+    if (emailed) toast.success("Order cancelled. Customer notified.");
+    else toast.warning("Order cancelled, but the cancellation email could not be sent.");
     setShowCancel(false);
   };
 
@@ -1376,7 +1392,8 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       {showCancel && (
         <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center max-md:items-end max-md:p-0" onClick={() => setShowCancel(false)}>
           <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-sm mb-4">Cancel Order</h3>
+            <h3 className="font-bold text-sm mb-1">Cancel Order</h3>
+            <p className="text-xs text-muted-foreground mb-4">Cancel this order? The customer will be emailed.</p>
             <label className="text-xs font-semibold text-muted-foreground">Reason</label>
             <select value={cancelReason} onChange={e => setCancelReason(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background mb-3 capitalize">
               {CANCEL_REASONS.map(r => <option key={r} value={r}>{r.replace("_", " ")}</option>)}
