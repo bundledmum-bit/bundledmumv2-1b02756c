@@ -973,15 +973,18 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         });
       }
 
-      // 'tracking_updated' when already shipped; otherwise the full
-      // 'order_shipped' email. Both templates are already on the server.
-      const emailType = alreadyShipped ? "tracking_updated" : "order_shipped";
-      try {
-        await (supabase as any).functions.invoke("send-transactional-email", {
-          body: { email_type: emailType, order_id: o.id },
-        });
-      } catch (e) {
-        console.warn(`[shipped] ${emailType} email failed (non-fatal):`, e);
+      // The full 'order_shipped' customer email is sent by the order-status DB
+      // trigger on the status→shipped transition — the frontend must NOT also
+      // send it (that caused duplicates). Tracking-only edits don't change
+      // order_status, so the trigger won't fire; send 'tracking_updated' here.
+      if (alreadyShipped) {
+        try {
+          await (supabase as any).functions.invoke("send-transactional-email", {
+            body: { email_type: "tracking_updated", order_id: o.id },
+          });
+        } catch (e) {
+          console.warn("[shipped] tracking_updated email failed (non-fatal):", e);
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
@@ -1022,24 +1025,15 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
       changed_by: adminUser?.id || null, note: `Reason: ${cancelReason}${refundNote}`,
     });
 
-    // Notify the customer — same invoke pattern as 'order_shipped'. Non-blocking:
-    // the cancellation stands even if the email fails.
-    let emailed = true;
-    try {
-      await (supabase as any).functions.invoke("send-transactional-email", {
-        body: { email_type: "order_cancelled", order_id: o.id },
-      });
-    } catch (e) {
-      emailed = false;
-      console.warn("[cancel] order_cancelled email failed (non-fatal):", e);
-    }
+    // The 'order_cancelled' customer email is sent by the order-status DB trigger
+    // on the status→cancelled transition — the frontend must NOT also send it
+    // (that caused duplicates).
 
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
     queryClient.invalidateQueries({ queryKey: ["admin-order-detail", o.id] });
     queryClient.invalidateQueries({ queryKey: ["admin-order-history", o.id] });
     queryClient.invalidateQueries({ queryKey: ["pending-refunds"] });
-    if (emailed) toast.success("Order cancelled. Customer notified.");
-    else toast.warning("Order cancelled, but the cancellation email could not be sent.");
+    toast.success("Order cancelled. Customer notified.");
     setShowCancel(false);
   };
 
