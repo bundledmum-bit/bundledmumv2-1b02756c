@@ -134,13 +134,17 @@ interface PendingFlags {
   otherFields?: string[]; // human-readable names of those other changed fields
 }
 
-// proposed_data keys already represented by a specific badge (cost / image / vendor).
+// proposed_data keys that do NOT produce a generic "Edit pending" badge —
+// either represented by a specific badge (cost / image / vendor) or not
+// vendor-proposable at all (selling price is super-admin-only, applied directly
+// and never routed through approval).
 const COVERED_PENDING_KEYS = new Set([
   "cost_price", "stored_image_url", "image_url", "thumbnail_url",
   "vendor_id", "new_vendor_name", "new_vendor_phone", "new_vendor_whatsapp",
+  "price", "compare_at_price",
 ]);
 const PENDING_FIELD_LABELS: Record<string, string> = {
-  price: "price", compare_at_price: "compare-at price", weight_kg: "weight",
+  weight_kg: "weight",
   weight_range_kg: "weight range", pack_count: "pack count", diaper_type: "diaper type",
   item_type: "item type", size_variant: "size", variant_type: "variant type",
   tier: "tier", in_stock: "stock", low_stock_threshold: "low-stock threshold",
@@ -155,6 +159,7 @@ export default function AdminVendors() {
   const isSuperAdmin = adminUser?.role === "super_admin";
   const isMobile = useIsMobile();
 
+  const [view, setView] = useState<"products" | "report">("products");
   const [subFilter, setSubFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
@@ -273,12 +278,30 @@ export default function AdminVendors() {
               : "Full admin — cost-price edits apply immediately."}
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)}
-          className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
-          <Plus className="w-4 h-4 mr-1" /> Add Product
-        </Button>
+        {view === "products" && (
+          <Button onClick={() => setAddOpen(true)}
+            className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
+            <Plus className="w-4 h-4 mr-1" /> Add Product
+          </Button>
+        )}
       </div>
 
+      {/* Section tabs — Products table vs Vendors report */}
+      <div className="flex gap-1 border-b border-border">
+        {(["products", "report"] as const).map((v) => (
+          <button key={v} onClick={() => setView(v)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px max-md:min-h-[44px] ${
+              view === v ? "border-[#2D6A4F] text-[#2D6A4F]" : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}>
+            {v === "products" ? "Products" : "Vendors"}
+          </button>
+        ))}
+      </div>
+
+      {view === "report" ? (
+        <VendorReport />
+      ) : (
+      <>
       {/* Filter + search — stacks full-width on mobile, inline row on desktop */}
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
         <Select value={subFilter} onValueChange={setSubFilter}>
@@ -447,6 +470,8 @@ export default function AdminVendors() {
           onSaved={() => { refreshRows(); refreshPending(); }}
         />
       )}
+      </>
+      )}
 
       {viewingRow && (
         <ProductDetailDialog row={viewingRow} onClose={() => setViewingRow(null)} />
@@ -471,6 +496,245 @@ export default function AdminVendors() {
         />
       )}
     </div>
+  );
+}
+
+/* ----------------------------- Vendors report ----------------------------- */
+interface VendorReportRow {
+  vendor_id: string;
+  vendor_name: string | null;
+  contact_person: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  location: string | null;
+  payment_terms: string | null;
+  is_active: boolean | null;
+  created_at: string | null;
+  products_assigned: number | null;
+  products_active: number | null;
+  products_in_stock: number | null;
+  sold_lines_paid: number | null;
+  units_sold_paid: number | null;
+  revenue_paid: number | null;       // integer NAIRA
+  last_sale_at: string | null;
+}
+
+function ReportStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 text-center">
+      <div className="text-base font-bold text-[#2D6A4F]">{value}</div>
+      <div className="text-muted-foreground text-[10px]">{label}</div>
+    </div>
+  );
+}
+
+function VendorReport() {
+  const qc = useQueryClient();
+  const isMobile = useIsMobile();
+  const [createOpen, setCreateOpen] = useState(false);
+
+  const { data: vendors = [], isLoading } = useQuery({
+    queryKey: ["vendor-report"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("vendor_report" as any)
+        .select("*")
+        .order("revenue_paid", { ascending: false, nullsFirst: false });
+      if (error) throw error;
+      return (data as unknown as VendorReportRow[]) ?? [];
+    },
+    staleTime: 30_000,
+  });
+
+  const totals = useMemo(() => ({
+    vendors: vendors.length,
+    assigned: vendors.reduce((s, v) => s + (v.products_assigned || 0), 0),
+    revenue: vendors.reduce((s, v) => s + (v.revenue_paid || 0), 0),
+  }), [vendors]);
+
+  const fmtDate = (d: string | null) =>
+    d ? new Date(d).toLocaleDateString("en-NG", { month: "short", day: "numeric", year: "numeric" }) : "No sales yet";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="grid grid-cols-3 gap-2 flex-1">
+          <ReportStat label="Vendors" value={String(totals.vendors)} />
+          <ReportStat label="Products assigned" value={String(totals.assigned)} />
+          <ReportStat label="Revenue (paid)" value={fmtNaira(totals.revenue)} />
+        </div>
+        <Button onClick={() => setCreateOpen(true)}
+          className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
+          <Plus className="w-4 h-4 mr-1" /> Create vendor
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
+        </div>
+      ) : vendors.length === 0 ? (
+        <p className="text-center text-sm text-muted-foreground py-10">No vendors yet.</p>
+      ) : isMobile ? (
+        <div className="space-y-3">
+          {vendors.map((v) => (
+            <div key={v.vendor_id} className="rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold truncate">
+                  {dash(v.vendor_name)}
+                  {v.is_active === false && <span className="ml-1 text-[10px] text-muted-foreground">(inactive)</span>}
+                </p>
+                <span className="text-sm font-bold text-[#2D6A4F] whitespace-nowrap">{fmtNaira(v.revenue_paid || 0)}</span>
+              </div>
+              {[v.phone, v.whatsapp, v.location].some(Boolean) && (
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {[v.phone, v.whatsapp, v.location].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <Chip>{v.products_assigned || 0} assigned</Chip>
+                <Chip tone="forest">{v.products_in_stock || 0} in stock</Chip>
+                <Chip>{v.units_sold_paid || 0} sold</Chip>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Last sale: {fmtDate(v.last_sale_at)}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[140px]">Vendor</TableHead>
+                <TableHead className="min-w-[160px]">Contact</TableHead>
+                <TableHead>Assigned</TableHead>
+                <TableHead>Active</TableHead>
+                <TableHead>In stock</TableHead>
+                <TableHead>Products sold</TableHead>
+                <TableHead>Revenue (₦)</TableHead>
+                <TableHead>Last sale</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {vendors.map((v) => (
+                <TableRow key={v.vendor_id}>
+                  <TableCell className="font-medium">
+                    {dash(v.vendor_name)}
+                    {v.is_active === false && <span className="ml-1 text-[10px] text-muted-foreground">(inactive)</span>}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {[v.phone, v.whatsapp, v.location].filter(Boolean).join(" · ") || "—"}
+                  </TableCell>
+                  <TableCell>{v.products_assigned || 0}</TableCell>
+                  <TableCell>{v.products_active || 0}</TableCell>
+                  <TableCell>{v.products_in_stock || 0}</TableCell>
+                  <TableCell>{v.units_sold_paid || 0}</TableCell>
+                  <TableCell className="font-semibold">{fmtNaira(v.revenue_paid || 0)}</TableCell>
+                  <TableCell className="text-xs">{fmtDate(v.last_sale_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {createOpen && (
+        <CreateVendorDialog
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false);
+            qc.invalidateQueries({ queryKey: ["vendor-report"] });
+            qc.invalidateQueries({ queryKey: ["vendors-picker"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateVendorDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [f, setF] = useState({
+    name: "", contact_person: "", phone: "", whatsapp: "", email: "", location: "", payment_terms: "", notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const upd = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setF((s) => ({ ...s, [k]: e.target.value }));
+
+  async function save() {
+    if (!f.name.trim()) { toast.error("Vendor name is required"); return; }
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("vendors").insert({
+        name: f.name.trim(),
+        contact_person: f.contact_person.trim() || null,
+        phone: f.phone.trim() || null,
+        whatsapp: f.whatsapp.trim() || null,
+        email: f.email.trim() || null,
+        location: f.location.trim() || null,
+        payment_terms: f.payment_terms.trim() || null,
+        notes: f.notes.trim() || null,
+        is_active: true,
+      } as any);
+      if (error) throw error;
+      toast.success("Vendor created.");
+      onCreated();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create vendor");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto max-md:[&_input]:min-h-[44px]">
+        <DialogHeader>
+          <DialogTitle>Create vendor</DialogTitle>
+          <DialogDescription>Adds a vendor record. It appears in the report with zero stats until products and sales are linked.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <Label>Name *</Label>
+            <Input value={f.name} onChange={upd("name")} />
+          </div>
+          <div>
+            <Label>Contact person</Label>
+            <Input value={f.contact_person} onChange={upd("contact_person")} />
+          </div>
+          <div>
+            <Label>Phone</Label>
+            <Input value={f.phone} onChange={upd("phone")} />
+          </div>
+          <div>
+            <Label>WhatsApp</Label>
+            <Input value={f.whatsapp} onChange={upd("whatsapp")} />
+          </div>
+          <div>
+            <Label>Email</Label>
+            <Input value={f.email} onChange={upd("email")} />
+          </div>
+          <div>
+            <Label>Location</Label>
+            <Input value={f.location} onChange={upd("location")} />
+          </div>
+          <div>
+            <Label>Payment terms</Label>
+            <Input value={f.payment_terms} onChange={upd("payment_terms")} />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Notes</Label>
+            <Input value={f.notes} onChange={upd("notes")} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving} className="bg-[#2D6A4F] hover:bg-[#245840]">
+            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />} Create vendor
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -882,10 +1146,15 @@ function ProductEditDialog({
         const nv = textOrNull(form[key] ?? "");
         if (nv !== (cur ?? null)) patch[key] = nv;
       };
-      // Money — INTEGER NAIRA (no /100).
+      // Money — INTEGER NAIRA (no /100). cost_price is vendor-editable.
       diffNum("cost_price", intOrNull, brand.cost_price);
-      diffNum("price", intOrNull, brand.price);
-      diffNum("compare_at_price", intOrNull, brand.compare_at_price);
+      // Selling price — SUPER ADMIN ONLY (DB trigger rejects non-super writes;
+      // the approval fn ignores these keys). Never include them otherwise or the
+      // whole update would be rejected.
+      if (isSuperAdmin) {
+        diffNum("price", intOrNull, brand.price);
+        diffNum("compare_at_price", intOrNull, brand.compare_at_price);
+      }
       diffNum("weight_kg", floatOrNull, brand.weight_kg);
       diffNum("pack_count", intOrNull, brand.pack_count);
       diffNum("low_stock_threshold", intOrNull, brand.low_stock_threshold);
@@ -1100,12 +1369,16 @@ function ProductEditDialog({
               <Input type="number" value={form.cost_price ?? ""} onChange={upd("cost_price")} />
             </div>
             <div>
-              <Label>Price (₦)</Label>
-              <Input type="number" value={form.price ?? ""} onChange={upd("price")} />
+              <Label>Price (₦) {!isSuperAdmin && lockNote}</Label>
+              {isSuperAdmin
+                ? <Input type="number" value={form.price ?? ""} onChange={upd("price")} />
+                : <p className="text-sm font-medium py-2">{fmtNaira(brand?.price)}</p>}
             </div>
             <div>
-              <Label>Compare-at price (₦)</Label>
-              <Input type="number" value={form.compare_at_price ?? ""} onChange={upd("compare_at_price")} />
+              <Label>Compare-at price (₦) {!isSuperAdmin && lockNote}</Label>
+              {isSuperAdmin
+                ? <Input type="number" value={form.compare_at_price ?? ""} onChange={upd("compare_at_price")} />
+                : <p className="text-sm font-medium py-2">{fmtNaira(brand?.compare_at_price)}</p>}
             </div>
             <div>
               <Label>Weight (kg)</Label>
