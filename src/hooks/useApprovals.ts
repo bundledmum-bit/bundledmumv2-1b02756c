@@ -15,10 +15,11 @@ export interface ApprovalAdmin {
 
 export interface ApprovalRequest {
   id: string;
-  action: "delete" | "add";
+  action: "delete" | "add" | "update" | "create_product";
   target_table: string;
   target_record_id: string | null;
   proposed_data: any | null;
+  previous_data: any | null;
   description: string;
   requested_by: string;
   requested_at: string;

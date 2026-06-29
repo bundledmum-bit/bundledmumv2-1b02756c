@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -109,15 +110,117 @@ export default function AdminApprovals() {
   );
 }
 
-function ActionBadge({ action }: { action: "delete" | "add" }) {
-  const cls =
-    action === "delete"
-      ? "bg-red-100 text-red-700"
-      : "bg-blue-100 text-blue-700";
+function ActionBadge({ action }: { action: ApprovalRequest["action"] }) {
+  const cls: Record<string, string> = {
+    delete: "bg-red-100 text-red-700",
+    add: "bg-blue-100 text-blue-700",
+    update: "bg-amber-100 text-amber-800",
+    create_product: "bg-emerald-100 text-emerald-700",
+  };
+  const label = action === "create_product" ? "new product" : action;
   return (
-    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${cls}`}>
-      {action}
+    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${cls[action] || "bg-muted text-foreground"}`}>
+      {label}
     </span>
+  );
+}
+
+/* ----------------------- Visual old → new review block -------------------- */
+const reviewNaira = (n: any) => (n == null || n === "" ? "—" : `₦${Math.round(Number(n)).toLocaleString("en-NG")}`);
+const FIELD_LABELS: Record<string, string> = {
+  cost_price: "Cost price", price: "Price", compare_at_price: "Compare-at price",
+  weight_kg: "Weight (kg)", weight_range_kg: "Weight range", pack_count: "Pack count",
+  diaper_type: "Diaper type", item_type: "Item type", size_variant: "Size / variant",
+  variant_type: "Variant type", tier: "Tier", in_stock: "In stock",
+  low_stock_threshold: "Low-stock threshold", vendor_id: "Vendor", brand_name: "Brand name",
+  new_vendor_name: "New vendor name", new_vendor_phone: "New vendor phone", new_vendor_whatsapp: "New vendor WhatsApp",
+};
+const MONEY_KEYS = new Set(["cost_price", "price", "compare_at_price"]);
+const IMAGE_KEYS = new Set(["stored_image_url", "image_url", "thumbnail_url"]);
+const isImageUrl = (v: any) => typeof v === "string" && /^https?:\/\//.test(v);
+
+function fmtReviewVal(key: string, v: any, vendorNames: Record<string, string>): string {
+  if (v == null || v === "") return "—";
+  if (MONEY_KEYS.has(key)) return reviewNaira(v);
+  if (key === "in_stock") return v === true || v === "true" ? "Yes" : "No";
+  if (key === "vendor_id") return vendorNames[String(v)] || String(v);
+  return String(v);
+}
+
+function BrandUpdateReview({ req, vendorNames }: { req: ApprovalRequest; vendorNames: Record<string, string> }) {
+  const proposed = (req.proposed_data || {}) as Record<string, any>;
+  const previous = (req.previous_data || {}) as Record<string, any>;
+  const keys = Object.keys(proposed);
+  const imageKeys = keys.filter(k => IMAGE_KEYS.has(k));
+  const fieldKeys = keys.filter(k => !IMAGE_KEYS.has(k));
+  const oldImg = previous.stored_image_url || previous.image_url || previous.thumbnail_url;
+  const newImg = proposed.stored_image_url || proposed.image_url || proposed.thumbnail_url;
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 divide-y divide-amber-100">
+      {fieldKeys.map(k => (
+        <div key={k} className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-3 px-3 py-2 text-xs">
+          <span className="sm:w-44 shrink-0 font-semibold text-muted-foreground">{FIELD_LABELS[k] || k}</span>
+          <span className="flex items-center gap-2 flex-wrap">
+            <span className="text-muted-foreground line-through">{fmtReviewVal(k, previous[k], vendorNames)}</span>
+            <span className="text-muted-foreground">→</span>
+            <span className="font-semibold text-foreground">{fmtReviewVal(k, proposed[k], vendorNames)}</span>
+          </span>
+        </div>
+      ))}
+      {imageKeys.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-2 text-xs">
+          <span className="sm:w-44 shrink-0 font-semibold text-muted-foreground">Image</span>
+          <div className="flex items-center gap-2">
+            {isImageUrl(oldImg)
+              ? <img src={oldImg} alt="old" className="w-12 h-12 rounded object-cover border opacity-60" />
+              : <span className="text-muted-foreground">—</span>}
+            <span className="text-muted-foreground">→</span>
+            {isImageUrl(newImg)
+              ? <img src={newImg} alt="new" className="w-12 h-12 rounded object-cover border" />
+              : <span className="text-muted-foreground">image change</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CreateProductReview({ recordId }: { recordId: string | null }) {
+  const { data } = useQuery({
+    queryKey: ["approval-pending-product", recordId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("pending_products" as any).select("*").eq("id", recordId).maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    enabled: !!recordId,
+  });
+  if (!data) return null;
+  const img = data.image_url || data.stored_image_url;
+  const rows: [string, string][] = [
+    ["Product", data.new_product_name || (data.existing_product_id ? "(existing product)" : "—")],
+    ["Subcategory", data.subcategory || "—"],
+    ["Brand", data.brand_name || "—"],
+    ["Cost price", reviewNaira(data.cost_price)],
+    ["Weight (kg)", data.weight_kg != null ? String(data.weight_kg) : "—"],
+    ["Pack count", data.pack_count != null ? String(data.pack_count) : "—"],
+    [data.diaper_type ? "Diaper type" : "Item type", data.diaper_type || data.item_type || "—"],
+    ["Size / variant", data.size_variant || "—"],
+    ["Color", data.color || "—"],
+    ["Vendor", data.vendor_name || data.vendor_id || "—"],
+  ];
+  return (
+    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 flex gap-3">
+      {isImageUrl(img) && <img src={img} alt="" className="w-16 h-16 rounded object-cover border shrink-0" />}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs min-w-0">
+        {rows.map(([label, val]) => (
+          <div key={label} className="flex gap-2 min-w-0">
+            <span className="font-semibold text-muted-foreground shrink-0">{label}:</span>
+            <span className="truncate">{val}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -138,6 +241,18 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
   const [note, setNote] = useState("");
+
+  // Vendor id → name, to render vendor_id changes readably in the review.
+  const { data: vendorRows = [] } = useQuery({
+    queryKey: ["approval-vendor-names"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("vendors").select("id, name");
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    },
+    staleTime: 60_000,
+  });
+  const vendorNames: Record<string, string> = Object.fromEntries(vendorRows.map(v => [v.id, v.name]));
 
   const reset = () => {
     setSelectedRequestId(null);
@@ -204,6 +319,12 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
                 </div>
                 <div className="text-sm font-semibold">{req.description}</div>
                 <RequesterLine req={req} />
+                {req.target_table === "brands" && req.action === "update" && (
+                  <BrandUpdateReview req={req} vendorNames={vendorNames} />
+                )}
+                {req.action === "create_product" && (
+                  <CreateProductReview recordId={req.target_record_id} />
+                )}
               </div>
               {!isOpen && (
                 <div className="flex items-center gap-2">

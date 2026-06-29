@@ -1173,24 +1173,44 @@ function ProductEditDialog({
       // Product name — SUPER ADMIN ONLY, written to the products table directly.
       const productNameChanged = isSuperAdmin && !!product && productName.trim() !== (product.name ?? "");
 
-      if (Object.keys(patch).length === 0 && !productNameChanged) {
-        toast("No changes to save");
-        setSaving(false);
-        return;
-      }
-
       if (isVendorManager) {
-        if (Object.keys(patch).length > 0) {
-          if (!adminUserId) throw new Error("No admin profile");
-          const { error } = await supabase.from("admin_approval_requests").insert({
-            action: "update", target_table: "brands", target_record_id: row.brand_id,
-            proposed_data: patch, requested_by: adminUserId,
-            description: `Vendor edit: ${row.brand ?? ""} (${row.sku ?? ""}) — ${Object.keys(patch).join(", ")}`,
-          } as any);
-          if (error) throw error;
+        // Fold the vendor assign/create selection into the SAME request so one
+        // edit = ONE approval request (never split per field/section).
+        if (assignMode === "existing" && assignId && assignId !== (row.vendor_id ?? "")) {
+          patch.vendor_id = assignId;
+        } else if (assignMode === "new" && nvName.trim()) {
+          patch.new_vendor_name = nvName.trim();
+          patch.new_vendor_phone = nvPhone.trim() || null;
+          patch.new_vendor_whatsapp = nvWhatsapp.trim() || null;
         }
+        if (Object.keys(patch).length === 0) {
+          toast("No changes to save");
+          setSaving(false);
+          return;
+        }
+        if (!adminUserId) throw new Error("No admin profile");
+        // OLD values keyed exactly like proposed_data, for the super-admin
+        // before/after review. (new_vendor_* is a creation — no prior value.)
+        const oldValueFor = (key: string): any => {
+          if (key === "vendor_id") return row.vendor_id ?? null;
+          if (key === "new_vendor_name" || key === "new_vendor_phone" || key === "new_vendor_whatsapp") return null;
+          return (brand as any)[key] ?? null;
+        };
+        const previous: Record<string, any> = {};
+        for (const k of Object.keys(patch)) previous[k] = oldValueFor(k);
+        const { error } = await supabase.from("admin_approval_requests").insert({
+          action: "update", target_table: "brands", target_record_id: row.brand_id,
+          proposed_data: patch, previous_data: previous, requested_by: adminUserId,
+          description: `Vendor edit: ${row.product_name ?? row.brand ?? ""} (${row.sku ?? ""}) — ${Object.keys(patch).join(", ")}`,
+        } as any);
+        if (error) throw error;
         toast.success("Changes submitted for approval.");
       } else {
+        if (Object.keys(patch).length === 0 && !productNameChanged) {
+          toast("No changes to save");
+          setSaving(false);
+          return;
+        }
         if (Object.keys(patch).length > 0) {
           const { error } = await supabase.from("brands").update(patch as any).eq("id", row.brand_id);
           if (error) throw error;
@@ -1489,11 +1509,13 @@ function ProductEditDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={assignVendor} disabled={savingAssign || !assignId}
-                className="bg-[#2D6A4F] hover:bg-[#245840]">
-                {savingAssign && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-                {isVendorManager ? "Submit" : "Assign"}
-              </Button>
+              {!isVendorManager && (
+                <Button onClick={assignVendor} disabled={savingAssign || !assignId}
+                  className="bg-[#2D6A4F] hover:bg-[#245840]">
+                  {savingAssign && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                  Assign
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -1511,16 +1533,19 @@ function ProductEditDialog({
                   <Input value={nvWhatsapp} onChange={(e) => setNvWhatsapp(e.target.value)} />
                 </div>
               </div>
-              <Button onClick={createAndAssignVendor} disabled={savingCreate || !nvName.trim()}
-                className="bg-[#2D6A4F] hover:bg-[#245840]">
-                {savingCreate && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-                {isVendorManager ? "Submit new vendor for approval" : "Create & assign vendor"}
-              </Button>
+              {!isVendorManager && (
+                <Button onClick={createAndAssignVendor} disabled={savingCreate || !nvName.trim()}
+                  className="bg-[#2D6A4F] hover:bg-[#245840]">
+                  {savingCreate && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                  Create & assign vendor
+                </Button>
+              )}
             </div>
           )}
           {isVendorManager && (
             <p className="text-[11px] text-muted-foreground">
-              Vendor assignment / creation is submitted for super-admin approval.
+              Pick or enter a vendor here, then click <span className="font-semibold">Submit changes for approval</span> above —
+              it's included in the same request.
             </p>
           )}
         </section>
