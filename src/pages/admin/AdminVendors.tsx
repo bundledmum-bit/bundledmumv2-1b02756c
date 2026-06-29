@@ -136,6 +136,7 @@ export default function AdminVendors() {
   const qc = useQueryClient();
   const { data: adminUser } = useAdminUser();
   const isVendorManager = adminUser?.email === VENDOR_MANAGER_EMAIL;
+  const isSuperAdmin = adminUser?.role === "super_admin";
   const isMobile = useIsMobile();
 
   const [subFilter, setSubFilter] = useState<string>("all");
@@ -422,6 +423,7 @@ export default function AdminVendors() {
         <ProductEditDialog
           row={editingRow}
           isVendorManager={isVendorManager}
+          isSuperAdmin={isSuperAdmin}
           adminUserId={adminUser?.id}
           onClose={() => setEditingRow(null)}
           onSaved={() => { refreshRows(); refreshPending(); }}
@@ -718,18 +720,69 @@ function ProductDetailDialog({ row, onClose }: { row: VendorRow; onClose: () => 
 
 /* ------------------- Edit: image replace + vendor details ----------------- */
 function ProductEditDialog({
-  row, isVendorManager, adminUserId, onClose, onSaved,
+  row, isVendorManager, isSuperAdmin, adminUserId, onClose, onSaved,
 }: {
   row: VendorRow;
   isVendorManager: boolean;
+  isSuperAdmin: boolean;
   adminUserId: string | undefined;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
   const { data: vendors = [] } = useVendorsPicker();
+  const isDiaper = DIAPER_SUBCATS.has(row.subcategory ?? "");
 
+  // Load the real brands row (all editable columns) + the product name.
+  const { data: brand, isLoading: brandLoading } = useQuery({
+    queryKey: ["vendor-edit-brand", row.brand_id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("brands")
+        .select("id, product_id, brand_name, cost_price, price, compare_at_price, stored_image_url, image_url, thumbnail_url, weight_kg, weight_range_kg, pack_count, diaper_type, item_type, size_variant, variant_type, tier, in_stock, low_stock_threshold, vendor_id")
+        .eq("id", row.brand_id)
+        .single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+  const { data: product } = useQuery({
+    queryKey: ["vendor-edit-product", row.product_id],
+    enabled: !!row.product_id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("products").select("id, name").eq("id", row.product_id).single();
+      if (error) throw error;
+      return data as any;
+    },
+  });
+
+  // Attribute form, seeded once from the loaded brand row.
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [inStock, setInStock] = useState(true);
+  const [productName, setProductName] = useState("");
+  const [brandName, setBrandName] = useState("");
   const [newImage, setNewImage] = useState("");
-  const [savingImage, setSavingImage] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [seeded, setSeeded] = useState(false);
+
+  useEffect(() => {
+    if (brand && !seeded) {
+      const s = (v: any) => (v == null ? "" : String(v));
+      setForm({
+        cost_price: s(brand.cost_price), price: s(brand.price), compare_at_price: s(brand.compare_at_price),
+        weight_kg: s(brand.weight_kg), weight_range_kg: s(brand.weight_range_kg), pack_count: s(brand.pack_count),
+        diaper_type: s(brand.diaper_type), item_type: s(brand.item_type), size_variant: s(brand.size_variant),
+        variant_type: s(brand.variant_type), tier: s(brand.tier), low_stock_threshold: s(brand.low_stock_threshold),
+      });
+      setInStock(brand.in_stock !== false);
+      setBrandName(brand.brand_name ?? "");
+      setSeeded(true);
+    }
+  }, [brand, seeded]);
+  useEffect(() => { if (product) setProductName(product.name ?? ""); }, [product]);
+
+  const upd = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
 
   // Linked-vendor contact edit (direct for BOTH roles).
   const [vName, setVName] = useState(row.vendor_name ?? "");
@@ -769,21 +822,84 @@ function ProductEditDialog({
     return "applied";
   }
 
-  async function saveImage() {
-    if (!newImage) { toast.error("Upload a new image first"); return; }
-    setSavingImage(true);
+  // Save all changed brand attributes (+ image, + super-admin name/brand_name).
+  // Admin writes directly; vendor manager submits ONE approval request carrying
+  // every changed key. Only CHANGED fields are sent. brand_name is super-admin
+  // only (and DB-locked); product name writes to the products table directly.
+  async function saveAll() {
+    if (!brand) return;
+    setSaving(true);
     try {
-      const res = await applyBrandPatch(
-        { stored_image_url: newImage, image_url: newImage },
-        `Vendor image change: ${row.brand ?? ""} (${row.sku ?? ""})`,
-      );
-      toast.success(res === "pending" ? "Image change submitted for approval." : "Image updated.");
+      const patch: Record<string, any> = {};
+      const intOrNull = (v: string) => (v.trim() === "" ? null : Math.round(Number(v)));
+      const floatOrNull = (v: string) => (v.trim() === "" ? null : Number(v));
+      const textOrNull = (v: string) => (v.trim() === "" ? null : v.trim());
+      const diffNum = (key: string, parser: (v: string) => number | null, cur: any) => {
+        const nv = parser(form[key] ?? "");
+        const curN = cur == null ? null : Number(cur);
+        if (nv !== curN) patch[key] = nv;
+      };
+      const diffText = (key: string, cur: any) => {
+        const nv = textOrNull(form[key] ?? "");
+        if (nv !== (cur ?? null)) patch[key] = nv;
+      };
+      // Money — INTEGER NAIRA (no /100).
+      diffNum("cost_price", intOrNull, brand.cost_price);
+      diffNum("price", intOrNull, brand.price);
+      diffNum("compare_at_price", intOrNull, brand.compare_at_price);
+      diffNum("weight_kg", floatOrNull, brand.weight_kg);
+      diffNum("pack_count", intOrNull, brand.pack_count);
+      diffNum("low_stock_threshold", intOrNull, brand.low_stock_threshold);
+      diffText("weight_range_kg", brand.weight_range_kg);
+      diffText("size_variant", brand.size_variant);
+      diffText("variant_type", brand.variant_type);
+      diffText("tier", brand.tier);
+      // Category-aware type: only the relevant one (never both).
+      if (isDiaper) diffText("diaper_type", brand.diaper_type);
+      else diffText("item_type", brand.item_type);
+      if (inStock !== (brand.in_stock !== false)) patch.in_stock = inStock;
+      // Image (self-hosted upload URL) — write both columns; display prefers stored_image_url.
+      if (newImage) { patch.stored_image_url = newImage; patch.image_url = newImage; }
+      // brand_name — SUPER ADMIN ONLY (DB trigger rejects others). Never proposed for the vendor.
+      if (isSuperAdmin && brandName.trim() !== (brand.brand_name ?? "")) patch.brand_name = brandName.trim();
+      // Product name — SUPER ADMIN ONLY, written to the products table directly.
+      const productNameChanged = isSuperAdmin && !!product && productName.trim() !== (product.name ?? "");
+
+      if (Object.keys(patch).length === 0 && !productNameChanged) {
+        toast("No changes to save");
+        setSaving(false);
+        return;
+      }
+
+      if (isVendorManager) {
+        if (Object.keys(patch).length > 0) {
+          if (!adminUserId) throw new Error("No admin profile");
+          const { error } = await supabase.from("admin_approval_requests").insert({
+            action: "update", target_table: "brands", target_record_id: row.brand_id,
+            proposed_data: patch, requested_by: adminUserId,
+            description: `Vendor edit: ${row.brand ?? ""} (${row.sku ?? ""}) — ${Object.keys(patch).join(", ")}`,
+          } as any);
+          if (error) throw error;
+        }
+        toast.success("Changes submitted for approval.");
+      } else {
+        if (Object.keys(patch).length > 0) {
+          const { error } = await supabase.from("brands").update(patch as any).eq("id", row.brand_id);
+          if (error) throw error;
+        }
+        if (productNameChanged) {
+          const { error } = await supabase.from("products").update({ name: productName.trim() }).eq("id", row.product_id);
+          if (error) throw error;
+        }
+        toast.success("Changes saved.");
+      }
+      qc.invalidateQueries({ queryKey: ["vendor-edit-brand", row.brand_id] });
       onSaved();
       onClose();
     } catch (e: any) {
-      toast.error(e?.message || "Failed to save image");
+      toast.error(e?.message || "Failed to save changes");
     } finally {
-      setSavingImage(false);
+      setSaving(false);
     }
   }
 
@@ -880,7 +996,8 @@ function ProductEditDialog({
     }
   }
 
-  const currentImg = row.stored_image_url || row.image_url;
+  const currentImg = brand?.stored_image_url || brand?.image_url || row.stored_image_url || row.image_url;
+  const lockNote = <span className="text-[10px] font-normal text-muted-foreground">(super admin only)</span>;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -889,26 +1006,121 @@ function ProductEditDialog({
           <DialogTitle>Edit · {dash(row.brand)}</DialogTitle>
           <DialogDescription>
             {isVendorManager
-              ? "Image and vendor assignment are submitted for approval; linked-vendor contact edits apply directly."
+              ? "Attribute changes are submitted for approval; linked-vendor contact edits apply directly."
               : "Changes apply immediately."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Image replace */}
+        {brandLoading || !seeded ? (
+          <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+        <>
+        {/* Names — super admin only; read-only for everyone else */}
         <section className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Product name {!isSuperAdmin && lockNote}</Label>
+              {isSuperAdmin
+                ? <Input value={productName} onChange={(e) => setProductName(e.target.value)} />
+                : <p className="text-sm font-medium py-2">{dash(row.product_name)}</p>}
+            </div>
+            <div>
+              <Label>Brand name {!isSuperAdmin && lockNote}</Label>
+              {isSuperAdmin
+                ? <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} />
+                : <p className="text-sm font-medium py-2">{dash(row.brand)}</p>}
+            </div>
+          </div>
+        </section>
+
+        {/* Image — fixed: current image shown separately so the upload control is
+            always reachable (the old currentUrl={newImage||currentImg} kept the
+            file input hidden whenever a brand already had an image). */}
+        <section className="space-y-2 border-t pt-4">
           <h3 className="text-sm font-semibold text-[#2D6A4F]">Product image</h3>
-          <BrandImageUpload
-            label="Replace image"
-            currentUrl={newImage || currentImg}
-            onUploaded={setNewImage}
-            onRemove={() => setNewImage("")}
-          />
-          <Button onClick={saveImage} disabled={savingImage || !newImage}
-            className="bg-[#2D6A4F] hover:bg-[#245840]">
-            {savingImage && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-            {isVendorManager ? "Submit image for approval" : "Save image"}
+          <div className="flex items-center gap-3">
+            {currentImg && !newImage && (
+              <img src={currentImg} alt="current" className="w-16 h-16 rounded-lg object-cover border" />
+            )}
+            <BrandImageUpload
+              label="Replace image"
+              currentUrl={newImage}
+              onUploaded={setNewImage}
+              onRemove={() => setNewImage("")}
+            />
+          </div>
+          {newImage && <p className="text-[11px] text-amber-700">New image will be saved with your changes below.</p>}
+        </section>
+
+        {/* Brand attributes */}
+        <section className="space-y-2 border-t pt-4">
+          <h3 className="text-sm font-semibold text-[#2D6A4F]">Attributes</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Cost price (₦)</Label>
+              <Input type="number" value={form.cost_price ?? ""} onChange={upd("cost_price")} />
+            </div>
+            <div>
+              <Label>Price (₦)</Label>
+              <Input type="number" value={form.price ?? ""} onChange={upd("price")} />
+            </div>
+            <div>
+              <Label>Compare-at price (₦)</Label>
+              <Input type="number" value={form.compare_at_price ?? ""} onChange={upd("compare_at_price")} />
+            </div>
+            <div>
+              <Label>Weight (kg)</Label>
+              <Input type="number" step="any" value={form.weight_kg ?? ""} onChange={upd("weight_kg")} />
+            </div>
+            <div>
+              <Label>Weight range (kg)</Label>
+              <Input value={form.weight_range_kg ?? ""} onChange={upd("weight_range_kg")} placeholder="e.g. 4–8 kg" />
+            </div>
+            <div>
+              <Label>Pack count</Label>
+              <Input type="number" value={form.pack_count ?? ""} onChange={upd("pack_count")} />
+            </div>
+            <div>
+              <Label>{isDiaper ? "Diaper type" : "Item type"}</Label>
+              {isDiaper
+                ? <Input value={form.diaper_type ?? ""} onChange={upd("diaper_type")} placeholder="e.g. Tape, Pant" />
+                : <Input value={form.item_type ?? ""} onChange={upd("item_type")} placeholder="e.g. Formula, Onesie" />}
+            </div>
+            <div>
+              <Label>Size / variant</Label>
+              <Input value={form.size_variant ?? ""} onChange={upd("size_variant")} />
+            </div>
+            <div>
+              <Label>Variant type</Label>
+              <Input value={form.variant_type ?? ""} onChange={upd("variant_type")} />
+            </div>
+            <div>
+              <Label>Tier</Label>
+              <Input value={form.tier ?? ""} onChange={upd("tier")} />
+            </div>
+            <div>
+              <Label>Low-stock threshold</Label>
+              <Input type="number" value={form.low_stock_threshold ?? ""} onChange={upd("low_stock_threshold")} />
+            </div>
+            <div>
+              <Label>In stock</Label>
+              <Select value={inStock ? "yes" : "no"} onValueChange={(v) => setInStock(v === "yes")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">In stock</SelectItem>
+                  <SelectItem value="no">Out of stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Button onClick={saveAll} disabled={saving}
+            className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto">
+            {saving && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            {isVendorManager ? "Submit changes for approval" : "Save changes"}
           </Button>
         </section>
+        </>
+        )}
 
         {/* Linked-vendor contact edit — direct for both roles */}
         {row.vendor_id && (
