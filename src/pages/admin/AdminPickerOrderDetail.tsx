@@ -47,6 +47,8 @@ type OrderPickingItem = {
   picker_cost_price: number | null; // NAIRA — unit cost the picker entered (null = none)
   picked: boolean;
   picked_at: string | null;
+  vendor_name: string | null;  // sourcing vendor for the picker (null = unassigned)
+  vendor_phone: string | null;
 };
 
 // Response from toggle_order_item_picked — the server owns the transition.
@@ -501,6 +503,22 @@ function ItemCard({
             {item.product_name || "—"}
           </div>
           <div className="text-sm text-text-med">{item.brand_name || "—"}</div>
+          {/* Sourcing vendor for the picker — tap-to-call when a phone is set. */}
+          {picking?.vendor_name ? (
+            <div className="text-xs text-text-med">
+              Vendor: <span className="font-semibold text-foreground">{picking.vendor_name}</span>
+              {picking.vendor_phone ? (
+                <>
+                  {" · "}
+                  <a href={`tel:${picking.vendor_phone}`} className="font-semibold text-forest underline">
+                    {picking.vendor_phone}
+                  </a>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">no vendor</div>
+          )}
           {item.bundle_name && (
             <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded bg-coral/10 text-coral">
               {item.bundle_name}
