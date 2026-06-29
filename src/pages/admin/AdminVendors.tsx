@@ -130,7 +130,23 @@ interface PendingFlags {
   cost_price?: number;
   image?: boolean;
   vendor?: boolean;
+  other?: boolean;        // a pending change to some other attribute
+  otherFields?: string[]; // human-readable names of those other changed fields
 }
+
+// proposed_data keys already represented by a specific badge (cost / image / vendor).
+const COVERED_PENDING_KEYS = new Set([
+  "cost_price", "stored_image_url", "image_url", "thumbnail_url",
+  "vendor_id", "new_vendor_name", "new_vendor_phone", "new_vendor_whatsapp",
+]);
+const PENDING_FIELD_LABELS: Record<string, string> = {
+  price: "price", compare_at_price: "compare-at price", weight_kg: "weight",
+  weight_range_kg: "weight range", pack_count: "pack count", diaper_type: "diaper type",
+  item_type: "item type", size_variant: "size", variant_type: "variant type",
+  tier: "tier", in_stock: "stock", low_stock_threshold: "low-stock threshold",
+  brand_name: "brand name",
+};
+const labelForPendingField = (k: string) => PENDING_FIELD_LABELS[k] || k.replace(/_/g, " ");
 
 export default function AdminVendors() {
   const qc = useQueryClient();
@@ -207,10 +223,19 @@ export default function AdminVendors() {
         const pd = r.proposed_data ?? {};
         const entry = (map[id] ??= {});
         if (pd.cost_price != null) entry.cost_price = Number(pd.cost_price);
-        if (pd.stored_image_url != null || pd.image_url != null) entry.image = true;
+        if (pd.stored_image_url != null || pd.image_url != null || pd.thumbnail_url != null) entry.image = true;
         // Either assigning an existing vendor (vendor_id) or creating a new one
         // (new_vendor_name) counts as a pending vendor change.
         if (pd.vendor_id != null || pd.new_vendor_name != null) entry.vendor = true;
+        // Any OTHER changed attribute → generic "Edit pending" so a pending
+        // request to e.g. weight/pack count/tier is never badge-less.
+        for (const k of Object.keys(pd)) {
+          if (COVERED_PENDING_KEYS.has(k)) continue;
+          entry.other = true;
+          (entry.otherFields ??= []);
+          const label = labelForPendingField(k);
+          if (!entry.otherFields.includes(label)) entry.otherFields.push(label);
+        }
       }
       return map;
     },
@@ -355,7 +380,15 @@ export default function AdminVendors() {
                       {pendingMap[r.brand_id]?.image && <PendingBadge label="Image pending" />}
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">{dash(r.product_name)}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      {dash(r.product_name)}
+                      {pendingMap[r.brand_id]?.other && (
+                        <PendingBadge label="Edit pending" inline
+                          title={`Pending: ${(pendingMap[r.brand_id].otherFields || []).join(", ")}`} />
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{dash(r.brand)}</TableCell>
                   <TableCell>{dash(r.size_stage)}</TableCell>
                   <TableCell>{dash(r.weight_range_kg)}</TableCell>
@@ -521,6 +554,11 @@ function VendorCardList({
               <Chip tone={r.is_active ? "forest" : "red"}>{r.is_active ? "Active" : "Inactive"}</Chip>
               {p?.image && <Chip tone="amber">Image pending</Chip>}
               {p?.vendor && <Chip tone="amber">Vendor pending</Chip>}
+              {p?.other && (
+                <Chip tone="amber">
+                  <span title={`Pending: ${(p.otherFields || []).join(", ")}`}>Edit pending</span>
+                </Chip>
+              )}
             </div>
 
             <div className="flex items-center justify-between mt-3" onClick={(e) => e.stopPropagation()}>
@@ -642,10 +680,11 @@ function CostPriceCell({
 }
 
 /* ------------------------------ Pending badge ----------------------------- */
-function PendingBadge({ label, inline = false }: { label: string; inline?: boolean }) {
+function PendingBadge({ label, inline = false, title }: { label: string; inline?: boolean; title?: string }) {
   if (inline) {
     return (
-      <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium px-2 py-0.5 whitespace-nowrap">
+      <span title={title}
+        className="inline-flex items-center rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium px-2 py-0.5 whitespace-nowrap">
         {label}
       </span>
     );
@@ -653,7 +692,7 @@ function PendingBadge({ label, inline = false }: { label: string; inline?: boole
   return (
     <span
       className="absolute -top-1.5 -right-1.5 rounded-full bg-amber-500 w-3 h-3 ring-2 ring-background"
-      title={label}
+      title={title || label}
     />
   );
 }
