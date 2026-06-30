@@ -1767,8 +1767,31 @@ function CogsTab() {
 
   const revCur = plRowKobo(plRow?.[0], "gross_revenue_ngn");
   const cogsCur = sumKobo(cogs, "total_cost");
-  const gp = revCur - cogsCur;
-  const margin = revCur > 0 ? (gp / revCur) * 100 : 0;
+
+  // The COGS + Gross Margin summary cards must reflect REAL cost of sales from
+  // the finance_period_metrics RPC (already in NAIRA), not the manual finance_cogs
+  // table (cogsCur, which is empty → ₦0 / 100% margin). Range mirrors the
+  // PeriodSelector selection so the cards follow This Month / Last Month / YTD / Custom.
+  const pmRange = useMemo(() => {
+    const { year, month } = p.resolved;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    if (month) {
+      return { start: `${year}-${pad(month)}-01`, end: new Date(year, month, 0).toISOString().slice(0, 10) };
+    }
+    const now = new Date();
+    const end = year === now.getFullYear() ? now.toISOString().slice(0, 10) : `${year}-12-31`;
+    return { start: `${year}-01-01`, end };
+  }, [p.resolved]);
+  const { data: pmRows } = useQuery({
+    queryKey: ["cogs-period-metrics", pmRange.start, pmRange.end],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: pmRange.start, p_end: pmRange.end });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const pm = pmRows?.[0];
 
   // Group by product
   const byProduct = useMemo(() => {
@@ -1805,8 +1828,9 @@ function CogsTab() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <KpiCard title="Revenue" value={fmtNaira(revCur)} />
-        <KpiCard title="COGS" value={fmtNaira(cogsCur)} subtitle={revCur > 0 ? `${((cogsCur/revCur)*100).toFixed(1)}% of revenue` : "—"} />
-        <KpiCard title="Gross Margin" value={fmtPct(margin)} badge={fmtNaira(gp)} negative={gp < 0} />
+        <KpiCard title="COGS" value={acqNgn(pm?.total_cogs)}
+          subtitle={pm == null ? "n/a" : (Number(pm.gross_revenue) > 0 ? `${((Number(pm.total_cogs) / Number(pm.gross_revenue)) * 100).toFixed(1)}% of revenue` : "—")} />
+        <KpiCard title="Gross Margin" value={acqPct(pm?.gross_margin_pct)} badge={acqNgn(pm?.gross_profit)} negative={Number(pm?.gross_profit) < 0} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
