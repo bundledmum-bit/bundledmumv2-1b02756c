@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -236,11 +236,15 @@ function RequesterLine({ req }: { req: ApprovalRequest }) {
 }
 
 function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
+  const qc = useQueryClient();
   const { data, isLoading } = useApprovalRequests("pending");
   const process = useProcessApproval();
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
   const [note, setNote] = useState("");
+  // Separate busy flag for the AI create-product edge function (process.isPending
+  // only tracks the process_admin_approval mutation).
+  const [aiBusy, setAiBusy] = useState(false);
 
   // Vendor id → name, to render vendor_id changes readably in the review.
   const { data: vendorRows = [] } = useQuery({
@@ -280,6 +284,43 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
   }
 
   async function confirmDecision(req: ApprovalRequest, approved: boolean) {
+    // One-click AI auto-fill + create for new-product APPROVALS only. The edge
+    // function authenticates the caller (super admin) via the Authorization
+    // header supabase.functions.invoke sends automatically, does the full
+    // promotion (AI fields + slug/SKU/retail + product/brand/vendor), and marks
+    // both rows approved. Rejects and all other actions keep process_admin_approval.
+    if (approved && req.action === "create_product") {
+      setAiBusy(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("approve-pending-product", {
+          body: { request_id: req.id },
+        });
+        if (error) {
+          let msg = error.message || "request failed";
+          try {
+            const body = await (error as any).context?.json?.();
+            if (body?.error) msg = body.error + (body.detail ? `: ${body.detail}` : "");
+          } catch { /* keep msg */ }
+          toast.error(`Approval failed: ${msg}`);
+          return;
+        }
+        const d = (data || {}) as any;
+        toast.success(`Product created: ${d.slug} (${d.sku}) at ₦${Number(d.retail || 0).toLocaleString("en-NG")}`);
+        // Request leaves the pending list; new product + vendor appear.
+        qc.invalidateQueries({ queryKey: ["approval-requests"] });
+        qc.invalidateQueries({ queryKey: ["pending-approvals-count"] });
+        qc.invalidateQueries({ queryKey: ["products"] });
+        qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
+        qc.invalidateQueries({ queryKey: ["vendors-picker"] });
+        reset();
+      } catch (e: any) {
+        toast.error(`Approval failed: ${e?.message || "unknown error"}`);
+      } finally {
+        setAiBusy(false);
+      }
+      return;
+    }
+
     try {
       await process.mutateAsync({
         requestId: req.id,
@@ -374,14 +415,16 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
                   <Button
                     size="sm"
                     variant={decision === "reject" ? "destructive" : "default"}
-                    disabled={process.isPending}
+                    disabled={process.isPending || aiBusy}
                     onClick={() => confirmDecision(req, decision === "approve")}
                   >
-                    {process.isPending
-                      ? "Working..."
-                      : decision === "approve"
-                        ? "Confirm approval"
-                        : "Confirm rejection"}
+                    {aiBusy
+                      ? "Creating..."
+                      : process.isPending
+                        ? "Working..."
+                        : decision === "approve"
+                          ? "Confirm approval"
+                          : "Confirm rejection"}
                   </Button>
                 </div>
               </div>
