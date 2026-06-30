@@ -6,6 +6,7 @@ import { Plus, Pencil, Check, X, Loader2, ImageOff, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -148,7 +149,7 @@ const PENDING_FIELD_LABELS: Record<string, string> = {
   weight_range_kg: "weight range", pack_count: "pack count", diaper_type: "diaper type",
   item_type: "item type", size_variant: "size", variant_type: "variant type",
   tier: "tier", in_stock: "stock", low_stock_threshold: "low-stock threshold",
-  brand_name: "brand name",
+  brand_name: "brand name", description: "brand description",
 };
 const labelForPendingField = (k: string) => PENDING_FIELD_LABELS[k] || k.replace(/_/g, " ");
 
@@ -167,6 +168,47 @@ export default function AdminVendors() {
   const [viewingRow, setViewingRow] = useState<VendorRow | null>(null);
   const [editingRow, setEditingRow] = useState<VendorRow | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // Super-admin "Generate brand descriptions" backfill loop. Idempotent (only
+  // fills NULLs) so it is safe to re-run. Loops the edge function until done.
+  const [genRunning, setGenRunning] = useState(false);
+  const [genMsg, setGenMsg] = useState<string | null>(null);
+  async function runGenerateDescriptions() {
+    setGenRunning(true);
+    setGenMsg("Starting...");
+    let total = 0;
+    try {
+      for (let i = 0; i < 200; i++) {
+        const { data, error } = await supabase.functions.invoke("backfill-brand-descriptions", { body: { batch_size: 15 } });
+        if (error) {
+          let msg = error.message || "request failed";
+          try { const body = await (error as any).context?.json?.(); if (body?.error) msg = body.error; } catch { /* keep msg */ }
+          setGenMsg(`Error: ${msg}`);
+          toast.error(`Generation failed: ${msg}`);
+          return;
+        }
+        const d = (data || {}) as any;
+        total += Number(d.processed || 0);
+        const remaining = Number(d.remaining ?? 0);
+        if (d.done === true || remaining === 0) {
+          setGenMsg(`All brand descriptions generated. Total ${total}.`);
+          toast.success("All brand descriptions generated.");
+          qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
+          return;
+        }
+        setGenMsg(`Generated ${total}, remaining ${remaining}...`);
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      setGenMsg(`Stopped after the maximum number of passes. Generated ${total}; some may remain. Re-run to continue.`);
+      toast.warning("Stopped after max passes; re-run to finish.");
+      qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
+    } catch (e: any) {
+      setGenMsg(`Error: ${e?.message || "unknown error"}`);
+      toast.error(`Generation failed: ${e?.message || "unknown error"}`);
+    } finally {
+      setGenRunning(false);
+    }
+  }
 
   // Debounce search so we don't refetch on every keystroke.
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -278,13 +320,25 @@ export default function AdminVendors() {
               : "Full admin — cost-price edits apply immediately."}
           </p>
         </div>
-        {view === "products" && (
-          <Button onClick={() => setAddOpen(true)}
-            className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
-            <Plus className="w-4 h-4 mr-1" /> Add Product
-          </Button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          {isSuperAdmin && (
+            <Button onClick={runGenerateDescriptions} disabled={genRunning} variant="outline"
+              className="w-full sm:w-auto max-md:min-h-[44px] border-[#2D6A4F] text-[#2D6A4F] hover:bg-[#2D6A4F]/5">
+              {genRunning && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+              {genRunning ? "Generating..." : "Generate brand descriptions"}
+            </Button>
+          )}
+          {view === "products" && (
+            <Button onClick={() => setAddOpen(true)}
+              className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto max-md:min-h-[44px]">
+              <Plus className="w-4 h-4 mr-1" /> Add Product
+            </Button>
+          )}
+        </div>
       </div>
+      {isSuperAdmin && genMsg && (
+        <p className="text-xs text-muted-foreground">{genMsg}</p>
+      )}
 
       {/* Section tabs — Products table vs Vendors report */}
       <div className="flex gap-1 border-b border-border">
@@ -1042,7 +1096,7 @@ function ProductEditDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("brands")
-        .select("id, product_id, brand_name, cost_price, price, compare_at_price, stored_image_url, image_url, thumbnail_url, weight_kg, weight_range_kg, pack_count, diaper_type, item_type, size_variant, variant_type, tier, in_stock, low_stock_threshold, vendor_id")
+        .select("id, product_id, brand_name, description, cost_price, price, compare_at_price, stored_image_url, image_url, thumbnail_url, weight_kg, weight_range_kg, pack_count, diaper_type, item_type, size_variant, variant_type, tier, in_stock, low_stock_threshold, vendor_id")
         .eq("id", row.brand_id)
         .single();
       if (error) throw error;
@@ -1076,6 +1130,7 @@ function ProductEditDialog({
         weight_kg: s(brand.weight_kg), weight_range_kg: s(brand.weight_range_kg), pack_count: s(brand.pack_count),
         diaper_type: s(brand.diaper_type), item_type: s(brand.item_type), size_variant: s(brand.size_variant),
         variant_type: s(brand.variant_type), tier: s(brand.tier), low_stock_threshold: s(brand.low_stock_threshold),
+        description: s(brand.description),
       });
       setInStock(brand.in_stock !== false);
       setBrandName(brand.brand_name ?? "");
@@ -1162,6 +1217,8 @@ function ProductEditDialog({
       diffText("size_variant", brand.size_variant);
       diffText("variant_type", brand.variant_type);
       diffText("tier", brand.tier);
+      // Brand description — a normal editable attribute (admin direct / vendor via approval).
+      diffText("description", brand.description);
       // Category-aware type: only the relevant one (never both).
       if (isDiaper) diffText("diaper_type", brand.diaper_type);
       else diffText("item_type", brand.item_type);
@@ -1444,6 +1501,16 @@ function ProductEditDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div>
+            <Label>Brand description</Label>
+            <Textarea
+              value={form.description ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              rows={4}
+              placeholder="Short marketing description for this brand."
+              className="max-md:min-h-[44px]"
+            />
           </div>
           <Button onClick={saveAll} disabled={saving}
             className="bg-[#2D6A4F] hover:bg-[#245840] w-full sm:w-auto">

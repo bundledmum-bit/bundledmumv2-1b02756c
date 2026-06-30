@@ -33,7 +33,7 @@ function useProduct(slug: string) {
     queryFn: async () => {
       let { data, error } = await supabase
         .from("products")
-        .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+        .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type, description), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
         .eq("slug", slug)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -42,7 +42,7 @@ function useProduct(slug: string) {
       if (!data) {
         const res = await supabase
           .from("products")
-          .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
+          .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type, description), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
           .eq("id", slug)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -1132,6 +1132,15 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               label={hasVariants ? "Brand" : "Choose Brand"}
               onSelect={(b) => { selectBrand(b as Brand); setActiveImageIdx(0); }}
             />
+
+            {/* Brand Details — the selected brand's own description (brands.description).
+                Updates with brand selection; hidden when the brand has none. */}
+            {selectedBrand?.description && selectedBrand.description.trim() && (
+              <div className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Brand Details</p>
+                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{selectedBrand.description}</p>
+              </div>
+            )}
 
             {/* Size Selector — no auto-pick; customer must tap a chip. */}
             {requiresSizeChoice && (
