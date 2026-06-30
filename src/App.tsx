@@ -56,6 +56,7 @@ import PushGiftsPage from "@/pages/PushGiftsPage";
 import ProductPage from "@/pages/ProductPage";
 import DynamicPage from "@/pages/DynamicPage";
 import ComingSoonPage from "@/pages/ComingSoonPage";
+import RedesignPreview from "@/redesign/RedesignPreview";
 import NotFound from "./pages/NotFound.tsx";
 
 // Admin
@@ -369,6 +370,10 @@ const App = () => (
 
               {/* Standalone public page — no navbar/footer, not redirected */}
               <Route path="/coming-soon" element={<ComingSoonPage />} />
+
+              {/* Redesign prototype preview (branch redesign/bundledmum-prototype-v1).
+                  Standalone, isolated from the live storefront shell. */}
+              <Route path="/redesign" element={<RedesignPreview />} />
 
               {/* Storefront routes (wrapped in Coming Soon redirect gate) */}
               <Route path="*" element={<ComingSoonGate><StorefrontShell /></ComingSoonGate>} />
