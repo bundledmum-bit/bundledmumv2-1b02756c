@@ -9,6 +9,8 @@ import {
   Download, ChevronDown, ChevronRight, Info, FileCheck, Bell, Pencil,
 } from "lucide-react";
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { ReactNode } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar,
@@ -23,6 +25,38 @@ import {
   type Expense, type CogsEntry, type PayrollEntry, type TaxSettings, type FinanceAsset, type PayeBand, type PLRow,
   NTA_2025_PAYE_BANDS,
 } from "@/hooks/useFinance";
+
+// ---------- Mobile card helper ----------
+// On mobile, wide finance tables render as stacked cards: one row = one card,
+// each column shown as a Label: value line. Pure presentation — values are the
+// SAME nodes the table cells render (no money/unit changes).
+function FCardList({ children }: { children: ReactNode }) {
+  return <div className="space-y-2">{children}</div>;
+}
+function FCard({ title, action, rows }: {
+  title?: ReactNode;
+  action?: ReactNode;
+  rows: { label: string; value: ReactNode }[];
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      {(title || action) && (
+        <div className="flex items-start justify-between gap-2 mb-2">
+          {title && <div className="font-semibold text-sm min-w-0">{title}</div>}
+          {action && <div className="shrink-0">{action}</div>}
+        </div>
+      )}
+      <div className="space-y-1">
+        {rows.map((r, i) => (
+          <div key={i} className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="text-muted-foreground shrink-0">{r.label}</span>
+            <span className="text-right font-medium break-words">{r.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ---------- Shared styles ----------
 const inputCls = "w-full border border-input rounded-lg px-3 py-2 text-sm bg-background";
@@ -219,6 +253,7 @@ function pmRangeFor(key: PmRangeKey, now: Date): { start: string; end: string; p
 }
 
 function DashboardTab() {
+  const isMobile = useIsMobile();
   const p = usePeriod("this_month");
   const { data: plRows } = useFinancePL(p.resolved.year, p.resolved.month);
   const { data: plAll } = useFinancePL(p.resolved.year);
@@ -554,6 +589,26 @@ function DashboardTab() {
         </div>
 
         {/* Monthly acquisition KPIs (most recent first) */}
+        {isMobile ? (
+          (acqMonthly || []).length === 0 ? (
+            <div className="rounded-xl border border-border bg-card px-3 py-6 text-center text-text-light text-xs">No monthly data yet.</div>
+          ) : (
+            <FCardList>
+              {(acqMonthly || []).map((r) => (
+                <FCard key={`${r.year}-${r.month}`} title={acqMonth(r.year, r.month)} rows={[
+                  { label: "Revenue", value: acqNgn(r.revenue) },
+                  { label: "Gross Profit", value: acqNgn(r.gross_profit) },
+                  { label: "Gross Margin %", value: acqPct(r.gross_margin_pct) },
+                  { label: "Acq. Spend", value: acqNgn(r.acquisition_spend) },
+                  { label: "CAC", value: acqNgn(r.cac_naira) },
+                  { label: "ROAS", value: acqRoas(r.roas) },
+                  { label: "Marketing ROI %", value: <span className={Number(r.marketing_roi_pct) < 0 ? "text-red-600" : ""}>{acqPct(r.marketing_roi_pct)}</span> },
+                  { label: "Break-even Revenue", value: r.breakeven_revenue_needed == null ? "n/a" : acqNgn(r.breakeven_revenue_needed) },
+                ]} />
+              ))}
+            </FCardList>
+          )
+        ) : (
         <div className="rounded-xl border border-border bg-card overflow-x-auto">
           <table className="w-full text-xs min-w-[820px]">
             <thead>
@@ -589,6 +644,7 @@ function DashboardTab() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
 
@@ -725,6 +781,7 @@ function KpiCard({ title, value, delta, badge, subtitle, negative, source }: {
  * from the orders table, grouped by month + courier.
  */
 function CourierCostsSection({ year }: { year?: number }) {
+  const isMobile = useIsMobile();
   const { data: orders } = useQuery({
     queryKey: ["finance-courier-costs", year],
     queryFn: async () => {
@@ -784,6 +841,35 @@ function CourierCostsSection({ year }: { year?: number }) {
           )}
         </div>
       </div>
+      {isMobile ? (
+        <FCardList>
+          {months.map(m => {
+            const row = summary[m] || {};
+            const be = row["Brain Express"] || { orders: 0, cost: 0 };
+            const eftd = row["eFTD Africa"] || { orders: 0, cost: 0 };
+            const other = Object.entries(row)
+              .filter(([k]) => k !== "Brain Express" && k !== "eFTD Africa")
+              .reduce((s, [, v]) => ({ orders: s.orders + v.orders, cost: s.cost + v.cost }), { orders: 0, cost: 0 });
+            const total = be.cost + eftd.cost + other.cost;
+            const totalOrders = be.orders + eftd.orders + other.orders;
+            if (totalOrders === 0) return null;
+            return (
+              <FCard key={m} title={MONTHS[m]} rows={[
+                { label: "Brain Express Orders", value: be.orders },
+                { label: "BE Cost", value: fmtNaira(be.cost) },
+                { label: "eFTD Orders", value: eftd.orders },
+                { label: "eFTD Cost", value: fmtNaira(eftd.cost) },
+                { label: "Total Courier Cost", value: fmtNaira(total) },
+                { label: "Avg / Order", value: totalOrders ? fmtNaira(Math.round(total / totalOrders)) : "—" },
+              ]} />
+            );
+          })}
+          <FCard title="YTD" rows={[
+            { label: "Total Courier Cost", value: fmtNaira(totals.cost) },
+            { label: "Avg / Order", value: totals.orders ? fmtNaira(Math.round(totals.cost / totals.orders)) : "—" },
+          ]} />
+        </FCardList>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="bg-muted/40 sticky top-0 z-10">
@@ -832,6 +918,7 @@ function CourierCostsSection({ year }: { year?: number }) {
           </tfoot>
         </table>
       </div>
+      )}
     </div>
   );
 }
@@ -1131,6 +1218,7 @@ function fmtLongDate(iso: string | null | undefined): string {
 }
 
 function ExpensesTab() {
+  const isMobile = useIsMobile();
   const p = usePeriod("this_month");
   const [filterType, setFilterType] = useState<string>("");
   const [filterCat, setFilterCat] = useState<string>("");
@@ -1323,6 +1411,40 @@ function ExpensesTab() {
               {(categories || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+          {isMobile ? (
+            filtered.length === 0 ? (
+              <div className="text-center py-6 text-text-light text-xs">No expenses this period</div>
+            ) : (
+              <FCardList>
+                {filtered.map(e => {
+                  const isAuto = !!(e as any).is_auto_generated;
+                  const recUnit = (e as any).recurrence_unit ?? e.recurrence;
+                  const recInterval = (e as any).recurrence_interval ?? 1;
+                  const cadence = e.is_recurring && recUnit ? cadenceLabel(recUnit, recInterval) : "";
+                  const nextEntry = (e as any).recurrence_next_date as string | null;
+                  return (
+                    <FCard key={e.id}
+                      title={<span className="flex items-center gap-1 flex-wrap">{e.description}{isAuto && <span className="text-[9px] font-bold uppercase tracking-wider text-text-light bg-background border border-border rounded-pill px-1.5 py-0.5">Auto</span>}</span>}
+                      action={!isAuto ? (
+                        <span className="flex items-center gap-2">
+                          <button onClick={() => setEditing(e)} className="text-forest hover:underline text-[11px] font-semibold">Edit</button>
+                          <button onClick={() => { if (confirm("Delete this expense?")) delE.mutate(e.id); }} className="text-red-600 hover:text-red-800"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </span>
+                      ) : <span className="text-[10px] text-text-light italic">read-only</span>}
+                      rows={[
+                        { label: "Date", value: fmtDate(e.expense_date) },
+                        { label: "Category", value: e.category?.name || "—" },
+                        { label: "Vendor", value: e.vendor || "—" },
+                        { label: "Amount", value: <span className="font-semibold">{fmtNaira(e.amount)}</span> },
+                        ...(e.is_recurring && cadence ? [{ label: "Recurring", value: `🔄 ${cadence}` }] : []),
+                        ...(e.is_recurring && nextEntry && !isAuto ? [{ label: "Next entry", value: fmtLongDate(nextEntry) }] : []),
+                      ]} />
+                  );
+                })}
+                <FCard title="Total" rows={[{ label: "Amount", value: <span className="font-semibold">{fmtNaira(sumKobo(filtered, "amount"))}</span> }]} />
+              </FCardList>
+            )
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-background">
@@ -1402,6 +1524,7 @@ function ExpensesTab() {
               </tfoot>
             </table>
           </div>
+          )}
         </div>
       </div>
 
@@ -1625,6 +1748,7 @@ function groupBy<T>(arr: T[], key: keyof T): Record<string, T[]> {
 // PAGE 4 — COGS
 // ================================================================
 function CogsTab() {
+  const isMobile = useIsMobile();
   const p = usePeriod("this_month");
   const { data: cogs } = useFinanceCogs(p.resolved.year, p.resolved.month);
   const { data: products } = useFinanceProducts();
@@ -1742,6 +1866,26 @@ function CogsTab() {
 
         <div className={cardCls + " lg:col-span-2"}>
           <h3 className="font-semibold text-sm mb-3">COGS entries ({cogs?.length || 0})</h3>
+          {isMobile ? (
+            (cogs || []).length === 0 ? (
+              <div className="text-center py-6 text-text-light text-xs">No COGS entries</div>
+            ) : (
+              <FCardList>
+                {(cogs || []).map(c => (
+                  <FCard key={c.id} title={c.product_name}
+                    action={<button onClick={() => { if (confirm("Delete entry?")) delC.mutate(c.id); }} className="text-red-600 hover:text-red-800"><Trash2 className="w-3.5 h-3.5" /></button>}
+                    rows={[
+                      { label: "Date", value: fmtDate(c.purchase_date) },
+                      { label: "Supplier", value: c.supplier || "—" },
+                      { label: "Unit", value: fmtNaira(c.unit_cost) },
+                      { label: "Qty", value: c.quantity },
+                      { label: "Total", value: <span className="font-semibold">{fmtNaira(c.total_cost)}</span> },
+                    ]} />
+                ))}
+                <FCard title="Total COGS" rows={[{ label: "Total", value: <span className="font-semibold">{fmtNaira(cogsCur)}</span> }]} />
+              </FCardList>
+            )
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-background">
@@ -1783,6 +1927,7 @@ function CogsTab() {
               </tfoot>
             </table>
           </div>
+          )}
 
           {byProduct.length > 0 && (
             <div className="mt-4">
@@ -1807,6 +1952,7 @@ function CogsTab() {
 // PAGE 5 — PAYROLL
 // ================================================================
 function PayrollTab() {
+  const isMobile = useIsMobile();
   const p = usePeriod("this_month");
   const { data: payroll } = useFinancePayroll(p.resolved.year, p.resolved.month);
   const { data: settings } = useFinanceTaxSettings();
@@ -2068,6 +2214,40 @@ function PayrollTab() {
             </button>
           )}
         </div>
+        {isMobile ? (
+          (payroll || []).length === 0 ? (
+            <div className="text-center py-6 text-text-light text-xs">No payroll entries for this period</div>
+          ) : (
+            <FCardList>
+              {(payroll || []).map(r => (
+                <FCard key={r.id} title={r.employee_name}
+                  action={(
+                    <span className="flex items-center gap-1">
+                      <button onClick={() => generatePayslip(r)} className="inline-flex items-center gap-1 border border-forest/30 text-forest hover:bg-forest/5 px-2 py-1 rounded-lg text-[11px] font-semibold" title="Download payslip"><Download className="w-3.5 h-3.5" /> Payslip</button>
+                      <button onClick={() => { if (confirm("Delete entry?")) delP.mutate(r.id); }} className="text-red-600 hover:text-red-800 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </span>
+                  )}
+                  rows={[
+                    { label: "Role", value: r.role || "—" },
+                    { label: "Gross", value: fmtNaira(r.gross_salary) },
+                    { label: "PAYE", value: fmtNaira(r.paye_tax) },
+                    { label: "Pension", value: fmtNaira(r.employee_pension) },
+                    { label: "NSITF", value: fmtNaira(r.nsitf) },
+                    { label: "Net", value: <span className="font-semibold">{fmtNaira(r.net_salary)}</span> },
+                    { label: "Total Cost", value: fmtNaira(r.total_employer_cost) },
+                  ]} />
+              ))}
+              <FCard title="Totals" rows={[
+                { label: "Gross", value: fmtNaira(totals.gross) },
+                { label: "PAYE", value: fmtNaira(totals.paye) },
+                { label: "Pension", value: fmtNaira(totals.empPension) },
+                { label: "NSITF", value: fmtNaira(totals.nsitf) },
+                { label: "Net", value: <span className="font-semibold">{fmtNaira(totals.net)}</span> },
+                { label: "Total Cost", value: fmtNaira(totals.erCost) },
+              ]} />
+            </FCardList>
+          )
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-background">
@@ -2125,6 +2305,7 @@ function PayrollTab() {
             </tfoot>
           </table>
         </div>
+        )}
       </div>
 
       <div className={cardCls}>
@@ -2456,6 +2637,7 @@ async function generateAllPayslips(rows: PayrollEntry[]): Promise<void> {
 // PAGE 6 — TAX POSITION
 // ================================================================
 function TaxTab() {
+  const isMobile = useIsMobile();
   const year = new Date().getFullYear();
   const { data: position } = useFinanceTaxPosition(year);
   const { data: settings } = useFinanceTaxSettings();
@@ -2589,6 +2771,23 @@ function TaxTab() {
 
       <div className={cardCls}>
         <h3 className="font-semibold text-sm mb-3">Tax Calendar ({year})</h3>
+        {isMobile ? (
+          <FCardList>
+            {calendar.map(r => (
+              <FCard key={r.month} title={r.label} rows={[
+                { label: "PAYE Due", value: fmtNaira(r.paye) },
+                { label: "Pension Due", value: fmtNaira(r.pension) },
+                { label: "NSITF Due", value: fmtNaira(r.nsitf) },
+                { label: "Deadlines", value: "PAYE 10th · Pension 7d · NSITF 16th" },
+              ]} />
+            ))}
+            <FCard title="Total" rows={[
+              { label: "PAYE Due", value: fmtNaira(totalPaye) },
+              { label: "Pension Due", value: fmtNaira(totalPension) },
+              { label: "NSITF Due", value: fmtNaira(totalNsitf) },
+            ]} />
+          </FCardList>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 z-10 bg-background">
@@ -2622,6 +2821,7 @@ function TaxTab() {
             </tfoot>
           </table>
         </div>
+        )}
       </div>
     </div>
   );
@@ -2631,6 +2831,7 @@ function TaxTab() {
 // PAGE 7 — ASSETS
 // ================================================================
 function AssetsTab() {
+  const isMobile = useIsMobile();
   const { data: assets } = useFinanceAssets();
   const addA = useAddAsset();
   const delA = useDeleteAsset();
@@ -2746,6 +2947,28 @@ function AssetsTab() {
 
         <div className={cardCls + " lg:col-span-2"}>
           <h3 className="font-semibold text-sm mb-3">Asset Register ({assets?.length || 0})</h3>
+          {isMobile ? (
+            (assets || []).length === 0 ? (
+              <div className="text-center py-6 text-text-light text-xs">No assets recorded</div>
+            ) : (
+              <FCardList>
+                {(assets || []).map(a => (
+                  <div key={a.id} onClick={() => setSelId(a.id)} className={selId === a.id ? "ring-1 ring-forest rounded-lg" : ""}>
+                    <FCard title={a.asset_name}
+                      action={<button onClick={(e) => { e.stopPropagation(); if (confirm("Delete asset?")) delA.mutate(a.id); }} className="text-red-600 hover:text-red-800"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      rows={[
+                        { label: "Type", value: <span className="capitalize">{a.asset_type}</span> },
+                        { label: "Cost", value: fmtNaira(a.purchase_cost) },
+                        { label: "Life", value: `${a.useful_life_years}y` },
+                        { label: "Annual", value: fmtNaira(a.annual_depreciation) },
+                        { label: "Monthly", value: fmtNaira(a.monthly_depreciation) },
+                        { label: "Book Value", value: <span className="font-semibold">{fmtNaira(bookValue(a))}</span> },
+                      ]} />
+                  </div>
+                ))}
+              </FCardList>
+            )
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-background">
@@ -2782,6 +3005,7 @@ function AssetsTab() {
               </tbody>
             </table>
           </div>
+          )}
 
           {selected && (
             <div className="mt-4">
@@ -2818,6 +3042,7 @@ function AssetsTab() {
 // PAGE 8 — SETTINGS
 // ================================================================
 function SettingsTab() {
+  const isMobile = useIsMobile();
   const { data: settings } = useFinanceTaxSettings();
   const upd = useUpdateTaxSettings();
   const [draft, setDraft] = useState<TaxSettings | null>(null);
@@ -2933,6 +3158,30 @@ function SettingsTab() {
             <button onClick={addBand} className={btnGhost}><Plus className="w-3.5 h-3.5" /> Add band</button>
           </div>
         </div>
+        {isMobile ? (
+          <div className="space-y-3">
+            {draft.paye_bands.map((b, i) => (
+              <div key={i} className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-xs">Band {i + 1}</span>
+                  <button onClick={() => setBands(draft.paye_bands.filter((_, j) => j !== i))} className="text-red-600 hover:text-red-800"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+                <div>
+                  <label className={labelCls}>From (₦)</label>
+                  <input type="number" value={b.from} onChange={e => { const bands = [...draft.paye_bands]; bands[i] = { ...bands[i], from: Number(e.target.value) }; setBands(bands); }} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>To (₦)</label>
+                  <input type="number" value={b.to ?? ""} placeholder="(no cap)" onChange={e => { const bands = [...draft.paye_bands]; bands[i] = { ...bands[i], to: e.target.value ? Number(e.target.value) : null }; setBands(bands); }} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Rate %</label>
+                  <input type="number" step="0.01" value={b.rate} onChange={e => { const bands = [...draft.paye_bands]; bands[i] = { ...bands[i], rate: Number(e.target.value) }; setBands(bands); }} className={inputCls} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-10 bg-background">
@@ -2976,6 +3225,7 @@ function SettingsTab() {
           </tbody>
         </table>
         </div>
+        )}
       </div>
 
       <div className={cardCls}>
