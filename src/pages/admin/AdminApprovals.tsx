@@ -295,20 +295,28 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
         const { data, error } = await supabase.functions.invoke("approve-pending-product", {
           body: { request_id: req.id },
         });
-        if (error) {
-          let msg = error.message || "request failed";
-          try {
-            const body = await (error as any).context?.json?.();
-            if (body?.error) msg = body.error + (body.detail ? `: ${body.detail}` : "");
-          } catch { /* keep msg */ }
+        const d = (data || {}) as any;
+        // Do not assume success: a 2xx can still carry { error } / { success:false }.
+        if (error || d.error || d.success !== true) {
+          let msg = d.error || error?.message || "request failed";
+          if (error) {
+            try {
+              const body = await (error as any).context?.json?.();
+              if (body?.error) msg = body.error + (body.detail ? `: ${body.detail}` : "");
+            } catch { /* keep msg */ }
+          } else if (d.error && d.detail) {
+            msg = `${d.error}: ${d.detail}`;
+          }
           toast.error(`Approval failed: ${msg}`);
           return;
         }
-        const d = (data || {}) as any;
-        toast.success(`Product created: ${d.slug} (${d.sku}) at ₦${Number(d.retail || 0).toLocaleString("en-NG")}`);
+        toast.success(
+          `Product promoted, SKU ${d.sku}, retail ₦${Number(d.retail || 0).toLocaleString("en-NG")}${d.is_consumable ? ", consumable" : ""}`,
+        );
         // Request leaves the pending list; new product + vendor appear.
         qc.invalidateQueries({ queryKey: ["approval-requests"] });
         qc.invalidateQueries({ queryKey: ["pending-approvals-count"] });
+        qc.invalidateQueries({ queryKey: ["approval-pending-product"] });
         qc.invalidateQueries({ queryKey: ["products"] });
         qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
         qc.invalidateQueries({ queryKey: ["vendors-picker"] });
