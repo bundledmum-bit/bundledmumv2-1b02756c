@@ -496,6 +496,15 @@ function ReviewEditModal({
   const [isConsumable, setIsConsumable] = useState<boolean>(!!draft.is_consumable);
   const [reorderDays, setReorderDays] = useState<string>(draft.reorder_days ? String(draft.reorder_days) : "30");
   const [reorderLabel, setReorderLabel] = useState<string>(draft.reorder_label ?? "");
+  // Brand-level attributes, seeded from the draft. Editable before publish;
+  // blank values fall back to the vendor's on the apply side.
+  const [brandName, setBrandName] = useState<string>(draft.brand_name ?? "");
+  const [weightKg, setWeightKg] = useState<string>(intOrEmpty(draft.weight_kg));
+  const [weightRangeKg, setWeightRangeKg] = useState<string>(draft.weight_range_kg ?? "");
+  const [packCount, setPackCount] = useState<string>(intOrEmpty(draft.pack_count));
+  const [sizeVariant, setSizeVariant] = useState<string>(draft.size_variant ?? "");
+  const [diaperType, setDiaperType] = useState<string>(draft.diaper_type ?? "");
+  const [itemType, setItemType] = useState<string>(draft.item_type ?? "");
   // Product image: initialized to the vendor's submitted image; a replacement
   // upload (product-images bucket) overrides it and flows into the apply payload.
   const [imageUrl, setImageUrl] = useState<string>(draft.image_url ?? "");
@@ -542,6 +551,16 @@ function ReviewEditModal({
         is_consumable: isConsumable,
         reorder_days: isConsumable ? Number(reorderDays) : null,
         reorder_label: isConsumable ? reorderLabel : null,
+        // Brand-level attributes (edited values). Sent on BOTH confirm and reject
+        // (only name + price swap to vendor raw on reject). Numbers omitted when
+        // blank so apply falls back to the vendor's value.
+        brand_name: brandName.trim(),
+        weight_range_kg: weightRangeKg.trim(),
+        size_variant: sizeVariant.trim(),
+        diaper_type: diaperType.trim(),
+        item_type: itemType.trim(),
+        ...(weightKg.trim() ? { weight_kg: Number(weightKg) } : {}),
+        ...(packCount.trim() ? { pack_count: Math.round(Number(packCount)) } : {}),
         // Replacement image (or the vendor's, since imageUrl starts from it).
         // Omitted when empty so the backend falls back to the vendor's image.
         ...(imageUrl.trim() ? { image_url: imageUrl.trim() } : {}),
@@ -601,16 +620,50 @@ function ReviewEditModal({
             )}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-w-0">
-            {ctx("Brand", draft.brand_name)}
             {ctx("Vendor", draft.vendor_name)}
             {ctx("SKU preview", draft.sku_preview)}
-            {ctx("Pack", draft.pack_count)}
-            {ctx("Size / variant", draft.size_variant)}
             {ctx("Subcategory", draft.subcategory)}
           </div>
         </div>
 
         <div className="space-y-3 mt-1">
+          {/* Brand & attributes (editable, seeded from the draft) */}
+          <div className="rounded-lg border border-border p-3">
+            <p className="text-sm font-semibold mb-2">Brand & attributes</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Label>Brand name</Label>
+                <Input value={brandName} onChange={(e) => setBrandName(e.target.value)} placeholder="Brand name" />
+              </div>
+              <div>
+                <Label>Weight (kg)</Label>
+                <Input type="number" step="any" inputMode="decimal" value={weightKg}
+                  onChange={(e) => setWeightKg(e.target.value)} placeholder="e.g. 0.5" />
+              </div>
+              <div>
+                <Label>Weight range (kg)</Label>
+                <Input value={weightRangeKg} onChange={(e) => setWeightRangeKg(e.target.value)} placeholder="e.g. 11-25kg" />
+              </div>
+              <div>
+                <Label>Pack count</Label>
+                <Input type="number" step="1" inputMode="numeric" value={packCount}
+                  onChange={(e) => setPackCount(e.target.value)} placeholder="e.g. 40" />
+              </div>
+              <div>
+                <Label>Size variant</Label>
+                <Input value={sizeVariant} onChange={(e) => setSizeVariant(e.target.value)} placeholder="e.g. Size 3" />
+              </div>
+              <div>
+                <Label>Diaper type</Label>
+                <Input value={diaperType} onChange={(e) => setDiaperType(e.target.value)} placeholder="e.g. Tape, Pant" />
+              </div>
+              <div>
+                <Label>Item type</Label>
+                <Input value={itemType} onChange={(e) => setItemType(e.target.value)} placeholder="e.g. Formula, Onesie" />
+              </div>
+            </div>
+          </div>
+
           {/* Attach target */}
           <div>
             <Label>Product</Label>
