@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
+import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import {
   useApprovalRequests,
   useProcessApproval,
@@ -495,6 +496,10 @@ function ReviewEditModal({
   const [isConsumable, setIsConsumable] = useState<boolean>(!!draft.is_consumable);
   const [reorderDays, setReorderDays] = useState<string>(draft.reorder_days ? String(draft.reorder_days) : "30");
   const [reorderLabel, setReorderLabel] = useState<string>(draft.reorder_label ?? "");
+  // Product image: initialized to the vendor's submitted image; a replacement
+  // upload (product-images bucket) overrides it and flows into the apply payload.
+  const [imageUrl, setImageUrl] = useState<string>(draft.image_url ?? "");
+  const [zoomOpen, setZoomOpen] = useState(false);
   const [busy, setBusy] = useState<null | "confirm" | "reject">(null);
 
   // Products in this subcategory, for the "attach to existing" picker.
@@ -537,6 +542,9 @@ function ReviewEditModal({
         is_consumable: isConsumable,
         reorder_days: isConsumable ? Number(reorderDays) : null,
         reorder_label: isConsumable ? reorderLabel : null,
+        // Replacement image (or the vendor's, since imageUrl starts from it).
+        // Omitted when empty so the backend falls back to the vendor's image.
+        ...(imageUrl.trim() ? { image_url: imageUrl.trim() } : {}),
       };
       const { data, error } = await supabase.functions.invoke("approve-pending-product", {
         body: { mode: "apply", request_id: req.id, payload },
@@ -576,9 +584,22 @@ function ReviewEditModal({
 
         {/* Read-only context */}
         <div className="rounded-lg border border-border bg-muted/30 p-3 flex gap-3">
-          {isImageUrl(draft.image_url) && (
-            <img src={draft.image_url} alt="" className="w-16 h-16 rounded object-cover border shrink-0" />
-          )}
+          <div className="shrink-0 flex flex-col items-center gap-1">
+            {isImageUrl(imageUrl) ? (
+              <button type="button" onClick={() => setZoomOpen(true)} title="Click to zoom"
+                className="block rounded border overflow-hidden hover:ring-2 hover:ring-[#2D6A4F]">
+                <img src={imageUrl} alt="product" className="w-16 h-16 object-cover" />
+              </button>
+            ) : (
+              <div className="w-16 h-16 rounded border bg-muted flex items-center justify-center text-[9px] text-muted-foreground text-center px-1">No image</div>
+            )}
+            <BrandImageUpload label="Replace image" currentUrl={null}
+              onUploaded={(url) => setImageUrl(url)} onRemove={() => {}} />
+            {imageUrl && imageUrl !== (draft.image_url ?? "") && (
+              <button type="button" onClick={() => setImageUrl(draft.image_url ?? "")}
+                className="text-[10px] text-muted-foreground underline">Reset to vendor's</button>
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-w-0">
             {ctx("Brand", draft.brand_name)}
             {ctx("Vendor", draft.vendor_name)}
@@ -709,6 +730,15 @@ function ReviewEditModal({
             Confirm & publish
           </Button>
         </DialogFooter>
+
+        {/* Zoom lightbox — Dialog gives Esc + backdrop-click + close button for free. */}
+        {isImageUrl(imageUrl) && (
+          <Dialog open={zoomOpen} onOpenChange={setZoomOpen}>
+            <DialogContent className="max-w-[95vw] sm:max-w-3xl p-2">
+              <img src={imageUrl} alt="product enlarged" className="w-full max-h-[85vh] object-contain rounded" />
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   );
