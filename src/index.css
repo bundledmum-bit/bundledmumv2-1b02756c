@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -63,6 +63,57 @@
     font-family: 'Playfair Display', serif;
   }
 }
+
+/* ============================================================
+   PREVIEW THEME: "BundledMum Prototype" palette.
+   Scoped to the storefront only (body.theme-bundled, toggled off on /admin
+   in App.tsx) so the admin keeps its current look. This overrides the same
+   CSS variables the whole storefront already reads, so every page reskins to
+   the prototype (olive forest, warm coral, cream) without touching markup or
+   functionality. Colors are HSL of the prototype hexes:
+     forest #586B47, deep #46552F, coral #ED7A52, cream #FBF8F2 / #F0E8DA,
+     ink #20251A, muted #6E6B5F / #9A9384, border #E7E1D5.
+   ============================================================ */
+body.theme-bundled {
+  --background: 40 45% 97%;      /* #FBF8F2 warm cream page */
+  --foreground: 80 18% 12%;      /* #20251A olive ink */
+  --card: 40 44% 99%;            /* near-white warm */
+  --card-foreground: 80 18% 12%;
+  --popover: 40 44% 99%;
+  --popover-foreground: 80 18% 12%;
+  --primary: 16 81% 62%;         /* #ED7A52 coral */
+  --primary-foreground: 40 45% 98%;
+  --primary-dark: 15 62% 52%;
+  --secondary: 92 20% 35%;       /* #586B47 forest */
+  --secondary-foreground: 40 45% 98%;
+  --muted: 38 40% 91%;           /* #F0E8DA */
+  --muted-foreground: 45 8% 40%; /* #6E6B5F */
+  --accent: 96 25% 86%;          /* #DDE6D2 green tint */
+  --accent-foreground: 92 22% 26%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 40 26% 86%;          /* #E7E1D5 */
+  --input: 40 26% 86%;
+  --ring: 16 81% 62%;
+  --radius: 0.875rem;            /* 14px cards */
+  --coral: 16 81% 62%;
+  --coral-dark: 15 62% 52%;
+  --coral-blush: 24 58% 94%;     /* #FBEEE7 */
+  --forest: 92 20% 35%;
+  --deep-forest: 84 29% 26%;     /* #46552F */
+  --forest-light: 96 26% 93%;    /* #EDF1E7 */
+  --mint: 96 25% 86%;
+  --midnight: 80 18% 12%;
+  --warm-cream: 40 45% 97%;
+  --warm-grey: 38 40% 91%;
+  --text-med: 45 8% 40%;
+  --text-light: 43 11% 56%;      /* #9A9384 */
+  --border-light: 40 26% 90%;
+}
+
+/* Prototype uses a mono face for prices / numeric accents. Available as a
+   utility so price components can opt in during the homepage rebuild. */
+.font-mono-price { font-family: 'DM Mono', monospace; letter-spacing: -0.01em; }
 
 /* Animations */
 @keyframes fadeUp {

@@ -47,7 +47,10 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
     return () => window.removeEventListener("cart-bump", handler);
   }, []);
 
-  const onLight = !isHome;
+  // PREVIEW theme: the homepage hero is now light (cream), so the navbar shows
+  // its solid state (green logo on cream) everywhere instead of the old
+  // transparent-over-video treatment on home.
+  const onLight = true;
   const dark = scrolled || onLight;
 
   const navLinks: { to: string; label: string; highlight?: boolean }[] = [

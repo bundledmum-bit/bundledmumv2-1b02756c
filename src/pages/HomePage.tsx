@@ -14,6 +14,7 @@ import HowItWorksSection from "@/components/home/HowItWorksSection";
 import TestimonialsSection from "@/components/home/TestimonialsSection";
 import TrustBarDb from "@/components/home/TrustBar";
 import HeroVideoBackground from "@/components/home/HeroVideoBackground";
+import PrototypeHome from "@/components/home/PrototypeHome";
 import { useHomepageSections, type HomepageSection } from "@/hooks/useHomepage";
 import { Search } from "lucide-react";
 
@@ -441,11 +442,13 @@ export default function HomePage() {
   // minimal skeleton: Hero + ShopShortcuts. This preserves the old
   // behaviour for cold loads and guarantees the page never renders
   // blank.
+  // PREVIEW: the "BundledMum Prototype" homepage layout replaces the DB-ordered
+  // section list. Text still comes from the DB (hero_title, bundles, prices);
+  // only the prototype-new sections are placeholders (see PrototypeHome).
   if (isLoading || !sections || sections.length === 0) {
     return (
       <>
-        <HeroSection />
-        <ShopShortcuts />
+        <PrototypeHome />
         <StickyMobileCTA />
       </>
     );
@@ -499,7 +502,7 @@ export default function HomePage() {
         description="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos within 48 hours."
         jsonLd={jsonLd}
       />
-      {sections.map(renderSection)}
+      <PrototypeHome />
       <StickyMobileCTA />
     </>
   );

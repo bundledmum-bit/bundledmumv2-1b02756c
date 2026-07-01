@@ -250,6 +250,15 @@ function StorefrontShell() {
   const isBareRoute = pathname.startsWith("/quote/");
   const totalBarHeight = isBareRoute ? 0 : legacyBarHeight + engineBarHeight;
 
+  // PREVIEW THEME: apply the "BundledMum Prototype" palette to the storefront
+  // only. The admin keeps its current look. Scoped via a body class so the
+  // whole storefront chrome (nav, footer, pages) reskins from the CSS vars.
+  useEffect(() => {
+    const isAdmin = pathname.startsWith("/admin");
+    document.body.classList.toggle("theme-bundled", !isAdmin);
+    return () => document.body.classList.remove("theme-bundled");
+  }, [pathname]);
+
   // The announcement bars resolve their height after the initial render,
   // and the spacer below transitions from 0 → totalBarHeight over 300ms.
   // Browser scroll-anchoring drifts the viewport downward as the spacer
