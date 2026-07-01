@@ -8,7 +8,16 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2 } from "lucide-react";
 import {
   useApprovalRequests,
   useProcessApproval,
@@ -242,9 +251,50 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
   const [note, setNote] = useState("");
-  // Separate busy flag for the AI create-product edge function (process.isPending
-  // only tracks the process_admin_approval mutation).
-  const [aiBusy, setAiBusy] = useState(false);
+  // Review-and-edit modal for new-product approvals (propose -> edit -> apply).
+  const [proposingId, setProposingId] = useState<string | null>(null);
+  const [reviewReq, setReviewReq] = useState<ApprovalRequest | null>(null);
+  const [reviewDraft, setReviewDraft] = useState<any | null>(null);
+
+  // Approve on a create_product request: compute the AI draft, then open the
+  // editable review modal. Nothing is written until the admin acts in the modal.
+  async function startPropose(req: ApprovalRequest) {
+    setProposingId(req.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("approve-pending-product", {
+        body: { mode: "propose", request_id: req.id },
+      });
+      const d = (data || {}) as any;
+      if (error || d.error || d.success !== true || !d.draft) {
+        let msg = d.error || error?.message || "request failed";
+        const status = (error as any)?.context?.status;
+        if (status === 401 || status === 403) msg = "You must be signed in as a super admin.";
+        else if (error) {
+          try { const body = await (error as any).context?.json?.(); if (body?.error) msg = body.error; } catch { /* keep */ }
+        }
+        toast.error(`Could not prepare the product: ${msg}`);
+        return;
+      }
+      setReviewReq(req);
+      setReviewDraft(d.draft);
+    } catch (e: any) {
+      toast.error(`Could not prepare the product: ${e?.message || "unknown error"}`);
+    } finally {
+      setProposingId(null);
+    }
+  }
+
+  function onReviewApplied() {
+    qc.invalidateQueries({ queryKey: ["approval-requests"] });
+    qc.invalidateQueries({ queryKey: ["pending-approvals-count"] });
+    qc.invalidateQueries({ queryKey: ["approval-pending-product"] });
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
+    qc.invalidateQueries({ queryKey: ["vendors-picker"] });
+    setReviewReq(null);
+    setReviewDraft(null);
+    reset();
+  }
 
   // Vendor id → name, to render vendor_id changes readably in the review.
   const { data: vendorRows = [] } = useQuery({
@@ -283,52 +333,9 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
     );
   }
 
+  // Approve/Reject for update & delete requests, and Reject for create_product.
+  // create_product APPROVE is handled separately by the review-and-edit modal.
   async function confirmDecision(req: ApprovalRequest, approved: boolean) {
-    // One-click AI auto-fill + create for new-product APPROVALS only. The edge
-    // function authenticates the caller (super admin) via the Authorization
-    // header supabase.functions.invoke sends automatically, does the full
-    // promotion (AI fields + slug/SKU/retail + product/brand/vendor), and marks
-    // both rows approved. Rejects and all other actions keep process_admin_approval.
-    if (approved && req.action === "create_product") {
-      setAiBusy(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("approve-pending-product", {
-          body: { request_id: req.id },
-        });
-        const d = (data || {}) as any;
-        // Do not assume success: a 2xx can still carry { error } / { success:false }.
-        if (error || d.error || d.success !== true) {
-          let msg = d.error || error?.message || "request failed";
-          if (error) {
-            try {
-              const body = await (error as any).context?.json?.();
-              if (body?.error) msg = body.error + (body.detail ? `: ${body.detail}` : "");
-            } catch { /* keep msg */ }
-          } else if (d.error && d.detail) {
-            msg = `${d.error}: ${d.detail}`;
-          }
-          toast.error(`Approval failed: ${msg}`);
-          return;
-        }
-        toast.success(
-          `Product promoted, SKU ${d.sku}, retail ₦${Number(d.retail || 0).toLocaleString("en-NG")}${d.is_consumable ? ", consumable" : ""}`,
-        );
-        // Request leaves the pending list; new product + vendor appear.
-        qc.invalidateQueries({ queryKey: ["approval-requests"] });
-        qc.invalidateQueries({ queryKey: ["pending-approvals-count"] });
-        qc.invalidateQueries({ queryKey: ["approval-pending-product"] });
-        qc.invalidateQueries({ queryKey: ["products"] });
-        qc.invalidateQueries({ queryKey: ["vendor-manager-view"] });
-        qc.invalidateQueries({ queryKey: ["vendors-picker"] });
-        reset();
-      } catch (e: any) {
-        toast.error(`Approval failed: ${e?.message || "unknown error"}`);
-      } finally {
-        setAiBusy(false);
-      }
-      return;
-    }
-
     try {
       await process.mutateAsync({
         requestId: req.id,
@@ -390,13 +397,21 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
                   </Button>
                   <Button
                     size="sm"
+                    disabled={proposingId === req.id}
                     onClick={() => {
-                      setSelectedRequestId(req.id);
-                      setDecision("approve");
-                      setNote("");
+                      if (req.action === "create_product") {
+                        startPropose(req);
+                      } else {
+                        setSelectedRequestId(req.id);
+                        setDecision("approve");
+                        setNote("");
+                      }
                     }}
                   >
-                    Approve
+                    {proposingId === req.id && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+                    {req.action === "create_product"
+                      ? (proposingId === req.id ? "Preparing..." : "Review & approve")
+                      : "Approve"}
                   </Button>
                 </div>
               )}
@@ -423,16 +438,14 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
                   <Button
                     size="sm"
                     variant={decision === "reject" ? "destructive" : "default"}
-                    disabled={process.isPending || aiBusy}
+                    disabled={process.isPending}
                     onClick={() => confirmDecision(req, decision === "approve")}
                   >
-                    {aiBusy
-                      ? "Creating..."
-                      : process.isPending
-                        ? "Working..."
-                        : decision === "approve"
-                          ? "Confirm approval"
-                          : "Confirm rejection"}
+                    {process.isPending
+                      ? "Working..."
+                      : decision === "approve"
+                        ? "Confirm approval"
+                        : "Confirm rejection"}
                   </Button>
                 </div>
               </div>
@@ -440,7 +453,259 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
           </Card>
         );
       })}
+
+      {reviewReq && reviewDraft && (
+        <ReviewEditModal
+          req={reviewReq}
+          draft={reviewDraft}
+          onClose={() => { setReviewReq(null); setReviewDraft(null); }}
+          onApplied={onReviewApplied}
+        />
+      )}
     </div>
+  );
+}
+
+/* --------------- Review-and-edit modal for new-product approval ------------ */
+const CATEGORIES = ["baby", "both", "mum", "push-gift"] as const;
+const PRIORITIES = ["essential", "recommended", "nice-to-have"] as const;
+const TIERS = ["starter", "standard", "premium"] as const;
+const REORDER_DAYS = ["21", "30", "45"] as const;
+
+function ReviewEditModal({
+  req, draft, onClose, onApplied,
+}: {
+  req: ApprovalRequest;
+  draft: any;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  const intOrEmpty = (v: any) => (v == null ? "" : String(v));
+  const [productName, setProductName] = useState<string>(draft.product_name ?? "");
+  const [attachMode, setAttachMode] = useState<"new" | "existing">(draft.attach_to_product_id ? "existing" : "new");
+  const [attachId, setAttachId] = useState<string>(draft.attach_to_product_id ?? "");
+  const [description, setDescription] = useState<string>(draft.description ?? "");
+  const [whyIncluded, setWhyIncluded] = useState<string>(draft.why_included ?? "");
+  const [brandDescription, setBrandDescription] = useState<string>(draft.brand_description ?? "");
+  const [category, setCategory] = useState<string>(draft.category ?? "baby");
+  const [priority, setPriority] = useState<string>(draft.priority ?? "recommended");
+  const [tier, setTier] = useState<string>(draft.tier ?? "standard");
+  const [costPrice, setCostPrice] = useState<string>(intOrEmpty(draft.cost_price));
+  const [price, setPrice] = useState<string>(intOrEmpty(draft.price));
+  const [isConsumable, setIsConsumable] = useState<boolean>(!!draft.is_consumable);
+  const [reorderDays, setReorderDays] = useState<string>(draft.reorder_days ? String(draft.reorder_days) : "30");
+  const [reorderLabel, setReorderLabel] = useState<string>(draft.reorder_label ?? "");
+  const [busy, setBusy] = useState<null | "confirm" | "reject">(null);
+
+  // Products in this subcategory, for the "attach to existing" picker.
+  const { data: peerProducts = [] } = useQuery({
+    queryKey: ["approval-attach-products", draft.subcategory],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name")
+        .eq("subcategory", draft.subcategory)
+        .is("deleted_at", null)
+        .order("name");
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    },
+    enabled: !!draft.subcategory,
+    staleTime: 60_000,
+  });
+
+  const costN = Math.round(Number(costPrice) || 0);
+  const priceN = Math.round(Number(price) || 0);
+  const marginPct = priceN > 0 ? Math.round(((priceN - costN) / priceN) * 100) : null;
+
+  async function apply(decision: "confirm" | "reject") {
+    if (attachMode === "existing" && !attachId) { toast.error("Pick a product to attach to."); return; }
+    if (attachMode === "new" && !productName.trim()) { toast.error("Enter a product name."); return; }
+    setBusy(decision);
+    try {
+      // Reject publishes the AI proposal but with the vendor's original name + price.
+      const payload = {
+        decision,
+        product_name: decision === "reject" ? (draft.vendor_raw_name ?? productName) : productName.trim(),
+        attach_to_product_id: attachMode === "existing" ? attachId : null,
+        description: description,
+        why_included: whyIncluded,
+        brand_description: brandDescription,
+        category, priority, tier,
+        cost_price: costN,
+        price: decision === "reject" ? Math.round(Number(draft.vendor_raw_price) || priceN) : priceN,
+        is_consumable: isConsumable,
+        reorder_days: isConsumable ? Number(reorderDays) : null,
+        reorder_label: isConsumable ? reorderLabel : null,
+      };
+      const { data, error } = await supabase.functions.invoke("approve-pending-product", {
+        body: { mode: "apply", request_id: req.id, payload },
+      });
+      const d = (data || {}) as any;
+      if (error || d.error || d.success !== true) {
+        let msg = d.error || error?.message || "request failed";
+        const status = (error as any)?.context?.status;
+        if (status === 401 || status === 403) msg = "You must be signed in as a super admin.";
+        else if (error) { try { const body = await (error as any).context?.json?.(); if (body?.error) msg = body.error; } catch { /* keep */ } }
+        toast.error(`Could not publish: ${msg}`);
+        return; // keep modal open
+      }
+      toast.success(`Product published, SKU ${d.sku}, retail ₦${Number(d.retail || 0).toLocaleString("en-NG")}`);
+      onApplied();
+    } catch (e: any) {
+      toast.error(`Could not publish: ${e?.message || "unknown error"}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const ctx = (label: string, value: any) => (
+    <div className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium">{value == null || value === "" ? "—" : String(value)}</span>
+    </div>
+  );
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto max-md:[&_input]:min-h-[44px]">
+        <DialogHeader>
+          <DialogTitle>Review new product</DialogTitle>
+          <DialogDescription>Edit anything, then publish. Nothing goes live until you confirm.</DialogDescription>
+        </DialogHeader>
+
+        {/* Read-only context */}
+        <div className="rounded-lg border border-border bg-muted/30 p-3 flex gap-3">
+          {isImageUrl(draft.image_url) && (
+            <img src={draft.image_url} alt="" className="w-16 h-16 rounded object-cover border shrink-0" />
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-w-0">
+            {ctx("Brand", draft.brand_name)}
+            {ctx("Vendor", draft.vendor_name)}
+            {ctx("SKU preview", draft.sku_preview)}
+            {ctx("Pack", draft.pack_count)}
+            {ctx("Size / variant", draft.size_variant)}
+            {ctx("Subcategory", draft.subcategory)}
+          </div>
+        </div>
+
+        <div className="space-y-3 mt-1">
+          {/* Attach target */}
+          <div>
+            <Label>Product</Label>
+            <div className="flex gap-2 mt-1 mb-2">
+              <Button type="button" size="sm" variant={attachMode === "new" ? "default" : "outline"}
+                onClick={() => setAttachMode("new")}>Create new product</Button>
+              <Button type="button" size="sm" variant={attachMode === "existing" ? "default" : "outline"}
+                onClick={() => setAttachMode("existing")}>Attach to existing</Button>
+            </div>
+            {attachMode === "new" ? (
+              <Input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder="Product name" />
+            ) : (
+              <Select value={attachId} onValueChange={setAttachId}>
+                <SelectTrigger><SelectValue placeholder="Select a product to attach to" /></SelectTrigger>
+                <SelectContent className="max-h-[260px]">
+                  {peerProducts.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Product description — only when creating a new product */}
+          {attachMode === "new" ? (
+            <div>
+              <Label>Product description</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            </div>
+          ) : (
+            <p className="text-[11px] text-muted-foreground">Uses the existing product's description.</p>
+          )}
+
+          <div>
+            <Label>Why included</Label>
+            <Textarea value={whyIncluded} onChange={(e) => setWhyIncluded(e.target.value)} rows={2} />
+          </div>
+          <div>
+            <Label>Brand description</Label>
+            <Textarea value={brandDescription} onChange={(e) => setBrandDescription(e.target.value)} rows={3} />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label>Category</Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Priority</Label>
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Tier</Label>
+              <Select value={tier} onValueChange={setTier}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{TIERS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label>Cost price (₦)</Label>
+              <Input type="number" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} />
+            </div>
+            <div>
+              <Label>Selling price (₦) {marginPct != null && <span className="text-[10px] font-normal text-muted-foreground">margin {marginPct}%</span>}</Label>
+              <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </div>
+          </div>
+
+          {/* Consumable + reorder */}
+          <div className="rounded-lg border border-border p-3 space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" checked={isConsumable} onChange={(e) => setIsConsumable(e.target.checked)} />
+              Consumable (reorderable)
+            </label>
+            {isConsumable && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>Reorder days</Label>
+                  <Select value={reorderDays} onValueChange={setReorderDays}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{REORDER_DAYS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Reorder label</Label>
+                  <Input value={reorderLabel} onChange={(e) => setReorderLabel(e.target.value)} placeholder="e.g. Reorder nappies" />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={!!busy} className="sm:mr-auto">Cancel</Button>
+          <Button variant="outline" onClick={() => apply("reject")} disabled={!!busy}
+            title="Publishes with the vendor's original name and price, keeping the AI-written descriptions.">
+            {busy === "reject" && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            Reject (use vendor's original)
+          </Button>
+          <Button onClick={() => apply("confirm")} disabled={!!busy}
+            className="bg-[#2D6A4F] hover:bg-[#245840]">
+            {busy === "confirm" && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+            Confirm & publish
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
