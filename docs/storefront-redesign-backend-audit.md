@@ -61,11 +61,12 @@ No em dashes in any proposed copy fields.
    admin controls the picture, label, and link.
 
 8. `site_settings.home_loved_baby_brands` — the "Our Most Loved Baby Items"
-   section shows five premium baby brands (WaterWipes, Huggies, Mustela, Tommee
-   Tippee, Kendamil). These are matched against a canonical premium-brand list
-   in `PrototypeHome.tsx` because the raw `brand_name` data is inconsistent
-   (some values carry pack info like "Waterwipes (54pcs)"). A field
-   `[{ name, image_url, href }]` would let admin curate the showcase directly.
+   section shows ten premium baby brands (WaterWipes, Huggies, Pampers, Mustela,
+   Tommee Tippee, Kendamil, NAN Optipro, Aptamil, Sebamed, Cow & Gate). These
+   are matched against a canonical premium-brand list in `PrototypeHome.tsx`
+   because the raw `brand_name` data is inconsistent (some values carry pack
+   info like "Waterwipes (54pcs)"). A field `[{ name, image_url, href }]`
+   would let admin curate the showcase directly.
    Also: the section heading is shown as "Our Most Loved Baby Items" (a preview
    label). Update `site_settings.most_loved_heading` to this value so it stays
    DB-driven.
@@ -84,6 +85,14 @@ No em dashes in any proposed copy fields.
     hero_subtitle / cta_button_text) with a set of real images cross-fading
     behind it. `home_hero_slides` (item 4b) would let admin curate that image
     set and the copy per campaign.
+
+11. New `/deals` page (`DealsPage.tsx`), linked from the homepage Flash Deals
+    "See all". Uses the same `selectDealProducts` / `getDealPricing` helpers as
+    the homepage rail, so it shares the same preview-demo-sale caveat (item 9)
+    and needs the same real `compare_at_price` / `deals_ends_at` fields. The
+    header copy ("Real savings on baby and mum essentials, while stocks last.")
+    and the three feature-strip labels are hardcoded UI chrome; if the team
+    wants these admin-editable, propose `site_settings.deals_page_subtitle`.
 
 ### Shop page (surfaced during the Shop theme-fit)
 

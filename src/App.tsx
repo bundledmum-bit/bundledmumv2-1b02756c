@@ -43,6 +43,7 @@ import {
 } from "@/pages/BundleCategoryPage";
 import BundleDetailPage from "@/pages/BundleDetailPage";
 import ShopPage from "@/pages/ShopPage";
+import DealsPage from "@/pages/DealsPage";
 import CategoryPage from "@/pages/CategoryPage";
 import QuizPage from "@/pages/QuizPage";
 import GiftResultsPage from "@/pages/GiftResultsPage";
@@ -299,6 +300,7 @@ function StorefrontShell() {
           <Route path="/shop/baby" element={<ShopPage />} />
           <Route path="/shop/mum" element={<ShopPage />} />
           <Route path="/shop/:slug" element={<CategoryPage />} />
+          <Route path="/deals" element={<DealsPage />} />
           <Route path="/subscribe" element={<SubscribeLanding />} />
           <Route path="/subscriptions" element={<SubscriptionPage />} />
           <Route path="/subscriptions/checkout" element={<SubscriptionCheckout />} />

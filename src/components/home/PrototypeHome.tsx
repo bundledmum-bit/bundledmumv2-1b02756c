@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, ArrowRight } from "lucide-react";
 import { useSiteSettings, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt } from "@/lib/cart";
 import HeroCarousel, { type HeroContent } from "@/components/home/HeroCarousel";
-import FlashDeals from "@/components/home/FlashDeals";
+import FlashDeals, { selectDealProducts } from "@/components/home/FlashDeals";
 
 /**
  * PREVIEW homepage in the "BundledMum Prototype" layout.
@@ -92,7 +92,11 @@ export default function PrototypeHome() {
   // one clean card per brand. Admin curation needs a backend field
   // (home_loved_baby_brands). See the audit.
   const babyBrands = useMemo(() => {
-    const CANON = ["WaterWipes", "Huggies", "Mustela", "Tommee Tippee", "Kendamil", "Sebamed", "NAN Optipro", "Mothercare", "Aptamil", "Cow & Gate", "Pampers", "Molfix"];
+    const CANON = [
+      "WaterWipes", "Huggies", "Pampers", "Mustela", "Tommee Tippee", "Kendamil",
+      "NAN Optipro", "Aptamil", "Sebamed", "Cow & Gate", "Mothercare", "SMA Gold",
+      "Molfix", "Johnson", "Nuby", "Graco", "Yara",
+    ];
     const babyProducts = (products as any[]).filter((p) => p.category === "baby");
     const squash = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const out: Array<{ name: string; image: string | null; minPrice: number }> = [];
@@ -113,7 +117,7 @@ export default function PrototypeHome() {
         }
       }
       if (found) out.push({ name: canon, image, minPrice: isFinite(minPrice) ? minPrice : 0 });
-      if (out.length >= 5) break;
+      if (out.length >= 10) break;
     }
     return out;
   }, [products]);
@@ -125,13 +129,7 @@ export default function PrototypeHome() {
 
   // Flash Deals: prefer genuinely on-sale products (compareAtPrice > price),
   // fall back to the first products so the section always populates in preview.
-  const deals = useMemo(() => {
-    const onSale = (products as any[]).filter((p) => {
-      const b = getBrandForBudget(p, "standard");
-      return b && b.compareAtPrice && b.compareAtPrice > b.price;
-    });
-    return (onSale.length > 0 ? onSale : (products as any[])).slice(0, 10);
-  }, [products]);
+  const deals = useMemo(() => selectDealProducts(products as any[], 10), [products]);
 
   return (
     <div className="bg-background min-h-screen pt-[76px]">
@@ -180,7 +178,7 @@ export default function PrototypeHome() {
             {babyBrands.map((b) => (
               <Link key={b.name} to={`/shop/baby?q=${encodeURIComponent(b.name)}`}
                 className="snap-start shrink-0 w-[150px] rounded-[14px] border border-border bg-card overflow-hidden card-hover">
-                <div className="aspect-square bg-warm-cream">
+                <div className="aspect-square bg-warm-cream overflow-hidden">
                   {b.image && <img src={b.image} alt={b.name} loading="lazy" className="w-full h-full object-cover" />}
                 </div>
                 <div className="p-2.5">

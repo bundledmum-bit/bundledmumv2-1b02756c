@@ -320,7 +320,7 @@ function BundleCard({ item, variant }: { item: EnrichedBundle; variant: Variant 
       to={`/products/${item.slug}`}
       className="bg-card rounded-card shadow-card overflow-hidden border border-border hover:shadow-card-hover transition-all group flex flex-col"
     >
-      <div className={`relative ${isBundlesPage ? "aspect-[4/3]" : "aspect-square"} bg-warm-cream`}>
+      <div className={`relative overflow-hidden ${isBundlesPage ? "aspect-[4/3]" : "aspect-square"} bg-warm-cream`}>
         {image ? (
           <img src={image} alt={item.name} className="w-full h-full object-cover" />
         ) : (

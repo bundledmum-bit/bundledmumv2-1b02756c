@@ -22,21 +22,50 @@ import QtyControl from "@/components/QtyControl";
 // This is NOT real pricing. Set this to false, or set real compare_at_price
 // values in admin, and the cards use genuine sale data instead. See the audit
 // (proposed: deals_product_ids / a sale rule + deals_ends_at).
-const PREVIEW_DEMO_SALES = true;
+export const PREVIEW_DEMO_SALES = true;
 
-function pad(n: number) {
+export function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
 // Deterministic 10-30% illustrative discount keyed off the id, so demo prices
 // look varied and stay stable across renders.
-function demoDiscountPct(id: string) {
+export function demoDiscountPct(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return 10 + (h % 21);
 }
 
-function useCountdown() {
+// Shared deal-product selection: real on-sale products (compareAtPrice >
+// price) first; falls back to the given pool so the section always populates
+// in preview. Used by both the homepage rail and the full /deals page so the
+// two stay in sync.
+export function selectDealProducts(products: any[], limit = 10) {
+  const onSale = (products || []).filter((p) => {
+    const b = getBrandForBudget(p, "standard");
+    return b && b.compareAtPrice && b.compareAtPrice > b.price;
+  });
+  return (onSale.length > 0 ? onSale : (products || [])).slice(0, limit);
+}
+
+// Shared pricing derivation for one deal product: real sale from
+// compare_at_price when present, else the flagged preview demo discount.
+// Both FlashDealCard and the /deals page (for sorting) read from here so the
+// displayed price and the sort order never disagree.
+export function getDealPricing(product: any) {
+  const brand = getBrandForBudget(product, "standard");
+  if (!brand) return null;
+  const demoWas = PREVIEW_DEMO_SALES && brand.price > 0
+    ? Math.round((brand.price / (1 - demoDiscountPct(product.id) / 100)) / 50) * 50
+    : null;
+  const was: number | null = (brand.compareAtPrice && brand.compareAtPrice > brand.price) ? brand.compareAtPrice : demoWas;
+  const onSale = !!was && was > brand.price;
+  const savePct = onSale ? Math.round(((was! - brand.price) / was!) * 100) : 0;
+  const stock: number | null = brand.stockQuantity ?? null;
+  return { brand, was, onSale, savePct, price: brand.price, stock };
+}
+
+export function useCountdown() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -56,21 +85,15 @@ function useCountdown() {
   };
 }
 
-function FlashDealCard({ product }: { product: any }) {
+// Layout-agnostic card: no width/shrink/snap classes of its own, so it drops
+// cleanly into either a horizontal snap rail (the homepage) or a CSS grid
+// (the /deals page) — the caller controls sizing via `className`.
+export function FlashDealCard({ product, className = "" }: { product: any; className?: string }) {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty } = useCart();
-  const brand = getBrandForBudget(product, "standard");
-  if (!brand) return null;
-
-  // Real sale from compare_at_price if present; otherwise an illustrative
-  // preview "was" (see PREVIEW_DEMO_SALES above).
-  const demoWas = PREVIEW_DEMO_SALES && brand.price > 0
-    ? Math.round((brand.price / (1 - demoDiscountPct(product.id) / 100)) / 50) * 50
-    : null;
-  const was: number | null = (brand.compareAtPrice && brand.compareAtPrice > brand.price) ? brand.compareAtPrice : demoWas;
-  const onSale = !!was && was > brand.price;
-  const save = onSale ? Math.round(((was! - brand.price) / was!) * 100) : 0;
-  const stock: number | null = brand.stockQuantity ?? null;
+  const pricing = getDealPricing(product);
+  if (!pricing) return null;
+  const { brand, was, onSale, savePct: save, stock } = pricing;
   const lowStock = stock != null && stock > 0 && stock <= 10;
   const needsSize = product.sizes && product.sizes.length > 0;
 
@@ -87,8 +110,8 @@ function FlashDealCard({ product }: { product: any }) {
   };
 
   return (
-    <div className="snap-start shrink-0 w-[172px] rounded-[14px] border border-border bg-card overflow-hidden card-hover flex flex-col">
-      <div className="aspect-square bg-warm-cream relative">
+    <div className={`rounded-[14px] border border-border bg-card overflow-hidden card-hover flex flex-col ${className}`}>
+      <div className="aspect-square bg-warm-cream relative overflow-hidden">
         <ProductImage imageUrl={brand.imageUrl || product.imageUrl} emoji={brand.img} alt={product.name} className="w-full h-full" emojiClassName="text-5xl" />
         {onSale && (
           <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">-{save}%</span>
@@ -142,12 +165,12 @@ export default function FlashDeals({ products, heading }: { products: any[]; hea
             <span className="font-mono-price">{pad(h)}<span className="opacity-60">:</span>{pad(m)}<span className="opacity-60">:</span>{pad(s)}</span>
           </span>
         </div>
-        <Link to="/shop" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5 shrink-0">
+        <Link to="/deals" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5 shrink-0">
           See all <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
       <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
-        {products.map((p: any) => <FlashDealCard key={p.id} product={p} />)}
+        {products.map((p: any) => <FlashDealCard key={p.id} product={p} className="snap-start shrink-0 w-[172px]" />)}
       </div>
     </section>
   );

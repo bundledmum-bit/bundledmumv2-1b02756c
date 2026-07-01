@@ -61,7 +61,7 @@ export default function FeaturedProductsRail({ title, subtitle, maxItems = 8 }: 
                 : displayPrice;
               return (
                 <div key={p.id} className="snap-start flex-shrink-0 w-[160px] md:w-auto bg-card rounded-card shadow-card overflow-hidden flex flex-col">
-                  <Link to={`/shop?q=${encodeURIComponent(p.name)}`} className="block aspect-square bg-warm-cream">
+                  <Link to={`/shop?q=${encodeURIComponent(p.name)}`} className="block aspect-square bg-warm-cream overflow-hidden">
                     <ProductImage
                       imageUrl={getBrandImage(brand) || brand?.thumbnail_url || null}
                       emoji="📦"
