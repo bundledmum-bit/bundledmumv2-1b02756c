@@ -919,29 +919,25 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
       {!isInlineEditableBundle && (
       <div className="max-w-6xl mx-auto px-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-12">
           {/* LEFT: Image Gallery */}
-          <div>
+          <div className="md:sticky md:top-[80px] md:self-start">
             {/* Main Image */}
             <div
-              className="relative aspect-square rounded-2xl overflow-hidden cursor-zoom-in group"
-              style={{ backgroundColor: displayImage ? '#f5f5f5' : (selectedBrand.color || "#F0F7F4") }}
+              className="relative aspect-square rounded-2xl overflow-hidden cursor-zoom-in group bg-[#f5f5f5]"
               onClick={() => displayImage && setZoomImage(displayImage)}
             >
               {isProductOOS(product) ? (
-                <span className="absolute top-3 left-3 bg-[#E53935] text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase z-10">Out of Stock</span>
+                <span className="absolute top-3 left-3 bg-[#E53935] text-white text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase z-10">Out of Stock</span>
               ) : product.badge ? (
-                <span className="absolute top-3 left-3 bg-coral text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase z-10">{product.badge}</span>
+                <span className="absolute top-3 left-3 bg-coral text-white text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase z-10">{product.badge}</span>
               ) : null}
               {showSalePrice && !isProductOOS(product) && (
-                <span className="absolute top-3 right-3 bg-destructive text-primary-foreground text-[10px] font-bold px-2 py-1 rounded-pill z-10">
-                  Save {savingsPercent}%
+                <span className="absolute top-3 right-3 bg-destructive text-white text-[10px] font-bold px-2 py-1 rounded-pill z-10">
+                  -{savingsPercent}%
                 </span>
               )}
               <ProductImage imageUrl={displayImage} emoji={selectedBrand.img || product.baseImg} alt={product.name} className="w-full h-full object-contain p-6" emojiClassName="text-8xl" />
-              {/* Maternity bundles share a base image — overlay a coral
-                  price tag (larger than the listing card) derived from
-                  live brand price so nightly refreshes update it. */}
               {/^Maternity( \+ Baby Items)? Bundle/i.test(product.name) && (selectedBrand?.price ?? 0) > 0 && (
                 <span
                   className="absolute bottom-3 left-3 z-10"
@@ -961,8 +957,8 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 </span>
               )}
               {displayImage && (
-                <div className="absolute bottom-3 right-3 bg-card/80 rounded-full p-2 opacity-60 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  <ZoomIn className="h-5 w-5 text-foreground" />
+                <div className="absolute bottom-3 right-3 bg-white/80 rounded-full p-2 opacity-60 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm">
+                  <ZoomIn className="h-4 w-4 text-foreground" />
                 </div>
               )}
             </div>
@@ -973,13 +969,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 {brandImages.map((img, i) => (
                   <button key={i} onClick={() => {
                     setActiveImageIdx(i);
-                    // Auto-select brand when clicking its image
                     if (img.brandId) {
                       const brand = product.brands.find(b => b.id === img.brandId);
                       if (brand) selectBrand(brand);
                     }
                   }}
-                    className={`w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${activeImageIdx === i ? "border-forest" : "border-transparent hover:border-border"}`}>
+                    className={`w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden border-2 flex-shrink-0 transition-all ${activeImageIdx === i ? "border-forest shadow-sm" : "border-transparent hover:border-border"}`}>
                     <img src={img.url} alt={img.alt} className="w-full h-full object-contain bg-muted/30 p-1" />
                   </button>
                 ))}
@@ -989,16 +984,25 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
           {/* RIGHT: Product Info */}
           <div className="flex flex-col">
-            <h1 className="pf text-2xl md:text-3xl font-bold mb-2">{product.name}</h1>
+            {/* Category breadcrumb pill */}
+            {prodSubcat && (
+              <Link to={`${prodShopHref}?category=${prodSubcat.slug}`}
+                className="inline-flex items-center gap-1 mb-3 self-start rounded-pill border border-border px-3 py-1 text-[11px] font-semibold text-muted-foreground hover:border-forest hover:text-forest transition-colors">
+                {prodSubcat.icon && <span>{prodSubcat.icon}</span>}
+                {prodSubcat.name}
+              </Link>
+            )}
+
+            <h1 className="pf text-[22px] md:text-[28px] font-bold leading-tight mb-2">{product.name}</h1>
 
             {ageBadgeText && (
-              <span className="inline-flex items-center gap-1 mb-2 rounded-pill bg-forest-light text-forest text-[11px] font-semibold px-2.5 py-1">
+              <span className="inline-flex items-center gap-1 mb-3 self-start rounded-pill bg-forest-light text-forest text-[11px] font-semibold px-2.5 py-1">
                 Suitable for: {ageBadgeText}
               </span>
             )}
 
             {/* Rating */}
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
               <div className="flex">
                 {[1, 2, 3, 4, 5].map(s => (
                   <Star key={s} className={`h-4 w-4 ${s <= Math.round(product.rating) ? "text-coral fill-coral" : "text-border"}`} />
@@ -1008,9 +1012,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               <span className="text-muted-foreground text-xs">({product.reviews} reviews)</span>
             </div>
 
-            {/* Price */}
-            <div className="flex items-baseline gap-3 mb-1">
-              <span className="font-mono-price text-2xl md:text-3xl font-bold text-forest">{fmt(selectedBrand.price)}</span>
+            {/* Price block */}
+            <div className="flex items-baseline gap-3 mb-1 pb-4 border-b border-border">
+              <span className="font-mono-price text-[28px] md:text-[34px] font-bold text-forest leading-none">{fmt(selectedBrand.price)}</span>
               {showSalePrice && (
                 <span className="font-mono-price text-muted-foreground text-lg line-through">{fmt(selectedBrand.compareAtPrice!)}</span>
               )}
@@ -1193,31 +1197,36 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             {/* Add to Cart — hidden for bundle products since
                 BundleCustomiser owns its own customise + add-to-cart CTA */}
             {!raw?.is_gift_box && (
-            <div className="flex items-center gap-4 mb-6">
+            <div className="mb-6 space-y-3">
               {isOutOfStock ? (
-                <button className="rounded-pill bg-border px-8 py-3.5 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[48px] flex-1">
+                <button className="w-full rounded-pill bg-muted text-muted-foreground text-sm font-semibold py-4 min-h-[52px] cursor-not-allowed">
                   Out of Stock
                 </button>
               ) : isInCart && cartItem ? (
-                <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center gap-4">
                   <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
                   <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">View Cart →</Link>
+                  <button onClick={handleShare} className="ml-auto rounded-full border border-border p-2.5 hover:bg-muted transition-colors" aria-label="Share">
+                    <Share2 className="h-4 w-4 text-muted-foreground" />
+                  </button>
                 </div>
               ) : attrMissing ? (
                 <button
                   disabled
-                  className="rounded-pill bg-border px-8 py-3.5 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[48px] flex-1"
+                  className="w-full rounded-pill bg-muted text-muted-foreground text-sm font-semibold py-4 min-h-[52px] cursor-not-allowed"
                 >
                   {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
                 </button>
               ) : (
-                <button onClick={handleAdd} className="rounded-pill px-8 py-3.5 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[48px] flex-1 justify-center" style={{ backgroundColor: "#F4845F" }}>
-                  <ShoppingBag className="h-5 w-5" /> Add to Cart
-                </button>
+                <div className="flex gap-3">
+                  <button onClick={handleAdd} className="flex-1 rounded-pill text-sm font-semibold text-white font-body flex items-center gap-2 min-h-[52px] justify-center transition-colors hover:opacity-90" style={{ backgroundColor: "#F4845F" }}>
+                    <ShoppingBag className="h-5 w-5" /> Add to Cart
+                  </button>
+                  <button onClick={handleShare} className="rounded-full border border-border p-3 hover:bg-muted transition-colors flex-shrink-0" aria-label="Share">
+                    <Share2 className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                </div>
               )}
-              <button onClick={handleShare} className="rounded-full border border-border p-3 hover:bg-muted transition-colors" aria-label="Share">
-                <Share2 className="h-5 w-5 text-muted-foreground" />
-              </button>
             </div>
             )}
 
@@ -1252,18 +1261,18 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             />
 
             {/* Trust badges */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
-              <div className="flex flex-col items-center gap-1 text-center">
-                <Truck className="h-5 w-5 text-forest" />
-                <span className="text-[10px] text-muted-foreground font-medium">Fast Delivery</span>
+            <div className="flex gap-3 mb-6 py-3 border-y border-border">
+              <div className="flex-1 flex items-center gap-2">
+                <Truck className="h-4 w-4 text-forest flex-shrink-0" />
+                <span className="text-[11px] text-muted-foreground font-medium">Fast Delivery</span>
               </div>
-              <div className="flex flex-col items-center gap-1 text-center">
-                <Shield className="h-5 w-5 text-forest" />
-                <span className="text-[10px] text-muted-foreground font-medium">Quality Assured</span>
+              <div className="flex-1 flex items-center gap-2">
+                <Shield className="h-4 w-4 text-forest flex-shrink-0" />
+                <span className="text-[11px] text-muted-foreground font-medium">Quality Assured</span>
               </div>
-              <div className="flex flex-col items-center gap-1 text-center">
-                <Package className="h-5 w-5 text-forest" />
-                <span className="text-[10px] text-muted-foreground font-medium">Secure Packaging</span>
+              <div className="flex-1 flex items-center gap-2">
+                <Package className="h-4 w-4 text-forest flex-shrink-0" />
+                <span className="text-[11px] text-muted-foreground font-medium">Secure Packing</span>
               </div>
             </div>
 
@@ -1277,10 +1286,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         </div>
 
         {/* ── Bottom Sections ── */}
-        <div className="mt-10 space-y-8 max-w-4xl mx-auto">
+        <div className="mt-12 space-y-10 max-w-4xl mx-auto">
           {/* Product Details */}
           <section>
-            <h2 className="pf text-lg font-bold mb-4 border-b border-border pb-2">Product Details</h2>
+            <h2 className="pf text-xl font-bold mb-4 pb-3 border-b border-border">Product Details</h2>
             <div className="space-y-3">
               {product.packInfo && (
                 <div className="flex items-start gap-3 bg-warm-cream rounded-lg px-4 py-3 text-sm">

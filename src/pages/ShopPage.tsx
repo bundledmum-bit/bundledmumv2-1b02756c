@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Seo from "@/components/Seo";
-import { useSearchParams, Link, useLocation } from "react-router-dom";
+import { useSearchParams, Link, useLocation, useNavigate } from "react-router-dom";
 import CuratedSections from "@/components/CuratedSections";
 import BundleSections from "@/components/BundleSections";
 import ShopSectionsRenderer from "@/components/ShopSectionsRenderer";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
-import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
@@ -25,23 +24,18 @@ import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Filter, ArrowUpDown, Check, Search } from "lucide-react";
 import Breadcrumb from "@/components/Breadcrumb";
 
-function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, onViewDetail, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; onViewDetail: () => void; deliveryText?: string }) {
+function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
   const seedBrand = selectedBrandId
     ? (product.brands.find(b => b.id === selectedBrandId) || defaultBrand)
     : defaultBrand;
   const [selectedBrand, setSelectedBrand] = useState<Brand>(seedBrand);
   const [selectedSize, setSelectedSize] = useState(product.sizes?.[Math.floor((product.sizes?.length || 0) / 2)] || "");
-  const [selectedColor, setSelectedColor] = useState("");
-  const { cart, setCart, updateQty } = useCart();
+  const [selectedColor] = useState("");
+  const { cart, updateQty } = useCart();
 
-  // Variant-aware: the cart line must reflect the CURRENTLY selected brand
-  // (+ size/color), not "any line of this product" — mirrors ProductPage so
-  // switching brand surfaces a fresh Add and each brand is its own line. The
-  // key formula matches what addToCart() writes (see lib/cart.tsx).
   const cartKey = cartItemKey(product.id, selectedBrand.id, selectedSize || null, selectedColor || null, null);
   const cartItem = cart.find(c => c._key === cartKey);
-  const isInCart = !!cartItem;
 
   const brandOos = !selectedBrand.inStock;
   const allBrandsOos = product.brands.every(b => !b.inStock);
@@ -51,6 +45,7 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
 
   const displayImage = selectedBrand.imageUrl || product.imageUrl;
   const showSale = selectedBrand.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
+  const savePct = showSale ? Math.round(((selectedBrand.compareAtPrice! - selectedBrand.price) / selectedBrand.compareAtPrice!) * 100) : 0;
 
   useEffect(() => {
     if (selectedBrandId) {
@@ -64,9 +59,11 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     setSelectedBrand(defaultBrand);
   }, [defaultBudget, forceBrand, selectedBrandId]);
 
+  const needsSizeChoice = !!(product.sizes && product.sizes.length > 0 && !selectedSize);
+
   const handleAdd = () => {
     if (isOutOfStock) return;
-    if (product.sizes && product.sizes.length > 0 && !selectedSize) { onViewDetail(); return; }
+    if (needsSizeChoice) { window.location.href = `/products/${product.slug}`; return; }
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})`, selectedSize, selectedColor });
   };
 
@@ -74,111 +71,121 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     if (cartItem) updateQty(cartItem._key, newQty);
   };
 
-  const showAllBrands = product.brands.length <= 3;
-  const visibleBrands = showAllBrands ? product.brands : product.brands.slice(0, 2);
-  const hiddenCount = product.brands.length - visibleBrands.length;
+  const visibleBrands = product.brands.slice(0, 3);
+  const hiddenCount = product.brands.length - 3;
 
   return (
-    <div className={`bg-card rounded-card shadow-card card-hover overflow-hidden ${(allBrandsOos || productLevelOos) ? "opacity-60" : ""}`}>
-      <div className="h-[170px] flex items-center justify-center relative transition-all cursor-pointer overflow-hidden"
-        style={{ background: displayImage ? '#f5f5f5' : `linear-gradient(135deg, ${selectedBrand.color}, #fff)` }}
-        onClick={() => { onViewDetail(); }}>
-        {/* Badge priority: OOS > badge > sale / low-stock */}
+    <div className={`bg-card rounded-[16px] border border-border/60 overflow-hidden flex flex-col group transition-shadow hover:shadow-md ${(allBrandsOos || productLevelOos) ? "opacity-60" : ""}`}>
+      {/* Image */}
+      <Link to={`/products/${product.slug}`} className="block relative aspect-square overflow-hidden bg-[#f5f5f5]">
         {productLevelOos ? (
-          <div className="absolute top-2.5 left-2.5 bg-[#E53935] text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill uppercase tracking-wide z-10">Out of Stock</div>
+          <span className="absolute top-2 left-2 bg-[#E53935] text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10 uppercase tracking-wide">Out of Stock</span>
         ) : product.badge ? (
-          <div className="absolute top-2.5 left-2.5 bg-coral text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill uppercase tracking-wide z-10">{product.badge}</div>
+          <span className="absolute top-2 left-2 bg-coral text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10 uppercase tracking-wide">{product.badge}</span>
         ) : null}
         {matchBadge && (
-          <div className="absolute bottom-2.5 left-2.5 bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-pill uppercase tracking-wide z-10 border border-emerald-300">{matchBadge}</div>
+          <span className="absolute bottom-2 left-2 bg-emerald-100 text-emerald-700 text-[9px] font-bold px-2 py-0.5 rounded-pill z-10 border border-emerald-300 uppercase tracking-wide">{matchBadge}</span>
         )}
         {showSale && !productLevelOos && (
-          <div className="absolute top-2.5 right-2.5 bg-destructive text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">
-            Save {Math.round(((selectedBrand.compareAtPrice! - selectedBrand.price) / selectedBrand.compareAtPrice!) * 100)}%
-          </div>
+          <span className="absolute top-2 right-2 bg-destructive text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">-{savePct}%</span>
         )}
-        {allBrandsOos && !productLevelOos && <div className="absolute top-2.5 right-2.5 bg-foreground/70 text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">Out of Stock</div>}
-        {isLowStock && !allBrandsOos && !productLevelOos && <div className="absolute top-2.5 right-2.5 bg-[#E65100] text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">Only {selectedBrand.stockQuantity} left!</div>}
-        <ProductImage imageUrl={displayImage} emoji={selectedBrand.img || product.baseImg} alt={product.name} className="w-full h-full" emojiClassName="text-6xl" />
-      </div>
-      <div className="p-4">
-        <h3 className="text-[13px] font-semibold mb-1 leading-tight min-h-[36px] cursor-pointer hover:text-forest transition-colors" onClick={() => { onViewDetail(); }}>{product.name}</h3>
-        {/* Diaper-category attribute pills (Type / pack count / weight). */}
+        {allBrandsOos && !productLevelOos && (
+          <span className="absolute top-2 right-2 bg-foreground/70 text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">Out of Stock</span>
+        )}
+        {isLowStock && !allBrandsOos && !productLevelOos && (
+          <span className="absolute top-2 right-2 bg-[#E65100] text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">Only {selectedBrand.stockQuantity} left!</span>
+        )}
+        <ProductImage
+          imageUrl={displayImage}
+          emoji={selectedBrand.img || product.baseImg}
+          alt={product.name}
+          className="w-full h-full transition-transform duration-500 group-hover:scale-[1.04]"
+          emojiClassName="text-6xl"
+        />
+      </Link>
+
+      {/* Content */}
+      <div className="p-3 flex flex-col gap-2 flex-1">
+        {/* Name links to product page */}
+        <Link to={`/products/${product.slug}`} className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2 hover:text-forest transition-colors min-h-[36px]">
+          {product.name}
+        </Link>
+
+        {/* Diaper attribute pills */}
         {(() => {
           const badges = diaperBadges(selectedBrand);
           return badges.length > 0 ? (
-            <div className="flex flex-wrap gap-1 mb-1.5">
+            <div className="flex flex-wrap gap-1">
               {badges.map(b => (
-                <span key={b} className="text-[11px] font-medium rounded-full px-2 py-0.5" style={{ backgroundColor: "#F0F0F0", color: "#555" }}>
-                  {b}
-                </span>
+                <span key={b} className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-muted text-muted-foreground">{b}</span>
               ))}
             </div>
           ) : null;
         })()}
-        <p className="text-muted-foreground text-[10px] leading-relaxed mb-2 line-clamp-2">{product.description}</p>
-        {product.packInfo && <p className="text-muted-foreground text-[10px] mb-1">📦 {product.packInfo}</p>}
 
-        <div className="mb-2">
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Brand</div>
+        {/* Brand selector pills */}
+        {product.brands.length > 1 && (
           <div className="flex flex-wrap gap-1">
             {visibleBrands.map(b => {
               const bOos = !b.inStock;
               const pcLabel = packCountLabel(b);
               return (
                 <button key={b.id} onClick={() => setSelectedBrand(b)}
-                  className={`px-2 py-1 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body min-h-[40px] inline-flex items-center gap-1 ${bOos ? "opacity-50" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  <span>{b.label}{pcLabel ? ` ${pcLabel}` : ""} {fmt(b.price)}</span>
-                  {b.id === defaultBrand.id && !bOos && <span className="text-coral ml-0.5">★</span>}
+                  className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body inline-flex items-center gap-0.5 min-h-[28px] ${bOos ? "opacity-40" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/30"}`}>
+                  {b.label}{pcLabel ? ` ${pcLabel}` : ""}
+                  {b.id === defaultBrand.id && !bOos && <span className="text-coral text-[9px] ml-0.5">★</span>}
                 </button>
               );
             })}
             {hiddenCount > 0 && (
-              <button onClick={() => { onViewDetail(); }}
-                className="px-2 py-1 rounded-pill text-[10px] font-semibold border-[1.5px] border-border bg-card text-forest font-body hover:border-forest min-h-[40px]">
+              <Link to={`/products/${product.slug}`}
+                className="px-2 py-0.5 rounded-pill text-[10px] font-semibold border border-border text-forest hover:border-forest min-h-[28px] inline-flex items-center">
                 +{hiddenCount} more
-              </button>
+              </Link>
             )}
-          </div>
-        </div>
-
-        {product.sizes && product.sizes.length > 0 && (
-          <div className="mb-2">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Size</div>
-            <div className="flex flex-wrap gap-1">
-              {product.sizes.map(s => (
-                <button key={s} onClick={() => setSelectedSize(s)}
-                  className={`px-2 py-1 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body min-h-[40px] ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-coral text-xs">⭐ {product.rating}</span>
-          <span className="text-muted-foreground text-[11px]">({product.reviews})</span>
-        </div>
-        {deliveryText && <p className="text-muted-foreground text-[9px] mb-2">{deliveryText}</p>}
-
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="font-mono-price text-forest font-bold text-[17px] transition-all">{fmt(selectedBrand.price)}</div>
-            {showSale && <div className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</div>}
-            {!showSale && product.brands.length > 1 && <div className="text-muted-foreground text-[10px] mt-0.5">from <span className="font-mono-price">{fmt(Math.min(...product.brands.map(b => b.price)))}</span></div>}
+        {/* Size chips */}
+        {product.sizes && product.sizes.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {product.sizes.map(s => (
+              <button key={s} onClick={() => setSelectedSize(s)}
+                className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body min-h-[28px] ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                {s}
+              </button>
+            ))}
           </div>
-          {isOutOfStock ? (
-            <div>
-              <span className="rounded-pill bg-border px-3 py-2 text-[10px] font-semibold text-muted-foreground font-body block mb-1 min-h-[44px] flex items-center">Sold Out</span>
-              <button onClick={() => toast("We'll notify you when it's back!")} className="text-forest text-[9px] font-semibold hover:underline">Notify me</button>
-            </div>
-          ) : isInCart && cartItem ? (
-            <QtyControl qty={cartItem.qty} onUpdate={handleQtyChange} maxQty={selectedBrand.stockQuantity ?? undefined} />
-          ) : (
-            <button onClick={handleAdd} className="rounded-pill px-4 py-2.5 text-xs font-semibold text-primary-foreground font-body interactive min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>Add to Cart</button>
-          )}
+        )}
+
+        {/* Price + rating */}
+        <div className="mt-auto pt-1 space-y-0.5">
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-mono-price text-forest font-bold text-[16px]">{fmt(selectedBrand.price)}</span>
+            {showSale && <span className="font-mono-price text-muted-foreground text-[11px] line-through">{fmt(selectedBrand.compareAtPrice!)}</span>}
+            {!showSale && product.brands.length > 1 && (
+              <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...product.brands.map(b => b.price)))}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-coral text-[11px]">★ {product.rating}</span>
+            <span className="text-muted-foreground text-[10px]">({product.reviews})</span>
+          </div>
         </div>
+
+        {/* CTA */}
+        {isOutOfStock ? (
+          <div className="space-y-1">
+            <span className="w-full rounded-pill bg-muted text-muted-foreground text-[11px] font-semibold py-2.5 min-h-[40px] flex items-center justify-center">Sold Out</span>
+            <button onClick={() => toast("We'll notify you when it's back!")} className="w-full text-forest text-[10px] font-semibold hover:underline text-center block">Notify me</button>
+          </div>
+        ) : cartItem ? (
+          <QtyControl qty={cartItem.qty} onUpdate={handleQtyChange} maxQty={selectedBrand.stockQuantity ?? undefined} />
+        ) : (
+          <button onClick={handleAdd} className="w-full rounded-pill bg-coral text-white text-[12px] font-semibold py-2.5 min-h-[40px] hover:bg-coral-dark transition-colors font-body">
+            {needsSizeChoice ? "Choose Size →" : "Add to Cart"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -189,6 +196,7 @@ const ITEMS_PER_PAGE = 20;
 export default function ShopPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
+  const navigate = useNavigate();
   // Derive the shop variant from the URL path. /shop/baby and /shop/mum
   // pin the tab; /shop falls back to the `tab` URL param. The merchandising
   // routes /shop/baby and /shop/mum are explicitly handled in App.tsx
@@ -242,7 +250,6 @@ export default function ShopPage() {
       return (data || { result_count: 0, products: [] }) as { result_count: number; products: any[] };
     },
   });
-  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
@@ -556,28 +563,34 @@ export default function ShopPage() {
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
-      {/* Prototype-style header: cream background, clean search, and a
-          mobile category chip row (the prototype's signature). Desktop keeps
-          the full filter bar below, so the chips stay mobile-only to avoid
-          duplicating the tab controls. Copy strings are unchanged from the
-          previous hero (still hardcoded pending a backend shop-hero field —
-          see the backend audit). */}
-      <div className="pt-[68px] bg-background border-b border-border">
-        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5 md:py-10">
-          <Breadcrumb items={shopBreadcrumbs} className="mb-2" />
-          <h1 className="pf text-2xl md:text-[40px] text-forest mb-1.5">
-            {isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "All Shops"}
-          </h1>
-          <p className="text-muted-foreground text-[13px] md:text-[15px] max-w-[480px]">
-            Shop baby essentials, mum items, and baby gifts without stepping foot in any market.
-          </p>
-          <div className="mt-4 relative max-w-[520px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light pointer-events-none" />
-            <input placeholder="Search products..." value={search} onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
-              className="w-full rounded-pill bg-card border border-border text-foreground text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[48px]" />
+      {/* Shop page header — category-specific accent color + search bar */}
+      <div className={`pt-[68px] border-b border-border ${isBaby ? "bg-[#EEF6EF]" : isMum ? "bg-[#FFF4F0]" : "bg-background"}`}>
+        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5 md:py-8">
+          <Breadcrumb items={shopBreadcrumbs} className="mb-3" />
+          <div className="flex items-end gap-4 mb-3">
+            <h1 className="pf text-2xl md:text-[36px] font-bold leading-tight" style={{ color: isBaby ? "#2D6A4F" : isMum ? "#C0623A" : "#2D6A4F" }}>
+              {isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "All Products"}
+            </h1>
+            {isBaby && <span className="text-2xl mb-1">👶</span>}
+            {isMum && <span className="text-2xl mb-1">💛</span>}
           </div>
-          {/* Category chips — mobile only. All/Baby/Mum switch the shop variant;
-              Bundles/Gifts link out, mirroring the homepage category tiles. */}
+          <p className="text-muted-foreground text-[13px] md:text-[15px] max-w-[520px] mb-4">
+            {isBaby
+              ? "Newborn essentials, feeding must-haves, and diapers — curated for Nigerian babies."
+              : isMum
+              ? "Postpartum recovery, maternity wear, and self-care essentials for new mums."
+              : "Shop baby essentials, mum items, and baby gifts without stepping foot in any market."}
+          </p>
+          <div className="relative max-w-[540px]">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light pointer-events-none" />
+            <input
+              placeholder={isBaby ? "Search baby products..." : isMum ? "Search mum products..." : "Search products..."}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
+              className="w-full rounded-pill bg-card border border-border text-foreground text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[48px] shadow-sm"
+            />
+          </div>
+          {/* Category chips — mobile only */}
           <div className="md:hidden flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-0.5">
             {[
               { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
@@ -762,7 +775,7 @@ export default function ShopPage() {
         {sectionsOnlyMode ? (
           <ShopSectionsRenderer
             shop={tab as ShopVariant}
-            onOpenDetail={p => setDetailProduct(p)}
+            onOpenDetail={p => navigate(`/products/${p.slug}`)}
           />
         ) : (isLoading || searchPending) ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
@@ -809,8 +822,7 @@ export default function ShopPage() {
                   selectedBrandId={hit.brandId}
                   matchBadge={hit.isBrandMatch ? "Brand match" : undefined}
                   deliveryText={deliveryText}
-                  onAdd={item => { addToCart(item); toast.success(`✓ ${item.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } }); }}
-                  onViewDetail={() => { fireSelectItem(hit.product, idx); setDetailProduct(hit.product); }}
+                  onAdd={item => { fireSelectItem(hit.product, idx); addToCart(item); toast.success(`✓ ${item.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } }); }}
                 />
               ))}
             </div>
@@ -831,8 +843,6 @@ export default function ShopPage() {
         )}
 
       </div>
-
-      <ProductDetailDrawer product={detailProduct} defaultBudget={!budgetF || budgetF === "all" ? "standard" : budgetF} onClose={() => setDetailProduct(null)} />
 
       <ShopFilterDrawer
         open={filterDrawerOpen}
