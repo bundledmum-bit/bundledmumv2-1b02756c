@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import Breadcrumb from "@/components/Breadcrumb";
 import { useCart, fmt } from "@/lib/cart";
 import { toast } from "sonner";
 import { ArrowLeft, Share2, ArrowLeftRight, Plus, Trash2, X, Pencil, MessageCircle } from "lucide-react";
@@ -300,6 +301,15 @@ export default function BundleDetailPage() {
       <div className="min-h-screen bg-background pb-24 md:pb-0 animate-in fade-in duration-700">
         {/* Top utility row */}
         <div className="px-6 md:px-12 lg:px-16 pt-8 md:pt-10">
+          <div className="max-w-[1120px] mx-auto">
+            <Breadcrumb
+              items={[
+                { label: "Bundles & Kits", href: "/bundles" },
+                { label: bundle.displayName || bundle.name },
+              ]}
+              className="mb-4"
+            />
+          </div>
           <div className="max-w-[1120px] mx-auto flex items-center justify-between">
             <Link
               to="/bundles"
@@ -879,24 +889,14 @@ export default function BundleDetailPage() {
             <ArrowLeft className="h-3 w-3" /> All Bundles
           </Link>
 
-          <nav className="text-primary-foreground/40 text-[11px] mb-3" aria-label="Breadcrumb">
-            <ol className="flex flex-wrap gap-1" itemScope itemType="https://schema.org/BreadcrumbList">
-              <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                <Link to="/" itemProp="item" className="hover:text-primary-foreground/60"><span itemProp="name">Home</span></Link>
-                <meta itemProp="position" content="1" />
-              </li>
-              <li className="mx-1">›</li>
-              <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                <Link to="/bundles" itemProp="item" className="hover:text-primary-foreground/60"><span itemProp="name">Hospital Bags</span></Link>
-                <meta itemProp="position" content="2" />
-              </li>
-              <li className="mx-1">›</li>
-              <li itemProp="itemListElement" itemScope itemType="https://schema.org/ListItem">
-                <span itemProp="name" className="text-primary-foreground/70">{bundle.name}</span>
-                <meta itemProp="position" content="3" />
-              </li>
-            </ol>
-          </nav>
+          <Breadcrumb
+            onDark
+            items={[
+              { label: "Bundles & Kits", href: "/bundles" },
+              { label: bundle.name },
+            ]}
+            className="mb-3"
+          />
 
           {/* Hero collage — first item from each section. Falls back to
               a brand-green placeholder cell when a section is empty. */}

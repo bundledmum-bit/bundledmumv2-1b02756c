@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import Seo from "@/components/Seo";
 import BundleSections from "@/components/BundleSections";
+import Breadcrumb from "@/components/Breadcrumb";
 
 export default function BundlesPage() {
   useEffect(() => { document.title = "Our Bundles & Kits | BundledMum"; }, []);
@@ -27,6 +28,7 @@ export default function BundlesPage() {
       </div>
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-8 md:py-12">
+        <Breadcrumb items={[{ label: "Bundles & Kits" }]} className="mb-6" />
         <BundleSections variant="bundles" />
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useCart, fmt, formatColor, cartItemImage, cartItemKey, type CartItem } from "@/lib/cart";
+import Breadcrumb from "@/components/Breadcrumb";
 import EditCartItemModal from "@/components/EditCartItemModal";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
@@ -534,6 +535,7 @@ export default function CartPage() {
   return (
     <div className="min-h-screen bg-background pt-24 pb-[calc(1rem+56px+72px)] md:pb-0">
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-8">
+        <Breadcrumb items={[{ label: "Cart" }]} className="mb-4" />
         <Link to="/shop" className="inline-flex items-center gap-1.5 text-forest text-sm font-semibold font-body mb-4 hover:underline">
           <ArrowLeft className="h-4 w-4" /> Continue Shopping
         </Link>

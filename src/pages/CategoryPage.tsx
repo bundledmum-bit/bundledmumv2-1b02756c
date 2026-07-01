@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ProductImage from "@/components/ProductImage";
 import { useProductCategories } from "@/hooks/useProductCategories";
+import Breadcrumb from "@/components/Breadcrumb";
 import {
   useCategoryPagePins,
   useCategorySectionBrandOverrides,
@@ -145,11 +146,17 @@ export default function CategoryPage() {
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0 pt-[68px]">
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 pt-4 md:pt-6">
-        <nav className="text-xs text-muted-foreground mb-3">
-          <Link to="/shop" className="hover:text-foreground">Shop</Link>
-          <span className="mx-1.5">/</span>
-          <span className="text-foreground font-medium">{heading}</span>
-        </nav>
+        <Breadcrumb
+          items={[
+            ...(category?.parent_category === "baby"
+              ? [{ label: "Baby Shop", href: "/shop/baby" }]
+              : category?.parent_category === "mum"
+              ? [{ label: "Mum Shop", href: "/shop/mum" }]
+              : [{ label: "Shop", href: "/shop" }]),
+            { label: heading },
+          ]}
+          className="mb-3"
+        />
         <div className="flex items-center gap-3 mb-2">
           {category?.icon && <span className="text-3xl">{category.icon}</span>}
           <h1 className="pf text-2xl md:text-3xl font-bold">{heading}</h1>

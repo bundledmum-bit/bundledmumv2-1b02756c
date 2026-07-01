@@ -23,6 +23,7 @@ import QtyControl from "@/components/QtyControl";
 import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Filter, ArrowUpDown, Check, Search } from "lucide-react";
+import Breadcrumb from "@/components/Breadcrumb";
 
 function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, onViewDetail, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; onViewDetail: () => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
@@ -537,6 +538,21 @@ export default function ShopPage() {
     : isMum
     ? "Shop postpartum recovery, maternity wear, and self-care essentials for Nigerian mums."
     : "Browse every product in the BundledMum store — curated maternity and baby essentials for Nigerian mums.";
+
+  const shopBcLabel = isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "All Shops";
+  const shopBcHref = isBaby ? "/shop/baby" : isMum ? "/shop/mum" : "/shop";
+  const hasShopFilter = !!categoryF || !!search;
+  const activeSubcat = categoryF ? (categories || []).find(c => c.slug === categoryF) : null;
+  const shopBreadcrumbs = [
+    hasShopFilter ? { label: shopBcLabel, href: shopBcHref } : { label: shopBcLabel },
+    ...(categoryF
+      ? [search
+          ? { label: activeSubcat?.name || categoryF, href: `${shopBcHref}?category=${categoryF}` }
+          : { label: activeSubcat?.name || categoryF }]
+      : []),
+    ...(search ? [{ label: `Search: "${search}"` }] : []),
+  ];
+
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
@@ -548,6 +564,7 @@ export default function ShopPage() {
           see the backend audit). */}
       <div className="pt-[68px] bg-background border-b border-border">
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5 md:py-10">
+          <Breadcrumb items={shopBreadcrumbs} className="mb-2" />
           <h1 className="pf text-2xl md:text-[40px] text-forest mb-1.5">
             {isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "All Shops"}
           </h1>

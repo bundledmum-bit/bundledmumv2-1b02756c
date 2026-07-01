@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "react-router-dom";
+import Breadcrumb from "@/components/Breadcrumb";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -173,16 +174,14 @@ export default function BundleCategoryPage({ sectionKey }: { sectionKey: string 
         style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1A3D2E 100%)" }}
       >
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-8 md:py-12">
-          {/* Breadcrumb + back link */}
-          <nav className="flex items-center gap-1.5 text-xs text-primary-foreground/60 mb-3 font-body">
-            <Link to="/" className="hover:text-primary-foreground/90">Home</Link>
-            <span>/</span>
-            <Link to="/bundles" className="hover:text-primary-foreground/90">Bundles</Link>
-            <span>/</span>
-            <span className="text-primary-foreground/90 font-semibold">
-              {section?.title || "Loading…"}
-            </span>
-          </nav>
+          <Breadcrumb
+            onDark
+            items={[
+              { label: "Bundles & Kits", href: "/bundles" },
+              { label: section?.title || "" },
+            ]}
+            className="mb-3"
+          />
           <h1 className="pf text-3xl md:text-[46px] text-primary-foreground mb-2.5">
             {section?.title || "Bundles"}
           </h1>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import Seo from "@/components/Seo";
 import { useAllProducts } from "@/hooks/useSupabaseData";
 import { Flame, Clock, Percent, Truck, RotateCcw } from "lucide-react";
+import Breadcrumb from "@/components/Breadcrumb";
 import {
   FlashDealCard,
   getDealPricing,
@@ -79,6 +80,8 @@ export default function DealsPage() {
       </div>
 
       <div className="max-w-[1180px] mx-auto px-4 md:px-6 py-5">
+        <Breadcrumb items={[{ label: "Flash Deals" }]} className="mb-4" />
+
         {/* Filter + sort controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex gap-2">

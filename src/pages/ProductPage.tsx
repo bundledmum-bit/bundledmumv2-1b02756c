@@ -26,6 +26,8 @@ import { useBundleItemsEdit } from "@/hooks/useBundleItemsEdit";
 import { buildWhatsAppOrderHref, buildProductOrderWhatsAppHref } from "@/lib/whatsapp";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
 import BrandSelect from "@/components/BrandSelect";
+import Breadcrumb from "@/components/Breadcrumb";
+import { useProductCategories } from "@/hooks/useProductCategories";
 
 function useProduct(slug: string) {
   return useQuery({
@@ -145,7 +147,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     },
   });
   const [customiseOpenBundle, setCustomiseOpenBundle] = useState(false);
-
+  const { data: categories = [] } = useProductCategories();
 
   // ── Variant axis (age_range / size) ─────────────────────────────────
   // Eligible products (baby bouncer ages, bedding-set sizes, etc.) ship
@@ -554,6 +556,15 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // so a single network fetch backs both.
   const editApi = useBundleItemsEdit(product.id, product.name);
 
+  const prodShopLabel = product.category === "baby" ? "Baby Shop" : product.category === "mum" ? "Mum Shop" : "Shop";
+  const prodShopHref = product.category === "baby" ? "/shop/baby" : product.category === "mum" ? "/shop/mum" : "/shop";
+  const prodSubcat = categories.find(c => c.slug === product.subcategory);
+  const productBreadcrumbs = [
+    { label: prodShopLabel, href: prodShopHref },
+    ...(prodSubcat ? [{ label: prodSubcat.name, href: `${prodShopHref}?category=${prodSubcat.slug}` }] : []),
+    { label: product.name },
+  ];
+
   return (
     <div className="min-h-screen pb-24 md:pb-8 pt-20 md:pt-24">
       <Seo
@@ -565,17 +576,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}
 
-      {/* Breadcrumb — hidden for any bundle on the new minimalist
-          design; those surfaces have their own quiet utility row. */}
       {!isInlineEditableBundle && (
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
-          <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Link to="/" className="hover:text-foreground">Home</Link>
-            <span>/</span>
-            <Link to="/shop" className="hover:text-foreground">Shop</Link>
-            <span>/</span>
-            <span className="text-foreground font-medium truncate max-w-[200px]">{product.name}</span>
-          </nav>
+          <Breadcrumb items={productBreadcrumbs} />
         </div>
       )}
 
