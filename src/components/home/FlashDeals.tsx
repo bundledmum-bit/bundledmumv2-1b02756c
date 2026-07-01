@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Flame, Clock, ShoppingBag } from "lucide-react";
+import { ArrowRight, Flame, Clock, ShoppingBag, X, ZoomIn } from "lucide-react";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
@@ -87,10 +87,17 @@ export function useCountdown() {
 
 // Layout-agnostic card: no width/shrink/snap classes of its own, so it drops
 // cleanly into either a horizontal snap rail (the homepage) or a CSS grid
-// (the /deals page) — the caller controls sizing via `className`.
-export function FlashDealCard({ product, className = "" }: { product: any; className?: string }) {
+// (the /deals page) -- the caller controls sizing via `className`.
+//
+// zoomable=false (default, homepage rail): tapping the product image
+//   navigates to the product page.
+// zoomable=true (deals grid): tapping the image opens a lightbox so the
+//   shopper can inspect the product before adding to cart. "View product"
+//   inside the lightbox handles navigation.
+export function FlashDealCard({ product, className = "", zoomable = false }: { product: any; className?: string; zoomable?: boolean }) {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty } = useCart();
+  const [zoomed, setZoomed] = useState(false);
   const pricing = getDealPricing(product);
   if (!pricing) return null;
   const { brand, was, onSale, savePct: save, stock } = pricing;
@@ -109,43 +116,124 @@ export function FlashDealCard({ product, className = "" }: { product: any; class
     addToCart({ ...product, selectedBrand: brand, price: brand.price, name: `${product.name} (${brand.label})`, selectedSize: "", selectedColor: "" });
   };
 
+  const imageUrl = brand.imageUrl || product.imageUrl;
+
+  // Badges rendered inside both the card image and the lightbox.
+  const badges = (
+    <>
+      {onSale && (
+        <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">-{save}%</span>
+      )}
+      <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-pill bg-foreground/80 text-white text-[9px] font-bold px-1.5 py-0.5">
+        <Flame className="w-2.5 h-2.5 text-coral" /> HOT
+      </span>
+    </>
+  );
+
+  const cardImage = (
+    <ProductImage imageUrl={imageUrl} emoji={brand.img} alt={product.name} className="w-full h-full" emojiClassName="text-5xl" />
+  );
+
   return (
-    <div className={`rounded-[14px] border border-border bg-card overflow-hidden card-hover flex flex-col ${className}`}>
-      <div className="aspect-square bg-warm-cream relative overflow-hidden">
-        <ProductImage imageUrl={brand.imageUrl || product.imageUrl} emoji={brand.img} alt={product.name} className="w-full h-full" emojiClassName="text-5xl" />
-        {onSale && (
-          <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">-{save}%</span>
+    <>
+      <div className={`rounded-[14px] border border-border bg-card overflow-hidden card-hover flex flex-col ${className}`}>
+        {/* Image area: navigates to product on the homepage rail; opens
+            lightbox zoom on the /deals grid. */}
+        {zoomable ? (
+          <button
+            onClick={() => setZoomed(true)}
+            aria-label="Zoom image"
+            className="aspect-square bg-warm-cream relative overflow-hidden w-full group"
+          >
+            {cardImage}
+            {badges}
+            <span className="absolute bottom-2 right-2 bg-white/85 backdrop-blur-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ZoomIn className="w-3 h-3 text-foreground" />
+            </span>
+          </button>
+        ) : (
+          <Link to={`/products/${product.slug}`} className="aspect-square bg-warm-cream relative overflow-hidden block">
+            {cardImage}
+            {badges}
+          </Link>
         )}
-        <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-pill bg-foreground/80 text-white text-[9px] font-bold px-1.5 py-0.5">
-          <Flame className="w-2.5 h-2.5 text-coral" /> HOT
-        </span>
-      </div>
-      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
-        <p className="font-semibold text-xs text-foreground line-clamp-2 leading-snug min-h-[32px]">{product.name}</p>
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-mono-price text-coral font-bold text-sm">{fmt(brand.price)}</span>
-          {onSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(was!)}</span>}
-        </div>
-        <div>
-          <div className="h-1.5 rounded-pill bg-muted overflow-hidden">
-            <div className="h-full rounded-pill bg-coral transition-all" style={{ width: `${soldPct}%` }} />
+
+        <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+          <Link
+            to={`/products/${product.slug}`}
+            className="font-semibold text-xs text-foreground line-clamp-2 leading-snug min-h-[32px] hover:text-forest transition-colors"
+          >
+            {product.name}
+          </Link>
+          <div className="flex items-baseline gap-1.5">
+            <span className="font-mono-price text-coral font-bold text-sm">{fmt(brand.price)}</span>
+            {onSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(was!)}</span>}
           </div>
-          <p className="mt-1 text-[10px] font-semibold text-coral-dark">{lowStock ? `Only ${stock} left` : "Selling fast"}</p>
-        </div>
-        <div className="mt-auto pt-0.5">
-          {cartItem ? (
-            <QtyControl qty={cartItem.qty} onUpdate={(q: number) => updateQty(cartItem._key, q)} maxQty={stock ?? undefined} />
-          ) : (
-            <button
-              onClick={add}
-              className="w-full inline-flex items-center justify-center gap-1.5 rounded-pill bg-coral text-white text-xs font-semibold py-2 hover:bg-coral-dark transition-colors min-h-[38px]"
-            >
-              <ShoppingBag className="w-3.5 h-3.5" /> Add
-            </button>
-          )}
+          <div>
+            <div className="h-1.5 rounded-pill bg-muted overflow-hidden">
+              <div className="h-full rounded-pill bg-coral transition-all" style={{ width: `${soldPct}%` }} />
+            </div>
+            <p className="mt-1 text-[10px] font-semibold text-coral-dark">{lowStock ? `Only ${stock} left` : "Selling fast"}</p>
+          </div>
+          <div className="mt-auto pt-0.5">
+            {cartItem ? (
+              <QtyControl qty={cartItem.qty} onUpdate={(q: number) => updateQty(cartItem._key, q)} maxQty={stock ?? undefined} />
+            ) : (
+              <button
+                onClick={add}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-pill bg-coral text-white text-xs font-semibold py-2 hover:bg-coral-dark transition-colors min-h-[38px]"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" /> Add
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Lightbox: only rendered when zoomable=true and user tapped the image */}
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-midnight/80 animate-fade-in"
+          onClick={() => setZoomed(false)}
+        >
+          <div
+            className="relative bg-card rounded-[20px] overflow-hidden shadow-2xl max-w-[400px] w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close */}
+            <button
+              onClick={() => setZoomed(false)}
+              aria-label="Close"
+              className="absolute top-3 right-3 z-10 bg-card/90 backdrop-blur-sm rounded-full w-8 h-8 flex items-center justify-center shadow"
+            >
+              <X className="w-4 h-4 text-foreground" />
+            </button>
+
+            {/* Full image */}
+            <div className="aspect-square bg-warm-cream overflow-hidden">
+              <ProductImage imageUrl={imageUrl} emoji={brand.img} alt={product.name} className="w-full h-full" emojiClassName="text-8xl" />
+            </div>
+
+            {/* Info + CTA */}
+            <div className="p-4">
+              <p className="font-semibold text-sm text-foreground leading-snug mb-1">{product.name}</p>
+              <div className="flex items-baseline gap-2 mb-3">
+                <span className="font-mono-price text-coral font-bold text-lg">{fmt(brand.price)}</span>
+                {onSale && <span className="font-mono-price text-muted-foreground text-xs line-through">{fmt(was!)}</span>}
+                {onSale && <span className="text-xs font-bold text-coral">Save {save}%</span>}
+              </div>
+              <Link
+                to={`/products/${product.slug}`}
+                onClick={() => setZoomed(false)}
+                className="block text-center rounded-pill bg-forest text-white py-2.5 text-sm font-semibold hover:bg-forest-deep transition-colors"
+              >
+                View product
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

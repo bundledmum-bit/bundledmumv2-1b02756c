@@ -128,7 +128,7 @@ export default function DealsPage() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {filtered.map((p: any) => (
-              <FlashDealCard key={p.id} product={p} className="w-full" />
+              <FlashDealCard key={p.id} product={p} className="w-full" zoomable />
             ))}
           </div>
         )}
