@@ -4,6 +4,7 @@ import { Search, ArrowRight } from "lucide-react";
 import { useSiteSettings, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
 import ProductImage from "@/components/ProductImage";
+import HeroCarousel, { type HeroSlide } from "@/components/home/HeroCarousel";
 
 /**
  * PREVIEW homepage rebuilt to the "BundledMum Prototype" layout.
@@ -60,6 +61,38 @@ export default function PrototypeHome() {
   const popularBundles = (bundles as any[]).slice(0, 8);
   const heroImage = (popularBundles[0]?.imageUrl) || (products as any[]).find((p) => p.imageUrl)?.imageUrl || null;
 
+  // Hero carousel slides. Slide 1 is the brand hero (all copy from the DB:
+  // hero_title / hero_subtitle / cta_button_text). The rest are real featured
+  // bundles (name + image + price from the DB); "Featured bundle" / "Shop
+  // bundle" are UI labels, like the section headings. Admin-curated banners
+  // need a backend field (site_settings.home_hero_slides) — see the audit.
+  const heroSlides: HeroSlide[] = [
+    {
+      key: "brand",
+      title: heroTitle,
+      subtitle: heroSubtitle,
+      ctaLabel: bundleCtaLabel,
+      ctaHref: "/quiz",
+      secondaryLabel: "Shop now",
+      secondaryHref: "/shop",
+      image: heroImage,
+      tone: "brand",
+    },
+    ...popularBundles
+      .filter((b: any) => b?.imageUrl)
+      .slice(0, 3)
+      .map((b: any, i: number): HeroSlide => ({
+        key: `bundle-${b.id}`,
+        eyebrow: "Featured bundle",
+        title: b.name,
+        ctaLabel: "Shop bundle",
+        ctaHref: `/bundles/${b.slug ?? b.id}`,
+        image: b.imageUrl,
+        price: b.price ?? null,
+        tone: i % 2 === 0 ? "coral" : "forest",
+      })),
+  ];
+
   // Free-delivery progress from the real cart total + the admin threshold.
   const threshold = parseInt(settings?.free_delivery_nationwide_threshold_naira ?? settings?.default_free_threshold ?? "0", 10) || 0;
   const remaining = Math.max(0, threshold - subtotal);
@@ -80,35 +113,26 @@ export default function PrototypeHome() {
 
   return (
     <div className="bg-background min-h-screen pt-[76px]">
-      {/* Hero */}
-      <section className="px-4 pt-4 pb-2">
+     <div className="max-w-[1180px] mx-auto">
+      {/* Real h1 for SEO/a11y; the visible hero title lives inside the
+          carousel's brand slide (an h2), so keep this off-screen. */}
+      <h1 className="sr-only">{heroTitle}</h1>
+
+      {/* Hero: search + premium auto-rotating banner carousel */}
+      <section className="px-4 md:px-6 pt-4 pb-2">
         <HeroSearchBar />
-        <div className="mt-5">
-          <h1 className="text-[30px] leading-[1.15] font-bold text-foreground">{heroTitle}</h1>
-          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{heroSubtitle}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link to="/quiz" className="rounded-pill bg-coral text-primary-foreground px-5 py-3 text-sm font-semibold hover:bg-coral-dark transition-colors">
-              {bundleCtaLabel}
-            </Link>
-            <Link to="/shop" className="rounded-pill border border-forest text-forest px-5 py-3 text-sm font-semibold hover:bg-forest/5 transition-colors inline-flex items-center gap-1">
-              Shop now <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
+        <div className="mt-4">
+          <HeroCarousel slides={heroSlides} />
         </div>
-        {heroImage && (
-          <Link to="/bundles" className="mt-5 block rounded-[18px] overflow-hidden border border-border aspect-[16/10] bg-muted">
-            <img src={heroImage} alt="Featured" className="w-full h-full object-cover" />
-          </Link>
-        )}
       </section>
 
       {/* Shop by Category (placeholder tiles) */}
-      <section className="px-4 py-5">
-        <h2 className="text-lg font-bold text-foreground mb-3">Shop by Category</h2>
-        <div className="grid grid-cols-2 gap-3">
+      <section className="px-4 md:px-6 py-5">
+        <h2 className="text-lg md:text-xl font-bold text-foreground mb-3">Shop by Category</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {PLACEHOLDER_CATEGORIES.map((c) => (
             <Link key={c.label} to={c.href}
-              className={`rounded-[14px] border border-border p-4 flex flex-col gap-6 min-h-[104px] justify-between ${c.tone === "coral" ? "bg-coral-blush" : "bg-forest-light"}`}>
+              className={`rounded-[14px] border border-border p-4 flex flex-col gap-6 min-h-[104px] md:min-h-[120px] justify-between ${c.tone === "coral" ? "bg-coral-blush" : "bg-forest-light"}`}>
               <span className="text-2xl">{c.emoji}</span>
               <span className="font-semibold text-foreground inline-flex items-center gap-1">{c.label} <ArrowRight className="w-3.5 h-3.5" /></span>
             </Link>
@@ -119,11 +143,11 @@ export default function PrototypeHome() {
       {/* Popular Bundles carousel (real bundles) */}
       {popularBundles.length > 0 && (
         <section className="py-5">
-          <div className="px-4 flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-foreground">{settings?.most_loved_heading || "Shop Popular Bundles"}</h2>
+          <div className="px-4 md:px-6 flex items-center justify-between mb-3">
+            <h2 className="text-lg md:text-xl font-bold text-foreground">{settings?.most_loved_heading || "Shop Popular Bundles"}</h2>
             <Link to="/bundles" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
           </div>
-          <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x scrollbar-none">
+          <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
             {popularBundles.map((b: any) => (
               <Link key={b.id} to={`/bundles/${b.slug ?? b.id}`}
                 className="snap-start shrink-0 w-[190px] rounded-[14px] border border-border bg-card overflow-hidden">
@@ -142,7 +166,7 @@ export default function PrototypeHome() {
 
       {/* Free-delivery progress (real cart + admin threshold) */}
       {threshold > 0 && (
-        <section className="px-4 py-3">
+        <section className="px-4 md:px-6 py-3">
           <div className="rounded-[14px] bg-forest text-primary-foreground p-4">
             <p className="text-sm font-semibold">
               {remaining > 0
@@ -159,11 +183,11 @@ export default function PrototypeHome() {
       {/* Deals for you (placeholder heading, real on-sale products) */}
       {deals.length > 0 && (
         <section className="py-5">
-          <div className="px-4 flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-foreground">Deals for you</h2>
+          <div className="px-4 md:px-6 flex items-center justify-between mb-3">
+            <h2 className="text-lg md:text-xl font-bold text-foreground">Deals for you</h2>
             <Link to="/shop" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">See all <ArrowRight className="w-3.5 h-3.5" /></Link>
           </div>
-          <div className="flex gap-3 overflow-x-auto px-4 pb-1 snap-x scrollbar-none">
+          <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
             {deals.map((p: any) => {
               const brand = getBrandForBudget(p, "standard");
               if (!brand) return null;
@@ -189,6 +213,7 @@ export default function PrototypeHome() {
           </div>
         </section>
       )}
+     </div>
     </div>
   );
 }

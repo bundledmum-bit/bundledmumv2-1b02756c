@@ -41,6 +41,16 @@ No em dashes in any proposed copy fields.
 4. `site_settings.hero_product_id` — optional. Pins the hero image product
    instead of "first bundle, else first product with an image".
 
+4b. `site_settings.home_hero_slides` — JSON array for the homepage hero
+    carousel banners. Shape:
+    `[{ eyebrow, title, subtitle, image_url, cta_label, href, tone }]` where
+    `tone` is `"brand"`, `"coral"`, or `"forest"`. Currently the carousel
+    derives slides from real data: slide 1 is the brand hero (hero_title /
+    hero_subtitle / cta_button_text) and the rest are featured bundles
+    (name + image + price from the DB). The "Featured bundle" eyebrow and
+    "Shop bundle" label are UI chrome. This field would let admin curate the
+    banners directly (order, imagery, copy, and links).
+
 ### Shop page (surfaced during the Shop theme-fit)
 
 5. Shop hero heading + subtitle. Currently hardcoded in `ShopPage.tsx`:
