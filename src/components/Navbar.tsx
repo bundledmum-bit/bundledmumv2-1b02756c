@@ -93,7 +93,7 @@ function ShopMegaPanel({
           {babySubcats.map((c) => (
             <Link
               key={c.id}
-              to={`/shop/baby?category=${c.slug}`}
+              to={`/shop/baby/${c.slug}`}
               className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-muted-foreground hover:text-forest hover:bg-forest-light rounded-xl transition-colors"
             >
               {c.icon && <span className="text-sm">{c.icon}</span>}
@@ -117,7 +117,7 @@ function ShopMegaPanel({
           {mumSubcats.map((c) => (
             <Link
               key={c.id}
-              to={`/shop/mum?category=${c.slug}`}
+              to={`/shop/mum/${c.slug}`}
               className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-muted-foreground hover:text-forest hover:bg-forest-light rounded-xl transition-colors"
             >
               {c.icon && <span className="text-sm">{c.icon}</span>}
@@ -310,7 +310,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
                     <div className="mx-4 my-1 border-t border-border" />
                   )}
                   {babySubcats.map((c) => (
-                    <DropdownLink key={c.id} to={`/shop/baby?category=${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
+                    <DropdownLink key={c.id} to={`/shop/baby/${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
                   ))}
                 </DropdownPanel>
               )}
@@ -335,7 +335,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
                     <div className="mx-4 my-1 border-t border-border" />
                   )}
                   {mumSubcats.map((c) => (
-                    <DropdownLink key={c.id} to={`/shop/mum?category=${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
+                    <DropdownLink key={c.id} to={`/shop/mum/${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
                   ))}
                 </DropdownPanel>
               )}
@@ -509,7 +509,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
             {babySubcats.map((c) => (
               <Link
                 key={c.id}
-                to={`/shop/baby?category=${c.slug}`}
+                to={`/shop/baby/${c.slug}`}
                 className="flex items-center gap-2 px-5 py-2.5 text-[14px] text-muted-foreground font-medium hover:text-forest transition-colors"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-forest/40 shrink-0" />
@@ -527,7 +527,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
             {mumSubcats.map((c) => (
               <Link
                 key={c.id}
-                to={`/shop/mum?category=${c.slug}`}
+                to={`/shop/mum/${c.slug}`}
                 className="flex items-center gap-2 px-5 py-2.5 text-[14px] text-muted-foreground font-medium hover:text-forest transition-colors"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-forest/40 shrink-0" />

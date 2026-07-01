@@ -561,7 +561,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const prodSubcat = categories.find(c => c.slug === product.subcategory);
   const productBreadcrumbs = [
     { label: prodShopLabel, href: prodShopHref },
-    ...(prodSubcat ? [{ label: prodSubcat.name, href: `${prodShopHref}?category=${prodSubcat.slug}` }] : []),
+    ...(prodSubcat ? [{ label: prodSubcat.name, href: `${prodShopHref}/${prodSubcat.slug}` }] : []),
     { label: product.name },
   ];
 
@@ -916,6 +916,76 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           </>
         );
       })()}
+
+      {/* Product group view: shown for multi-brand products when no specific
+          brand is pre-selected via ?sku=. Users can add to cart directly or
+          click View Details to reach the full per-brand detail below. */}
+      {!isInlineEditableBundle && product.brands.length > 1 && !skuParam && (
+        <div className="max-w-6xl mx-auto px-4 pb-8">
+          <h2 className="pf text-[17px] font-bold mb-1">Choose your brand</h2>
+          <p className="text-muted-foreground text-sm mb-4">{product.brands.length} options available</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {product.brands.map(brand => {
+              const img = brand.imageUrl;
+              const isOos = brand.inStock === false || (brand.stockQuantity !== null && brand.stockQuantity <= 0);
+              return (
+                <div key={brand.id} className="flex flex-col bg-card rounded-2xl border border-border overflow-hidden">
+                  <div className="aspect-square bg-muted relative overflow-hidden">
+                    {img ? (
+                      <ProductImage imageUrl={img} emoji={brand.img} alt={`${product.name} ${brand.label}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-30">🛍️</div>
+                    )}
+                    {brand.tier && (
+                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm capitalize text-forest">
+                        {brand.tier}
+                      </div>
+                    )}
+                    {isOos && (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <span className="text-white text-[11px] font-bold bg-black/60 rounded-full px-2.5 py-1">Out of stock</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-3 flex flex-col gap-2 flex-1">
+                    <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-2">{brand.label}</p>
+                    <p className="text-[14px] font-bold text-coral">{fmt(brand.price)}</p>
+                    <div className="flex flex-col gap-1.5 mt-auto">
+                      <button
+                        disabled={isOos}
+                        onClick={() => {
+                          if (isOos) return;
+                          addToCart({
+                            ...product,
+                            selectedBrand: brand,
+                            price: brand.price,
+                            name: `${product.name} (${brand.label})`,
+                            selectedSize: brand.sizeVariant || null,
+                            selectedColor: null,
+                            selectedVariant: brand.sizeVariant || null,
+                          });
+                          toast.success(`${brand.label} added to cart`, {
+                            action: { label: "View Cart", onClick: () => window.location.href = "/cart" },
+                          });
+                        }}
+                        className="w-full rounded-pill bg-coral text-white text-[12px] font-bold py-2 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-coral/90 transition-colors"
+                      >
+                        {isOos ? "Out of stock" : "Add to Cart"}
+                      </button>
+                      <Link
+                        to={`/products/${slug}?sku=${brand.sku}`}
+                        className="w-full rounded-pill border border-border text-[12px] font-semibold text-foreground py-2 min-h-[36px] flex items-center justify-center hover:border-forest hover:text-forest transition-colors"
+                      >
+                        Full Details
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {!isInlineEditableBundle && (
       <div className="max-w-6xl mx-auto px-4">
