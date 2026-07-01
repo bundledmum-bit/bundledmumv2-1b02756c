@@ -688,6 +688,11 @@ function ReviewEditModal({
                 </div>
               </div>
             )}
+            {/* AI reasoning for the reorder window (propose-mode only, consumable
+                items only). Display-only: not editable, not sent in the payload. */}
+            {isConsumable && draft.reorder_reasoning && (
+              <p className="text-[11px] text-muted-foreground">AI estimate: {draft.reorder_reasoning}</p>
+            )}
           </div>
         </div>
 
