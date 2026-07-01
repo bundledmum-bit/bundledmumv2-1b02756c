@@ -22,30 +22,111 @@ function DropdownPanel({
   children,
   onMouseEnter,
   onMouseLeave,
+  wide,
 }: {
   children: React.ReactNode;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  wide?: boolean;
 }) {
   return (
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="absolute top-full left-0 mt-1 min-w-[200px] bg-card border border-border rounded-[16px] shadow-[0_8px_32px_-8px_rgba(32,37,26,0.18)] py-1.5 z-[200]"
+      className={`absolute top-full left-0 mt-1 bg-card border border-border rounded-[16px] shadow-[0_8px_32px_-8px_rgba(32,37,26,0.18)] py-3 z-[200] ${wide ? "w-[520px]" : "min-w-[200px] py-1.5"}`}
     >
       {children}
     </div>
   );
 }
 
-function DropdownLink({ to, label }: { to: string; label: string }) {
+function DropdownLink({ to, label, icon }: { to: string; label: string; icon?: string }) {
   return (
     <Link
       to={to}
-      className="block px-4 py-2.5 text-[13px] font-semibold text-foreground hover:bg-forest-light hover:text-forest rounded-xl mx-1 transition-colors"
+      className="flex items-center gap-2 px-4 py-2.5 text-[13px] font-semibold text-foreground hover:bg-forest-light hover:text-forest rounded-xl mx-1 transition-colors"
     >
+      {icon && <span className="text-base leading-none">{icon}</span>}
       {label}
     </Link>
+  );
+}
+
+// Wide 2-column mega-panel for "Shop All" showing every category.
+function ShopMegaPanel({
+  babySubcats,
+  mumSubcats,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  babySubcats: Array<{ id: string; name: string; slug: string; icon?: string | null }>;
+  mumSubcats: Array<{ id: string; name: string; slug: string; icon?: string | null }>;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
+  return (
+    <DropdownPanel wide onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+      {/* Top: All Products */}
+      <Link
+        to="/shop"
+        className="flex items-center justify-between px-4 py-2.5 text-[13px] font-bold text-forest hover:bg-forest-light rounded-xl mx-1 mb-1 transition-colors"
+      >
+        All Products
+        <span className="text-[11px] text-muted-foreground font-normal">Browse everything</span>
+      </Link>
+      <div className="mx-4 border-t border-border mb-3" />
+
+      {/* Two columns */}
+      <div className="grid grid-cols-2 gap-0 px-2">
+        {/* Baby column */}
+        <div className="pr-3 border-r border-border">
+          <div className="flex items-center gap-1.5 px-3 pb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Baby</span>
+            <span>👶</span>
+          </div>
+          <Link
+            to="/shop/baby"
+            className="block px-3 py-2 text-[12px] font-bold text-foreground hover:bg-forest-light hover:text-forest rounded-xl transition-colors mb-0.5"
+          >
+            All Baby Products
+          </Link>
+          {babySubcats.map((c) => (
+            <Link
+              key={c.id}
+              to={`/shop/baby?category=${c.slug}`}
+              className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-muted-foreground hover:text-forest hover:bg-forest-light rounded-xl transition-colors"
+            >
+              {c.icon && <span className="text-sm">{c.icon}</span>}
+              {c.name}
+            </Link>
+          ))}
+        </div>
+
+        {/* Mum column */}
+        <div className="pl-3">
+          <div className="flex items-center gap-1.5 px-3 pb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mum</span>
+            <span>💛</span>
+          </div>
+          <Link
+            to="/shop/mum"
+            className="block px-3 py-2 text-[12px] font-bold text-foreground hover:bg-forest-light hover:text-forest rounded-xl transition-colors mb-0.5"
+          >
+            All Mum Products
+          </Link>
+          {mumSubcats.map((c) => (
+            <Link
+              key={c.id}
+              to={`/shop/mum?category=${c.slug}`}
+              className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-muted-foreground hover:text-forest hover:bg-forest-light rounded-xl transition-colors"
+            >
+              {c.icon && <span className="text-sm">{c.icon}</span>}
+              {c.name}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </DropdownPanel>
   );
 }
 
@@ -189,6 +270,27 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               Build My Bundle
             </Link>
 
+            {/* Shop mega-dropdown — all categories in one panel */}
+            <div
+              className="relative"
+              onMouseEnter={() => openDropdown("shop")}
+              onMouseLeave={scheduleClose}
+            >
+              <button
+                className={`inline-flex items-center gap-0.5 rounded-pill px-3 py-2 text-[13px] font-semibold transition-colors ${activeDropdown === "shop" ? "bg-forest-light text-forest" : "text-foreground hover:bg-midnight/[0.06]"}`}
+              >
+                Shop <ChevronDown className={`w-3.5 h-3.5 mt-px transition-transform duration-150 ${activeDropdown === "shop" ? "rotate-180" : ""}`} />
+              </button>
+              {activeDropdown === "shop" && (
+                <ShopMegaPanel
+                  babySubcats={babySubcats}
+                  mumSubcats={mumSubcats}
+                  onMouseEnter={() => openDropdown("shop")}
+                  onMouseLeave={scheduleClose}
+                />
+              )}
+            </div>
+
             {/* Baby with subcategory dropdown */}
             <div
               className="relative"
@@ -208,7 +310,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
                     <div className="mx-4 my-1 border-t border-border" />
                   )}
                   {babySubcats.map((c) => (
-                    <DropdownLink key={c.id} to={`/shop/baby?category=${c.slug}`} label={c.name} />
+                    <DropdownLink key={c.id} to={`/shop/baby?category=${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
                   ))}
                 </DropdownPanel>
               )}
@@ -233,7 +335,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
                     <div className="mx-4 my-1 border-t border-border" />
                   )}
                   {mumSubcats.map((c) => (
-                    <DropdownLink key={c.id} to={`/shop/mum?category=${c.slug}`} label={c.name} />
+                    <DropdownLink key={c.id} to={`/shop/mum?category=${c.slug}`} label={c.name} icon={c.icon ?? undefined} />
                   ))}
                 </DropdownPanel>
               )}
@@ -387,6 +489,15 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               Build My Bundle →
             </Link>
           </div>
+
+          {/* All Products flat link */}
+          <Link
+            to="/shop"
+            className="flex items-center justify-between px-5 py-3.5 text-[15px] font-bold text-forest border-b border-border/50 hover:bg-forest-light transition-colors"
+          >
+            All Products
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          </Link>
 
           {/* Accordion sections with subcategory links from DB */}
           <AccordionSection

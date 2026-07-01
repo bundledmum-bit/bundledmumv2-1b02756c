@@ -10,6 +10,7 @@ import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
+import type { ProductCategory } from "@/hooks/useProductCategories";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -186,6 +187,126 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
             {needsSizeChoice ? "Choose Size →" : "Add to Cart"}
           </button>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ShopCategoryGrid({ categories }: { categories: ProductCategory[] }) {
+  const babyCats = categories.filter(
+    (c) => c.parent_category === "baby" || c.parent_category === "both"
+  );
+  const mumCats = categories.filter(
+    (c) => c.parent_category === "mum" || c.parent_category === "both"
+  );
+  if (!babyCats.length && !mumCats.length) return null;
+  return (
+    <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* Baby panel */}
+      {babyCats.length > 0 && (
+        <div className="bg-[#EEF6EF] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">👶</span>
+              <h2 className="pf text-[18px] font-bold text-forest">Baby Shop</h2>
+            </div>
+            <Link to="/shop/baby" className="text-[13px] font-semibold text-forest hover:underline">
+              Shop all →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {babyCats.map((c) => (
+              <Link
+                key={c.id}
+                to={`/shop/baby?category=${c.slug}`}
+                className="flex items-center gap-2.5 bg-white rounded-xl px-3 py-2.5 hover:shadow-sm transition-all group"
+              >
+                <span className="text-xl leading-none">{c.icon || "🛍️"}</span>
+                <span className="text-[12px] font-medium text-foreground group-hover:text-forest transition-colors leading-tight">
+                  {c.name}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Mum panel */}
+      {mumCats.length > 0 && (
+        <div className="bg-[#FFF4F0] rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">💛</span>
+              <h2 className="pf text-[18px] font-bold" style={{ color: "#C0623A" }}>Mum Shop</h2>
+            </div>
+            <Link to="/shop/mum" className="text-[13px] font-semibold hover:underline" style={{ color: "#C0623A" }}>
+              Shop all →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {mumCats.map((c) => (
+              <Link
+                key={c.id}
+                to={`/shop/mum?category=${c.slug}`}
+                className="flex items-center gap-2.5 bg-white rounded-xl px-3 py-2.5 hover:shadow-sm transition-all group"
+              >
+                <span className="text-xl leading-none">{c.icon || "🛍️"}</span>
+                <span className="text-[12px] font-medium text-foreground group-hover:text-coral transition-colors leading-tight">
+                  {c.name}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Horizontal category chip strip for /shop/baby and /shop/mum.
+function ShopCategoryNav({
+  categories,
+  tab,
+  activeCategory,
+}: {
+  categories: ProductCategory[];
+  tab: string;
+  activeCategory: string;
+}) {
+  const shopHref = tab === "baby" ? "/shop/baby" : "/shop/mum";
+  const relevantCats = categories.filter(
+    (c) =>
+      c.parent_category === tab ||
+      c.parent_category === "both"
+  );
+  if (!relevantCats.length) return null;
+  return (
+    <div className="overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-1">
+      <div className="flex gap-2 min-w-max">
+        <Link
+          to={shopHref}
+          className={`inline-flex items-center gap-1 rounded-pill px-4 py-2 text-[13px] font-semibold border transition-all flex-shrink-0 ${
+            !activeCategory
+              ? "bg-forest border-forest text-white"
+              : "bg-card border-border text-muted-foreground hover:border-forest/50 hover:text-forest"
+          }`}
+        >
+          All {tab === "baby" ? "Baby" : "Mum"}
+        </Link>
+        {relevantCats.map((c) => (
+          <Link
+            key={c.id}
+            to={`${shopHref}?category=${c.slug}`}
+            className={`inline-flex items-center gap-1.5 rounded-pill px-4 py-2 text-[13px] font-medium border transition-all flex-shrink-0 ${
+              activeCategory === c.slug
+                ? "bg-forest border-forest text-white"
+                : "bg-card border-border text-muted-foreground hover:border-forest/50 hover:text-forest"
+            }`}
+          >
+            {c.icon && <span className="text-sm">{c.icon}</span>}
+            {c.name}
+          </Link>
+        ))}
       </div>
     </div>
   );
@@ -590,12 +711,12 @@ export default function ShopPage() {
               className="w-full rounded-pill bg-card border border-border text-foreground text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[48px] shadow-sm"
             />
           </div>
-          {/* Category chips — mobile only */}
-          <div className="md:hidden flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-0.5">
+          {/* Top-level shop / section chips — visible on all screen sizes */}
+          <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-0.5">
             {[
               { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
-              { label: "Baby", to: "/shop/baby", active: tab === "baby" },
-              { label: "Mum", to: "/shop/mum", active: tab === "mum" },
+              { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" && !categoryF },
+              { label: "💛 Mum", to: "/shop/mum", active: tab === "mum" && !categoryF },
               { label: "Bundles", to: "/bundles", active: false },
               { label: "Gifts", to: "/bundles/baby-shower-gift-boxes", active: false },
             ].map(c => (
@@ -605,6 +726,14 @@ export default function ShopPage() {
               </Link>
             ))}
           </div>
+          {/* Subcategory chip strip for baby/mum sections-only mode */}
+          {sectionsOnlyMode && (tab === "baby" || tab === "mum") && (
+            <ShopCategoryNav
+              categories={categories || []}
+              tab={tab}
+              activeCategory={categoryF}
+            />
+          )}
         </div>
       </div>
 
@@ -773,10 +902,15 @@ export default function ShopPage() {
             same loop, in admin-configured order. Search queries and
             category-specific tabs skip the section feed entirely. */}
         {sectionsOnlyMode ? (
-          <ShopSectionsRenderer
-            shop={tab as ShopVariant}
-            onOpenDetail={p => navigate(`/products/${p.slug}`)}
-          />
+          <>
+            {tab === "all" && (
+              <ShopCategoryGrid categories={categories || []} />
+            )}
+            <ShopSectionsRenderer
+              shop={tab as ShopVariant}
+              onOpenDetail={p => navigate(`/products/${p.slug}`)}
+            />
+          </>
         ) : (isLoading || searchPending) ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
