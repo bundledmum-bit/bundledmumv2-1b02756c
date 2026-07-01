@@ -1007,9 +1007,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
             {/* Price */}
             <div className="flex items-baseline gap-3 mb-1">
-              <span className="pf text-2xl md:text-3xl font-bold text-forest">{fmt(selectedBrand.price)}</span>
+              <span className="font-mono-price text-2xl md:text-3xl font-bold text-forest">{fmt(selectedBrand.price)}</span>
               {showSalePrice && (
-                <span className="text-muted-foreground text-lg line-through">{fmt(selectedBrand.compareAtPrice!)}</span>
+                <span className="font-mono-price text-muted-foreground text-lg line-through">{fmt(selectedBrand.compareAtPrice!)}</span>
               )}
               {showSalePrice && (
                 <span className="bg-destructive/10 text-destructive text-xs font-bold px-2 py-0.5 rounded-pill">-{savingsPercent}%</span>
@@ -1413,8 +1413,8 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       {!raw?.is_gift_box && (
       <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-card border-t border-border p-3 flex items-center justify-between gap-4 z-40 md:hidden">
         <div>
-          <p className="pf text-lg font-bold text-forest">{fmt(selectedBrand.price)}</p>
-          {showSalePrice && <p className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</p>}
+          <p className="font-mono-price text-lg font-bold text-forest">{fmt(selectedBrand.price)}</p>
+          {showSalePrice && <p className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</p>}
         </div>
         {isOutOfStock ? (
           <span className="text-sm text-muted-foreground font-semibold">Out of Stock</span>
@@ -1730,7 +1730,7 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
                 </div>
                 <div className="font-semibold text-xs leading-snug text-foreground line-clamp-2">{p.name}</div>
               </Link>
-              {b?.price != null && <div className="text-sm text-forest font-bold mt-1">From {fmt(Number(b.price))}</div>}
+              {b?.price != null && <div className="text-sm text-forest font-bold mt-1">From <span className="font-mono-price">{fmt(Number(b.price))}</span></div>}
               {cadence && <div className="text-[10px] text-text-light">{cadence}</div>}
               <button type="button" onClick={() => compactSubscribe(p)} disabled={!b}
                 className="mt-2 w-full inline-flex items-center justify-center gap-1 rounded-pill border border-forest text-forest min-h-9 text-xs font-semibold hover:bg-forest/10 disabled:opacity-50">

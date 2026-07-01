@@ -240,7 +240,7 @@ function CuratedCard({ pin, onOpenDetail }: { pin: SectionPinnedProduct; onOpenD
           {displayName}
         </div>
         <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-[15px] font-bold text-forest">
+          <span className="font-mono-price text-[15px] font-bold text-forest">
             {showFrom ? `from ${fmt(minPrice)}` : fmt(surfaceBrand?.price || 0)}
           </span>
         </div>

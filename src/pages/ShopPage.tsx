@@ -22,7 +22,7 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import QtyControl from "@/components/QtyControl";
 import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import { Filter, ArrowUpDown, Check } from "lucide-react";
+import { Filter, ArrowUpDown, Check, Search } from "lucide-react";
 
 function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, onViewDetail, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; onViewDetail: () => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
@@ -163,9 +163,9 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
 
         <div className="flex justify-between items-center">
           <div>
-            <div className="text-forest font-bold text-[17px] transition-all">{fmt(selectedBrand.price)}</div>
-            {showSale && <div className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</div>}
-            {!showSale && product.brands.length > 1 && <div className="text-muted-foreground text-[10px] mt-0.5">from {fmt(Math.min(...product.brands.map(b => b.price)))}</div>}
+            <div className="font-mono-price text-forest font-bold text-[17px] transition-all">{fmt(selectedBrand.price)}</div>
+            {showSale && <div className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand.compareAtPrice!)}</div>}
+            {!showSale && product.brands.length > 1 && <div className="text-muted-foreground text-[10px] mt-0.5">from <span className="font-mono-price">{fmt(Math.min(...product.brands.map(b => b.price)))}</span></div>}
           </div>
           {isOutOfStock ? (
             <div>
@@ -540,19 +540,40 @@ export default function ShopPage() {
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
-      {/* Hero - auto height, no min-h-screen */}
-      <div className="pt-[68px]" style={{ background: isBaby ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : isMum ? "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" : "linear-gradient(135deg, #1A1A2E 0%, #2D3A5C 100%)" }}>
-        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-14">
-          <h1 className="pf text-2xl md:text-[44px] text-primary-foreground mb-2">
-            {isBaby ? "👶 Baby Shop" : isMum ? "💛 Mum Shop" : "🛍️ All Shops"}
+      {/* Prototype-style header: cream background, clean search, and a
+          mobile category chip row (the prototype's signature). Desktop keeps
+          the full filter bar below, so the chips stay mobile-only to avoid
+          duplicating the tab controls. Copy strings are unchanged from the
+          previous hero (still hardcoded pending a backend shop-hero field —
+          see the backend audit). */}
+      <div className="pt-[68px] bg-background border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5 md:py-10">
+          <h1 className="pf text-2xl md:text-[40px] text-forest mb-1.5">
+            {isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "All Shops"}
           </h1>
-          <p className="text-primary-foreground/65 text-sm md:text-[15px] max-w-[480px]">
+          <p className="text-muted-foreground text-[13px] md:text-[15px] max-w-[480px]">
             Shop baby essentials, mum items, and baby gifts without stepping foot in any market.
           </p>
-          <div className="mt-4 relative max-w-[480px]">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base pointer-events-none">🔍</span>
+          <div className="mt-4 relative max-w-[520px]">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light pointer-events-none" />
             <input placeholder="Search products..." value={search} onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
-              className="w-full rounded-pill border-none bg-primary-foreground/15 text-primary-foreground text-sm font-body pl-10 pr-4 py-3 outline-none placeholder:text-primary-foreground/40 min-h-[44px]" />
+              className="w-full rounded-pill bg-card border border-border text-foreground text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[48px]" />
+          </div>
+          {/* Category chips — mobile only. All/Baby/Mum switch the shop variant;
+              Bundles/Gifts link out, mirroring the homepage category tiles. */}
+          <div className="md:hidden flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-0.5">
+            {[
+              { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
+              { label: "Baby", to: "/shop/baby", active: tab === "baby" },
+              { label: "Mum", to: "/shop/mum", active: tab === "mum" },
+              { label: "Bundles", to: "/bundles", active: false },
+              { label: "Gifts", to: "/bundles/baby-shower-gift-boxes", active: false },
+            ].map(c => (
+              <Link key={c.label} to={c.to}
+                className={`flex-shrink-0 rounded-pill px-4 py-2 text-[13px] font-semibold border transition-colors min-h-[40px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
+                {c.label}
+              </Link>
+            ))}
           </div>
         </div>
       </div>
