@@ -1,31 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Search, ArrowRight } from "lucide-react";
 import { useSiteSettings, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
-import ProductImage from "@/components/ProductImage";
-import HeroCarousel, { type HeroSlide } from "@/components/home/HeroCarousel";
+import HeroCarousel, { type HeroContent } from "@/components/home/HeroCarousel";
+import FlashDeals from "@/components/home/FlashDeals";
 
 /**
- * PREVIEW homepage rebuilt to the "BundledMum Prototype" layout.
+ * PREVIEW homepage in the "BundledMum Prototype" layout.
  *
- * TEXT POLICY: every real copy string still resolves from the database
- * (site_settings.hero_title / hero_subtitle / cta_button_text, bundles, product
- * prices). Only the two prototype sections that have NO backend field yet
- * (Shop by Category tiles, and the Deals rail heading) are placeholders, marked
- * with TODO + a console.warn, pending the backend fields listed in the audit
- * report (home_categories, deals_product_ids / deals_heading). No em dashes.
+ * TEXT POLICY: real copy resolves from the database (site_settings.hero_title /
+ * hero_subtitle / cta_button_text, bundles, product prices). Sections that need
+ * a backend field they do not have yet use placeholders derived from real data,
+ * documented in docs/storefront-redesign-backend-audit.md (home_categories,
+ * home_loved_baby_brands, deals_ends_at / deals_heading). No em dashes.
  */
-
-// TODO(backend): the Shop-by-Category grid has no admin field. Proposed:
-// site_settings.home_categories = [{ label, href, image_url, tone }]. Until then
-// these tiles are hardcoded placeholders.
-const PLACEHOLDER_CATEGORIES = [
-  { label: "Maternity", href: "/shop/mum", tone: "forest" as const, emoji: "\u{1F930}" },
-  { label: "Baby", href: "/shop/baby", tone: "forest" as const, emoji: "\u{1F476}" },
-  { label: "Bundles", href: "/bundles", tone: "coral" as const, emoji: "\u{1F381}" },
-  { label: "Gifts", href: "/bundles/baby-shower-gift-boxes", tone: "coral" as const, emoji: "\u{1F49D}" },
-];
 
 function HeroSearchBar() {
   const navigate = useNavigate();
@@ -57,106 +46,146 @@ export default function PrototypeHome() {
   const heroSubtitle = settings?.hero_subtitle || "Thoughtfully sourced essentials, bundles & gifts for every stage.";
   const bundleCtaLabel = settings?.cta_button_text || "Build My Bundle";
 
-  // Popular bundles (real data), first ~8 for the carousel.
-  const popularBundles = (bundles as any[]).slice(0, 8);
-  const heroImage = (popularBundles[0]?.imageUrl) || (products as any[]).find((p) => p.imageUrl)?.imageUrl || null;
+  // Hero: fixed brand copy (from the DB) plus a set of real images that
+  // cross-fade behind it. Only the image changes; the text and CTAs stay put.
+  const heroImages = useMemo(() => {
+    const imgs: string[] = [];
+    (bundles as any[]).forEach((b) => { if (b?.imageUrl) imgs.push(b.imageUrl); });
+    const p = (products as any[]).find((x) => x.imageUrl);
+    if (p?.imageUrl) imgs.push(p.imageUrl);
+    return Array.from(new Set(imgs)).slice(0, 5);
+  }, [bundles, products]);
+  const heroContent: HeroContent = {
+    title: heroTitle,
+    subtitle: heroSubtitle,
+    ctaLabel: bundleCtaLabel,
+    ctaHref: "/quiz",
+    secondaryLabel: "Shop now",
+    secondaryHref: "/shop",
+  };
 
-  // Hero carousel slides. Slide 1 is the brand hero (all copy from the DB:
-  // hero_title / hero_subtitle / cta_button_text). The rest are real featured
-  // bundles (name + image + price from the DB); "Featured bundle" / "Shop
-  // bundle" are UI labels, like the section headings. Admin-curated banners
-  // need a backend field (site_settings.home_hero_slides) — see the audit.
-  const heroSlides: HeroSlide[] = [
-    {
-      key: "brand",
-      title: heroTitle,
-      subtitle: heroSubtitle,
-      ctaLabel: bundleCtaLabel,
-      ctaHref: "/quiz",
-      secondaryLabel: "Shop now",
-      secondaryHref: "/shop",
-      image: heroImage,
-      tone: "brand",
-    },
-    ...popularBundles
-      .filter((b: any) => b?.imageUrl)
-      .slice(0, 3)
-      .map((b: any, i: number): HeroSlide => ({
-        key: `bundle-${b.id}`,
-        eyebrow: "Featured bundle",
-        title: b.name,
-        ctaLabel: "Shop bundle",
-        ctaHref: `/bundles/${b.slug ?? b.id}`,
-        image: b.imageUrl,
-        price: b.price ?? null,
-        tone: i % 2 === 0 ? "coral" : "forest",
-      })),
+  // Shop-by-Category tiles. No admin field yet, so the imagery is derived from
+  // real category products/bundles. Proposed: site_settings.home_categories
+  // = [{ label, href, image_url }]. See the audit.
+  const catImg = useMemo(() => {
+    const prods = products as any[];
+    const bnds = bundles as any[];
+    const pick = (arr: any[], pred: (x: any) => boolean) => arr.find(pred)?.imageUrl || null;
+    return {
+      mum: pick(prods, (p) => p.category === "mum" && p.imageUrl),
+      baby: pick(prods, (p) => p.category === "baby" && p.imageUrl),
+      bundles: pick(bnds, (b) => !!b.imageUrl),
+      gifts: bnds.find((b) => /gift/i.test(`${b.name || ""} ${b.slug || ""}`) && b.imageUrl)?.imageUrl
+        || bnds.filter((b) => b.imageUrl)[1]?.imageUrl || null,
+    };
+  }, [products, bundles]);
+  const categories = [
+    { label: "Maternity", href: "/shop/mum", image: catImg.mum },
+    { label: "Baby", href: "/shop/baby", image: catImg.baby },
+    { label: "Bundles", href: "/bundles", image: catImg.bundles },
+    { label: "Gifts", href: "/bundles/baby-shower-gift-boxes", image: catImg.gifts },
   ];
+
+  // "Our Most Loved Baby Items": premium baby brands. The raw brand_name data
+  // is inconsistent (some values carry pack info like "Waterwipes (54pcs)"), so
+  // match brand/product names against a canonical premium-brand list and show
+  // one clean card per brand. Admin curation needs a backend field
+  // (home_loved_baby_brands). See the audit.
+  const babyBrands = useMemo(() => {
+    const CANON = ["WaterWipes", "Huggies", "Mustela", "Tommee Tippee", "Kendamil", "Sebamed", "NAN Optipro", "Mothercare", "Aptamil", "Cow & Gate", "Pampers", "Molfix"];
+    const babyProducts = (products as any[]).filter((p) => p.category === "baby");
+    const squash = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const out: Array<{ name: string; image: string | null; minPrice: number }> = [];
+    for (const canon of CANON) {
+      const key = squash(canon);
+      let image: string | null = null;
+      let minPrice = Infinity;
+      let found = false;
+      for (const p of babyProducts) {
+        const pn = squash(p.name);
+        for (const b of p.brands || []) {
+          if (squash(b.label).includes(key) || pn.includes(key)) {
+            found = true;
+            const price = Number(b.price) || 0;
+            if (price > 0 && price < minPrice) minPrice = price;
+            if (!image) image = b.imageUrl || p.imageUrl || null;
+          }
+        }
+      }
+      if (found) out.push({ name: canon, image, minPrice: isFinite(minPrice) ? minPrice : 0 });
+      if (out.length >= 5) break;
+    }
+    return out;
+  }, [products]);
 
   // Free-delivery progress from the real cart total + the admin threshold.
   const threshold = parseInt(settings?.free_delivery_nationwide_threshold_naira ?? settings?.default_free_threshold ?? "0", 10) || 0;
   const remaining = Math.max(0, threshold - subtotal);
   const pct = threshold > 0 ? Math.min(100, Math.round((subtotal / threshold) * 100)) : 0;
 
-  // TODO(backend): "Deals for you" has no curated source. Placeholder = products
-  // whose selected brand is on sale (compareAtPrice > price); falls back to the
-  // first few products. Proposed: site_settings.deals_product_ids + deals_heading.
-  if (typeof window !== "undefined") {
-    // eslint-disable-next-line no-console
-    console.warn("[preview] Home 'Shop by Category' tiles and 'Deals for you' are placeholders pending backend fields (home_categories, deals). See the audit report.");
-  }
-  const onSale = (products as any[]).filter((p) => {
-    const b = getBrandForBudget(p, "standard");
-    return b && b.compareAtPrice && b.compareAtPrice > b.price;
-  });
-  const deals = (onSale.length > 0 ? onSale : (products as any[])).slice(0, 8);
+  // Flash Deals: prefer genuinely on-sale products (compareAtPrice > price),
+  // fall back to the first products so the section always populates in preview.
+  const deals = useMemo(() => {
+    const onSale = (products as any[]).filter((p) => {
+      const b = getBrandForBudget(p, "standard");
+      return b && b.compareAtPrice && b.compareAtPrice > b.price;
+    });
+    return (onSale.length > 0 ? onSale : (products as any[])).slice(0, 10);
+  }, [products]);
 
   return (
     <div className="bg-background min-h-screen pt-[76px]">
      <div className="max-w-[1180px] mx-auto">
-      {/* Real h1 for SEO/a11y; the visible hero title lives inside the
-          carousel's brand slide (an h2), so keep this off-screen. */}
+      {/* Real h1 for SEO/a11y; the visible hero title is an h2 in the carousel. */}
       <h1 className="sr-only">{heroTitle}</h1>
 
-      {/* Hero: search + premium auto-rotating banner carousel */}
+      {/* Hero: search + carousel (static copy, cross-fading image) */}
       <section className="px-4 md:px-6 pt-4 pb-2">
         <HeroSearchBar />
         <div className="mt-4">
-          <HeroCarousel slides={heroSlides} />
+          <HeroCarousel images={heroImages} content={heroContent} />
         </div>
       </section>
 
-      {/* Shop by Category (placeholder tiles) */}
+      {/* Shop by Category (image tiles; larger on desktop) */}
       <section className="px-4 md:px-6 py-5">
         <h2 className="text-lg md:text-xl font-bold text-foreground mb-3">Shop by Category</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {PLACEHOLDER_CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <Link key={c.label} to={c.href}
-              className={`rounded-[14px] border border-border p-4 flex flex-col gap-6 min-h-[104px] md:min-h-[120px] justify-between ${c.tone === "coral" ? "bg-coral-blush" : "bg-forest-light"}`}>
-              <span className="text-2xl">{c.emoji}</span>
-              <span className="font-semibold text-foreground inline-flex items-center gap-1">{c.label} <ArrowRight className="w-3.5 h-3.5" /></span>
+              className="relative rounded-[16px] overflow-hidden border border-border bg-forest-light min-h-[104px] md:min-h-[220px] group">
+              {c.image && (
+                <img src={c.image} alt="" aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/25 to-transparent" />
+              <span className="absolute left-3 bottom-3 md:left-4 md:bottom-4 z-10 font-semibold text-white text-sm md:text-lg inline-flex items-center gap-1 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
+                {c.label} <ArrowRight className="w-3.5 h-3.5 md:w-4 md:h-4" />
+              </span>
             </Link>
           ))}
         </div>
       </section>
 
-      {/* Popular Bundles carousel (real bundles) */}
-      {popularBundles.length > 0 && (
+      {/* Our Most Loved Baby Items: premium baby brands.
+          Preview label pending admin field (see audit: rename most_loved_heading
+          and add home_loved_baby_brands). */}
+      {babyBrands.length > 0 && (
         <section className="py-5">
           <div className="px-4 md:px-6 flex items-center justify-between mb-3">
-            <h2 className="text-lg md:text-xl font-bold text-foreground">{settings?.most_loved_heading || "Shop Popular Bundles"}</h2>
-            <Link to="/bundles" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
+            <h2 className="text-lg md:text-xl font-bold text-foreground">Our Most Loved Baby Items</h2>
+            <Link to="/shop/baby" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
           </div>
           <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
-            {popularBundles.map((b: any) => (
-              <Link key={b.id} to={`/bundles/${b.slug ?? b.id}`}
-                className="snap-start shrink-0 w-[190px] rounded-[14px] border border-border bg-card overflow-hidden">
-                <div className="aspect-[4/3] bg-muted">
-                  {b.imageUrl && <img src={b.imageUrl} alt={b.name} className="w-full h-full object-cover" />}
+            {babyBrands.map((b) => (
+              <Link key={b.name} to={`/shop/baby?q=${encodeURIComponent(b.name)}`}
+                className="snap-start shrink-0 w-[150px] rounded-[14px] border border-border bg-card overflow-hidden card-hover">
+                <div className="aspect-square bg-warm-cream">
+                  {b.image && <img src={b.image} alt={b.name} loading="lazy" className="w-full h-full object-cover" />}
                 </div>
-                <div className="p-3">
-                  <p className="font-semibold text-sm text-foreground line-clamp-2 leading-snug">{b.name}</p>
-                  {b.price != null && <p className="mt-1 font-mono-price text-forest font-bold text-[15px]">{fmt(b.price)}</p>}
+                <div className="p-2.5">
+                  <p className="font-semibold text-xs text-foreground truncate">{b.name}</p>
+                  {b.minPrice > 0 && <p className="mt-0.5 font-mono-price text-forest font-bold text-sm">from {fmt(b.minPrice)}</p>}
                 </div>
               </Link>
             ))}
@@ -180,39 +209,8 @@ export default function PrototypeHome() {
         </section>
       )}
 
-      {/* Deals for you (placeholder heading, real on-sale products) */}
-      {deals.length > 0 && (
-        <section className="py-5">
-          <div className="px-4 md:px-6 flex items-center justify-between mb-3">
-            <h2 className="text-lg md:text-xl font-bold text-foreground">Deals for you</h2>
-            <Link to="/shop" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">See all <ArrowRight className="w-3.5 h-3.5" /></Link>
-          </div>
-          <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
-            {deals.map((p: any) => {
-              const brand = getBrandForBudget(p, "standard");
-              if (!brand) return null;
-              const onDeal = brand.compareAtPrice && brand.compareAtPrice > brand.price;
-              return (
-                <Link key={p.id} to={`/products/${p.slug}`}
-                  className="snap-start shrink-0 w-[150px] rounded-[14px] border border-border bg-card overflow-hidden">
-                  <div className="aspect-square bg-warm-cream relative">
-                    <ProductImage imageUrl={p.imageUrl} emoji={brand.img} alt={p.name} className="w-full h-full" emojiClassName="text-5xl" />
-                    {onDeal && (
-                      <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5">
-                        Save {Math.round(((brand.compareAtPrice - brand.price) / brand.compareAtPrice) * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-2.5">
-                    <p className="font-semibold text-xs text-foreground line-clamp-2 leading-snug">{p.name}</p>
-                    <p className="mt-1 font-mono-price text-forest font-bold text-sm">{fmt(brand.price)}</p>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {/* Flash Deals: countdown, sale prices, and in-place add-to-cart */}
+      <FlashDeals products={deals} heading="Flash Deals" />
      </div>
     </div>
   );

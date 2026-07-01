@@ -84,12 +84,12 @@ body.theme-bundled {
   --primary: 16 81% 62%;         /* #ED7A52 coral */
   --primary-foreground: 40 45% 98%;
   --primary-dark: 15 62% 52%;
-  --secondary: 92 20% 35%;       /* #586B47 forest */
+  --secondary: 153 43% 30%;      /* brand green #2D6A4F */
   --secondary-foreground: 40 45% 98%;
   --muted: 38 40% 91%;           /* #F0E8DA */
   --muted-foreground: 45 8% 40%; /* #6E6B5F */
-  --accent: 96 25% 86%;          /* #DDE6D2 green tint */
-  --accent-foreground: 92 22% 26%;
+  --accent: 150 40% 90%;         /* soft brand-green tint */
+  --accent-foreground: 153 43% 30%;
   --destructive: 0 72% 55%;
   --destructive-foreground: 0 0% 100%;
   --border: 40 26% 86%;          /* #E7E1D5 */
@@ -99,10 +99,10 @@ body.theme-bundled {
   --coral: 16 81% 62%;
   --coral-dark: 15 62% 52%;
   --coral-blush: 24 58% 94%;     /* #FBEEE7 */
-  --forest: 92 20% 35%;
-  --deep-forest: 84 29% 26%;     /* #46552F */
-  --forest-light: 96 26% 93%;    /* #EDF1E7 */
-  --mint: 96 25% 86%;
+  --forest: 153 43% 30%;         /* brand green #2D6A4F */
+  --deep-forest: 153 50% 22%;    /* deep brand green */
+  --forest-light: 145 33% 92%;   /* soft brand-green tint */
+  --mint: 150 40% 90%;
   --midnight: 80 18% 12%;
   --warm-cream: 40 45% 97%;
   --warm-grey: 38 40% 91%;

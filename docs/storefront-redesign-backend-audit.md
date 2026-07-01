@@ -51,6 +51,40 @@ No em dashes in any proposed copy fields.
     "Shop bundle" label are UI chrome. This field would let admin curate the
     banners directly (order, imagery, copy, and links).
 
+### Homepage (revision 2: static hero, brand showcase, flash deals)
+
+7. `site_settings.home_categories` image support. The "Shop by Category" tiles
+   now show real images (no emoji). With no admin field, the imagery is derived
+   from real category products/bundles (first baby product image, first mum
+   product image, a bundle image, a gift bundle image). The proposed
+   `home_categories` shape should therefore include `image_url` per tile so
+   admin controls the picture, label, and link.
+
+8. `site_settings.home_loved_baby_brands` — the "Our Most Loved Baby Items"
+   section shows five premium baby brands (WaterWipes, Huggies, Mustela, Tommee
+   Tippee, Kendamil). These are matched against a canonical premium-brand list
+   in `PrototypeHome.tsx` because the raw `brand_name` data is inconsistent
+   (some values carry pack info like "Waterwipes (54pcs)"). A field
+   `[{ name, image_url, href }]` would let admin curate the showcase directly.
+   Also: the section heading is shown as "Our Most Loved Baby Items" (a preview
+   label). Update `site_settings.most_loved_heading` to this value so it stays
+   DB-driven.
+
+9. Real sale data for Flash Deals. NO product has a `compare_at_price` set
+   (0 of 518 brands), so there is nothing genuine to slash. The Flash Deals
+   cards render the "-X%" badge and strikethrough automatically from real
+   `compare_at_price`, but for the preview a clearly-flagged illustrative "was"
+   price is shown (constant `PREVIEW_DEMO_SALES` in `FlashDeals.tsx`). To make
+   deals real: set `compare_at_price` on discounted brands (and optionally add
+   `site_settings.deals_ends_at` timestamptz for a true countdown window and
+   `deals_product_ids` for a curated set). Turn `PREVIEW_DEMO_SALES` off once
+   real sale prices exist.
+
+10. Hero copy/imagery. The hero now keeps fixed brand copy (hero_title /
+    hero_subtitle / cta_button_text) with a set of real images cross-fading
+    behind it. `home_hero_slides` (item 4b) would let admin curate that image
+    set and the copy per campaign.
+
 ### Shop page (surfaced during the Shop theme-fit)
 
 5. Shop hero heading + subtitle. Currently hardcoded in `ShopPage.tsx`:
