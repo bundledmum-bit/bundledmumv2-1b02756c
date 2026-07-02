@@ -113,17 +113,8 @@ export default function QuotePipeline() {
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("finance_quote_pipeline_detail", { p_start: range!.start, p_end: range!.end });
       if (error) throw error;
-      const list = (data || []) as any[];
-      // The RPC does not return last_viewed_at; enrich each row from
-      // admin_quotes_summary (joined by quote_number) so we add only that field.
-      const qnums = list.map((r) => r.quote_number).filter(Boolean);
-      if (qnums.length) {
-        const { data: lv } = await (supabase as any)
-          .from("admin_quotes_summary").select("quote_number, last_viewed_at").in("quote_number", qnums);
-        const map = new Map((lv || []).map((x: any) => [x.quote_number, x.last_viewed_at]));
-        for (const r of list) r.last_viewed_at = map.get(r.quote_number) ?? null;
-      }
-      return list;
+      // The RPC now returns last_viewed_at directly, so no enrichment is needed.
+      return (data || []) as any[];
     },
     staleTime: 60_000,
   });
