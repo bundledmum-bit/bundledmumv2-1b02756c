@@ -328,9 +328,15 @@ export async function generateFinancialStatusReportPdf(
   const naNote = "AI narrative unavailable; the verified figures below are shown.";
 
   const trend: any[] = Array.isArray(figures?.monthly_trend) ? figures.monthly_trend : [];
+  // Skip empty trailing months (0 orders AND 0 revenue), e.g. a current month
+  // with no trading yet, so the table never shows a Jul-2026-all-zeros row.
+  const shownTrend = trend.filter((r) => !(Number(r.paid_orders) === 0 && Number(r.revenue) === 0));
   const m = figures?.period_metrics || {};
   const sc = figures?.projection_scenarios || {};
   const rw = figures?.runway || {};
+  const mkt: any[] = Array.isArray(figures?.marketing_by_channel) ? figures.marketing_by_channel : [];
+  const ue = figures?.unit_economics || {};
+  const pipe = figures?.quote_pipeline || {};
 
   heading("Executive Summary");
   para(narrative?.executive_summary || naNote, { muted: !narrative?.executive_summary });
@@ -344,8 +350,8 @@ export async function generateFinancialStatusReportPdf(
     styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: BODY },
     columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } },
     head: [["Month", "Orders", "Revenue", "COGS", "Extra Costs", "Gross Profit", "Gross Margin", "Avg Markup"]],
-    body: trend.length
-      ? trend.map((r) => [
+    body: shownTrend.length
+      ? shownTrend.map((r) => [
           monthLabel(r.month), countFmt(r.paid_orders), money(r.revenue), money(r.cogs),
           money(r.extra_costs), money(r.gross_profit), pct(r.gross_margin_pct), pct(r.avg_markup_pct),
         ])
@@ -397,6 +403,77 @@ export async function generateFinancialStatusReportPdf(
       ["Recurring Monthly Burn", money(rw.recurring_structural_monthly)],
       ["Runway (structural)", monthsFmt(rw.runway_months_structural_only)],
       ["Runway (at current marketing pace)", monthsFmt(rw.runway_months_at_current_marketing_pace)],
+    ],
+  });
+  afterTable();
+
+  // Marketing Spend & ROI (per-channel)
+  heading("Marketing Spend & ROI");
+  para(narrative?.marketing_channel_analysis || naNote, { muted: !narrative?.marketing_channel_analysis });
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "grid",
+    headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+    styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.4, textColor: BODY },
+    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "center" } },
+    head: [["Channel", "Spend", "% of Total", "Measurable"]],
+    body: mkt.length
+      ? mkt.map((c) => [String(c.channel ?? ""), money(c.spend), pct(c.pct_of_total), c.is_measurable ? "Yes" : "No"])
+      : [["No marketing spend in range", "", "", ""]],
+    didParseCell: (d) => {
+      if (d.section === "body" && d.column.index === 3 && mkt[d.row.index] && !mkt[d.row.index].is_measurable) {
+        d.cell.styles.textColor = NEG;
+      }
+    },
+  });
+  afterTable();
+  {
+    const meas = mkt.filter((c) => c.is_measurable);
+    const measPct = meas.reduce((s, c) => s + (num(c.pct_of_total) || 0), 0);
+    const unmeasPct = mkt.reduce((s, c) => s + (num(c.pct_of_total) || 0), 0) - measPct;
+    para(`Measurable channels (Meta, Google): ${measPct.toFixed(1)}% of spend. Unmeasurable channels (hub, influencer, giveaway): ${unmeasPct.toFixed(1)}% of spend, which is not attributable.`, { muted: true });
+    para(`Acquisition Spend ${money(m.acquisition_spend)}. ROAS ${roas(m.roas)}. Marketing ROI ${pct(m.marketing_roi_pct)}. CAC ${money(m.cac_naira)}. These reflect measurable spend only.`, { muted: true });
+  }
+
+  // Unit Economics
+  heading("Unit Economics");
+  para(narrative?.pipeline_and_unit_economics || naNote, { muted: !narrative?.pipeline_and_unit_economics });
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "plain",
+    styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+    columnStyles: { 0: { textColor: MUTED }, 1: { halign: "right", fontStyle: "bold" } },
+    body: [
+      ["Paid Orders", countFmt(ue.paid_orders)],
+      ["Avg Order Value", money(ue.avg_order_value)],
+      ["Avg Gross Profit per Order", money(ue.avg_gross_profit_per_order)],
+      ["Avg Gross Margin", pct(ue.avg_gross_margin_pct)],
+      ["Largest Order Value", money(ue.largest_order_value)],
+      ["Largest Order as % of Revenue", pct(ue.largest_order_pct_of_revenue)],
+    ],
+    didParseCell: (d) => {
+      if (d.column.index === 1 && /Largest Order as/.test(String((d.row.raw as any[])?.[0] || ""))) d.cell.styles.textColor = NEG;
+    },
+  });
+  afterTable();
+
+  // Quote Pipeline
+  heading("Quote Pipeline (B2B / Quote-driven demand)");
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "plain",
+    styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+    columnStyles: { 0: { textColor: MUTED }, 1: { halign: "right", fontStyle: "bold" } },
+    body: [
+      ["Total Quotes", countFmt(pipe.total_quotes_ever)],
+      ["Paid Conversions", countFmt(pipe.paid_count)],
+      ["Paid Value", money(pipe.paid_value)],
+      ["Conversion Rate", pct(pipe.conversion_rate_pct)],
+      ["Open Pipeline Value", money(pipe.total_open_pipeline_raw)],
+      ["Dead / Expired Pipeline Value", money(pipe.dead_pipeline_value)],
     ],
   });
   afterTable();
