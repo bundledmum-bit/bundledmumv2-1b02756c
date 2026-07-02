@@ -438,7 +438,7 @@ export async function generateFinancialStatusReportPdf(
 
   // Unit Economics
   heading("Unit Economics");
-  para(narrative?.pipeline_and_unit_economics || naNote, { muted: !narrative?.pipeline_and_unit_economics });
+  para(narrative?.unit_economics_analysis || naNote, { muted: !narrative?.unit_economics_analysis });
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
@@ -460,7 +460,8 @@ export async function generateFinancialStatusReportPdf(
   afterTable();
 
   // Quote Pipeline
-  heading("Quote Pipeline (B2B / Quote-driven demand)");
+  heading("Quote Pipeline (Customer Enquiries)");
+  para(narrative?.quote_pipeline_analysis || naNote, { muted: !narrative?.quote_pipeline_analysis });
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
