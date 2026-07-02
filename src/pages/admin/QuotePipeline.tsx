@@ -13,6 +13,37 @@ const pp = (n: number | null | undefined) => (n === null || n === undefined ? "n
 const pcount = (n: number | null | undefined) => (n === null || n === undefined ? "0" : String(n));
 const pDateShort = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+// Date + time, e.g. "2 Jul 2026, 3:42 pm". Used for Last Viewed.
+const pDateTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) : null;
+
+type SortType = "string" | "number" | "date" | "bool";
+interface QpColumn { key: string; label: string; type: SortType; align?: "right" }
+const QP_COLUMNS: QpColumn[] = [
+  { key: "quote_number", label: "Quote #", type: "string" },
+  { key: "customer_name", label: "Customer", type: "string" },
+  { key: "total", label: "Value", type: "number", align: "right" },
+  { key: "status", label: "Status", type: "string" },
+  { key: "view_count", label: "Views", type: "number", align: "right" },
+  { key: "last_viewed_at", label: "Last Viewed", type: "date" },
+  { key: "created_at", label: "Created", type: "date" },
+  { key: "is_paid", label: "Paid", type: "bool" },
+];
+// Comparator. Nulls ALWAYS sink to the bottom regardless of direction. Dates
+// compare on the raw timestamp (never the formatted string).
+const qpCompare = (a: any, b: any, key: string, type: SortType, dir: "asc" | "desc"): number => {
+  const av = a?.[key]; const bv = b?.[key];
+  const an = av === null || av === undefined || av === "";
+  const bn = bv === null || bv === undefined || bv === "";
+  if (an && bn) return 0;
+  if (an) return 1;
+  if (bn) return -1;
+  let r: number;
+  if (type === "date") r = new Date(av).getTime() - new Date(bv).getTime();
+  else if (type === "number" || type === "bool") r = Number(av) - Number(bv);
+  else r = String(av).toLowerCase().localeCompare(String(bv).toLowerCase());
+  return dir === "asc" ? r : -r;
+};
 
 type QpKey = "today" | "yesterday" | "last7" | "last14" | "last30" | "this_month" | "last_month" | "ytd" | "custom";
 const QP_RANGES: [QpKey, string][] = [
@@ -82,7 +113,17 @@ export default function QuotePipeline() {
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("finance_quote_pipeline_detail", { p_start: range!.start, p_end: range!.end });
       if (error) throw error;
-      return (data || []) as any[];
+      const list = (data || []) as any[];
+      // The RPC does not return last_viewed_at; enrich each row from
+      // admin_quotes_summary (joined by quote_number) so we add only that field.
+      const qnums = list.map((r) => r.quote_number).filter(Boolean);
+      if (qnums.length) {
+        const { data: lv } = await (supabase as any)
+          .from("admin_quotes_summary").select("quote_number, last_viewed_at").in("quote_number", qnums);
+        const map = new Map((lv || []).map((x: any) => [x.quote_number, x.last_viewed_at]));
+        for (const r of list) r.last_viewed_at = map.get(r.quote_number) ?? null;
+      }
+      return list;
     },
     staleTime: 60_000,
   });
@@ -102,7 +143,18 @@ export default function QuotePipeline() {
     setCApplied({ start: cStart, end: cEnd });
   };
 
-  const detail = rows || [];
+  // Client-side sorting (all rows are fetched at once). Default: created_at desc.
+  const [sortKey, setSortKey] = useState<string>("created_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const handleSort = (c: QpColumn) => {
+    if (sortKey === c.key) { setSortDir((d) => (d === "asc" ? "desc" : "asc")); return; }
+    setSortKey(c.key);
+    setSortDir(c.type === "string" ? "asc" : "desc"); // dates/numbers/bools default desc, text asc
+  };
+  const detail = useMemo(() => {
+    const type = (QP_COLUMNS.find((c) => c.key === sortKey)?.type) ?? "string";
+    return [...(rows || [])].sort((a, b) => qpCompare(a, b, sortKey, type, sortDir));
+  }, [rows, sortKey, sortDir]);
 
   return (
     <div className="space-y-3">
@@ -161,18 +213,22 @@ export default function QuotePipeline() {
         <table className="w-full text-sm min-w-[760px]">
           <thead>
             <tr className="border-b border-border text-left text-text-light text-xs uppercase tracking-wide">
-              <th className="px-4 py-3 font-semibold">Quote #</th>
-              <th className="px-4 py-3 font-semibold">Customer</th>
-              <th className="px-4 py-3 font-semibold text-right">Value</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold text-right">Views</th>
-              <th className="px-4 py-3 font-semibold">Created</th>
-              <th className="px-4 py-3 font-semibold">Paid</th>
+              {QP_COLUMNS.map((c) => {
+                const active = sortKey === c.key;
+                return (
+                  <th key={c.key} onClick={() => handleSort(c)}
+                    className={`px-4 py-3 font-semibold cursor-pointer select-none hover:text-text-med ${c.align === "right" ? "text-right" : ""}`}>
+                    <span className={`inline-flex items-center gap-1 ${c.align === "right" ? "justify-end" : ""} ${active ? "text-forest" : ""}`}>
+                      {c.label}<span className="text-[9px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {detail.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-text-light">No quotes created in this period.</td></tr>
+              <tr><td colSpan={QP_COLUMNS.length} className="px-4 py-8 text-center text-text-light">No quotes created in this period.</td></tr>
             ) : detail.map((r: any, i: number) => (
               <tr key={r.quote_number || i} className="border-b border-border last:border-0 hover:bg-muted/40">
                 <td className="px-4 py-3 font-semibold whitespace-nowrap">{r.quote_number}</td>
@@ -182,6 +238,9 @@ export default function QuotePipeline() {
                   <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${qpStatusBadge(r.status)}`}>{r.status || "—"}</span>
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">{pcount(r.view_count)}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-text-med">
+                  {pDateTime(r.last_viewed_at) ?? <span className="text-text-light">Not viewed yet</span>}
+                </td>
                 <td className="px-4 py-3 whitespace-nowrap text-text-med">{pDateShort(r.created_at)}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.is_paid ? "bg-green-100 text-green-700" : "bg-muted text-text-light"}`}>{r.is_paid ? "Yes" : "No"}</span>
