@@ -11,7 +11,7 @@ import {
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReactNode } from "react";
-import { generatePLPdf, generateRunwayPdf, generateKpiPdf, periodLabelFromRange } from "@/lib/financePdf";
+import { generatePLPdf, generateRunwayPdf, generateKpiPdf, generateFinancialStatusReportPdf, periodLabelFromRange } from "@/lib/financePdf";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar,
@@ -445,6 +445,36 @@ function DashboardTab() {
     }
   };
 
+  // AI-narrated Financial Status Report. Range defaults to launch (18 May 2026)
+  // to today. The edge function pulls locked figures + Claude prose; the PDF
+  // renders figures-only if the narrative call failed (never blank).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [reportStart, setReportStart] = useState("2026-05-01");
+  const [reportEnd, setReportEnd] = useState(todayIso);
+  const [reportBusy, setReportBusy] = useState(false);
+  const exportStatusReport = async () => {
+    if (reportStart > reportEnd) { toast.error("Start date must be on or before the end date."); return; }
+    setReportBusy(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("generate-financial-report", {
+        body: { p_start: reportStart, p_end: reportEnd },
+      });
+      if (error) {
+        let msg = error.message || "request failed";
+        try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep */ }
+        throw new Error(msg);
+      }
+      if (!data?.figures) throw new Error(data?.error || "No figures returned");
+      if (data.narrative_error && !data.narrative) toast.warning("AI narrative unavailable; exporting figures only.");
+      const doc = await generateFinancialStatusReportPdf(data.figures, data.narrative || null);
+      doc.save(`BundledMum-Financial-Status-Report-${reportStart}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the report");
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -472,6 +502,25 @@ function DashboardTab() {
           </button>
           <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
         </div>
+      </div>
+
+      {/* AI-narrated Financial Status Report (investor). Own range; defaults to launch to today. */}
+      <div className="rounded-xl border border-forest/30 bg-forest/[0.04] p-3 flex flex-wrap items-end gap-3">
+        <div>
+          <div className="text-sm font-semibold text-forest">Financial Status Report</div>
+          <div className="text-[11px] text-text-med">AI-narrated, investor-ready. Numbers are locked from the finance RPCs.</div>
+        </div>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">From</span>
+          <input type="date" value={reportStart} onChange={(e) => setReportStart(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">To</span>
+          <input type="date" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+        </label>
+        <button type="button" onClick={exportStatusReport} disabled={reportBusy} className={btnPrimary + " sm:ml-auto"}>
+          <FileText className="w-4 h-4" /> {reportBusy ? "Generating report..." : "Financial Status Report"}
+        </button>
       </div>
 
       {/* Custom range inputs — only when Custom is active */}

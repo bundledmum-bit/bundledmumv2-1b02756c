@@ -267,3 +267,162 @@ export async function generateKpiPdf(periodLabel: string, m: Record<string, any>
   drawFooter(doc);
   return doc;
 }
+
+// ───────── DOC 4: AI-NARRATED FINANCIAL STATUS REPORT (investor) ─────────────
+// Numbers come only from `figures` (the RPC output); `narrative` is Claude's
+// prose (may be null on an AI hiccup, in which case each section still renders
+// figures with a note, so the document is never blank).
+const monthLabel = (iso: any): string => {
+  const s = String(iso || "");
+  const d = new Date(`${s.length <= 7 ? s + "-01" : s}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString("en-NG", { month: "short", year: "numeric" });
+};
+
+export async function generateFinancialStatusReportPdf(
+  figures: Record<string, any>,
+  narrative: Record<string, any> | null,
+): Promise<jsPDF> {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const contentW = pageW - 2 * MARGIN;
+
+  const period = figures?.period || {};
+  const label = period.p_start && period.p_end ? periodLabelFromRange(period.p_start, period.p_end) : "";
+  await drawHeader(doc, "Financial Status Report", label);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(CORAL);
+  doc.text("CONFIDENTIAL", MARGIN, 40);
+
+  let y = 48;
+  const bottom = pageH - 16;
+  const ensure = (need: number) => {
+    if (y + need > bottom) { doc.addPage(); y = 20; }
+  };
+  const heading = (text: string) => {
+    ensure(12);
+    doc.setFillColor(TINT);
+    doc.rect(MARGIN - 2, y - 4.5, contentW + 4, 8, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11.5);
+    doc.setTextColor(FOREST);
+    doc.text(text, MARGIN, y);
+    y += 9;
+  };
+  const para = (text: string | null | undefined, opts: { muted?: boolean } = {}) => {
+    const t = String(text || "").trim();
+    if (!t) return;
+    doc.setFont("helvetica", opts.muted ? "italic" : "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(opts.muted ? MUTED : BODY);
+    for (const lineTxt of doc.splitTextToSize(t, contentW) as string[]) {
+      ensure(6);
+      doc.text(lineTxt, MARGIN, y);
+      y += 5;
+    }
+    y += 2.5;
+  };
+  const afterTable = () => { y = ((doc as any).lastAutoTable?.finalY ?? y) + 8; };
+  const naNote = "AI narrative unavailable; the verified figures below are shown.";
+
+  const trend: any[] = Array.isArray(figures?.monthly_trend) ? figures.monthly_trend : [];
+  const m = figures?.period_metrics || {};
+  const sc = figures?.projection_scenarios || {};
+  const rw = figures?.runway || {};
+
+  heading("Executive Summary");
+  para(narrative?.executive_summary || naNote, { muted: !narrative?.executive_summary });
+
+  heading("Monthly Trend");
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "grid",
+    headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8 },
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: BODY },
+    columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } },
+    head: [["Month", "Orders", "Revenue", "COGS", "Extra Costs", "Gross Profit", "Gross Margin", "Avg Markup"]],
+    body: trend.length
+      ? trend.map((r) => [
+          monthLabel(r.month), countFmt(r.paid_orders), money(r.revenue), money(r.cogs),
+          money(r.extra_costs), money(r.gross_profit), pct(r.gross_margin_pct), pct(r.avg_markup_pct),
+        ])
+      : [["No trading months in range", "", "", "", "", "", "", ""]],
+  });
+  afterTable();
+
+  heading("Margin & Cost Analysis");
+  para(narrative?.margin_and_cost_analysis || naNote, { muted: !narrative?.margin_and_cost_analysis });
+
+  heading("Profit & Loss (selected period)");
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "plain",
+    styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+    body: [
+      ["Gross Revenue", money(m.gross_revenue)],
+      ["less: Cost of Goods Sold", money(m.total_cogs)],
+      [`Gross Profit  (margin ${pct(m.gross_margin_pct)})`, money(m.gross_profit)],
+      ["less: Total Expenses", money(m.total_expenses)],
+      ["less: Total Payroll", money(m.total_payroll)],
+      ["EBITDA", money(m.ebitda)],
+      ["less: Depreciation", money(m.depreciation)],
+      [`Net Profit  (margin ${pct(m.net_margin_pct)})`, money(m.net_profit)],
+    ],
+    didParseCell: (d) => {
+      const label0 = String((d.row.raw as any[])?.[0] || "");
+      if (d.column.index === 0 && label0.startsWith("less:")) d.cell.styles.textColor = MUTED;
+      if (/^Gross Profit|^EBITDA|^Net Profit/.test(label0)) d.cell.styles.fontStyle = "bold";
+      if (d.column.index === 1 && /^Net Profit/.test(label0) && isNeg(m.net_profit)) d.cell.styles.textColor = NEG;
+      if (d.column.index === 1 && /^EBITDA/.test(label0) && isNeg(m.ebitda)) d.cell.styles.textColor = NEG;
+    },
+  });
+  afterTable();
+
+  heading("Burn & Runway");
+  para(narrative?.burn_and_runway || naNote, { muted: !narrative?.burn_and_runway });
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "plain",
+    styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+    columnStyles: { 0: { textColor: MUTED }, 1: { halign: "right", fontStyle: "bold" } },
+    body: [
+      ["Committed Capital", money(rw.committed_capital)],
+      ["Capital Remaining", money(rw.capital_remaining)],
+      ["Recurring Monthly Burn", money(rw.recurring_structural_monthly)],
+      ["Runway (structural)", monthsFmt(rw.runway_months_structural_only)],
+      ["Runway (at current marketing pace)", monthsFmt(rw.runway_months_at_current_marketing_pace)],
+    ],
+  });
+  afterTable();
+
+  heading("Outlook & Scenarios");
+  para(narrative?.outlook_and_scenarios || naNote, { muted: !narrative?.outlook_and_scenarios });
+  autoTable(doc, {
+    startY: y,
+    margin: { left: MARGIN, right: MARGIN },
+    theme: "grid",
+    headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+    styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.4, textColor: BODY },
+    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+    head: [["Scenario (assumption)", "Figure"]],
+    body: [
+      [`Basis month (${monthLabel(sc.basis_month)}) revenue`, money(sc.basis_revenue)],
+      ["Basis month gross profit", money(sc.basis_gross_profit)],
+      ["3-month revenue, flat run-rate (no growth)", money(sc.proj_3mo_revenue_flat)],
+      ["3-month revenue, at 20% month-on-month growth assumption", money(sc.proj_3mo_revenue_growth20)],
+      ["6-month revenue, at 20% month-on-month growth assumption", money(sc.proj_6mo_revenue_growth20)],
+      ["3-month gross profit, at 20% growth assumption", money(sc.proj_3mo_gross_profit_growth20)],
+    ],
+  });
+  afterTable();
+  para(`Based on ${countFmt(sc.months_of_data)} months of data; indicative, not predictive. Forward figures are scenarios, not forecasts.`, { muted: true });
+
+  drawFooter(doc);
+  return doc;
+}
