@@ -11,6 +11,7 @@ import {
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReactNode } from "react";
+import { generatePLPdf, generateRunwayPdf, generateKpiPdf, periodLabelFromRange } from "@/lib/financePdf";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar,
@@ -417,6 +418,33 @@ function DashboardTab() {
     }));
   }, [plAll]);
 
+  // Branded, data-driven PDF exports (never DOM capture). Cash Position uses
+  // finance_runway; Key Metrics uses the selected-range finance_period_metrics.
+  const [exportingDoc, setExportingDoc] = useState<null | "runway" | "kpi">(null);
+  const exportRunway = async () => {
+    setExportingDoc("runway");
+    try {
+      const doc = await generateRunwayPdf(runway || {});
+      doc.save("BundledMum-Cash-Position-and-Runway.pdf");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the runway PDF");
+    } finally {
+      setExportingDoc(null);
+    }
+  };
+  const exportKpi = async () => {
+    setExportingDoc("kpi");
+    try {
+      const label = pmRange ? periodLabelFromRange(pmRange.start, pmRange.end) : "";
+      const doc = await generateKpiPdf(label, pm || {});
+      doc.save("BundledMum-Key-Metrics.pdf");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the KPI PDF");
+    } finally {
+      setExportingDoc(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -433,7 +461,17 @@ function DashboardTab() {
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={exportKpi} disabled={!!exportingDoc}
+            className="inline-flex items-center gap-1 rounded-lg border border-forest text-forest px-3 py-1.5 text-xs font-semibold hover:bg-forest/5 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" /> {exportingDoc === "kpi" ? "..." : "KPI PDF"}
+          </button>
+          <button type="button" onClick={exportRunway} disabled={!!exportingDoc}
+            className="inline-flex items-center gap-1 rounded-lg border border-forest text-forest px-3 py-1.5 text-xs font-semibold hover:bg-forest/5 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" /> {exportingDoc === "runway" ? "..." : "Runway PDF"}
+          </button>
+          <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
+        </div>
       </div>
 
       {/* Custom range inputs — only when Custom is active */}
@@ -1006,7 +1044,30 @@ function PLTab() {
     return Object.values(m).sort((a, b) => b.amount - a.amount);
   }, [expensesPeriod]);
 
-  const print = () => window.print();
+  // Export a real, branded P&L document drawn from finance_period_metrics for
+  // the P&L tab's selected period (replaces the old window.print(), which the
+  // global print stylesheet blanked because this view has no print-allow class).
+  const [exporting, setExporting] = useState(false);
+  const exportPL = async () => {
+    setExporting(true);
+    try {
+      const yr = p.resolved.year;
+      const mo = p.resolved.month; // 1-12, or undefined for YTD
+      const start = mo ? `${yr}-${String(mo).padStart(2, "0")}-01` : `${yr}-01-01`;
+      const end = mo
+        ? `${yr}-${String(mo).padStart(2, "0")}-${String(new Date(yr, mo, 0).getDate()).padStart(2, "0")}`
+        : `${yr}-12-31`;
+      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: start, p_end: end });
+      if (error) throw error;
+      const m = (Array.isArray(data) ? data[0] : data) || {};
+      const doc = await generatePLPdf(periodLabelFromRange(start, end), m);
+      doc.save(`BundledMum-P-and-L-${start}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the P&L PDF");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1027,8 +1088,8 @@ function PLTab() {
             <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
             Compare previous
           </label>
-          <button onClick={print} className={btnPrimary}>
-            <Printer className="w-4 h-4" /> Export PDF
+          <button onClick={exportPL} disabled={exporting} className={btnPrimary}>
+            <Printer className="w-4 h-4" /> {exporting ? "Generating..." : "Export PDF"}
           </button>
         </div>
       </div>
