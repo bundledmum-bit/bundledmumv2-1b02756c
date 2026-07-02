@@ -356,8 +356,8 @@ function DashboardTab() {
     setCustomApplied({ start: customStart, end: customEnd });
   };
   const pm = pmRows?.[0];
-  // OpEx = operating expenses + payroll (EBITDA intentionally omitted: with no
-  // depreciation/amortisation logged it would equal Net Profit and mislead).
+  // OpEx = operating expenses + payroll. Waterfall: Gross Profit - OpEx = EBITDA,
+  // then EBITDA - Depreciation = Net Profit (RPC now returns ebitda + depreciation).
   const pmOpex = pm ? (Number(pm.total_expenses) || 0) + (Number(pm.total_payroll) || 0) : null;
   const [editingCapital, setEditingCapital] = useState(false);
   const [capitalDraft, setCapitalDraft] = useState("");
@@ -459,12 +459,14 @@ function DashboardTab() {
         <KpiCard title="Gross Revenue" source="auto" value={acqNgn(pm?.gross_revenue)} />
         <KpiCard title="Gross Profit" source="auto" value={acqNgn(pm?.gross_profit)} badge={acqPct(pm?.gross_margin_pct)} />
         <KpiCard title="Gross Margin %" source="auto" value={acqPct(pm?.gross_margin_pct)} />
-        <KpiCard title="Net Profit" source="auto" value={acqNgn(pm?.net_profit)} negative={Number(pm?.net_profit) < 0} badge={acqPct(pm?.net_margin_pct)} />
-        <KpiCard title="Net Margin %" source="auto" value={acqPct(pm?.net_margin_pct)} negative={Number(pm?.net_margin_pct) < 0} />
         <KpiCard title="Total COGS" source="auto" value={acqNgn(pm?.total_cogs)} />
         <KpiCard title="Total Expenses" source="auto" value={acqNgn(pm?.total_expenses)} />
         <KpiCard title="Total Payroll" source="auto" value={acqNgn(pm?.total_payroll)} />
         <KpiCard title="Operating Expenses (OpEx)" source="auto" value={acqNgn(pmOpex)} subtitle="Expenses + payroll" />
+        <KpiCard title="EBITDA" source="auto" value={acqNgn(pm?.ebitda)} negative={Number(pm?.ebitda) < 0} subtitle="Earnings before interest, tax, depreciation & amortisation" />
+        <KpiCard title="Depreciation" source="auto" value={acqNgn(pm?.depreciation)} subtitle="Non-cash: asset depreciation this period" />
+        <KpiCard title="Net Profit" source="auto" value={acqNgn(pm?.net_profit)} negative={Number(pm?.net_profit) < 0} badge={acqPct(pm?.net_margin_pct)} />
+        <KpiCard title="Net Margin %" source="auto" value={acqPct(pm?.net_margin_pct)} negative={Number(pm?.net_margin_pct) < 0} />
         <KpiCard title="Paid Orders" source="auto" value={acqCount(pm?.paid_orders)} />
         <KpiCard title="Avg Order Value" source="auto" value={acqNgn(pm?.avg_order_value)} />
       </div>
