@@ -43,7 +43,10 @@ export default function AdminCustomerCard({
 }: AdminCustomerCardProps) {
   const phoneDigits = (c.phone || "").replace(/\D/g, "");
   const waDigits = (c.whatsapp_number || c.phone || "").replace(/\D/g, "");
-  const orders = c.total_orders || 0;
+  // admin_customer_accounts view fields, with a fallback to the older raw
+  // customers shape so the card stays robust either way.
+  const orders = c.paid_order_count ?? c.total_orders ?? 0;
+  const spent = c.total_paid ?? c.total_spent;
 
   // Date label — prefer last login ("Last seen"), else join date ("Joined").
   const lastSeen = relativeDate(c.last_login_at);
@@ -60,7 +63,7 @@ export default function AdminCustomerCard({
       {/* Line 1 — name (left) · total spent (right) */}
       <div className="flex items-center justify-between gap-3">
         <span className="font-medium truncate min-w-0">{c.full_name || "—"}</span>
-        <span className="font-medium flex-shrink-0">{fmtNaira(c.total_spent)}</span>
+        <span className="font-medium flex-shrink-0">{fmtNaira(spent)}</span>
       </div>
 
       {/* Line 2 — email (left, gated) · order count (right) */}
@@ -115,8 +118,13 @@ export default function AdminCustomerCard({
 
       {/* Bottom row — verified + channel/state badges. No meatball:
           the desktop row has no action set to mirror. */}
-      {(c.email_verified || channelOrState) && (
+      {(c.has_account !== undefined || c.email_verified || channelOrState) && (
         <div className="flex items-center gap-1.5 flex-wrap mt-3">
+          {c.has_account !== undefined && (
+            <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${c.has_account ? "bg-green-100 text-green-700" : "bg-muted text-text-med"}`}>
+              {c.has_account ? "Account" : "Guest"}
+            </span>
+          )}
           {c.email_verified && (
             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">
               Verified
