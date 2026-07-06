@@ -63,6 +63,7 @@ const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "tex
     { key: "payment_method_card_enabled", label: "Card Payment (Paystack)", type: "toggle" },
     { key: "payment_method_transfer_enabled", label: "Bank Transfer", type: "toggle" },
     { key: "payment_method_ussd_enabled", label: "USSD / Mobile Money", type: "toggle" },
+    { key: "payment_method_klump_enabled", label: "Buy Now Pay Later (Klump)", type: "toggle" },
   ],
   SEO: [
     { key: "meta_title", label: "Default Meta Title", type: "text" },
