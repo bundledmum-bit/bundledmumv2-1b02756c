@@ -30,6 +30,61 @@ interface FormData {
 
 type SavedOrderResult = { id: string; orderNumber: string | null; share_token: string | null };
 
+const KLUMP_SCRIPT_ID = "klump-js-sdk";
+const KLUMP_SCRIPT_SRC = "https://js.useklump.com/klump.js";
+
+// Guarantees Klump's checkout SDK is loaded and `window.Klump` is a callable
+// constructor before we use it. The script attaches `window.Klump` only when
+// it finishes executing, so injecting it async and reading the global on the
+// next line is a race — this resolves that race at launch time.
+//
+//  • If `window.Klump` is already a function, resolves immediately.
+//  • Otherwise finds (or creates) the <script id="klump-js-sdk"> tag, listens
+//    for its load/error events, AND polls for `window.Klump` every 100ms. The
+//    poll is what makes this robust when the tag already exists but its load
+//    event fired before we attached a listener (event never re-fires).
+//  • Rejects after `timeoutMs` (~15s) so a stalled CDN fetch surfaces a clear
+//    error instead of hanging checkout.
+function ensureKlumpLoaded(timeoutMs = 15000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof (window as any).Klump === "function") {
+      resolve();
+      return;
+    }
+
+    const start = Date.now();
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(pollId);
+      if (err) reject(err);
+      else resolve();
+    };
+
+    // Covers both "script still downloading" and "tag exists, load already
+    // fired before we listened" — either way the global appears eventually.
+    const pollId = window.setInterval(() => {
+      if (typeof (window as any).Klump === "function") finish();
+      else if (Date.now() - start > timeoutMs) finish(new Error("Klump SDK load timed out"));
+    }, 100);
+
+    let script = document.getElementById(KLUMP_SCRIPT_ID) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement("script");
+      script.id = KLUMP_SCRIPT_ID;
+      script.src = KLUMP_SCRIPT_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+    script.addEventListener("load", () => {
+      if (typeof (window as any).Klump === "function") finish();
+      // else: the poller keeps checking until the global appears or times out.
+    });
+    script.addEventListener("error", () => finish(new Error("Klump SDK failed to load")));
+  });
+}
+
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
 interface StockIssue {
@@ -312,16 +367,14 @@ export default function CheckoutPage() {
       });
   }, []);
 
-  // Klump's checkout widget script — loaded lazily, only when the toggle is
-  // on, so storefronts without Klump never fetch a third-party script.
+  // Klump's checkout widget script — pre-loaded lazily, only when the toggle
+  // is on, so storefronts without Klump never fetch a third-party script.
+  // This is a HEAD START, not a guarantee: launch-time ensureKlumpLoaded()
+  // is what actually blocks on the global being ready. Errors here are
+  // swallowed because the awaited call at placeOrder surfaces them.
   useEffect(() => {
     if (!enabledPayments.klump) return;
-    if (document.getElementById("klump-js-sdk")) return;
-    const script = document.createElement("script");
-    script.id = "klump-js-sdk";
-    script.src = "https://js.useklump.com/klump.js";
-    script.async = true;
-    document.head.appendChild(script);
+    ensureKlumpLoaded().catch(() => { /* surfaced at launch time */ });
   }, [enabledPayments.klump]);
 
   useEffect(() => {
@@ -1388,12 +1441,18 @@ export default function CheckoutPage() {
         toast.error("Buy Now Pay Later is not configured. Please choose another payment method.");
         return;
       }
-      const KlumpCtor = (window as any).Klump;
-      if (typeof KlumpCtor !== "function") {
+      // Guarantee the SDK is ready BEFORE creating the order, so a slow/failed
+      // script load can never orphan a pending order. ensureKlumpLoaded resolves
+      // only once window.Klump is a callable constructor.
+      try {
+        await ensureKlumpLoaded();
+      } catch (err) {
+        console.error("[checkout] Klump SDK load failed:", err);
         setProcessing(false);
         toast.error("Klump could not be loaded. Please check your connection and try again.");
         return;
       }
+      const KlumpCtor = (window as any).Klump;
 
       // Order is created PENDING first — Klump collects the payment, then
       // the klump-webhook edge function verifies it server-side and marks
