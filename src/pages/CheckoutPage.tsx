@@ -144,7 +144,7 @@ export default function CheckoutPage() {
   // Unpriced "other items not listed" note from /hospital-list. Forwarded onto
   // the order as custom_items_request; NEVER added to any total.
   const [customItemsRequest] = useState<string>(() => getCustomItemsRequest().trim());
-  const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
+  const [payment, setPayment] = useState<"card" | "transfer" | "ussd" | "klump">("card");
   const [giftWrap, setGiftWrap] = useState(false);
   // Session-scoped: once the customer makes any explicit choice on the
   // gift-wrap checkbox, that choice wins over the auto-rule until reload.
@@ -284,20 +284,26 @@ export default function CheckoutPage() {
   }, [selectedLga, selectedZone]);
 
   // Payment method toggles from site_settings
-  const [enabledPayments, setEnabledPayments] = useState<Record<string, boolean>>({ card: true, transfer: true, ussd: true });
+  const [enabledPayments, setEnabledPayments] = useState<Record<string, boolean>>({ card: true, transfer: true, ussd: true, klump: false });
+  const [klumpPublicKey, setKlumpPublicKey] = useState("");
   useEffect(() => {
     supabase
       .from("site_settings")
       .select("key, value")
-      .in("key", ["payment_method_card_enabled", "payment_method_transfer_enabled", "payment_method_ussd_enabled"])
+      .in("key", ["payment_method_card_enabled", "payment_method_transfer_enabled", "payment_method_ussd_enabled", "payment_method_klump_enabled", "klump_public_key"])
       .then(({ data }) => {
         if (!data) return;
-        const map: Record<string, boolean> = { card: true, transfer: true, ussd: true };
+        const map: Record<string, boolean> = { card: true, transfer: true, ussd: true, klump: false };
         for (const row of data) {
+          if (row.key === "klump_public_key") {
+            if (typeof row.value === "string") setKlumpPublicKey(row.value);
+            continue;
+          }
           const val = row.value === true || row.value === "true" || row.value === "1";
           if (row.key === "payment_method_card_enabled") map.card = val;
           if (row.key === "payment_method_transfer_enabled") map.transfer = val;
           if (row.key === "payment_method_ussd_enabled") map.ussd = val;
+          if (row.key === "payment_method_klump_enabled") map.klump = val;
         }
         setEnabledPayments(map);
         const enabled = Object.entries(map).filter(([, v]) => v).map(([k]) => k);
@@ -305,6 +311,18 @@ export default function CheckoutPage() {
         else if (enabled.length > 0 && !map[payment]) setPayment(enabled[0] as any);
       });
   }, []);
+
+  // Klump's checkout widget script — loaded lazily, only when the toggle is
+  // on, so storefronts without Klump never fetch a third-party script.
+  useEffect(() => {
+    if (!enabledPayments.klump) return;
+    if (document.getElementById("klump-js-sdk")) return;
+    const script = document.createElement("script");
+    script.id = "klump-js-sdk";
+    script.src = "https://js.useklump.com/klump.js";
+    script.async = true;
+    document.head.appendChild(script);
+  }, [enabledPayments.klump]);
 
   useEffect(() => {
     document.title = "Secure Checkout | BundledMum";
@@ -703,7 +721,7 @@ export default function CheckoutPage() {
   // add_payment_info — fire each time the user changes payment method.
   // Wrap setPayment so the event fires alongside the state update.
   const lastPaymentFiredRef = useRef<string | null>(null);
-  const selectPayment = (method: "card" | "transfer" | "ussd") => {
+  const selectPayment = (method: "card" | "transfer" | "ussd" | "klump") => {
     setPayment(method);
     if (!cart || cart.length === 0) return;
     if (lastPaymentFiredRef.current === method) return;
@@ -979,7 +997,7 @@ export default function CheckoutPage() {
     subtotal, deliveryFee: delivery, serviceFee, giftWrapFee,
     total: grand,
     paymentMethod: payment,
-    paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : "PAID",
+    paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : payment === "klump" ? "PENDING_KLUMP" : "PAID",
     paystackRef: paystackRef || null,
     paystackStatus: paystackStatus || null,
     giftWrap: effectiveGiftWrap, notes: "",
@@ -1361,6 +1379,78 @@ export default function CheckoutPage() {
       await linkQuoteIfPending(savedOrder.id);
       clearCart();
       await navigateToConfirmation(savedOrder);
+      return;
+    }
+
+    if (payment === "klump") {
+      if (!klumpPublicKey) {
+        setProcessing(false);
+        toast.error("Buy Now Pay Later is not configured. Please choose another payment method.");
+        return;
+      }
+      const KlumpCtor = (window as any).Klump;
+      if (typeof KlumpCtor !== "function") {
+        setProcessing(false);
+        toast.error("Klump could not be loaded. Please check your connection and try again.");
+        return;
+      }
+
+      // Order is created PENDING first — Klump collects the payment, then
+      // the klump-webhook edge function verifies it server-side and marks
+      // the order paid. The frontend never flips payment_status itself.
+      const orderData = buildOrderData(cartSnapshot);
+      const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
+      if (!savedOrder) {
+        setProcessing(false);
+        toast.error("We couldn't place your order. Please try again.");
+        return;
+      }
+
+      const num = savedOrder.orderNumber || "";
+      const shareToken = savedOrder.share_token || "";
+      const redirectUrl = `${window.location.origin}/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`;
+
+      pixelTrack("AddPaymentInfo", pixelMoney(grand));
+
+      new KlumpCtor({
+        publicKey: klumpPublicKey,
+        data: {
+          amount: grand,
+          currency: "NGN",
+          redirect_url: redirectUrl,
+          merchant_reference: num,
+          // klump-webhook matches this transaction back to OUR order via
+          // meta_data.order_id — Klump's successful-payment webhook event
+          // carries no merchant_reference, only meta_data survives.
+          meta_data: {
+            order_id: savedOrder.id,
+            customer_name: `${form.firstName} ${form.lastName}`.trim(),
+            email: form.email,
+            phone: form.phone,
+          },
+          items: cartSnapshot.map((it: any) => ({
+            name: it.name,
+            unit_price: String(Number(it.selectedBrand?.price ?? it.price ?? 0)),
+            quantity: it.qty,
+          })),
+        },
+        onSuccess: async () => {
+          await syncOrderToSheets({
+            orderId: savedOrder.id,
+            orderNumber: savedOrder.orderNumber,
+            fallbackData: orderData,
+          });
+          await linkQuoteIfPending(savedOrder.id);
+          clearCart();
+          await navigateToConfirmation(savedOrder);
+        },
+        onClose: () => { setProcessing(false); },
+        onError: (err: unknown) => {
+          console.error("[checkout] Klump error:", err);
+          setProcessing(false);
+          toast.error("Klump payment could not be started. Please try again or choose another payment method.");
+        },
+      });
       return;
     }
 
@@ -1950,6 +2040,7 @@ export default function CheckoutPage() {
                     { id: "card" as const, icon: "💳", label: "Card Payment", sub: "Visa, Mastercard, Verve — instant" },
                     { id: "transfer" as const, icon: "🏦", label: "Bank Transfer", sub: "Pay directly to our account" },
                     { id: "ussd" as const, icon: "📱", label: "USSD / Mobile Money", sub: "*737#, *901# and more" },
+                    { id: "klump" as const, icon: "🛍️", label: "Buy Now Pay Later (Klump)", sub: "Split your payment into installments" },
                   ];
                   const visible = allMethods.filter(m => enabledPayments[m.id]);
                   if (visible.length === 0) return (
@@ -1988,6 +2079,13 @@ export default function CheckoutPage() {
                     <div key={k} className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 mb-1"><span className="text-text-light text-xs sm:min-w-[90px]">{k}:</span><span className="text-xs font-semibold break-all">{v}</span></div>
                   ))}
                   <div className="mt-2.5 text-coral text-xs">⚠️ Send exact amount, use your phone number as reference.</div>
+                </div>
+              )}
+              {payment === "klump" && (
+                <div className="mt-3 bg-warm-cream rounded-lg p-3.5 animate-fade-in">
+                  <div className="text-text-med text-[13px] flex items-center gap-1.5">
+                    <span>🛍️</span> You'll complete payment through Klump's secure checkout. Your order is confirmed once Klump verifies the payment.
+                  </div>
                 </div>
               )}
             </div>
