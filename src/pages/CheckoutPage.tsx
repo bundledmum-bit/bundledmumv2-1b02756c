@@ -2162,6 +2162,11 @@ export default function CheckoutPage() {
               </div>
             )}
 
+            {/* For Klump, the #klump__checkout widget button (rendered in the
+                Payment Method section above) is the sole CTA — it already runs
+                placeOrder (order-first) on click, so we hide this button to
+                avoid a duplicate/confusing second trigger. */}
+            {payment !== "klump" && (
             <button
               onClick={placeOrder}
               disabled={
@@ -2186,6 +2191,7 @@ export default function CheckoutPage() {
                 ? "Calculating delivery…"
                 : <>Place Order — {fmt(grand)} 🔒</>}
             </button>
+            )}
             {isExpressOrder && !expressAcknowledged && (
               <p className="text-center text-amber-700 text-[12px] mt-2">
                 Please accept the {expressDisplayName} terms above to continue.
@@ -2310,6 +2316,13 @@ export default function CheckoutPage() {
             <div className="text-[10px] text-text-light font-semibold uppercase tracking-wide">Total</div>
             <div className="text-sm font-bold text-forest tabular-nums">{fmt(grand)}</div>
           </div>
+          {/* For Klump, the widget button above is the CTA — keep the total
+              visible but replace this button with a hint pointing to it. */}
+          {payment === "klump" ? (
+            <div className="flex-1 text-center text-xs text-text-med font-semibold">
+              Tap “Pay with Klump” above to complete your order
+            </div>
+          ) : (
           <button
             onClick={placeOrder}
             disabled={
@@ -2333,6 +2346,7 @@ export default function CheckoutPage() {
               ? "Calculating…"
               : <>Place Order →</>}
           </button>
+          )}
         </div>
       </div>
 
