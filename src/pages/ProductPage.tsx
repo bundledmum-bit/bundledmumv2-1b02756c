@@ -948,6 +948,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               const img = brand.imageUrl || product.imageUrl || null;
               const isOos = brand.inStock === false || (brand.stockQuantity !== null && brand.stockQuantity <= 0);
               const onSale = brand.compareAtPrice != null && brand.compareAtPrice > brand.price;
+              // Match the key addToCart() computes for this brand so the card
+              // can flip to a quantity stepper once it is in the cart.
+              const cartKey = cartItemKey(product.id, brand.id, brand.sizeVariant || null, null, brand.sizeVariant || null);
+              const cartRow = cart.find(i => i._key === cartKey);
               return (
                 <div key={brand.id} className="flex flex-col rounded-[14px] border border-border bg-card overflow-hidden">
                   <Link to={`/products/${slug}?sku=${brand.sku}`} className="relative block aspect-square bg-warm-cream overflow-hidden group">
@@ -973,27 +977,39 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                       )}
                     </div>
                     <div className="flex flex-col gap-1.5 mt-auto pt-1">
-                      <button
-                        disabled={isOos}
-                        onClick={() => {
-                          if (isOos) return;
-                          addToCart({
-                            ...product,
-                            selectedBrand: brand,
-                            price: brand.price,
-                            name: `${product.name} (${brand.label})`,
-                            selectedSize: brand.sizeVariant || null,
-                            selectedColor: null,
-                            selectedVariant: brand.sizeVariant || null,
-                          });
-                          toast.success(`${brand.label} added to cart`, {
-                            action: { label: "View Cart", onClick: () => window.location.href = "/cart" },
-                          });
-                        }}
-                        className="w-full rounded-pill bg-coral text-primary-foreground text-[12px] font-bold py-2 min-h-[38px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-coral-dark transition-colors"
-                      >
-                        {isOos ? "Sold out" : "Add to cart"}
-                      </button>
+                      {cartRow ? (
+                        <div className="w-full flex justify-center py-0.5">
+                          <QtyControl
+                            qty={cartRow.qty}
+                            onUpdate={(n) => updateQty(cartKey, n)}
+                            size="sm"
+                            accentColor="coral"
+                            maxQty={brand.stockQuantity ?? undefined}
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          disabled={isOos}
+                          onClick={() => {
+                            if (isOos) return;
+                            addToCart({
+                              ...product,
+                              selectedBrand: brand,
+                              price: brand.price,
+                              name: `${product.name} (${brand.label})`,
+                              selectedSize: brand.sizeVariant || null,
+                              selectedColor: null,
+                              selectedVariant: brand.sizeVariant || null,
+                            });
+                            toast.success(`${brand.label} added to cart`, {
+                              action: { label: "View Cart", onClick: () => window.location.href = "/cart" },
+                            });
+                          }}
+                          className="w-full rounded-pill bg-coral text-primary-foreground text-[12px] font-bold py-2 min-h-[38px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-coral-dark transition-colors"
+                        >
+                          {isOos ? "Sold out" : "Add to cart"}
+                        </button>
+                      )}
                       <Link
                         to={`/products/${slug}?sku=${brand.sku}`}
                         className="w-full rounded-pill border border-border text-[12px] font-semibold text-muted-foreground py-2 min-h-[38px] flex items-center justify-center hover:border-forest hover:text-forest transition-colors"
