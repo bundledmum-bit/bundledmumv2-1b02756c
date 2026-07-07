@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
+import CategoryNav from "@/components/shop/CategoryNav";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -571,6 +572,17 @@ export default function ShopPage() {
     (c) => c.parent_category === "mum" || c.parent_category === "both"
   );
 
+  // Category nav data: the section's categories, each linking to its
+  // subcategory page, plus a leading "All {section}" item.
+  const navCats = isBaby ? babyCats : isMum ? mumCats : (categories || []);
+  const navLinkFor = (c: (typeof navCats)[number]) =>
+    `/shop/${c.parent_category === "mum" ? "mum" : "baby"}/${c.slug}`;
+  const navAll = isBaby
+    ? { label: "All Baby", href: "/shop/baby", icon: "👶" }
+    : isMum
+    ? { label: "All Mum", href: "/shop/mum", icon: "💛" }
+    : { label: "All", href: "/shop", icon: "🛍️" };
+
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
@@ -633,6 +645,21 @@ export default function ShopPage() {
           <span className="text-muted-foreground text-xs md:text-sm whitespace-nowrap md:ml-2">{filtered.length} items</span>
         </div>
       </div>
+
+      {/* Category quick-nav — placed right after the Sort control. Side-scroll
+          circles on desktop, dropdown on mobile. Hidden while searching. */}
+      {!search && navCats.length > 0 && (
+        <div className="bg-card border-b border-border px-3 md:px-6 py-2.5">
+          <div className="max-w-[1200px] mx-auto">
+            <CategoryNav
+              categories={navCats}
+              linkFor={navLinkFor}
+              all={navAll}
+              activeSlug={categoryF || undefined}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Active filter chips — renders when any filter is active; each chip has
           an × to remove just that one. "Clear all" surfaces when 2+ are on. */}
