@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import Seo from "@/components/Seo";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, getMissingVariantAxes } from "@/lib/cart";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useAllProducts, useTestimonials, useSiteSettings, useBundles } from "@/hooks/useSupabaseData";
@@ -229,6 +229,7 @@ function BundleTiers() {
 
 function FeaturedProducts() {
   const { addToCart, cart, setCart, updateQty } = useCart();
+  const navigate = useNavigate();
   const { data: allProducts, isLoading } = useAllProducts();
   const { data: settings } = useSiteSettings();
 
@@ -295,8 +296,16 @@ function FeaturedProducts() {
                       <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} maxQty={brand.stockQuantity ?? undefined} />
                     ) : (
                       <button onClick={() => {
-                        addToCart({ ...p, selectedBrand: brand, price: brand.price, name: `${p.name} (${brand.label})` });
-                        toast.success(`✓ ${p.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } });
+                        // Route variant-requiring products to their page to pick.
+                        const missing = getMissingVariantAxes(p);
+                        if (missing.length) {
+                          const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
+                          if (p.slug) { navigate(`/products/${p.slug}`); toast(`Choose ${label} for ${p.name}`); }
+                          else toast.error(`Please choose ${label} for ${p.name} on its product page.`);
+                          return;
+                        }
+                        const added = addToCart({ ...p, selectedBrand: brand, price: brand.price, name: `${p.name} (${brand.label})` });
+                        if (added) toast.success(`✓ ${p.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } });
                       }}
                         className="rounded-pill bg-forest px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-forest-deep font-body interactive">+ Add</button>
                     )}

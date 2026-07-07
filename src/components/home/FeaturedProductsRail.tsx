@@ -1,7 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useMemo } from "react";
 import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import ProductImage from "@/components/ProductImage";
 import { useFeaturedProducts, useBestsellers } from "@/hooks/useHomepage";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +25,8 @@ export default function FeaturedProductsRail({ title, subtitle, maxItems = 8 }: 
   const { data: featured, isLoading: loadingFeatured } = useFeaturedProducts();
   const { data: bestsellers, isLoading: loadingBest } = useBestsellers();
   const { addToCart } = useCart();
+  const navigate = useNavigate();
+  const variantReq = useVariantRequirements();
 
   const products = useMemo(() => {
     const base = (featured && featured.length > 0) ? featured : (bestsellers || []);
@@ -82,8 +85,18 @@ export default function FeaturedProductsRail({ title, subtitle, maxItems = 8 }: 
                       </div>
                       <button
                         onClick={() => {
-                          addToCart({ ...p, selectedBrand: brand, price: brand.price, name: `${p.name} (${brand.label || brand.brand_name || "Standard"})` });
-                          toast.success(`${p.name} added`);
+                          // Variant-requiring products (size/color) can't be
+                          // chosen on this compact rail — send the shopper to
+                          // the product page to pick instead of adding blind.
+                          const missing = variantReq.missingAxes(p.id);
+                          if (missing.length) {
+                            const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
+                            if (p.slug) { navigate(`/products/${p.slug}`); toast(`Choose ${label} for ${p.name}`); }
+                            else toast.error(`Please choose ${label} for ${p.name} on its product page.`);
+                            return;
+                          }
+                          const added = addToCart({ ...p, selectedBrand: brand, price: brand.price, name: `${p.name} (${brand.label || brand.brand_name || "Standard"})` });
+                          if (added) toast.success(`${p.name} added`);
                         }}
                         className="text-[11px] font-semibold bg-forest text-primary-foreground rounded-full px-2.5 py-1 hover:bg-forest-deep"
                       >

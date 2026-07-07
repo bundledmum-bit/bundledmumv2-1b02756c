@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import Seo from "@/components/Seo";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, getMissingVariantAxes } from "@/lib/cart";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ProductImage from "@/components/ProductImage";
@@ -63,6 +63,9 @@ function PushGiftCard({ product, onAdd, onViewDetail }: { product: Product; onAd
 
   const handleAdd = () => {
     if (isOutOfStock) return;
+    // Variant-requiring product: open its detail drawer to choose size/colour
+    // instead of adding blind (the drawer enforces the selection).
+    if (getMissingVariantAxes(product).length) { onViewDetail(); return; }
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})` });
   };
   const handleRemove = () => { setCart(prev => prev.filter(c => c.id !== product.id)); toast("Removed from cart"); };

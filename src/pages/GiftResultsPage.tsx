@@ -6,6 +6,7 @@ import { Share2, ClipboardCopy, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt } from "@/lib/cart";
 import { useAllProducts } from "@/hooks/useSupabaseData";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import BundleCustomiser from "@/components/BundleCustomiser";
@@ -48,6 +49,7 @@ export default function GiftResultsPage() {
   useEffect(() => { document.title = `${categoryLabel} | BundledMum`; }, [categoryLabel]);
 
   const { cart, addToCart, setCart } = useCart();
+  const variantReq = useVariantRequirements();
   const { data: allProducts } = useAllProducts();
   const productMap = useMemo(() => {
     const m = new Map<string, any>();
@@ -73,6 +75,15 @@ export default function GiftResultsPage() {
   const handleAddProduct = (item: RecommendedProduct) => {
     if (!item.brand || item.brand.price == null) {
       toast("This item is coming soon and can't be added yet.");
+      return;
+    }
+    // Recommendation cards can't collect a size/colour — if this product needs
+    // one, send the shopper to its page to choose rather than adding blind.
+    const missing = variantReq.missingAxes(item.product_id, item.selected_color);
+    if (missing.length) {
+      const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
+      if (item.slug) { navigate(`/products/${item.slug}`); toast(`Choose ${label} for ${item.name}`); }
+      else toast.error(`Please choose ${label} for ${item.name} on its product page.`);
       return;
     }
     addToCart({

@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Baby, ShoppingBag, Gift, Check, Share2, ClipboardCopy } from "lucide-react";
 import { toast } from "sonner";
 import { useCart, fmt } from "@/lib/cart";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import type { Brand, Product } from "@/lib/supabaseAdapters";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions } from "@/hooks/useQuizConfig";
@@ -386,6 +387,7 @@ function ResultsScreen({
 }) {
   const navigate = useNavigate();
   const { cart, addToCart, setCart } = useCart();
+  const variantReq = useVariantRequirements();
   const { data: allProducts } = useAllProducts();
 
   const [loading, setLoading] = useState(true);
@@ -562,6 +564,15 @@ function ResultsScreen({
     // brand_id, place-order can't insert a valid order_items row.
     if (!overrideBrand && !isPurchasable(item)) {
       toast("This item is coming soon and can't be added yet.");
+      return;
+    }
+    // Quiz result cards can't collect a size/colour — route variant-requiring
+    // products to their page to choose rather than adding with an empty size.
+    const missing = variantReq.missingAxes(item.product_id, overrideSize || undefined, item.selected_color);
+    if (missing.length) {
+      const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
+      if (item.slug) { navigate(`/products/${item.slug}`); toast(`Choose ${label} for ${item.name}`); }
+      else toast.error(`Please choose ${label} for ${item.name} on its product page.`);
       return;
     }
     const brandName = overrideBrand?.label || item.brand?.brand_name || "Standard";

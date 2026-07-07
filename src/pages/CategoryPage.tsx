@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adaptProducts, isProductOOS, type Brand, type Product } from "@/lib/supabaseAdapters";
-import { useCart, fmt } from "@/lib/cart";
+import { useCart, fmt, getMissingVariantAxes } from "@/lib/cart";
 import { trackEcommerce } from "@/lib/ga";
 import { toast } from "sonner";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
@@ -342,6 +342,7 @@ function BrandCard({
 }) {
   const displayLabel = labelOverride || brand.label;
   const { addToCart } = useCart();
+  const navigate = useNavigate();
   const image = brand.imageUrl || product.imageUrl || null;
   const showSale = brand.compareAtPrice && brand.compareAtPrice > brand.price;
 
@@ -360,12 +361,22 @@ function BrandCard({
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isOutOfStock) return;
-    addToCart({
+    // Size/colour can't be chosen on this card — route to the product page
+    // to pick rather than adding a variant-requiring product blind.
+    const missing = getMissingVariantAxes(product);
+    if (missing.length) {
+      const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
+      if (product.slug) { navigate(`/products/${product.slug}`); toast(`Choose ${label} for ${product.name}`); }
+      else toast.error(`Please choose ${label} for ${product.name} on its product page.`);
+      return;
+    }
+    const added = addToCart({
       ...product,
       selectedBrand: brand,
       price: brand.price,
       name: `${product.name} (${displayLabel})`,
     });
+    if (!added) return;
     toast.success(`✓ ${product.name} (${displayLabel}) added`, {
       action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
     });

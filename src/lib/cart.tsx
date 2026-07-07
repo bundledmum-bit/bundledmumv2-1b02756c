@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { computeAutoFees, type AutoFeesResult } from "@/lib/computeAutoFees";
 import { trackEvent } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
@@ -41,6 +42,34 @@ export interface CartItem {
     size?: string | null;
   }>;
   removedDefaultCount?: number;
+}
+
+// ── Variant requirement helpers ──────────────────────────────────────
+// SOURCE OF TRUTH: a product REQUIRES a size when it has product_sizes rows
+// (the adapter maps these onto product.sizes[]) and REQUIRES a color when it
+// has product_colors rows (mapped onto product.colors[]). Products with no
+// such rows have no variant and add freely. These helpers read those arrays,
+// so ANY add path that spreads a mapped product is covered by the same rule
+// the server-side place-order validateVariantRequirements enforces.
+export function productRequiresSize(p: any): boolean {
+  return Array.isArray(p?.sizes) && p.sizes.length > 0;
+}
+export function productRequiresColor(p: any): boolean {
+  return Array.isArray(p?.colors) && p.colors.length > 0;
+}
+// Which required variant axes are still unselected on a product about to be
+// added (its selectedSize / selectedColor already set by the caller). Bundles
+// are exempt — their child items carry their own size/color, validated in the
+// bundle UIs. Returns [] when nothing is missing.
+export function getMissingVariantAxes(p: any): ("size" | "color")[] {
+  if (p?.type === "bundle") return [];
+  const missing: ("size" | "color")[] = [];
+  if (productRequiresSize(p) && !p?.selectedSize) missing.push("size");
+  if (productRequiresColor(p) && !p?.selectedColor) missing.push("color");
+  return missing;
+}
+export function missingVariantLabel(axes: ("size" | "color")[]): string {
+  return axes.length === 2 ? "a size & color" : axes[0] === "color" ? "a color" : "a size";
 }
 
 /**
@@ -91,7 +120,7 @@ export function cartItemImage(item: any): string {
 
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (item: any) => void;
+  addToCart: (item: any) => boolean;
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   clearCart: () => void;
   updateQty: (key: string, newQty: number) => void;
@@ -172,7 +201,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  const addToCart = useCallback((product: any) => {
+  const addToCart = useCallback((product: any): boolean => {
+    // Hard gate at the point of adding: a product that requires a size and/or
+    // color (has product_sizes / product_colors rows) can NEVER enter the cart
+    // without those selected. This is the universal backstop behind every entry
+    // point (product page, cards, quick-add, drawer, bundles, quotes) — callers
+    // should gate earlier for nicer UX (disable button / route to PDP), but
+    // this guarantees the invariant even for paths that don't. Mirrors the
+    // server-side place-order validateVariantRequirements so checkout's check
+    // now rarely fires.
+    const missingAxes = getMissingVariantAxes(product);
+    if (missingAxes.length) {
+      toast.error(`Please choose ${missingVariantLabel(missingAxes)} for ${product?.name || "this item"} first.`);
+      return false;
+    }
     setCart(prev => {
       // Bundles never merge — each customisation may differ, and merging
       // would silently overwrite the customer's previous picks. Stamp a
@@ -226,6 +268,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }));
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 400);
+    return true;
   }, []);
 
   const clearCart = useCallback(() => setCart([]), []);
