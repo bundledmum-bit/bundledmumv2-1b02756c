@@ -829,68 +829,53 @@ function ResultsScreen({
     .map(r => ({ name: r.name, price: ((r.brand?.price ?? 0)) * (r.quantity ?? 1) }));
 
   return (
-    <div className="min-h-screen bg-background pt-[68px] pb-16 md:pb-0">
-      <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-4 md:px-10 py-8 md:py-14">
-        <div className="max-w-[880px] mx-auto text-center">
+    <div className="min-h-screen bg-background pt-[68px] pb-28 md:pb-0">
+      <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-4 md:px-10 pt-6 md:pt-12 pb-7 md:pb-12">
+        <div className="max-w-[720px] mx-auto text-center">
           {isFallback && (
             <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg px-4 py-2 mb-4 inline-block">
               <p className="text-amber-200 text-xs">We widened your results to ensure a complete bundle — all items are relevant to your stage.</p>
             </div>
           )}
-          <div className="animate-fade-in inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-4 py-1.5 mb-3.5">
-            <span className="text-coral text-[13px] font-semibold">{isGift ? "🎁 Perfect Gift Bundle Ready!" : "✨ Your Personalised Bundle is Ready!"}</span>
+          <div className="inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-3.5 py-1 mb-3">
+            <span className="text-coral text-[12px] font-semibold">{isGift ? "🎁 Gift bundle ready" : "✨ Your bundle is ready"}</span>
           </div>
-          <h1 className="pf text-2xl md:text-[40px] text-primary-foreground mb-3">{heading}</h1>
-          <p className="text-primary-foreground/80 text-sm md:text-[15px] leading-[1.8] mb-4 max-w-[660px] mx-auto">{subHeading}</p>
+          <h1 className="pf text-[22px] md:text-[36px] text-primary-foreground leading-tight mb-2.5">{heading}</h1>
+          <p className="text-primary-foreground/75 text-[13px] md:text-[15px] leading-relaxed mb-4 max-w-[560px] mx-auto">{subHeading}</p>
 
+          {/* Clean summary: item count + total */}
+          <div className="inline-flex items-center gap-3 bg-primary-foreground/10 border border-primary-foreground/15 rounded-pill px-4 py-2 mb-4">
+            <span className="text-primary-foreground/85 text-[13px] font-semibold">{results.length} item{results.length === 1 ? "" : "s"}</span>
+            <span className="w-px h-3.5 bg-primary-foreground/25" />
+            <span className="font-mono-price text-coral text-[15px] font-bold">{fmt(grandTotal)}</span>
+          </div>
+
+          {/* Answer pills — tap to edit */}
           <div className="flex flex-wrap gap-2 justify-center mb-5">
             {pillData.map(p => (
               <button key={p.step} onClick={onBack} className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-pill px-3 py-1 text-primary-foreground/80 text-[11px] font-semibold hover:bg-primary-foreground/20 transition-colors">
                 {p.emoji} {p.label}
               </button>
             ))}
-          </div>
-
-          {/* Item-count strip — hidden on mobile to reduce clutter */}
-          <div className="hidden md:flex flex-wrap gap-3 justify-center text-primary-foreground/60 text-xs mb-5">
-            {isGift ? (
-              <>
-                <span>🎁 {giftItems.length} gift items</span><span>·</span>
-              </>
-            ) : (
-              <>
-                {mumItems.length > 0 && <><span>💛 {mumItems.length} mum essentials</span><span>·</span></>}
-                {hospitalItems.length > 0 && <><span>🏥 {hospitalItems.length} hospital consumables</span><span>·</span></>}
-                {babyItems.length > 0 && <><span>👶 {babyItems.length} baby essentials</span><span>·</span></>}
-                {extrasItems.length > 0 && <><span>✨ {extrasItems.length} convenience extras</span><span>·</span></>}
-              </>
-            )}
-            <span>Total: {results.length} items</span><span>·</span>
-            <span className="text-coral font-bold">{fmt(grandTotal)}</span>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 justify-center px-4 sm:px-0">
-            <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="rounded-pill bg-coral px-6 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark interactive text-sm w-full sm:hidden">
-              👇 See Your Items Below
-            </button>
-            <button onClick={handleAddAll} className="hidden sm:inline-flex rounded-pill bg-coral px-8 py-3 font-body font-semibold text-primary-foreground hover:bg-coral-dark interactive text-[15px]">
-              {isGift ? "🎁 Get Gift Bundle" : "Proceed to Checkout"} — {fmt(recommendationTotal)} →
-            </button>
-            {/* Mobile: second Proceed to Checkout (replaces Retake Quiz) */}
-            <button onClick={handleAddAll} className="sm:hidden rounded-pill border-2 border-primary-foreground/30 px-6 py-3 font-body font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 interactive text-sm w-full">
-              Proceed to Checkout — {fmt(recommendationTotal)} →
-            </button>
-            {/* Desktop: Retake Quiz — unchanged */}
-            <button onClick={onBack} className="hidden sm:inline-flex rounded-pill border-2 border-primary-foreground/30 px-6 py-3 font-body font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 interactive text-[15px]">
-              ← Retake Quiz
+            <button onClick={onBack} className="rounded-pill border border-primary-foreground/25 px-3 py-1 text-primary-foreground/70 text-[11px] font-semibold hover:bg-primary-foreground/10 transition-colors">
+              ↺ Edit answers
             </button>
           </div>
 
-          <div className="flex gap-3 justify-center mt-4 flex-wrap">
-            <button onClick={handleShare} className="flex items-center gap-1.5 text-primary-foreground/50 text-xs hover:text-primary-foreground/80 transition-colors">
-              <Share2 className="h-3.5 w-3.5" /> Share List
+          <div className="flex flex-col sm:flex-row gap-2.5 justify-center max-w-[380px] sm:max-w-none mx-auto">
+            <button onClick={handleAddAll} className="rounded-pill bg-coral px-7 py-3 font-body font-bold text-primary-foreground hover:bg-coral-dark transition-colors text-[15px]">
+              {isGift ? "Get gift bundle" : "Add all to cart"} — {fmt(recommendationTotal)}
             </button>
-            <button onClick={handleCopyChecklist} className="flex items-center gap-1.5 text-primary-foreground/50 text-xs hover:text-primary-foreground/80 transition-colors">
+            <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="rounded-pill border-2 border-primary-foreground/30 px-6 py-3 font-body font-semibold text-primary-foreground/85 hover:bg-primary-foreground/10 transition-colors text-[15px]">
+              See my items
+            </button>
+          </div>
+
+          <div className="flex gap-4 justify-center mt-4">
+            <button onClick={handleShare} className="flex items-center gap-1.5 text-primary-foreground/55 text-xs hover:text-primary-foreground transition-colors">
+              <Share2 className="h-3.5 w-3.5" /> Share list
+            </button>
+            <button onClick={handleCopyChecklist} className="flex items-center gap-1.5 text-primary-foreground/55 text-xs hover:text-primary-foreground transition-colors">
               <ClipboardCopy className="h-3.5 w-3.5" /> Copy checklist
             </button>
           </div>
@@ -900,7 +885,7 @@ function ResultsScreen({
       <div id="quiz-results-items" className="max-w-[1000px] mx-auto px-4 md:px-10 py-8 md:py-10">
         {giftItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🎁 Gift Bundle for the New Parents</h2>
+            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">🎁 Gift Bundle for the New Parents</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {giftItems.map(item => (
                 <ResultProductCard
@@ -926,7 +911,7 @@ function ResultsScreen({
         )}
         {mumItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">💛 Mum Essentials</h2>
+            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">💛 Mum Essentials</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {mumItems.map(item => (
                 <ResultProductCard
@@ -952,7 +937,7 @@ function ResultsScreen({
         )}
         {hospitalItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">🏥 Hospital Consumables</h2>
+            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">🏥 Hospital Consumables</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {hospitalItems.map(item => (
                 <ResultProductCard
@@ -978,7 +963,7 @@ function ResultsScreen({
         )}
         {babyItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">👶 Baby Essentials</h2>
+            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">👶 Baby Essentials</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {babyItems.map(item => (
                 <ResultProductCard
@@ -1004,7 +989,7 @@ function ResultsScreen({
         )}
         {extrasItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">✨ Convenience Extras</h2>
+            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">✨ Convenience Extras</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
               {extrasItems.map(item => (
                 <ResultProductCard
@@ -1092,6 +1077,23 @@ function ResultsScreen({
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Sticky mobile checkout bar — persistent while scrolling the list */}
+      <div
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border px-4 py-3 flex items-center gap-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex-shrink-0 leading-none">
+          <p className="text-[11px] text-muted-foreground mb-1">{results.length} item{results.length === 1 ? "" : "s"}</p>
+          <p className="font-mono-price text-forest font-bold text-[17px]">{fmt(recommendationTotal)}</p>
+        </div>
+        <button
+          onClick={handleAddAll}
+          className="flex-1 rounded-pill bg-coral text-primary-foreground font-bold py-3 text-[15px] hover:bg-coral-dark transition-colors min-h-[48px]"
+        >
+          {isGift ? "Get bundle" : "Add all to cart"} →
+        </button>
       </div>
 
       {showShareModal && (
