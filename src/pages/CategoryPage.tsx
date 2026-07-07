@@ -9,7 +9,7 @@ import { useCategoryPagePins } from "@/hooks/useMerchandising";
 import Seo from "@/components/Seo";
 import ProductCard from "@/components/shop/ProductCard";
 import ShopPageHeader from "@/components/shop/ShopPageHeader";
-import SubcategoryChips from "@/components/shop/SubcategoryChips";
+import CategoryNav from "@/components/shop/CategoryNav";
 import { ChevronLeft } from "lucide-react";
 
 const BRAND_COLS =
@@ -124,11 +124,11 @@ export default function CategoryPage() {
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5">
         <div className="mb-6">
-          <SubcategoryChips
+          <CategoryNav
             categories={siblings}
-            hrefBase={shopHref}
+            linkFor={(c) => `${shopHref}/${c.slug}`}
             activeSlug={slug}
-            allLabel={`All ${parent === "mum" ? "Mum" : "Baby"}`}
+            all={{ label: `All ${parent === "mum" ? "Mum" : "Baby"}`, href: shopHref, icon: parent === "mum" ? "💛" : "👶" }}
           />
         </div>
 

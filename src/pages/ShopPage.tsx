@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
+import CategoryNav from "@/components/shop/CategoryNav";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -593,8 +594,8 @@ export default function ShopPage() {
               className="w-full rounded-pill bg-background border border-border text-foreground text-sm pl-11 pr-4 py-2.5 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[44px]"
             />
           </div>
-          {/* Section tabs */}
-          <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-3 px-3 md:mx-0 md:px-0 mt-2.5">
+          {/* Section tabs — wrap so every tab is visible without scrolling */}
+          <div className="flex flex-wrap gap-2 mt-2.5">
             {[
               { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
               { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" && !categoryF },
@@ -603,7 +604,7 @@ export default function ShopPage() {
               { label: "Gifts", to: "/bundles/baby-shower-gift-boxes", active: false },
             ].map(c => (
               <Link key={c.label} to={c.to}
-                className={`flex-shrink-0 rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
+                className={`rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
                 {c.label}
               </Link>
             ))}
@@ -611,24 +612,12 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {/* Category-icon strip (Jumia-style circles) — single horizontal-scroll
-          row so it stays compact no matter how many categories exist. Hidden
-          while searching. */}
+      {/* Category-icon nav (shared design), wraps so all links show without
+          horizontal scrolling. Hidden while searching. */}
       {!search && stripCats.length > 0 && (
         <div className="bg-background border-b border-border">
           <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-3">
-            <div className="flex gap-4 md:gap-5 overflow-x-auto scrollbar-none -mx-3 px-3 md:mx-0 md:px-0">
-              {stripCats.map(c => (
-                <Link key={c.id} to={hrefFor(c)} className="flex flex-col items-center gap-1.5 group flex-shrink-0 w-[62px] md:w-[72px]">
-                  <span className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-warm-cream flex items-center justify-center text-2xl md:text-[26px] group-hover:bg-forest-light transition-colors">
-                    {c.icon || "🛍️"}
-                  </span>
-                  <span className="text-[10px] md:text-[11px] font-medium text-foreground text-center leading-tight line-clamp-2">
-                    {c.name}
-                  </span>
-                </Link>
-              ))}
-            </div>
+            <CategoryNav categories={stripCats} linkFor={hrefFor} />
           </div>
         </div>
       )}
@@ -670,14 +659,6 @@ export default function ShopPage() {
         <div className="max-w-[1200px] mx-auto space-y-2">
           <div className="overflow-x-auto scrollbar-hide">
             <div className="flex gap-2 items-center min-w-max">
-              <span className="text-muted-foreground text-[13px] font-semibold mr-1">Shop:</span>
-              {[{ key: "all", label: "All" }, { key: "baby", label: "👶 Baby" }, { key: "mum", label: "💛 Mum" }, { key: "push-gift", label: "💝 Push Gifts" }].map(t => (
-                <button key={t.key} onClick={() => setFilter("tab", t.key)}
-                  className={`rounded-pill px-3 py-2 text-xs font-semibold border-[1.5px] transition-all font-body whitespace-nowrap min-h-[44px] ${tab === t.key ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {t.label}
-                </button>
-              ))}
-              <div className="w-px h-5 bg-border mx-1 flex-shrink-0" />
               <span className="text-muted-foreground text-[13px] font-semibold mr-1 whitespace-nowrap">Budget:</span>
               {[["all", "All"], ["starter", "🌱 Starter"], ["standard", "🌿 Standard"], ["premium", "✨ Premium"]].map(([v, l]) => (
                 <button key={v} onClick={() => setFilter("budget", v)}
@@ -695,45 +676,6 @@ export default function ShopPage() {
               <span className="text-muted-foreground text-xs whitespace-nowrap flex-shrink-0">{filtered.length} items</span>
             </div>
           </div>
-
-          {filteredCategories.length > 0 && (
-            <div className="overflow-x-auto scrollbar-hide">
-              <div className="flex gap-1.5 items-center min-w-max">
-                <span className="text-muted-foreground text-[11px] font-semibold mr-1">Category:</span>
-                <button onClick={() => setFilter("category", "")}
-                  className={`rounded-pill px-2.5 py-1.5 text-[11px] font-semibold border-[1.5px] transition-all font-body whitespace-nowrap min-h-[36px] ${!categoryF ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  All
-                </button>
-                {filteredCategories.map(cat => {
-                  const count = categoryCounts[cat.slug] || 0;
-                  return (
-                    <button key={cat.id} onClick={() => setFilter("category", cat.slug)}
-                      className={`rounded-pill px-2.5 py-1.5 text-[11px] font-semibold border-[1.5px] transition-all font-body whitespace-nowrap min-h-[36px] ${categoryF === cat.slug ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                      {cat.icon} {cat.name} {count > 0 && <span className="text-muted-foreground">({count})</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {allBrandNames.length > 0 && (
-            <div className="overflow-x-auto scrollbar-hide relative">
-              <div className="flex gap-1.5 items-center">
-                <span className="text-muted-foreground text-[11px] font-semibold mr-1 flex-shrink-0">Brand:</span>
-                <button onClick={() => setFilter("brand", "")}
-                  className={`rounded-pill px-2.5 py-1.5 text-[11px] font-semibold border-[1.5px] transition-all font-body whitespace-nowrap flex-shrink-0 min-h-[36px] ${!brandF ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  All
-                </button>
-                {allBrandNames.map(name => (
-                  <button key={name} onClick={() => setFilter("brand", name.toLowerCase())}
-                    className={`rounded-pill px-2.5 py-1.5 text-[11px] font-semibold border-[1.5px] transition-all font-body whitespace-nowrap flex-shrink-0 min-h-[36px] ${brandF.toLowerCase() === name.toLowerCase() ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {budgetF && budgetF !== "all" && budgetF !== "standard" && (
             <div>

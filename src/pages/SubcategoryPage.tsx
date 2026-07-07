@@ -7,7 +7,7 @@ import { useProductCategories } from "@/hooks/useProductCategories";
 import Seo from "@/components/Seo";
 import ProductCard from "@/components/shop/ProductCard";
 import ShopPageHeader from "@/components/shop/ShopPageHeader";
-import SubcategoryChips from "@/components/shop/SubcategoryChips";
+import CategoryNav from "@/components/shop/CategoryNav";
 import { ChevronLeft } from "lucide-react";
 
 const BRAND_COLS =
@@ -81,11 +81,11 @@ export default function SubcategoryPage({ tab }: { tab: "baby" | "mum" }) {
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5">
         {/* Sibling category quick-nav */}
         <div className="mb-6">
-          <SubcategoryChips
+          <CategoryNav
             categories={siblings}
-            hrefBase={shopHref}
+            linkFor={(c) => `${shopHref}/${c.slug}`}
             activeSlug={category}
-            allLabel={`All ${tab === "baby" ? "Baby" : "Mum"}`}
+            all={{ label: `All ${tab === "baby" ? "Baby" : "Mum"}`, href: shopHref, icon: tab === "baby" ? "👶" : "💛" }}
           />
         </div>
 
