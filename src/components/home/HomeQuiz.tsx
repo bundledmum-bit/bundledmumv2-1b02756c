@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
-import { Baby, ShoppingBag, Gift, Check, Share2, ClipboardCopy } from "lucide-react";
+import { Baby, ShoppingBag, Gift, Check, Share2, ClipboardCopy, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useCart, fmt } from "@/lib/cart";
 import type { Brand, Product } from "@/lib/supabaseAdapters";
@@ -140,21 +140,19 @@ function QuizScreen({
   setGiftSubcategory: (g: GiftSubcategory | null) => void;
   onNext: () => void;
 }) {
-  const [snapFlash, setSnapFlash] = useState(0);
+  const [step, setStep] = useState(0);
   const { data: settings } = useSiteSettings();
 
-  // Keep a focus-on-mount ref on the budget input so the blinking caret
-  // is always visible on first render. `preventScroll: true` stops the
-  // page from jumping to the input on mobile. A short timeout lets React
-  // Strict Mode's double-mount settle and defends against ScrollToTop +
-  // animation transitions stealing focus on the way in.
+  // Focus the budget input whenever the budget step is shown so the caret
+  // is ready. preventScroll stops the page jumping on mobile.
   const budgetRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
+    if (step !== 0) return;
     const id = window.setTimeout(() => {
       budgetRef.current?.focus({ preventScroll: true });
-    }, 100);
+    }, 120);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [step]);
 
   // All content and min-budget driven by site_settings, with hardcoded
   // fallbacks matching the seeded defaults so the UI never renders empty.
@@ -163,7 +161,7 @@ function QuizScreen({
 
   const labelBudget = s("quiz_label_budget", "WHAT IS YOUR BUDGET?");
   const labelCategories = s("quiz_label_what_you_need", "WHAT DO YOU NEED?");
-  const labelCategoriesHint = s("quiz_label_what_you_need_hint", "(you can select both Maternity List + Baby Things)");
+  const labelCategoriesHint = s("quiz_label_what_you_need_hint", "You can pick more than one.");
   const labelGender = s("quiz_label_gender", "BABY'S GENDER");
   const ctaLabel = s("quiz_cta_label", "Build My List");
 
@@ -195,14 +193,6 @@ function QuizScreen({
   };
 
   const giftSelected = categories.has("gift");
-  // Don't gate the CTA on the essentials floor — the parent shows a soft
-  // warning modal on submit if the user is below it, and lets them either
-  // bump up to the floor or continue at their entered amount. Gift flow
-  // additionally requires a gift subcategory pick before submit.
-  const canSubmit = categories.size > 0
-    && !!gender
-    && budget > 0
-    && (!giftSelected || !!giftSubcategory);
 
   const categoryCards = [
     { id: "maternity" as const, title: s("quiz_category_maternity_title", "Bundles & Kits"), sub: s("quiz_category_maternity_sub", "Hospital bag — mum and baby"), Icon: ShoppingBag },
@@ -216,156 +206,167 @@ function QuizScreen({
     { id: "unknown" as const, title: s("quiz_gender_surprise_title", "It's a Surprise!"), sub: s("quiz_gender_surprise_sub", "Neutral & unisex"), emoji: "🎁" },
   ];
 
-  // Only treat "below minimum" as an error state once the user has typed
-  // something — empty field should not look like an error.
   const belowMin = budget > 0 && budget < minBudget;
   const minBudgetDisplay = `Minimum ₦${minBudget.toLocaleString("en-NG")}`;
 
+  // ── Wizard: one question per step ──────────────────────────────────────
+  const STEP_COUNT = 3;
+  const stepValid = [
+    budget > 0,
+    categories.size > 0 && (!giftSelected || !!giftSubcategory),
+    !!gender,
+  ][step];
+  const goNext = () => {
+    if (!stepValid) return;
+    if (step < STEP_COUNT - 1) setStep((n) => n + 1);
+    else onNext(); // last step → parent submit (floor warning + routing)
+  };
+  const goBack = () => setStep((n) => Math.max(0, n - 1));
+
+  // Reusable option-card class (idle vs selected) on the cream wizard card.
+  const optionCard = (selected: boolean) =>
+    `w-full flex items-center gap-3 px-3.5 py-3 rounded-[14px] border-2 text-left transition-all ${
+      selected ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
+    }`;
+
   return (
-    <div className="w-full max-w-[480px] mx-auto">
-      {/* Scoped flash keyframe for the min-budget helper */}
-      <style>{`
-        @keyframes bm-min-flash {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          20%, 60% { opacity: 0.25; transform: scale(0.98); }
-          40%, 80% { opacity: 1; transform: scale(1.04); }
-        }
-        .bm-min-flash { animation: bm-min-flash 0.55s ease-in-out 3; }
-      `}</style>
+    <div className="w-full max-w-[460px] mx-auto">
+      <div className="bg-card rounded-[24px] shadow-[0_18px_50px_-24px_rgba(32,37,26,0.55)] p-5 md:p-7">
+        {/* Progress */}
+        <div className="flex items-center gap-1.5 mb-2">
+          {Array.from({ length: STEP_COUNT }).map((_, i) => (
+            <div key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= step ? "bg-coral" : "bg-border"}`} />
+          ))}
+        </div>
+        <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-muted-foreground mb-4">
+          Step {step + 1} of {STEP_COUNT}
+        </p>
 
-      {/* QUESTION 1 — Budget */}
-      <div className="bg-coral rounded-[18px] p-4 md:p-5 mb-3">
-        <label className="text-white text-[12px] md:text-[13px] font-bold uppercase tracking-[2.5px] mb-2 block text-center">{labelBudget}</label>
-        <div className="relative">
-          {budget > 0 && (
-            <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
-          )}
-          <input
-            ref={budgetRef}
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            value={budget ? budget.toLocaleString("en-NG") : ""}
-            onChange={e => {
-              const digits = e.target.value.replace(/\D/g, "");
-              const n = digits ? parseInt(digits, 10) : 0;
-              setBudget(n);
-            }}
-            // No auto-snap on blur — the parent's submit handler shows a
-            // soft warning if the entered amount is below the floor, so we
-            // never overwrite what the customer actually typed.
-            placeholder="Type Your Budget Here"
-            aria-label="Budget"
-            className={`w-full ${budget > 0 ? "pl-12" : "pl-5"} pr-5 py-3 text-center bg-white border-2 rounded-[14px] pf text-midnight text-[26px] md:text-[30px] font-bold tracking-tight outline-none transition-colors placeholder:text-midnight/40 placeholder:text-[16px] placeholder:font-semibold ${belowMin && budget > 0 ? "border-white" : "border-white/30 focus:border-white"}`}
-          />
-        </div>
-        <div
-          key={snapFlash}
-          className={`text-[12px] mt-1.5 font-body font-bold text-center text-white ${snapFlash > 0 ? "bm-min-flash" : ""}`}
-        >
-          {minBudgetDisplay}
-        </div>
-      </div>
-
-      {/* QUESTION 2 — What do you need? */}
-      <div className="mb-3">
-        <div className="mb-1.5 px-1">
-          <span className="text-primary-foreground/80 text-[12px] md:text-[13px] font-bold uppercase tracking-[2.5px]">{labelCategories}</span>
-          {labelCategoriesHint && (
-            <span className="text-primary-foreground/55 text-[11px] md:text-[12px] font-normal normal-case tracking-normal ml-1.5 italic">{labelCategoriesHint}</span>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          {categoryCards.map(c => {
-            const selected = categories.has(c.id);
-            return (
-              <button
-                key={c.id}
-                onClick={() => toggleCategory(c.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[14px] border-2 text-left transition-all ${
-                  selected
-                    ? "bg-[#FFF0EB] border-coral"
-                    : "bg-primary-foreground border-primary-foreground/20"
-                }`}
-              >
-                <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${selected ? "bg-coral/15" : "bg-[#FFF0EB]"}`}>
-                  <c.Icon className="w-4 h-4 text-coral" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="pf font-bold text-[14px] text-foreground leading-tight">{c.title}</div>
-                  <div className="text-text-med text-[11px] mt-0.5 leading-tight">{c.sub}</div>
-                </div>
-                {selected && (
-                  <div className="flex-shrink-0 w-5 h-5 rounded-full bg-coral flex items-center justify-center">
-                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {/* Gift subcategory dropdown — only renders when Gift is the
-            active category. Required before the Build CTA enables. */}
-        {giftSelected && (
-          <div className="mt-2 px-1">
-            <label className="text-primary-foreground/80 text-[11px] font-bold uppercase tracking-[2.5px] mb-1.5 block">
-              Gift Category
-            </label>
-            <select
-              value={giftSubcategory || ""}
-              onChange={e => setGiftSubcategory((e.target.value || null) as GiftSubcategory | null)}
-              className="w-full bg-primary-foreground border-2 border-primary-foreground/20 rounded-[14px] px-3 py-2.5 text-sm font-semibold text-foreground outline-none focus:border-coral"
-            >
-              <option value="" disabled>Choose a gift category…</option>
-              {GIFT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+        {/* STEP 1 — Budget */}
+        {step === 0 && (
+          <div>
+            <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
+            <p className="text-muted-foreground text-[13px] mb-4">We match products to what you want to spend.</p>
+            <div className="relative">
+              {budget > 0 && (
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
+              )}
+              <input
+                ref={budgetRef}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={budget ? budget.toLocaleString("en-NG") : ""}
+                onChange={e => {
+                  const digits = e.target.value.replace(/\D/g, "");
+                  const n = digits ? parseInt(digits, 10) : 0;
+                  setBudget(n);
+                }}
+                onKeyDown={e => { if (e.key === "Enter") goNext(); }}
+                placeholder="Type your budget"
+                aria-label="Budget"
+                className={`w-full ${budget > 0 ? "pl-12" : "pl-5"} pr-5 py-3.5 text-center bg-background border-2 rounded-[14px] pf text-midnight text-[26px] md:text-[30px] font-bold tracking-tight outline-none transition-colors placeholder:text-midnight/35 placeholder:text-[16px] placeholder:font-semibold ${belowMin ? "border-coral" : "border-border focus:border-forest"}`}
+              />
+            </div>
+            <div className={`text-[12px] mt-2 font-body font-semibold text-center ${belowMin ? "text-coral" : "text-muted-foreground"}`}>
+              {minBudgetDisplay}
+            </div>
           </div>
         )}
-      </div>
 
-      {/* QUESTION 3 — Baby's Gender */}
-      <div className="mb-4">
-        <div className="text-primary-foreground/80 text-[12px] md:text-[13px] font-bold uppercase tracking-[2.5px] mb-1.5 px-1">{labelGender}</div>
-        <div className="space-y-1.5">
-          {genderCards.map(g => {
-            const selected = gender === g.id;
-            return (
-              <button
-                key={g.id}
-                onClick={() => setGender(g.id)}
-                className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-[14px] border-2 text-left transition-all ${
-                  selected
-                    ? "bg-[#FFF0EB] border-coral"
-                    : "bg-primary-foreground border-primary-foreground/20"
-                }`}
-              >
-                <div className="flex-shrink-0 text-xl">{g.emoji}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="pf font-bold text-[14px] text-foreground leading-tight">{g.title}</div>
-                  <div className="text-text-med text-[11px] mt-0.5 leading-tight">{g.sub}</div>
-                </div>
-                {selected && (
-                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-coral flex items-center justify-center shadow-md">
-                    <Check className="w-3 h-3 text-white" strokeWidth={3} />
-                  </div>
-                )}
-              </button>
-            );
-          })}
+        {/* STEP 2 — What do you need? */}
+        {step === 1 && (
+          <div>
+            <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelCategories}</h2>
+            {labelCategoriesHint && (
+              <p className="text-muted-foreground text-[13px] mb-4">{labelCategoriesHint}</p>
+            )}
+            <div className="space-y-2">
+              {categoryCards.map(c => {
+                const selected = categories.has(c.id);
+                return (
+                  <button key={c.id} onClick={() => toggleCategory(c.id)} className={optionCard(selected)}>
+                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${selected ? "bg-coral/15" : "bg-warm-cream"}`}>
+                      <c.Icon className="w-5 h-5 text-coral" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="pf font-bold text-[15px] text-foreground leading-tight">{c.title}</div>
+                      <div className="text-text-med text-[12px] mt-0.5 leading-tight">{c.sub}</div>
+                    </div>
+                    {selected && (
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-coral flex items-center justify-center">
+                        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {giftSelected && (
+              <div className="mt-3">
+                <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-[1.5px] mb-1.5 block">Gift Category</label>
+                <select
+                  value={giftSubcategory || ""}
+                  onChange={e => setGiftSubcategory((e.target.value || null) as GiftSubcategory | null)}
+                  className="w-full bg-background border-2 border-border rounded-[14px] px-3.5 py-3 text-sm font-semibold text-foreground outline-none focus:border-coral"
+                >
+                  <option value="" disabled>Choose a gift category…</option>
+                  {GIFT_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3 — Baby's gender */}
+        {step === 2 && (
+          <div>
+            <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelGender}</h2>
+            <p className="text-muted-foreground text-[13px] mb-4">This helps us pick colours and gender-specific items.</p>
+            <div className="space-y-2">
+              {genderCards.map(g => {
+                const selected = gender === g.id;
+                return (
+                  <button key={g.id} onClick={() => setGender(g.id)} className={optionCard(selected)}>
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-warm-cream flex items-center justify-center text-xl">{g.emoji}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="pf font-bold text-[15px] text-foreground leading-tight">{g.title}</div>
+                      <div className="text-text-med text-[12px] mt-0.5 leading-tight">{g.sub}</div>
+                    </div>
+                    {selected && (
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full bg-coral flex items-center justify-center">
+                        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center gap-2.5 mt-6">
+          {step > 0 && (
+            <button
+              onClick={goBack}
+              className="inline-flex items-center gap-1 rounded-pill border-[1.5px] border-border text-foreground px-5 py-3 text-sm font-semibold hover:border-forest hover:text-forest transition-colors min-h-[48px]"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back
+            </button>
+          )}
+          <button
+            onClick={goNext}
+            disabled={!stepValid}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-pill bg-coral text-primary-foreground px-6 py-3 text-[15px] font-bold hover:bg-coral-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[48px]"
+          >
+            {step === STEP_COUNT - 1 ? ctaLabel : "Next"}
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
-
-      {/* CTA */}
-      <button
-        onClick={onNext}
-        disabled={!canSubmit}
-        className="w-full rounded-pill py-3.5 text-[16px] font-body font-bold text-primary-foreground transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{ background: "#F4845F" }}
-      >
-        {ctaLabel} →
-      </button>
     </div>
   );
 }
