@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import type { ProductCategory } from "@/hooks/useProductCategories";
@@ -17,6 +18,8 @@ export default function CategoryNav({
   activeSlug?: string;
   all?: { label: string; href: string; icon?: string };
 }) {
+  const [open, setOpen] = useState(false);
+
   if (!categories.length) return null;
 
   const activeCat = activeSlug ? categories.find((c) => c.slug === activeSlug) : undefined;
@@ -38,30 +41,41 @@ export default function CategoryNav({
 
   return (
     <>
-      {/* Mobile: dropdown */}
-      <details className="md:hidden group relative">
-        <summary className="list-none flex items-center justify-between gap-2 rounded-pill border-[1.5px] border-border bg-card px-4 py-2.5 min-h-[44px] text-sm font-semibold cursor-pointer">
+      {/* Mobile: dropdown (controlled so it closes on selection) */}
+      <div className="md:hidden relative">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="w-full list-none flex items-center justify-between gap-2 rounded-pill border-[1.5px] border-border bg-card px-4 py-2.5 min-h-[44px] text-sm font-semibold"
+        >
           <span className="inline-flex items-center gap-2 truncate">
             <span className="text-base leading-none">{currentIcon}</span>
             <span className="truncate">{currentLabel}</span>
           </span>
-          <ChevronDown className="w-4 h-4 flex-shrink-0 transition-transform group-open:rotate-180" />
-        </summary>
-        <div className="absolute left-0 right-0 mt-2 z-50 max-h-[60vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-[0_10px_40px_-12px_rgba(32,37,26,0.35)] p-2">
-          {all && (
-            <Link to={all.href} className={row(!activeSlug)}>
-              <span className="text-lg leading-none">{all.icon || "🛍️"}</span>
-              {all.label}
-            </Link>
-          )}
-          {categories.map((c) => (
-            <Link key={c.id} to={linkFor(c)} className={row(activeSlug === c.slug)}>
-              <span className="text-lg leading-none">{c.icon || "🛍️"}</span>
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </details>
+          <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+        {open && (
+          <>
+            {/* Transparent backdrop: tap outside closes the menu */}
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="absolute left-0 right-0 mt-2 z-50 max-h-[60vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-[0_10px_40px_-12px_rgba(32,37,26,0.35)] p-2">
+              {all && (
+                <Link to={all.href} onClick={() => setOpen(false)} className={row(!activeSlug)}>
+                  <span className="text-lg leading-none">{all.icon || "🛍️"}</span>
+                  {all.label}
+                </Link>
+              )}
+              {categories.map((c) => (
+                <Link key={c.id} to={linkFor(c)} onClick={() => setOpen(false)} className={row(activeSlug === c.slug)}>
+                  <span className="text-lg leading-none">{c.icon || "🛍️"}</span>
+                  {c.name}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       {/* Desktop: horizontal side-scroll strip */}
       <div className="hidden md:block overflow-x-auto scrollbar-none">
