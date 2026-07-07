@@ -548,6 +548,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const isInlineEditableBundle =
     isMaternityBundleProduct || isPostpartumBundleProduct || isBabyShowerBundleProduct;
 
+  // Group-page mode: a multi-brand product opened without a specific brand
+  // (?sku). We show the "choose your brand" grid instead of a single-brand
+  // detail, so the full PDP body and sticky buy bar are suppressed here and
+  // the shopper either adds a brand from the grid or opens its detail page.
+  const isGroupView = !isInlineEditableBundle && product.brands.length > 1 && !skuParam;
+
   // Bundle-edit state — single source of truth for the inline grid AND
   // the customiser-toggle mount below. Called unconditionally per React
   // hook rules; queries inside are gated by productId so non-bundle
@@ -920,37 +926,53 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
       {/* Product group view: shown for multi-brand products when no specific
           brand is pre-selected via ?sku=. Users can add to cart directly or
           click View Details to reach the full per-brand detail below. */}
-      {!isInlineEditableBundle && product.brands.length > 1 && !skuParam && (
-        <div className="max-w-6xl mx-auto px-4 pb-8">
-          <h2 className="pf text-[17px] font-bold mb-1">Choose your brand</h2>
-          <p className="text-muted-foreground text-sm mb-4">{product.brands.length} options available</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      {isGroupView && (
+        <div className="max-w-6xl mx-auto px-4 pb-10">
+          <div className="mb-5">
+            <h1 className="pf text-[26px] md:text-[34px] font-bold leading-[1.1] mb-2">{product.name}</h1>
+            {product.description && (
+              <p className="text-muted-foreground text-sm md:text-[15px] max-w-[640px] mb-4">
+                {product.description}
+              </p>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-forest-light text-forest text-xs font-semibold px-3 py-1.5">
+                {product.brands.length} brands to choose from
+              </span>
+              <span className="text-muted-foreground text-xs">Tap a brand to add it, or open its full details.</span>
+            </div>
+          </div>
+          <h2 className="pf text-lg md:text-xl font-bold mb-3">Choose your brand</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {product.brands.map(brand => {
-              const img = brand.imageUrl;
+              const img = brand.imageUrl || product.imageUrl || null;
               const isOos = brand.inStock === false || (brand.stockQuantity !== null && brand.stockQuantity <= 0);
+              const onSale = brand.compareAtPrice != null && brand.compareAtPrice > brand.price;
               return (
-                <div key={brand.id} className="flex flex-col bg-card rounded-2xl border border-border overflow-hidden">
-                  <div className="aspect-square bg-muted relative overflow-hidden">
-                    {img ? (
-                      <ProductImage imageUrl={img} emoji={brand.img} alt={`${product.name} ${brand.label}`} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-4xl opacity-30">🛍️</div>
-                    )}
-                    {brand.tier && (
-                      <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm capitalize text-forest">
-                        {brand.tier}
-                      </div>
-                    )}
-                    {isOos && (
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                        <span className="text-white text-[11px] font-bold bg-black/60 rounded-full px-2.5 py-1">Out of stock</span>
-                      </div>
-                    )}
-                  </div>
+                <div key={brand.id} className="flex flex-col rounded-[14px] border border-border bg-card overflow-hidden">
+                  <Link to={`/products/${slug}?sku=${brand.sku}`} className="relative block aspect-square bg-warm-cream overflow-hidden group">
+                    <ProductImage
+                      imageUrl={img}
+                      emoji={brand.img || product.baseImg}
+                      alt={`${product.name} ${brand.label}`}
+                      className="w-full h-full"
+                      emojiClassName="text-5xl"
+                    />
+                    {isOos ? (
+                      <span className="absolute top-2 left-2 rounded-pill bg-midnight/80 text-primary-foreground text-[10px] font-bold px-2 py-0.5">Sold out</span>
+                    ) : onSale ? (
+                      <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5">Sale</span>
+                    ) : null}
+                  </Link>
                   <div className="p-3 flex flex-col gap-2 flex-1">
-                    <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-2">{brand.label}</p>
-                    <p className="text-[14px] font-bold text-coral">{fmt(brand.price)}</p>
-                    <div className="flex flex-col gap-1.5 mt-auto">
+                    <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">{brand.label}</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="font-mono-price text-forest font-bold text-[15px]">{fmt(brand.price)}</span>
+                      {onSale && (
+                        <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(brand.compareAtPrice!)}</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 mt-auto pt-1">
                       <button
                         disabled={isOos}
                         onClick={() => {
@@ -968,15 +990,15 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                             action: { label: "View Cart", onClick: () => window.location.href = "/cart" },
                           });
                         }}
-                        className="w-full rounded-pill bg-coral text-white text-[12px] font-bold py-2 min-h-[36px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-coral/90 transition-colors"
+                        className="w-full rounded-pill bg-coral text-primary-foreground text-[12px] font-bold py-2 min-h-[38px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-coral-dark transition-colors"
                       >
-                        {isOos ? "Out of stock" : "Add to Cart"}
+                        {isOos ? "Sold out" : "Add to cart"}
                       </button>
                       <Link
                         to={`/products/${slug}?sku=${brand.sku}`}
-                        className="w-full rounded-pill border border-border text-[12px] font-semibold text-foreground py-2 min-h-[36px] flex items-center justify-center hover:border-forest hover:text-forest transition-colors"
+                        className="w-full rounded-pill border border-border text-[12px] font-semibold text-muted-foreground py-2 min-h-[38px] flex items-center justify-center hover:border-forest hover:text-forest transition-colors"
                       >
-                        Full Details
+                        Full details
                       </Link>
                     </div>
                   </div>
@@ -987,7 +1009,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         </div>
       )}
 
-      {!isInlineEditableBundle && (
+      {!isInlineEditableBundle && !isGroupView && (
       <div className="max-w-6xl mx-auto px-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-12">
           {/* LEFT: Image Gallery */}
@@ -1491,8 +1513,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         <SubscriptionBasketBar className="bottom-[calc(124px+env(safe-area-inset-bottom))] md:bottom-6" />
       )}
 
-      {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own) */}
-      {!raw?.is_gift_box && (
+      {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own)
+          and on the group page (each brand card has its own add button). */}
+      {!raw?.is_gift_box && !isGroupView && (
       <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-card border-t border-border p-3 flex items-center justify-between gap-4 z-40 md:hidden">
         <div>
           <p className="font-mono-price text-lg font-bold text-forest">{fmt(selectedBrand.price)}</p>
