@@ -30,60 +30,13 @@ interface FormData {
 
 type SavedOrderResult = { id: string; orderNumber: string | null; share_token: string | null };
 
+// Klump's checkout SDK, per their live docs (Getting Started → Checkout
+// Button/Widget). The SDK is loaded from the document head; it scans the page
+// for the #klump__checkout mount div, and only then exposes the global `Klump`
+// constructor used to launch the widget: `new Klump(payload)`.
 const KLUMP_SCRIPT_ID = "klump-js-sdk";
 const KLUMP_SCRIPT_SRC = "https://js.useklump.com/klump.js";
-
-// Guarantees Klump's checkout SDK is loaded and `window.Klump` is a callable
-// constructor before we use it. The script attaches `window.Klump` only when
-// it finishes executing, so injecting it async and reading the global on the
-// next line is a race — this resolves that race at launch time.
-//
-//  • If `window.Klump` is already a function, resolves immediately.
-//  • Otherwise finds (or creates) the <script id="klump-js-sdk"> tag, listens
-//    for its load/error events, AND polls for `window.Klump` every 100ms. The
-//    poll is what makes this robust when the tag already exists but its load
-//    event fired before we attached a listener (event never re-fires).
-//  • Rejects after `timeoutMs` (~15s) so a stalled CDN fetch surfaces a clear
-//    error instead of hanging checkout.
-function ensureKlumpLoaded(timeoutMs = 15000): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof (window as any).Klump === "function") {
-      resolve();
-      return;
-    }
-
-    const start = Date.now();
-    let settled = false;
-    const finish = (err?: Error) => {
-      if (settled) return;
-      settled = true;
-      window.clearInterval(pollId);
-      if (err) reject(err);
-      else resolve();
-    };
-
-    // Covers both "script still downloading" and "tag exists, load already
-    // fired before we listened" — either way the global appears eventually.
-    const pollId = window.setInterval(() => {
-      if (typeof (window as any).Klump === "function") finish();
-      else if (Date.now() - start > timeoutMs) finish(new Error("Klump SDK load timed out"));
-    }, 100);
-
-    let script = document.getElementById(KLUMP_SCRIPT_ID) as HTMLScriptElement | null;
-    if (!script) {
-      script = document.createElement("script");
-      script.id = KLUMP_SCRIPT_ID;
-      script.src = KLUMP_SCRIPT_SRC;
-      script.async = true;
-      document.head.appendChild(script);
-    }
-    script.addEventListener("load", () => {
-      if (typeof (window as any).Klump === "function") finish();
-      // else: the poller keeps checking until the global appears or times out.
-    });
-    script.addEventListener("error", () => finish(new Error("Klump SDK failed to load")));
-  });
-}
+const KLUMP_CHECKOUT_DIV_ID = "klump__checkout";
 
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
@@ -367,14 +320,20 @@ export default function CheckoutPage() {
       });
   }, []);
 
-  // Klump's checkout widget script — pre-loaded lazily, only when the toggle
-  // is on, so storefronts without Klump never fetch a third-party script.
-  // This is a HEAD START, not a guarantee: launch-time ensureKlumpLoaded()
-  // is what actually blocks on the global being ready. Errors here are
-  // swallowed because the awaited call at placeOrder surfaces them.
+  // Load Klump's SDK (deferred, per Klump's docs) only when the toggle is on,
+  // so storefronts without Klump never fetch a third-party script. The SDK
+  // scans for #klump__checkout on load and attaches window.Klump only if it's
+  // present — the mount div is rendered in JSX whenever enabledPayments.klump
+  // is true, and React commits that JSX before this effect runs, so the div
+  // exists in the DOM by the time the script executes.
   useEffect(() => {
     if (!enabledPayments.klump) return;
-    ensureKlumpLoaded().catch(() => { /* surfaced at launch time */ });
+    if (document.getElementById(KLUMP_SCRIPT_ID)) return;
+    const script = document.createElement("script");
+    script.id = KLUMP_SCRIPT_ID;
+    script.src = KLUMP_SCRIPT_SRC;
+    script.defer = true;
+    document.head.appendChild(script);
   }, [enabledPayments.klump]);
 
   useEffect(() => {
@@ -1396,6 +1355,7 @@ export default function CheckoutPage() {
   };
 
   const placeOrder = async () => {
+    if (processing) return; // re-entrancy guard: the Klump mount div is a second trigger
     const cartSnapshot = getLiveCart();
     if (!cartSnapshot.length) {
       toast.error("Your cart is empty. Please add items before checking out.");
@@ -1441,22 +1401,20 @@ export default function CheckoutPage() {
         toast.error("Buy Now Pay Later is not configured. Please choose another payment method.");
         return;
       }
-      // Guarantee the SDK is ready BEFORE creating the order, so a slow/failed
-      // script load can never orphan a pending order. ensureKlumpLoaded resolves
-      // only once window.Klump is a callable constructor.
-      try {
-        await ensureKlumpLoaded();
-      } catch (err) {
-        console.error("[checkout] Klump SDK load failed:", err);
+      // Klump attaches window.Klump only after klump.js loads AND finds the
+      // #klump__checkout mount div (rendered in the payment section below). If
+      // the constructor isn't there yet, the SDK is still initializing.
+      const KlumpCtor = (window as any).Klump;
+      if (typeof KlumpCtor !== "function") {
         setProcessing(false);
-        toast.error("Klump could not be loaded. Please check your connection and try again.");
+        toast.error("Klump is still loading. Please wait a moment and try again.");
         return;
       }
-      const KlumpCtor = (window as any).Klump;
 
-      // Order is created PENDING first — Klump collects the payment, then
-      // the klump-webhook edge function verifies it server-side and marks
-      // the order paid. The frontend never flips payment_status itself.
+      // Order is created PENDING first — Klump collects the payment, then the
+      // klump-webhook edge function verifies it server-side and marks the order
+      // paid (matched via meta_data.order_id). The frontend never flips
+      // payment_status itself.
       const orderData = buildOrderData(cartSnapshot);
       const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
       if (!savedOrder) {
@@ -1469,29 +1427,54 @@ export default function CheckoutPage() {
       const shareToken = savedOrder.share_token || "";
       const redirectUrl = `${window.location.origin}/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`;
 
+      // Klump REQUIRES amount === Σ(unit_price × quantity) + shipping_fee, or it
+      // rejects the transaction. Our grand total also includes delivery, service
+      // and gift-wrap fees minus any discounts, so we send the real cart lines
+      // and fold everything else into shipping_fee — the identity holds while the
+      // shopper is still charged the exact order total. If discounts ever exceed
+      // the add-ons (shipping_fee would go negative, which Klump disallows), fall
+      // back to a single line item priced at the order total so it still holds.
+      // Prices are integer naira; do not divide or multiply. unit_price/amount/
+      // shipping_fee must all be integers.
+      const cartLines = cartSnapshot.map((it: any) => ({
+        name: it.name,
+        unit_price: Math.round(Number(it.selectedBrand?.price ?? it.price ?? 0)),
+        quantity: Number(it.qty),
+      }));
+      const itemsSum = cartLines.reduce((s, it) => s + it.unit_price * it.quantity, 0);
+      const amount = Math.round(grand);
+      let items = cartLines;
+      let shippingFee = amount - itemsSum;
+      if (shippingFee < 0) {
+        items = [{ name: `Order ${num || "total"}`, unit_price: amount, quantity: 1 }];
+        shippingFee = 0;
+      }
+
       pixelTrack("AddPaymentInfo", pixelMoney(grand));
 
+      // Payload shape verbatim from Klump's live "Checkout Widget" docs.
       new KlumpCtor({
         publicKey: klumpPublicKey,
         data: {
-          amount: grand,
+          amount,
+          shipping_fee: shippingFee,
           currency: "NGN",
+          first_name: form.firstName || undefined,
+          last_name: form.lastName || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
           redirect_url: redirectUrl,
           merchant_reference: num,
-          // klump-webhook matches this transaction back to OUR order via
-          // meta_data.order_id — Klump's successful-payment webhook event
-          // carries no merchant_reference, only meta_data survives.
+          // MANDATORY: klump-webhook matches the payment to OUR order ONLY via
+          // meta_data.order_id — the successful-payment event carries no
+          // merchant_reference, so this is the sole link back to the order.
           meta_data: {
             order_id: savedOrder.id,
             customer_name: `${form.firstName} ${form.lastName}`.trim(),
             email: form.email,
             phone: form.phone,
           },
-          items: cartSnapshot.map((it: any) => ({
-            name: it.name,
-            unit_price: String(Number(it.selectedBrand?.price ?? it.price ?? 0)),
-            quantity: it.qty,
-          })),
+          items,
         },
         onSuccess: async () => {
           await syncOrderToSheets({
@@ -2146,6 +2129,20 @@ export default function CheckoutPage() {
                     <span>🛍️</span> You'll complete payment through Klump's secure checkout. Your order is confirmed once Klump verifies the payment.
                   </div>
                 </div>
+              )}
+              {/* Klump SDK mount point (per Klump's docs). It must exist in the
+                  DOM for the SDK to attach window.Klump, so it is rendered
+                  whenever Klump is enabled — visually present only when Klump is
+                  the chosen method, and kept in-DOM-but-hidden otherwise. The SDK
+                  renders its "Pay with Klump" button inside; clicking it routes
+                  to the same placeOrder flow as the main CTA below. */}
+              {enabledPayments.klump && (
+                <div
+                  id={KLUMP_CHECKOUT_DIV_ID}
+                  onClick={() => { if (payment === "klump") void placeOrder(); }}
+                  className={payment === "klump" ? "mt-3" : "sr-only"}
+                  aria-hidden={payment !== "klump"}
+                />
               )}
             </div>
 
