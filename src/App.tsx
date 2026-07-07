@@ -261,6 +261,14 @@ function StorefrontShell() {
     return () => document.body.classList.remove("theme-bundled");
   }, [pathname]);
 
+  // Expose the total fixed-header height (announcement bars + ~68px navbar)
+  // as a CSS variable so surfaces portalled outside <main> — e.g. the quiz
+  // WhatsApp / results overlays — can offset their content clear of the
+  // header instead of hard-coding a value that ignores the announcement bar.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--bm-header-h", `${totalBarHeight + 68}px`);
+  }, [totalBarHeight]);
+
   // The announcement bars resolve their height after the initial render,
   // and the spacer below transitions from 0 → totalBarHeight over 300ms.
   // Browser scroll-anchoring drifts the viewport downward as the spacer

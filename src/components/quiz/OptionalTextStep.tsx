@@ -44,7 +44,7 @@ export default function OptionalTextStep({
 
   const outerClass = embedded
     ? "flex flex-col items-center px-4 md:px-10 py-6 md:py-8 w-full"
-    : "min-h-screen bg-background pt-[68px] flex flex-col items-center px-4 md:px-10 py-10 md:py-14 pb-20 md:pb-12";
+    : "min-h-screen bg-background pt-[var(--bm-header-h,108px)] flex flex-col items-center px-4 md:px-10 py-10 md:py-14 pb-20 md:pb-12";
 
   return (
     <div className={outerClass}>

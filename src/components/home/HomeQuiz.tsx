@@ -681,7 +681,7 @@ function ResultsScreen({
   // ---- Loading / error states ---------------------------------------------
   if (loading) {
     return (
-      <div className="min-h-screen bg-background pt-[68px] flex items-center justify-center">
+      <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] flex items-center justify-center">
         <div className="text-center">
           <BMLoadingAnimation size={200} />
           <h2 className="pf text-xl text-foreground mb-2 mt-4">Building your perfect bundle...</h2>
@@ -692,7 +692,7 @@ function ResultsScreen({
   }
   if (error) {
     return (
-      <div className="min-h-screen bg-background pt-[68px] px-4 flex items-center justify-center">
+      <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] px-4 flex items-center justify-center">
         <div className="bg-[#FFE5DC] border border-coral text-[#92400E] rounded-xl p-6 text-center max-w-md">
           <p className="font-semibold mb-1">We hit a snag building your list.</p>
           <p className="text-sm mb-3">{error}</p>
@@ -706,7 +706,7 @@ function ResultsScreen({
   // the screen instead of surfacing this panel, which is what blanks the page.
   if (!result || !Array.isArray(result.products) || result.products.length === 0) {
     return (
-      <div className="min-h-screen bg-background pt-[68px] px-4 flex items-center justify-center">
+      <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] px-4 flex items-center justify-center">
         <div className="text-center max-w-md">
           <p className="pf text-lg font-semibold mb-1">No matching items found</p>
           <p className="text-text-med text-sm mb-3">Try a different budget or category.</p>
@@ -829,7 +829,7 @@ function ResultsScreen({
     .map(r => ({ name: r.name, price: ((r.brand?.price ?? 0)) * (r.quantity ?? 1) }));
 
   return (
-    <div className="min-h-screen bg-background pt-[68px] pb-28 md:pb-0">
+    <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-28 md:pb-0">
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-4 md:px-10 pt-6 md:pt-12 pb-7 md:pb-12">
         <div className="max-w-[720px] mx-auto text-center">
           {isFallback && (
@@ -1140,7 +1140,7 @@ class QuizResultsErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-background pt-[68px] px-4 flex items-center justify-center">
+        <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] px-4 flex items-center justify-center">
           <div className="max-w-md w-full bg-card border border-destructive/40 rounded-card p-5 text-left">
             <p className="pf text-lg font-bold text-destructive mb-1">Quiz results couldn't load</p>
             <p className="text-sm text-text-med mb-3">
