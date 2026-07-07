@@ -10,7 +10,6 @@ import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
-import ShopPageHeader from "@/components/shop/ShopPageHeader";
 import CategoryTiles from "@/components/shop/CategoryTiles";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
@@ -23,7 +22,7 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import QtyControl from "@/components/QtyControl";
 import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import { Filter, ArrowUpDown, Check, Truck, ShieldCheck, RotateCcw } from "lucide-react";
+import { Filter, ArrowUpDown, Check, Truck, ShieldCheck, RotateCcw, Search } from "lucide-react";
 
 function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
@@ -474,7 +473,11 @@ export default function ShopPage() {
   // sections ordered by purchase popularity (see usePopularCategories).
   // Search queries fall through to the legacy flat grid below so the user
   // can still hunt across the full catalogue.
-  const sectionsOnlyMode = !!pathShop && (tab === "all" || tab === "baby" || tab === "mum") && !search;
+  // Marketplace-dense shop: the landings now render the flat, filterable
+  // product grid (maximum products visible) instead of the curated rails, so
+  // sections-only mode is disabled. pathShop is still referenced here to keep
+  // the section context intact. The rails branch below is kept but unreachable.
+  const sectionsOnlyMode = false && !!pathShop && (tab === "all" || tab === "baby" || tab === "mum") && !search;
 
   const activeFilterCount = [
     tab !== "all" ? 1 : 0,
@@ -569,43 +572,29 @@ export default function ShopPage() {
     (c) => c.parent_category === "mum" || c.parent_category === "both"
   );
 
+  // Marketplace category-icon strip: the section's categories, each routing to
+  // its subcategory page. "All" shows the full set; baby/mum show that section.
+  const stripCats = isBaby ? babyCats : isMum ? mumCats : (categories || []);
+  const hrefFor = (c: (typeof stripCats)[number]) =>
+    `/shop/${c.parent_category === "mum" ? "mum" : "baby"}/${c.slug}`;
+
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
-      {/* Editorial section header, cream and section-tinted (shared across
-          Shop, category, and subcategory pages for one cohesive look). */}
-      <ShopPageHeader
-        accent={isBaby ? "baby" : isMum ? "mum" : "all"}
-        eyebrow={isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "BundledMum Store"}
-        title={isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "Shop all products"}
-        icon={isBaby ? "👶" : isMum ? "💛" : undefined}
-        subtitle={
-          isBaby
-            ? "Newborn essentials, feeding must-haves, and diapers, curated for Nigerian babies."
-            : isMum
-            ? "Postpartum recovery, maternity wear, and self-care essentials for new mums."
-            : "Everything for mum and baby in one place. Quality brands, fast Lagos delivery."
-        }
-        breadcrumbs={shopBreadcrumbs}
-        search={{
-          value: search,
-          onChange: (v) => { setSearch(v); setFilter("q", v); },
-          placeholder: isBaby ? "Search baby products..." : isMum ? "Search mum products..." : "Search products...",
-        }}
-      />
-      {/* Slim trust strip */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-2.5 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-forest" /> Fast Lagos delivery</span>
-          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-forest" /> Authentic brands</span>
-          <span className="inline-flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5 text-forest" /> Easy returns</span>
-        </div>
-      </div>
-
-      {/* Tab/section chips */}
-      <div className="border-b border-border bg-background">
-        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-3">
-          <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-4 px-4 md:mx-0 md:px-0">
+      {/* Marketplace header: prominent search, tight and compact. */}
+      <div className="pt-[68px] bg-card border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-2.5">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
+              placeholder={isBaby ? "Search baby products..." : isMum ? "Search mum products..." : "Search products..."}
+              className="w-full rounded-pill bg-background border border-border text-foreground text-sm pl-11 pr-4 py-2.5 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[44px]"
+            />
+          </div>
+          {/* Section tabs */}
+          <div className="flex gap-2 overflow-x-auto scrollbar-none -mx-3 px-3 md:mx-0 md:px-0 mt-2.5">
             {[
               { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
               { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" && !categoryF },
@@ -614,11 +603,42 @@ export default function ShopPage() {
               { label: "Gifts", to: "/bundles/baby-shower-gift-boxes", active: false },
             ].map(c => (
               <Link key={c.label} to={c.to}
-                className={`flex-shrink-0 rounded-pill px-4 py-2 text-[13px] font-semibold border transition-colors min-h-[40px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
+                className={`flex-shrink-0 rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
                 {c.label}
               </Link>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Category-icon strip (Jumia-style circles) — single horizontal-scroll
+          row so it stays compact no matter how many categories exist. Hidden
+          while searching. */}
+      {!search && stripCats.length > 0 && (
+        <div className="bg-background border-b border-border">
+          <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-3">
+            <div className="flex gap-4 md:gap-5 overflow-x-auto scrollbar-none -mx-3 px-3 md:mx-0 md:px-0">
+              {stripCats.map(c => (
+                <Link key={c.id} to={hrefFor(c)} className="flex flex-col items-center gap-1.5 group flex-shrink-0 w-[62px] md:w-[72px]">
+                  <span className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-warm-cream flex items-center justify-center text-2xl md:text-[26px] group-hover:bg-forest-light transition-colors">
+                    {c.icon || "🛍️"}
+                  </span>
+                  <span className="text-[10px] md:text-[11px] font-medium text-foreground text-center leading-tight line-clamp-2">
+                    {c.name}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Slim trust strip */}
+      <div className="border-b border-border bg-card">
+        <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] md:text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-forest" /> Fast Lagos delivery</span>
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-forest" /> Authentic brands</span>
+          <span className="inline-flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5 text-forest" /> Easy returns</span>
         </div>
       </div>
 
@@ -777,7 +797,7 @@ export default function ShopPage() {
       )}
       </>)}
 
-      <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-10">
+      <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-4">
         <SpendMoreBanner variant="shop" />
 
         {/* Storefront sections are now fully driven by shop_sections —
@@ -833,9 +853,9 @@ export default function ShopPage() {
             />
           </>
         ) : (isLoading || searchPending) ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-              <div key={i} className="bg-card rounded-card shadow-card h-[380px] animate-pulse" />
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5 md:gap-3 mt-2">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
+              <div key={i} className="bg-card rounded-card shadow-card h-[320px] animate-pulse" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
@@ -867,7 +887,7 @@ export default function ShopPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5 mt-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5 md:gap-3 mt-2">
               {visibleProducts.map((hit, idx) => (
                 <ProductCard
                   key={`${hit.product.id}${hit.brandId ? `-${hit.brandId}` : ""}`}
