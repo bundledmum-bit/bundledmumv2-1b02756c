@@ -10,7 +10,8 @@ import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
-import type { ProductCategory } from "@/hooks/useProductCategories";
+import ShopPageHeader from "@/components/shop/ShopPageHeader";
+import CategoryTiles from "@/components/shop/CategoryTiles";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,8 +23,7 @@ import SpendMoreBanner from "@/components/SpendMoreBanner";
 import QtyControl from "@/components/QtyControl";
 import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
-import { Filter, ArrowUpDown, Check, Search } from "lucide-react";
-import Breadcrumb from "@/components/Breadcrumb";
+import { Filter, ArrowUpDown, Check, Truck, ShieldCheck, RotateCcw } from "lucide-react";
 
 function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
@@ -187,126 +187,6 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
             {needsSizeChoice ? "Choose Size →" : "Add to Cart"}
           </button>
         )}
-      </div>
-    </div>
-  );
-}
-
-function ShopCategoryGrid({ categories }: { categories: ProductCategory[] }) {
-  const babyCats = categories.filter(
-    (c) => c.parent_category === "baby" || c.parent_category === "both"
-  );
-  const mumCats = categories.filter(
-    (c) => c.parent_category === "mum" || c.parent_category === "both"
-  );
-  if (!babyCats.length && !mumCats.length) return null;
-  return (
-    <div className="mb-10 grid grid-cols-1 md:grid-cols-2 gap-5">
-      {/* Baby panel */}
-      {babyCats.length > 0 && (
-        <div className="bg-[#EEF6EF] rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">👶</span>
-              <h2 className="pf text-[18px] font-bold text-forest">Baby Shop</h2>
-            </div>
-            <Link to="/shop/baby" className="text-[13px] font-semibold text-forest hover:underline">
-              Shop all →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {babyCats.map((c) => (
-              <Link
-                key={c.id}
-                to={`/shop/baby/${c.slug}`}
-                className="flex items-center gap-2.5 bg-white rounded-xl px-3 py-2.5 hover:shadow-sm transition-all group"
-              >
-                <span className="text-xl leading-none">{c.icon || "🛍️"}</span>
-                <span className="text-[12px] font-medium text-foreground group-hover:text-forest transition-colors leading-tight">
-                  {c.name}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Mum panel */}
-      {mumCats.length > 0 && (
-        <div className="bg-[#FFF4F0] rounded-2xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">💛</span>
-              <h2 className="pf text-[18px] font-bold" style={{ color: "#C0623A" }}>Mum Shop</h2>
-            </div>
-            <Link to="/shop/mum" className="text-[13px] font-semibold hover:underline" style={{ color: "#C0623A" }}>
-              Shop all →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {mumCats.map((c) => (
-              <Link
-                key={c.id}
-                to={`/shop/mum/${c.slug}`}
-                className="flex items-center gap-2.5 bg-white rounded-xl px-3 py-2.5 hover:shadow-sm transition-all group"
-              >
-                <span className="text-xl leading-none">{c.icon || "🛍️"}</span>
-                <span className="text-[12px] font-medium text-foreground group-hover:text-coral transition-colors leading-tight">
-                  {c.name}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Horizontal category chip strip for /shop/baby and /shop/mum.
-function ShopCategoryNav({
-  categories,
-  tab,
-  activeCategory,
-}: {
-  categories: ProductCategory[];
-  tab: string;
-  activeCategory: string;
-}) {
-  const shopHref = tab === "baby" ? "/shop/baby" : "/shop/mum";
-  const relevantCats = categories.filter(
-    (c) =>
-      c.parent_category === tab ||
-      c.parent_category === "both"
-  );
-  if (!relevantCats.length) return null;
-  return (
-    <div className="overflow-x-auto scrollbar-none -mx-4 px-4 mt-4 pb-1">
-      <div className="flex gap-2 min-w-max">
-        <Link
-          to={shopHref}
-          className={`inline-flex items-center gap-1 rounded-pill px-4 py-2 text-[13px] font-semibold border transition-all flex-shrink-0 ${
-            !activeCategory
-              ? "bg-forest border-forest text-white"
-              : "bg-card border-border text-muted-foreground hover:border-forest/50 hover:text-forest"
-          }`}
-        >
-          All {tab === "baby" ? "Baby" : "Mum"}
-        </Link>
-        {relevantCats.map((c) => (
-          <Link
-            key={c.id}
-            to={`${shopHref}/${c.slug}`}
-            className={`inline-flex items-center gap-1.5 rounded-pill px-4 py-2 text-[13px] font-medium border transition-all flex-shrink-0 ${
-              activeCategory === c.slug
-                ? "bg-forest border-forest text-white"
-                : "bg-card border-border text-muted-foreground hover:border-forest/50 hover:text-forest"
-            }`}
-          >
-            {c.icon && <span className="text-sm">{c.icon}</span>}
-            {c.name}
-          </Link>
-        ))}
       </div>
     </div>
   );
@@ -681,94 +561,46 @@ export default function ShopPage() {
     ...(search ? [{ label: `Search: "${search}"` }] : []),
   ];
 
+  // Category split for the browse tiles on the section landings.
+  const babyCats = (categories || []).filter(
+    (c) => c.parent_category === "baby" || c.parent_category === "both"
+  );
+  const mumCats = (categories || []).filter(
+    (c) => c.parent_category === "mum" || c.parent_category === "both"
+  );
+
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
-      {/* Shop page header */}
-      {/* /shop (all): Jumia-style spotlight banner */}
-      {!isBaby && !isMum && (
-        <div className="pt-[68px]">
-          <div className="bg-gradient-to-r from-forest-deep to-forest overflow-hidden">
-            <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-6 md:py-10 flex items-center justify-between gap-6">
-              <div className="flex-1 min-w-0">
-                <p className="text-white/60 text-[11px] font-semibold uppercase tracking-wider mb-1">BundledMum Store</p>
-                <h1 className="pf text-white font-bold text-[22px] md:text-[34px] leading-tight mb-2">
-                  Baby &amp; Mum Essentials
-                </h1>
-                <p className="text-white/75 text-sm md:text-[15px] mb-4 max-w-[380px]">
-                  Quality products for Nigerian mums and babies. No stress, delivered to you.
-                </p>
-                <div className="relative max-w-[400px]">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50 pointer-events-none" />
-                  <input
-                    placeholder="Search products..."
-                    value={search}
-                    onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
-                    className="w-full rounded-pill bg-white/15 border border-white/25 text-white text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-white/50 focus:border-white/60 transition-colors min-h-[48px] backdrop-blur-sm"
-                  />
-                </div>
-              </div>
-              {/* Product spotlight area — swap in a design/gif via site_settings */}
-              <div className="hidden md:flex flex-shrink-0 w-[220px] h-[160px] rounded-2xl bg-white/10 border border-white/20 items-center justify-center">
-                <div className="text-center">
-                  <div className="text-[40px] mb-1">🛍️</div>
-                  <p className="text-white/50 text-[11px] font-medium">Product spotlight</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          {/* Trust strip */}
-          <div className="border-b border-border bg-card">
-            <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-3 flex flex-wrap gap-x-6 gap-y-1.5 text-xs md:text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><span className="w-3.5 h-3.5 text-coral text-base leading-none">%</span> New arrivals weekly</span>
-              <span className="inline-flex items-center gap-1.5"><span className="text-forest text-base leading-none">🚚</span> Fast Lagos delivery</span>
-              <span className="inline-flex items-center gap-1.5"><span className="text-forest text-base leading-none">↩</span> Easy returns</span>
-            </div>
-          </div>
-          <div className="max-w-[1200px] mx-auto px-4 md:px-10 pt-4">
-            <Breadcrumb items={shopBreadcrumbs} className="mb-3" />
-          </div>
+      {/* Editorial section header, cream and section-tinted (shared across
+          Shop, category, and subcategory pages for one cohesive look). */}
+      <ShopPageHeader
+        accent={isBaby ? "baby" : isMum ? "mum" : "all"}
+        eyebrow={isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "BundledMum Store"}
+        title={isBaby ? "Baby Shop" : isMum ? "Mum Shop" : "Shop all products"}
+        icon={isBaby ? "👶" : isMum ? "💛" : undefined}
+        subtitle={
+          isBaby
+            ? "Newborn essentials, feeding must-haves, and diapers, curated for Nigerian babies."
+            : isMum
+            ? "Postpartum recovery, maternity wear, and self-care essentials for new mums."
+            : "Everything for mum and baby in one place. Quality brands, fast Lagos delivery."
+        }
+        breadcrumbs={shopBreadcrumbs}
+        search={{
+          value: search,
+          onChange: (v) => { setSearch(v); setFilter("q", v); },
+          placeholder: isBaby ? "Search baby products..." : isMum ? "Search mum products..." : "Search products...",
+        }}
+      />
+      {/* Slim trust strip */}
+      <div className="border-b border-border bg-card">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-2.5 flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-forest" /> Fast Lagos delivery</span>
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-forest" /> Authentic brands</span>
+          <span className="inline-flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5 text-forest" /> Easy returns</span>
         </div>
-      )}
-
-      {/* /shop/baby and /shop/mum: deals-style dark header */}
-      {(isBaby || isMum) && (
-        <div className="pt-[68px]">
-          <div className="bg-gradient-to-r from-forest-deep to-forest">
-            <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5 md:py-8">
-              <h1 className="pf text-white font-bold text-[22px] md:text-[30px] inline-flex items-center gap-2.5 mb-1">
-                {isBaby ? <span>👶</span> : <span>💛</span>}
-                {isBaby ? "Baby Shop" : "Mum Shop"}
-              </h1>
-              <p className="text-white/75 text-sm md:text-[15px] mb-4">
-                {isBaby
-                  ? "Newborn essentials, feeding must-haves, and diapers — curated for Nigerian babies."
-                  : "Postpartum recovery, maternity wear, and self-care essentials for new mums."}
-              </p>
-              <div className="relative max-w-[480px]">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50 pointer-events-none" />
-                <input
-                  placeholder={isBaby ? "Search baby products..." : "Search mum products..."}
-                  value={search}
-                  onChange={e => { setSearch(e.target.value); setFilter("q", e.target.value); }}
-                  className="w-full rounded-pill bg-white/15 border border-white/25 text-white text-sm font-body pl-11 pr-4 py-3 outline-none placeholder:text-white/50 focus:border-white/60 transition-colors min-h-[48px] backdrop-blur-sm"
-                />
-              </div>
-            </div>
-          </div>
-          {/* Trust strip */}
-          <div className="border-b border-border bg-card">
-            <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-3 flex flex-wrap gap-x-6 gap-y-1.5 text-xs md:text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><span className="text-forest text-base leading-none">🚚</span> Fast Lagos delivery</span>
-              <span className="inline-flex items-center gap-1.5"><span className="text-forest text-base leading-none">✓</span> Quality guaranteed</span>
-              <span className="inline-flex items-center gap-1.5"><span className="text-forest text-base leading-none">↩</span> Easy returns</span>
-            </div>
-          </div>
-          <div className="max-w-[1200px] mx-auto px-4 md:px-10 pt-4">
-            <Breadcrumb items={shopBreadcrumbs} className="mb-3" />
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Tab/section chips */}
       <div className="border-b border-border bg-background">
@@ -787,14 +619,6 @@ export default function ShopPage() {
               </Link>
             ))}
           </div>
-          {/* Subcategory chip strip for baby/mum sections-only mode */}
-          {sectionsOnlyMode && (tab === "baby" || tab === "mum") && (
-            <ShopCategoryNav
-              categories={categories || []}
-              tab={tab}
-              activeCategory={categoryF}
-            />
-          )}
         </div>
       </div>
 
@@ -964,8 +788,44 @@ export default function ShopPage() {
             category-specific tabs skip the section feed entirely. */}
         {sectionsOnlyMode ? (
           <>
-            {tab === "all" && (
-              <ShopCategoryGrid categories={categories || []} />
+            {/* Browse by category tiles, then the merchandised rails. */}
+            {tab === "all" ? (
+              <div className="mb-10 space-y-8">
+                {babyCats.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-lg md:text-xl font-bold text-foreground flex items-center gap-2">
+                        <span>👶</span> Shop baby
+                      </h2>
+                      <Link to="/shop/baby" className="text-xs font-semibold text-forest hover:underline">
+                        See all
+                      </Link>
+                    </div>
+                    <CategoryTiles categories={babyCats} hrefBase="/shop/baby" />
+                  </div>
+                )}
+                {mumCats.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-lg md:text-xl font-bold text-foreground flex items-center gap-2">
+                        <span>💛</span> Shop mum
+                      </h2>
+                      <Link to="/shop/mum" className="text-xs font-semibold text-forest hover:underline">
+                        See all
+                      </Link>
+                    </div>
+                    <CategoryTiles categories={mumCats} hrefBase="/shop/mum" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="mb-10">
+                <h2 className="text-lg md:text-xl font-bold text-foreground mb-3">Shop by category</h2>
+                <CategoryTiles
+                  categories={tab === "baby" ? babyCats : mumCats}
+                  hrefBase={tab === "baby" ? "/shop/baby" : "/shop/mum"}
+                />
+              </div>
             )}
             <ShopSectionsRenderer
               shop={tab as ShopVariant}
