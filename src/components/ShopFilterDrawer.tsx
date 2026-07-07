@@ -33,20 +33,6 @@ interface Props {
   priceBounds?: { min: number; max: number };
 }
 
-const SHOP_TABS = [
-  { key: "all", label: "All" },
-  { key: "baby", label: "👶 Baby" },
-  { key: "mum", label: "💛 Mum" },
-  { key: "push-gift", label: "💝 Push Gifts" },
-];
-
-const BUDGET_TABS = [
-  { key: "all", label: "All" },
-  { key: "starter", label: "🌱 Starter" },
-  { key: "standard", label: "🌿 Standard" },
-  { key: "premium", label: "✨ Premium" },
-];
-
 const SORT_OPTIONS = [
   { key: "popular", label: "Popular" },
   { key: "price-low", label: "Price: Low → High" },
@@ -73,8 +59,6 @@ export default function ShopFilterDrawer({ open, onClose, filters, onApply, cate
   const shopDefaultOpen = openSection !== "sort";
 
   const activeCount = [
-    local.tab !== "all" ? 1 : 0,
-    local.budget !== "all" ? 1 : 0,
     local.category ? 1 : 0,
     local.brand ? 1 : 0,
     (local.priceMin != null || local.priceMax != null) ? 1 : 0,
@@ -99,30 +83,8 @@ export default function ShopFilterDrawer({ open, onClose, filters, onApply, cate
         </div>
 
         <div className="overflow-y-auto flex-1 px-5">
-          <Section title="Shop" open={shopDefaultOpen}>
-            <div className="flex flex-wrap gap-2">
-              {SHOP_TABS.map(t => (
-                <button key={t.key} onClick={() => setLocal(p => ({ ...p, tab: t.key, category: "", brand: "" }))}
-                  className={`min-h-[44px] rounded-pill px-4 py-2 text-sm font-semibold border-[1.5px] transition-all font-body ${local.tab === t.key ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="Budget">
-            <div className="flex flex-wrap gap-2">
-              {BUDGET_TABS.map(t => (
-                <button key={t.key} onClick={() => setLocal(p => ({ ...p, budget: t.key }))}
-                  className={`min-h-[44px] rounded-pill px-4 py-2 text-sm font-semibold border-[1.5px] transition-all font-body ${local.budget === t.key ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </Section>
-
           {categories.length > 0 && (
-            <Section title="Category">
+            <Section title="Category" open={shopDefaultOpen}>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => setLocal(p => ({ ...p, category: "" }))}
                   className={`min-h-[44px] rounded-pill px-4 py-2 text-sm font-semibold border-[1.5px] transition-all font-body ${!local.category ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>

@@ -11,7 +11,6 @@ import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
-import CategoryNav from "@/components/shop/CategoryNav";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -207,7 +206,9 @@ export default function ShopPage() {
     : location.pathname === "/shop/mum" ? "mum"
     : location.pathname === "/shop" ? "all"
     : null;
-  const tab = pathShop || searchParams.get("tab") || "all";
+  // /shop/baby and /shop/mum pin the tab; /shop honours the ?tab param so
+  // "Gifts" (push-gift) filters in place rather than loading another page.
+  const tab = pathShop === "baby" ? "baby" : pathShop === "mum" ? "mum" : (searchParams.get("tab") || "all");
   const budgetF = searchParams.get("budget") || "all";
   const categoryF = searchParams.get("category") || "";
   const brandF = searchParams.get("brand") || "";
@@ -481,13 +482,10 @@ export default function ShopPage() {
   const sectionsOnlyMode = false && !!pathShop && (tab === "all" || tab === "baby" || tab === "mum") && !search;
 
   const activeFilterCount = [
-    tab !== "all" ? 1 : 0,
-    budgetF !== "all" ? 1 : 0,
     categoryF ? 1 : 0,
     brandF ? 1 : 0,
     (priceMinF != null || priceMaxF != null) ? 1 : 0,
     inStockOnlyF ? 1 : 0,
-    search ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   // Available price range for the seed inputs — min / max price of
@@ -573,12 +571,6 @@ export default function ShopPage() {
     (c) => c.parent_category === "mum" || c.parent_category === "both"
   );
 
-  // Marketplace category-icon strip: the section's categories, each routing to
-  // its subcategory page. "All" shows the full set; baby/mum show that section.
-  const stripCats = isBaby ? babyCats : isMum ? mumCats : (categories || []);
-  const hrefFor = (c: (typeof stripCats)[number]) =>
-    `/shop/${c.parent_category === "mum" ? "mum" : "baby"}/${c.slug}`;
-
   return (
     <div className="min-h-screen bg-background pb-16 md:pb-0">
       <Seo title={seoTitle} description={seoDescription} />
@@ -597,11 +589,10 @@ export default function ShopPage() {
           {/* Section tabs — wrap so every tab is visible without scrolling */}
           <div className="flex flex-wrap gap-2 mt-2.5">
             {[
-              { label: "All", to: "/shop", active: tab === "all" && !categoryF && !search },
-              { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" && !categoryF },
-              { label: "💛 Mum", to: "/shop/mum", active: tab === "mum" && !categoryF },
-              { label: "Bundles", to: "/bundles", active: false },
-              { label: "Gifts", to: "/bundles/baby-shower-gift-boxes", active: false },
+              { label: "All", to: "/shop", active: tab === "all" },
+              { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" },
+              { label: "💛 Mum", to: "/shop/mum", active: tab === "mum" },
+              { label: "🎁 Gifts", to: "/shop?tab=push-gift", active: tab === "push-gift" },
             ].map(c => (
               <Link key={c.label} to={c.to}
                 className={`rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
@@ -612,16 +603,6 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {/* Category-icon nav (shared design), wraps so all links show without
-          horizontal scrolling. Hidden while searching. */}
-      {!search && stripCats.length > 0 && (
-        <div className="bg-background border-b border-border">
-          <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-3">
-            <CategoryNav categories={stripCats} linkFor={hrefFor} />
-          </div>
-        </div>
-      )}
-
       {/* Slim trust strip */}
       <div className="border-b border-border bg-card">
         <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] md:text-xs text-muted-foreground">
@@ -631,59 +612,25 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {/* Filter / sort bars hide entirely in sections-only mode. The new
-          shop layout has no flat grid to filter against. */}
+      {/* Filter + Sort toolbar — same controls on mobile and desktop. Filter
+          opens category / price / brand; Sort covers popularity and price. */}
       {!sectionsOnlyMode && (<>
-      {/* MOBILE: Filter + Sort buttons */}
-      <div className="md:hidden bg-card border-b border-border py-2.5 px-4 sticky top-[68px] z-50">
-        <div className="flex gap-2 items-center">
+      <div className="bg-card border-b border-border py-2.5 px-3 md:px-6 sticky top-[68px] z-50">
+        <div className="max-w-[1200px] mx-auto flex gap-2 items-center">
           <button onClick={() => { setFilterDrawerInitialSection("filter"); setFilterDrawerOpen(true); }}
-            className="flex-1 flex items-center justify-center gap-2 rounded-pill border-[1.5px] border-border py-2.5 text-sm font-semibold font-body min-h-[44px] relative">
+            className="flex-1 md:flex-none md:px-8 flex items-center justify-center gap-2 rounded-pill border-[1.5px] border-border py-2.5 text-sm font-semibold font-body min-h-[44px] relative hover:border-forest transition-colors">
             <Filter className="h-4 w-4" /> Filter
             {activeFilterCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-coral text-primary-foreground text-[10px] font-bold flex items-center justify-center">{activeFilterCount}</span>
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-coral text-primary-foreground text-[10px] font-bold">{activeFilterCount}</span>
             )}
           </button>
           <button
             onClick={() => setSortSheetOpen(true)}
-            className="flex-1 flex items-center justify-center gap-2 rounded-pill border-[1.5px] border-border py-2.5 text-sm font-semibold font-body min-h-[44px]"
+            className="flex-1 md:flex-none md:px-8 flex items-center justify-center gap-2 rounded-pill border-[1.5px] border-border py-2.5 text-sm font-semibold font-body min-h-[44px] hover:border-forest transition-colors"
           >
             <ArrowUpDown className="h-4 w-4" /> {sortLabel}
           </button>
-          <span className="text-muted-foreground text-xs whitespace-nowrap">{filtered.length}</span>
-        </div>
-      </div>
-
-      {/* DESKTOP: Full filter bar */}
-      <div className="hidden md:block bg-card border-b border-border py-3 px-4 md:px-10 sticky top-[68px] z-50">
-        <div className="max-w-[1200px] mx-auto space-y-2">
-          <div className="overflow-x-auto scrollbar-hide">
-            <div className="flex gap-2 items-center min-w-max">
-              <span className="text-muted-foreground text-[13px] font-semibold mr-1 whitespace-nowrap">Budget:</span>
-              {[["all", "All"], ["starter", "🌱 Starter"], ["standard", "🌿 Standard"], ["premium", "✨ Premium"]].map(([v, l]) => (
-                <button key={v} onClick={() => setFilter("budget", v)}
-                  className={`rounded-pill px-3 py-2 text-xs font-semibold border-[1.5px] transition-all font-body whitespace-nowrap min-h-[44px] ${budgetF === v ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {l}
-                </button>
-              ))}
-              <div className="w-px h-5 bg-border mx-1 flex-shrink-0" />
-              <select value={sortBy} onChange={e => setFilter("sort", e.target.value)} className="rounded-pill border-[1.5px] border-border px-3 py-2 text-xs font-semibold font-body bg-card text-muted-foreground outline-none whitespace-nowrap flex-shrink-0 min-h-[44px]">
-                <option value="popular">Sort: Popular</option>
-                <option value="price-low">Price: Low → High</option>
-                <option value="price-high">Price: High → Low</option>
-                <option value="rating">Top Rated</option>
-              </select>
-              <span className="text-muted-foreground text-xs whitespace-nowrap flex-shrink-0">{filtered.length} items</span>
-            </div>
-          </div>
-
-          {budgetF && budgetF !== "all" && budgetF !== "standard" && (
-            <div>
-              <span className="bg-forest-light text-forest rounded-pill px-3 py-0.5 text-[11px] font-semibold">
-                ✓ Brands pre-selected for {budgetF} — all {filtered.length} products visible
-              </span>
-            </div>
-          )}
+          <span className="text-muted-foreground text-xs md:text-sm whitespace-nowrap md:ml-2">{filtered.length} items</span>
         </div>
       </div>
 
@@ -692,12 +639,6 @@ export default function ShopPage() {
       {activeFilterCount > 0 && (
         <div className="max-w-[1200px] mx-auto px-4 md:px-10 pt-3">
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-none -mx-4 md:mx-0 px-4 md:px-0">
-            {tab !== "all" && (
-              <FilterChip label={`Shop: ${tab === "baby" ? "Baby" : tab === "mum" ? "Mum" : "Push Gifts"}`} onRemove={() => setFilter("tab", "all")} />
-            )}
-            {budgetF !== "all" && (
-              <FilterChip label={`Budget: ${budgetF[0].toUpperCase() + budgetF.slice(1)}`} onRemove={() => setFilter("budget", "all")} />
-            )}
             {categoryF && (
               <FilterChip label={`Category: ${filteredCategories.find(c => c.slug === categoryF)?.name || categoryF}`} onRemove={() => setFilter("category", "")} />
             )}
