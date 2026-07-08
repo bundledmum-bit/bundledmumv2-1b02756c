@@ -19,6 +19,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
+import { SizesEditor, ColorsEditor, normalizeSizes, normalizeColors, type SizeRow, type ColorRow } from "@/components/admin/VariantEditors";
 import {
   useApprovalRequests,
   useProcessApproval,
@@ -473,6 +474,30 @@ const PRIORITIES = ["essential", "recommended", "nice-to-have"] as const;
 const TIERS = ["starter", "standard", "premium"] as const;
 const REORDER_DAYS = ["21", "30", "45"] as const;
 
+// Small label showing where the proposed variants came from.
+function SourceBadge({ source }: { source: string }) {
+  if (source === "none") return null;
+  const label = source === "vendor" ? "From vendor" : source === "ai_suggested" ? "AI suggested" : source;
+  const cls = source === "vendor" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700";
+  return <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${cls}`}>{label}</span>;
+}
+
+// Read-only chips of variants already on the product being attached to, so the
+// admin doesn't duplicate them.
+function ExistingVariants({ label, items }: { label: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="mb-2 text-xs text-muted-foreground">
+      <span className="font-semibold">{label}:</span>{" "}
+      <span className="inline-flex flex-wrap gap-1 align-middle">
+        {items.map((it, i) => (
+          <span key={i} className="px-1.5 py-0.5 rounded bg-muted text-foreground/70">{it}</span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
 function ReviewEditModal({
   req, draft, onClose, onApplied,
 }: {
@@ -510,6 +535,24 @@ function ReviewEditModal({
   const [imageUrl, setImageUrl] = useState<string>(draft.image_url ?? "");
   const [zoomOpen, setZoomOpen] = useState(false);
   const [busy, setBusy] = useState<null | "confirm" | "reject">(null);
+
+  // Editable size/colour lists from the propose draft (vendor-supplied or
+  // AI-suggested). Sent (possibly edited) in the apply payload on confirm.
+  const [sizes, setSizes] = useState<SizeRow[]>(
+    Array.isArray(draft.sizes)
+      ? draft.sizes.map((s: any) => ({ size_code: s?.size_code ?? "", size_label: s?.size_label ?? "" }))
+      : [],
+  );
+  const [colors, setColors] = useState<ColorRow[]>(
+    Array.isArray(draft.colors)
+      ? draft.colors.map((c: any) => ({ color_name: c?.color_name ?? "", color_hex: c?.color_hex ?? null }))
+      : [],
+  );
+  const sizesSource: string = draft.sizes_source ?? "none";
+  const colorsSource: string = draft.colors_source ?? "none";
+  const sizeReasoning: string = draft.size_reasoning ?? "";
+  const existingSizes: any[] = Array.isArray(draft.existing_product_sizes) ? draft.existing_product_sizes : [];
+  const existingColors: any[] = Array.isArray(draft.existing_product_colors) ? draft.existing_product_colors : [];
 
   // Products in this subcategory, for the "attach to existing" picker.
   const { data: peerProducts = [] } = useQuery({
@@ -564,6 +607,9 @@ function ReviewEditModal({
         // Replacement image (or the vendor's, since imageUrl starts from it).
         // Omitted when empty so the backend falls back to the vendor's image.
         ...(imageUrl.trim() ? { image_url: imageUrl.trim() } : {}),
+        // Confirmed variant lists → product_sizes / product_colors. Only sent
+        // on confirm; a reject publishes without touching variants.
+        ...(decision === "confirm" ? { sizes: normalizeSizes(sizes), colors: normalizeColors(colors) } : {}),
       };
       const { data, error } = await supabase.functions.invoke("approve-pending-product", {
         body: { mode: "apply", request_id: req.id, payload },
@@ -661,6 +707,34 @@ function ReviewEditModal({
                 <Label>Item type</Label>
                 <Input value={itemType} onChange={(e) => setItemType(e.target.value)} placeholder="e.g. Formula, Onesie" />
               </div>
+            </div>
+          </div>
+
+          {/* Sizes & Colours — editable variant lists written to
+              product_sizes / product_colors on confirm. */}
+          <div className="border-t pt-3 space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Label>Sizes</Label>
+                <SourceBadge source={sizesSource} />
+              </div>
+              {sizeReasoning && <p className="text-xs text-muted-foreground mb-2">{sizeReasoning}</p>}
+              <ExistingVariants
+                label="Already on this product"
+                items={existingSizes.map((s: any) => s?.size_label || s?.size_code).filter(Boolean)}
+              />
+              <SizesEditor value={sizes} onChange={setSizes} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Label>Colours</Label>
+                <SourceBadge source={colorsSource} />
+              </div>
+              <ExistingVariants
+                label="Already on this product"
+                items={existingColors.map((c: any) => c?.color_name).filter(Boolean)}
+              />
+              <ColorsEditor value={colors} onChange={setColors} />
             </div>
           </div>
 
