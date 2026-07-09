@@ -1512,6 +1512,13 @@ export default function CheckoutPage() {
           },
           items,
         },
+        // Klump's SDK constructor VALIDATES that every lifecycle callback is a
+        // function and throws "<name> callback is required" otherwise — the
+        // live console showed "onLoad callback is required". Provide ALL five
+        // (onLoad, onOpen, onSuccess, onError, onClose) so the constructor can
+        // never throw for a missing callback and the widget always opens.
+        onLoad: () => { console.log("[checkout] Klump widget loaded"); },
+        onOpen: () => { console.log("[checkout] Klump widget opened"); },
         onSuccess: () => {
           // Klump fired onSuccess = the customer completed payment. Advance to
           // the confirmation page right away; the order stays payment_status
@@ -1520,12 +1527,12 @@ export default function CheckoutPage() {
           // never strand the customer on the "Confirming your order…" overlay.
           finalizeAndConfirm(savedOrder, orderData);
         },
-        onClose: () => { setProcessing(false); },
         onError: (err: unknown) => {
           console.error("[checkout] Klump error:", err);
           setProcessing(false);
           toast.error("Klump payment could not be started. Please try again or choose another payment method.");
         },
+        onClose: () => { setProcessing(false); },
       });
       return;
     }
