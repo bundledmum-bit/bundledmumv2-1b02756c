@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Brand } from "@/lib/supabaseAdapters";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import KlumpAdBanner from "@/components/KlumpAdBanner";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
@@ -1238,6 +1239,18 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               >
                 <img src={whatsappLogo} alt="" className="h-5 w-5" /> Order via WhatsApp
               </a>
+            )}
+
+            {/* Klump "pay later" info banner — directly under the WhatsApp CTA.
+                Passive (not a payment button); self-hides when Klump is off, the
+                key is missing, or price is 0. Reads the same site_settings source
+                as checkout (klump_public_key / payment_method_klump_enabled). */}
+            {selectedBrand && (
+              <KlumpAdBanner
+                price={Math.round(Number(selectedBrand.price) || 0)}
+                publicKey={typeof settings?.klump_public_key === "string" ? settings.klump_public_key : ""}
+                enabled={settings?.payment_method_klump_enabled === true || settings?.payment_method_klump_enabled === "true" || settings?.payment_method_klump_enabled === "1"}
+              />
             )}
 
             <SubscribeInline
