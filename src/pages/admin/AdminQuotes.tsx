@@ -761,6 +761,25 @@ function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null
   const klumpNetProfit = Number(data.net_profit) - klumpCommission;
   const klumpNetPositive = klumpNetProfit > 0;
 
+  // Klump-adjusted discount ceiling. netProfit0 / total0 are the ZERO-discount
+  // figures, both from the RPC (same basis as the existing ceiling): the RPC's
+  // net reduces one-to-one with discount, so netProfit0 = net_profit +
+  // discount_amount, and total0 is the customer total before any discount
+  // (subtotal + service + delivery + gift wrap). Solving for D in
+  //   (netProfit0 - D) - p*(total0 - D) = 0
+  // gives D_klump = (netProfit0 - p*total0) / (1 - p); the (1 - p) denominator
+  // accounts for the commission shrinking as the discount grows. Recomputes
+  // whenever the RPC figures do, exactly like the existing ceiling.
+  const klumpP = klumpPercent / 100;
+  const netProfit0 = Number(data.net_profit) + Number(data.discount_amount);
+  const total0 =
+    Number(data.product_revenue) + Number(data.service_fee) +
+    Number(data.delivery_fee) + Number(data.gift_wrap_fee);
+  const klumpDiscountCeiling = klumpP < 1
+    ? Math.round((netProfit0 - klumpP * total0) / (1 - klumpP))
+    : 0;
+  const klumpNoDiscountRoom = klumpDiscountCeiling < 0;
+
   return (
     <section className="bg-muted/20 border-2 border-dashed border-text-light/40 rounded-xl p-4">
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -848,6 +867,14 @@ function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null
       <div className="mt-3 rounded-lg bg-forest/10 border border-forest/20 px-3 py-2 text-[12px] text-forest font-semibold">
         You can discount up to {fmtN(data.max_discount_breakeven)} before this quote loses money.
       </div>
+      {klumpCommissionEnabled && (
+        <div className="mt-1.5 rounded-lg bg-amber-100/60 border border-amber-300 px-3 py-2 text-[12px] text-amber-800 font-semibold">
+          If paid with Klump: discount up to {fmtN(Math.max(0, klumpDiscountCeiling))} before this quote loses money.
+          {klumpNoDiscountRoom && (
+            <span className="block font-normal text-[11px] mt-0.5">A Klump-paid customer leaves no discount room on this quote.</span>
+          )}
+        </div>
+      )}
       {data.all_items_have_cost === false && (
         <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-800">
           {missingCost} item{missingCost === 1 ? "" : "s"} missing cost — profit may be understated.
