@@ -333,7 +333,12 @@ export default function CheckoutPage() {
         }
         setEnabledPayments(map);
         const enabled = Object.entries(map).filter(([, v]) => v).map(([k]) => k);
-        if (enabled.length === 1) setPayment(enabled[0] as any);
+        // Pre-select from a ?pay= deep-link (e.g. the quote page's "Pay with
+        // Klump" CTA → /checkout?pay=klump). Honoured only when that method is
+        // enabled; otherwise fall through to the normal auto-select silently.
+        const preselect = new URLSearchParams(location.search).get("pay");
+        if (preselect && map[preselect]) setPayment(preselect as any);
+        else if (enabled.length === 1) setPayment(enabled[0] as any);
         else if (enabled.length > 0 && !map[payment]) setPayment(enabled[0] as any);
       });
   }, []);
