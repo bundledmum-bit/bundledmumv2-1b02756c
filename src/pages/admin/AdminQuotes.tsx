@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import { recordQuoteDownload } from "@/hooks/useQuoteShare";
+import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
@@ -677,11 +678,13 @@ const BLANK_FORM: QuoteForm = {
 // the SECURITY DEFINER get_quote_profit RPC, which returns { authorized: false }
 // for anyone other than super_admin / admin. The frontend role check below just
 // skips the call + hides the panel for those roles.
-function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: string | null }) {
+function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null; role?: string | null; liveTotal: number }) {
   const r = String(role || "").trim().toLowerCase();
   const isAdminRole = r === "super_admin" || r === "admin";
 
   const queryClient = useQueryClient();
+  // Klump BNPL commission (rate + on/off) from site_settings, never hardcoded.
+  const { data: settings } = useSiteSettings();
   const { data } = useQuery({
     queryKey: ["quote-profit", quoteId],
     enabled: !!quoteId && isAdminRole,
@@ -744,6 +747,20 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
   const netPositive = Number(data.net_profit) > 0;
   const missingCost = (Number(data.total_items) || 0) - (Number(data.items_costed) || 0);
 
+  // Klump BNPL commission preview. Rate + on/off from site_settings (default 3%
+  // if missing/invalid). Computed off the LIVE (possibly discounted) quote total
+  // so it tracks the discount input as the admin edits it. Informational only —
+  // changes nothing stored and does not touch the quote total.
+  const klumpCommissionEnabled =
+    settings?.klump_commission_enabled === true ||
+    settings?.klump_commission_enabled === "true" ||
+    settings?.klump_commission_enabled === "1";
+  const klumpPctRaw = Number(settings?.klump_commission_percent);
+  const klumpPercent = Number.isFinite(klumpPctRaw) && klumpPctRaw > 0 ? klumpPctRaw : 3;
+  const klumpCommission = Math.round((Number(liveTotal) || 0) * klumpPercent / 100);
+  const klumpNetProfit = Number(data.net_profit) - klumpCommission;
+  const klumpNetPositive = klumpNetProfit > 0;
+
   return (
     <section className="bg-muted/20 border-2 border-dashed border-text-light/40 rounded-xl p-4">
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -768,6 +785,25 @@ function QuoteProfitPanel({ quoteId, role }: { quoteId: string | null; role?: st
         </div>
         <ProfitRow k="Margin" v={`${Number(data.margin_pct).toFixed(1)}%`} />
       </dl>
+
+      {/* Klump BNPL commission preview — informational only, shown when the
+          Klump commission is enabled. Recomputes with the live discounted
+          total so the admin can weigh it before setting a discount. */}
+      {klumpCommissionEnabled && (Number(liveTotal) || 0) > 0 && (
+        <div className="mt-3 pt-3 border-t border-dashed border-amber-300 bg-amber-50/50 -mx-4 px-4 py-2">
+          <div className="flex items-center justify-between text-sm gap-2">
+            <span className="text-amber-800">If paid with Klump</span>
+            <span className="tabular-nums text-amber-800 font-semibold text-right">
+              minus {klumpPercent}% commission = minus {fmtN(klumpCommission)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm gap-2 mt-1.5 pt-1.5 border-t border-amber-200">
+            <span className="font-bold">Projected net profit if paid via Klump</span>
+            <span className={`font-bold tabular-nums ${klumpNetPositive ? "text-emerald-700" : "text-red-600"}`}>{fmtN(klumpNetProfit)}</span>
+          </div>
+          <p className="text-[10px] text-amber-700/80 mt-1">Applies only if the customer pays with Klump. Does not change the quote total.</p>
+        </div>
+      )}
 
       {/* Editable Other Cost — saved via the role-gated set_quote_other_cost
           RPC, which returns the recalculated payload (no direct table write). */}
@@ -1994,7 +2030,7 @@ function QuoteEditor({
           {/* Profit & Discount Room — admin / super_admin only. Server-gated via
               get_quote_profit (the RPC returns no cost data to other roles); the
               role check here just avoids a pointless call + hides it cleanly. */}
-          {currentId && <QuoteProfitPanel quoteId={currentId} role={adminUser?.role} />}
+          {currentId && <QuoteProfitPanel quoteId={currentId} role={adminUser?.role} liveTotal={liveTotal} />}
 
           {/* Share URL + preview — only shows after the quote is saved. */}
           {currentId && quoteData?.share_token && (
