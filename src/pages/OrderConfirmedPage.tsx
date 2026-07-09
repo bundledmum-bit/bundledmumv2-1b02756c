@@ -18,6 +18,11 @@ export default function OrderConfirmedPage() {
     || (orderNumber ? sessionStorage.getItem(`share_token_${orderNumber}`) : null)
     || "";
   const [showShareModal, setShowShareModal] = useState(false);
+  // Klump orders arrive here payment_status "pending" — the klump-webhook flips
+  // them to "paid" server-side. We poll for that flip for a bounded window and
+  // NEVER block the page on it: the confirmation renders immediately either way.
+  const [paidViaPoll, setPaidViaPoll] = useState(false);
+  const [pollExhausted, setPollExhausted] = useState(false);
   const { data: settings } = useSiteSettings();
   const whatsapp = settings?.whatsapp_number || "";
   const bankName = settings?.bank_name || "";
@@ -55,6 +60,38 @@ export default function OrderConfirmedPage() {
 
   const order = orderData?.order;
   const referralCode = orderData?.referral_code || null;
+
+  // A Klump order awaiting its webhook confirmation. Bank transfer keeps its own
+  // "complete your payment" banner and card is already paid by the time it lands
+  // here, so this only applies to Klump-pending.
+  const awaitingKlump = !!order && order.payment_method === "klump" && order.payment_status !== "paid" && !paidViaPoll;
+
+  // Bounded poll (~24s) for the webhook to mark the order paid. If it does, we
+  // upgrade the hero to the full confirmed state; if the window elapses we show
+  // a reassuring "payment is being confirmed" message — never an infinite spin.
+  useEffect(() => {
+    if (!awaitingKlump || !orderNumber || !shareToken) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 8;
+    const DELAY = 3000;
+    const tick = async () => {
+      if (cancelled) return;
+      attempts++;
+      try {
+        const { data } = await supabase.functions.invoke("get-order-confirmation", {
+          body: { order_number: orderNumber, share_token: shareToken },
+        });
+        if (!cancelled && data?.order?.payment_status === "paid") { setPaidViaPoll(true); return; }
+      } catch { /* transient — keep polling */ }
+      if (cancelled) return;
+      if (attempts >= MAX_ATTEMPTS) { setPollExhausted(true); return; }
+      timer = setTimeout(tick, DELAY);
+    };
+    timer = setTimeout(tick, DELAY);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [awaitingKlump, orderNumber, shareToken]);
 
   // Mark this browser as having placed an order — used by AnnouncementEngine
   // to distinguish new_visitor vs returning_visitor audience targeting.
@@ -194,9 +231,15 @@ export default function OrderConfirmedPage() {
         <div className="absolute top-[-60px] left-[10%] w-[200px] h-[200px] rounded-full bg-coral/[0.07]" />
         <div className="absolute bottom-[-40px] right-[8%] w-[160px] h-[160px] rounded-full bg-primary-foreground/[0.04]" />
         <div className="max-w-[860px] mx-auto px-4 md:px-10 py-12 md:py-20 text-center">
-          <div className="w-[72px] h-[72px] bg-primary-foreground/[0.12] rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-pulse-scale">✅</div>
-          <h1 className="pf text-3xl md:text-5xl text-primary-foreground mb-2.5">Order Confirmed! 🎉</h1>
-          <p className="text-primary-foreground/70 text-sm md:text-[17px] mb-1.5">Thank you, {firstName}! Your bundle is on its way.</p>
+          <div className="w-[72px] h-[72px] bg-primary-foreground/[0.12] rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-pulse-scale">{awaitingKlump ? "⏳" : "✅"}</div>
+          <h1 className="pf text-3xl md:text-5xl text-primary-foreground mb-2.5">{awaitingKlump ? "Payment Received 🎉" : "Order Confirmed! 🎉"}</h1>
+          <p className="text-primary-foreground/70 text-sm md:text-[17px] mb-1.5">
+            {awaitingKlump
+              ? (pollExhausted
+                  ? `Thank you, ${firstName}! Your order is placed and we're confirming your payment — you'll get a confirmation email shortly.`
+                  : `Thank you, ${firstName}! We're confirming your payment now…`)
+              : `Thank you, ${firstName}! Your bundle is on its way.`}
+          </p>
           <div className="inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-5 py-2 mt-2.5">
             <span className="text-coral font-bold text-sm">Order #{orderId}</span>
           </div>

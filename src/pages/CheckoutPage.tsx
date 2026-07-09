@@ -1374,6 +1374,28 @@ export default function CheckoutPage() {
     navigate(`/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`);
   };
 
+  // Post-payment finalize: fire the logging/linking side-effects WITHOUT
+  // awaiting them, then advance to the confirmation page immediately. These
+  // are best-effort (Google Sheets sync via a no-cors fetch that has no
+  // timeout and can hang; quote-linking). Awaiting them — as the code used to —
+  // stranded the customer on the "Confirming your order… please don't close
+  // this page" overlay after a SUCCESSFUL payment whenever the sheets webhook
+  // stalled. They must never gate the customer's advance. Shared by every
+  // payment method (bank transfer, Klump, Paystack) so none can strand.
+  const finalizeAndConfirm = (
+    savedOrder: SavedOrderResult,
+    orderData: ReturnType<typeof buildOrderData>,
+  ) => {
+    clearCart();
+    void syncOrderToSheets({
+      orderId: savedOrder.id,
+      orderNumber: savedOrder.orderNumber,
+      fallbackData: orderData,
+    });
+    void linkQuoteIfPending(savedOrder.id);
+    navigateToConfirmation(savedOrder);
+  };
+
   const placeOrder = async () => {
     if (processing) return; // re-entrancy guard: the Klump mount div is a second trigger
     const cartSnapshot = getLiveCart();
@@ -1404,14 +1426,7 @@ export default function CheckoutPage() {
         toast.error("We couldn't place your order. Please try again.");
         return;
       }
-      await syncOrderToSheets({
-        orderId: savedOrder.id,
-        orderNumber: savedOrder.orderNumber,
-        fallbackData: orderData,
-      });
-      await linkQuoteIfPending(savedOrder.id);
-      clearCart();
-      await navigateToConfirmation(savedOrder);
+      finalizeAndConfirm(savedOrder, orderData);
       return;
     }
 
@@ -1497,15 +1512,13 @@ export default function CheckoutPage() {
           },
           items,
         },
-        onSuccess: async () => {
-          await syncOrderToSheets({
-            orderId: savedOrder.id,
-            orderNumber: savedOrder.orderNumber,
-            fallbackData: orderData,
-          });
-          await linkQuoteIfPending(savedOrder.id);
-          clearCart();
-          await navigateToConfirmation(savedOrder);
+        onSuccess: () => {
+          // Klump fired onSuccess = the customer completed payment. Advance to
+          // the confirmation page right away; the order stays payment_status
+          // pending until the klump-webhook marks it paid. Side-effects are
+          // non-blocking (see finalizeAndConfirm) so a stalled sheets sync can
+          // never strand the customer on the "Confirming your order…" overlay.
+          finalizeAndConfirm(savedOrder, orderData);
         },
         onClose: () => { setProcessing(false); },
         onError: (err: unknown) => {
@@ -1560,14 +1573,7 @@ export default function CheckoutPage() {
             return;
           }
 
-          await syncOrderToSheets({
-            orderId: savedOrder.id,
-            orderNumber: savedOrder.orderNumber,
-            fallbackData: orderData,
-          });
-          await linkQuoteIfPending(savedOrder.id);
-          clearCart();
-          await navigateToConfirmation(savedOrder);
+          finalizeAndConfirm(savedOrder, orderData);
         },
         onCancel: () => { setProcessing(false); toast.error("Payment cancelled"); },
       });
@@ -1584,14 +1590,7 @@ export default function CheckoutPage() {
           triggerRecoveryModal("dev-demo-save", "DEMO save failed");
           return;
         }
-        await syncOrderToSheets({
-          orderId: savedOrder.id,
-          orderNumber: savedOrder.orderNumber,
-          fallbackData: orderData,
-        });
-        await linkQuoteIfPending(savedOrder.id);
-        clearCart();
-        await navigateToConfirmation(savedOrder);
+        finalizeAndConfirm(savedOrder, orderData);
         return;
       }
       setProcessing(false);
