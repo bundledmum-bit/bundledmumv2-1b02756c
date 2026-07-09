@@ -30,13 +30,31 @@ interface FormData {
 
 type SavedOrderResult = { id: string; orderNumber: string | null; share_token: string | null };
 
-// Klump's checkout SDK, per their live docs (Getting Started → Checkout
-// Button/Widget). The SDK is loaded from the document head; it scans the page
-// for the #klump__checkout mount div, and only then exposes the global `Klump`
-// constructor used to launch the widget: `new Klump(payload)`.
+// Klump's checkout SDK. Loaded from the document head, it renders a
+// "Pay with Klump" button into the #klump__checkout mount div and launches the
+// payment widget when a Klump instance is created: `new Klump(payload)`.
+//
+// IMPORTANT — how the constructor is exposed: klump.js declares `class Klump {}`
+// at the TOP LEVEL of a classic <script>. A top-level class binding lives in the
+// global LEXICAL environment: it is reachable as a bare `Klump` identifier but is
+// NOT a property of window (the SDK never assigns window.Klump), so
+// `window.Klump` is ALWAYS undefined. Verified by decoding the SDK: it defines a
+// validated constructor (publicKey, amount, currency, items, shipping_fee,
+// meta_data, redirect_url, merchant_reference, onSuccess/onOpen/onError) and has
+// no window assignment and no data-* attribute reads. Indirect eval runs in
+// global scope, where the lexical `Klump` binding resolves — this returns the
+// constructor once klump.js has executed, or null if it hasn't loaded yet.
 const KLUMP_SCRIPT_ID = "klump-js-sdk";
 const KLUMP_SCRIPT_SRC = "https://js.useklump.com/klump.js";
 const KLUMP_CHECKOUT_DIV_ID = "klump__checkout";
+function resolveKlumpCtor(): any {
+  try {
+    // eslint-disable-next-line no-eval
+    return (0, eval)("typeof Klump !== 'undefined' ? Klump : null");
+  } catch {
+    return null;
+  }
+}
 
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
@@ -322,10 +340,12 @@ export default function CheckoutPage() {
 
   // Load Klump's SDK (deferred, per Klump's docs) only when the toggle is on,
   // so storefronts without Klump never fetch a third-party script. The SDK
-  // scans for #klump__checkout on load and attaches window.Klump only if it's
-  // present — the mount div is rendered in JSX whenever enabledPayments.klump
+  // scans for #klump__checkout on load and renders its "Pay with Klump" button
+  // into it — the mount div is rendered in JSX whenever enabledPayments.klump
   // is true, and React commits that JSX before this effect runs, so the div
-  // exists in the DOM by the time the script executes.
+  // exists in the DOM by the time the script executes. The Klump constructor is
+  // then resolvable via resolveKlumpCtor() (a global lexical binding, not
+  // window.Klump).
   useEffect(() => {
     if (!enabledPayments.klump) return;
     if (document.getElementById(KLUMP_SCRIPT_ID)) return;
@@ -1401,10 +1421,11 @@ export default function CheckoutPage() {
         toast.error("Buy Now Pay Later is not configured. Please choose another payment method.");
         return;
       }
-      // Klump attaches window.Klump only after klump.js loads AND finds the
-      // #klump__checkout mount div (rendered in the payment section below). If
-      // the constructor isn't there yet, the SDK is still initializing.
-      const KlumpCtor = (window as any).Klump;
+      // Resolve the Klump constructor from the global LEXICAL scope (bare
+      // `Klump`), NOT window.Klump — klump.js declares it as a top-level class in
+      // a classic script, so it is never a window property (see resolveKlumpCtor).
+      // null means klump.js hasn't executed yet.
+      const KlumpCtor = resolveKlumpCtor();
       if (typeof KlumpCtor !== "function") {
         setProcessing(false);
         toast.error("Klump is still loading. Please wait a moment and try again.");
