@@ -25,7 +25,7 @@ import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Filter, ArrowUpDown, Check, Truck, ShieldCheck, RotateCcw, Search } from "lucide-react";
 
-function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; onAdd: (item: any) => void; deliveryText?: string }) {
+function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, deepLinkSku, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; deepLinkSku?: string; onAdd: (item: any) => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
   const seedBrand = selectedBrandId
     ? (product.brands.find(b => b.id === selectedBrandId) || defaultBrand)
@@ -45,6 +45,11 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   const isLowStock = selectedBrand.stockQuantity != null && selectedBrand.stockQuantity > 0 && selectedBrand.stockQuantity <= 5;
 
   const displayImage = selectedBrand.imageUrl || product.imageUrl;
+  // When this card was surfaced by a brand-matched search, deep-link the
+  // product to the matched brand via ?sku so the PDP opens on that brand.
+  const productHref = deepLinkSku
+    ? `/products/${product.slug}?sku=${encodeURIComponent(deepLinkSku)}`
+    : `/products/${product.slug}`;
   const showSale = selectedBrand.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
   const savePct = showSale ? Math.round(((selectedBrand.compareAtPrice! - selectedBrand.price) / selectedBrand.compareAtPrice!) * 100) : 0;
 
@@ -78,7 +83,7 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   return (
     <div className={`bg-card rounded-[16px] border border-border/60 overflow-hidden flex flex-col group transition-shadow hover:shadow-md ${(allBrandsOos || productLevelOos) ? "opacity-60" : ""}`}>
       {/* Image */}
-      <Link to={`/products/${product.slug}`} className="block relative aspect-square overflow-hidden bg-[#f5f5f5]">
+      <Link to={productHref} className="block relative aspect-square overflow-hidden bg-[#f5f5f5]">
         {productLevelOos ? (
           <span className="absolute top-2 left-2 bg-[#E53935] text-white text-[9px] font-bold px-2 py-0.5 rounded-pill z-10 uppercase tracking-wide">Out of Stock</span>
         ) : product.badge ? (
@@ -108,7 +113,7 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
       {/* Content */}
       <div className="p-3 flex flex-col gap-2 flex-1">
         {/* Name links to product page */}
-        <Link to={`/products/${product.slug}`} className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2 hover:text-forest transition-colors min-h-[36px]">
+        <Link to={productHref} className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2 hover:text-forest transition-colors min-h-[36px]">
           {product.name}
         </Link>
 
@@ -254,6 +259,12 @@ export default function ShopPage() {
     },
   });
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  // Brand pre-select: when the search resolved to a brand (matched_brand), the
+  // results pre-select that brand. "Show all brands" lets the shopper opt out
+  // and see the default (cheapest) brand per product instead.
+  const [showAllBrands, setShowAllBrands] = useState(false);
+  const searchMatchedBrand: string | null = (searchData as any)?.matched_brand || null;
+  useEffect(() => { setShowAllBrands(false); }, [debouncedSearch]);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [filterDrawerInitialSection, setFilterDrawerInitialSection] = useState<"filter" | "sort" | undefined>(undefined);
@@ -310,7 +321,7 @@ export default function ShopPage() {
   // with no brandId; a brand-name match emits one hit per matching
   // brand with that brand pre-selected. When the same product surfaces
   // both ways, the brand-match version wins.
-  type Hit = { product: Product; brandId?: string; isBrandMatch: boolean };
+  type Hit = { product: Product; brandId?: string; brandSku?: string; isBrandMatch: boolean };
   const filtered = useMemo<Hit[]>(() => {
     const q = search.trim();
 
@@ -357,9 +368,19 @@ export default function ShopPage() {
         if (!p) continue;                 // not in the active catalogue
         if (!passesTab(p)) continue;      // mirror tab scoping client-side
         if (!passesFilters(p)) continue;  // mirror chip/price/stock filters
-        const matchedBrandId = rp.brand?.id && p.brands.some(b => b.id === rp.brand.id)
+        // Pre-select the searched brand only when the RPC signals a match
+        // (per-brand matched_brand, or a top-level matched_brand for the query).
+        // A generic query (matched_brand null) falls back to the default brand,
+        // exactly as before. "Show all brands" opts out of the pre-select.
+        const brandMatched = rp.brand?.matched_brand === true || !!(searchData as any)?.matched_brand;
+        const matchedBrandId = !showAllBrands && brandMatched && rp.brand?.id && p.brands.some(b => b.id === rp.brand.id)
           ? rp.brand.id : undefined;
-        hits.push({ product: p, brandId: matchedBrandId, isBrandMatch: !!matchedBrandId });
+        hits.push({
+          product: p,
+          brandId: matchedBrandId,
+          brandSku: matchedBrandId ? (rp.brand?.sku || undefined) : undefined,
+          isBrandMatch: !!matchedBrandId,
+        });
       }
     } else {
       // BROWSE MODE — unchanged: one hit per product, dedup by name.
@@ -389,7 +410,7 @@ export default function ShopPage() {
     if (sortBy === "name_asc")  hits.sort((a, b) => a.product.name.localeCompare(b.product.name));
     if (sortBy === "newest")    hits.sort((a: any, b: any) => ((b.product as any).created_at || "").localeCompare((a.product as any).created_at || ""));
     return hits;
-  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF, searchData]);
+  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF, searchData, showAllBrands]);
 
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
@@ -816,6 +837,17 @@ export default function ShopPage() {
           </div>
         ) : (
           <>
+            {/* Brand pre-select indicator: search resolved to a brand. */}
+            {!!trimmedSearch && searchMatchedBrand && !showAllBrands && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-forest-light border border-forest/20 px-3.5 py-2.5">
+                <span className="text-[13px] text-forest font-semibold">
+                  Showing <span className="font-bold">{searchMatchedBrand}</span> products
+                </span>
+                <button onClick={() => setShowAllBrands(true)} className="text-[12px] font-semibold text-forest underline underline-offset-2 hover:text-forest-deep">
+                  Show all brands
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2.5 md:gap-3 mt-2">
               {visibleProducts.map((hit, idx) => (
                 <ProductCard
@@ -824,6 +856,7 @@ export default function ShopPage() {
                   defaultBudget={!budgetF || budgetF === "all" ? "standard" : budgetF}
                   forceBrand={brandF || undefined}
                   selectedBrandId={hit.brandId}
+                  deepLinkSku={hit.brandSku}
                   matchBadge={hit.isBrandMatch ? "Brand match" : undefined}
                   deliveryText={deliveryText}
                   onAdd={item => { fireSelectItem(hit.product, idx); addToCart(item); toast.success(`✓ ${item.name} added to cart`, { action: { label: "View Cart →", onClick: () => window.location.href = "/cart" } }); }}

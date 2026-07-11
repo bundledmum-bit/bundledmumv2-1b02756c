@@ -10,7 +10,11 @@ import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
  * hero never renders empty. A strong scrim keeps copy legible over any photo.
  */
 export type HeroSlide = {
+  /** Desktop / default background image. */
   image?: string | null;
+  /** Optional mobile-specific background image (portrait crop). Falls back to
+   *  `image` when not provided. */
+  imageMobile?: string | null;
   eyebrow?: string;
   title: string;
   subtitle?: string;
@@ -59,19 +63,28 @@ export default function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
       onTouchEnd={onTouchEnd}
     >
       <div className="relative h-[440px] md:h-[520px] w-full bg-forest">
-        {/* Cross-fading background images */}
-        {list.map((s, i) => (
-          s.image ? (
-            <img
-              key={`${s.image}-${i}`}
-              src={s.image}
-              alt=""
-              aria-hidden="true"
-              loading={i === 0 ? "eager" : "lazy"}
-              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out ${i === active ? "opacity-100" : "opacity-0"}`}
-            />
-          ) : null
-        ))}
+        {/* Cross-fading background images. Each slide can carry a separate
+            mobile asset (portrait) and desktop asset (landscape); the <picture>
+            picks the right one for the viewport so neither is badly cropped. */}
+        {list.map((s, i) => {
+          const desktopSrc = s.image || s.imageMobile || null;
+          const mobileSrc = s.imageMobile || s.image || null;
+          if (!desktopSrc) return null;
+          return (
+            <picture key={`${desktopSrc}-${i}`}>
+              {mobileSrc && mobileSrc !== desktopSrc && (
+                <source media="(max-width: 767px)" srcSet={mobileSrc} />
+              )}
+              <img
+                src={desktopSrc}
+                alt=""
+                aria-hidden="true"
+                loading={i === 0 ? "eager" : "lazy"}
+                className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ease-out ${i === active ? "opacity-100" : "opacity-0"}`}
+              />
+            </picture>
+          );
+        })}
 
         {/* Legibility scrim */}
         <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/45 to-foreground/5" />

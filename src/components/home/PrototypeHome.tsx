@@ -70,9 +70,12 @@ export default function PrototypeHome() {
   // built from real imagery + the DB brand copy so the hero never renders empty.
   const heroSlides: HeroSlide[] = useMemo(() => {
     const configured = asArray(settings?.home_hero_slides)
-      .filter((s: any) => s && (s.title || s.image_url))
+      .filter((s: any) => s && (s.title || s.image_url_desktop || s.image_url_mobile || s.image_url))
       .map((s: any) => ({
-        image: s.image_url || null,
+        // Prefer the explicit desktop asset; fall back to the legacy single
+        // image_url so older rows keep working.
+        image: s.image_url_desktop || s.image_url || null,
+        imageMobile: s.image_url_mobile || null,
         title: s.title || heroTitle,
         subtitle: s.subtitle || undefined,
         ctaLabel: s.cta_text || bundleCtaLabel,
