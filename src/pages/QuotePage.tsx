@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Download, MessageCircle, ShoppingBag, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,9 +27,18 @@ import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
 export default function QuotePage() {
   const { shareToken } = useParams<{ shareToken: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { setCart } = useCart();
   const { data: settings } = useSiteSettings();
   const whatsappNumber = String(settings?.whatsapp_number ?? "").replace(/^"|"$/g, "").replace(/\D/g, "");
+  // Klump BNPL is only advertised when it's actually offered at checkout.
+  const klumpEnabled =
+    settings?.payment_method_klump_enabled === true ||
+    settings?.payment_method_klump_enabled === "true" ||
+    settings?.payment_method_klump_enabled === "1";
+  // Pre-select intent: from the email deep-link (/quote/:token?pay=klump) or the
+  // Klump CTA below. Carried through to /checkout?pay=klump to preselect Klump.
+  const urlPayKlump = searchParams.get("pay") === "klump";
 
   const quoteQ = useQuoteByShareToken(shareToken);
   const itemsQ = useQuoteItemsByShareToken(shareToken);
@@ -125,8 +134,13 @@ export default function QuotePage() {
     });
   }, [quote?.created_at]);
 
-  const handleAddToCart = () => {
+  // Whether the pending checkout should preselect Klump (set by the Klump CTA,
+  // or inherited from a ?pay=klump deep-link). Reused by confirmAndCheckout.
+  const [pendingPayKlump, setPendingPayKlump] = useState(false);
+
+  const handleAddToCart = (payKlump = false) => {
     if (!quote || acceptDisabled) return;
+    setPendingPayKlump(payKlump);
     setConfirmReplace(true);
   };
 
@@ -162,7 +176,10 @@ export default function QuotePage() {
       sessionStorage.setItem(PENDING_QUOTE_TOKEN_KEY, shareToken);
       setConfirmReplace(false);
       setLoadingCart(false);
-      navigate("/checkout");
+      // Preselect Klump when requested via the CTA or the ?pay=klump deep-link.
+      // Checkout falls back silently if Klump is disabled there.
+      const preselectKlump = pendingPayKlump || urlPayKlump;
+      navigate(preselectKlump ? "/checkout?pay=klump" : "/checkout");
     } catch (e: any) {
       console.error("[quote] cart replace failed:", e);
       toast.error("Could not load the quoted items into your cart.");
@@ -468,13 +485,22 @@ export default function QuotePage() {
         {/* Actions */}
         <div className="quote-print-hide flex flex-col sm:flex-row gap-3 mb-6">
           <button
-            onClick={handleAddToCart}
+            onClick={() => handleAddToCart(false)}
             disabled={acceptDisabled || loadingCart || items.length === 0}
             className="flex-1 inline-flex items-center justify-center gap-2 bg-coral text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ShoppingBag className="w-4 h-4" />
             {isExpired ? "Quote expired" : isLocked ? "Quote already used" : "Add to Cart & Checkout"}
           </button>
+          {klumpEnabled && !isExpired && !isLocked && (
+            <button
+              onClick={() => handleAddToCart(true)}
+              disabled={acceptDisabled || loadingCart || items.length === 0}
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-forest text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              🛍️ Buy Now, Pay Later with Klump
+            </button>
+          )}
           <button
             onClick={handleDownloadPdf}
             disabled={downloadingPdf}

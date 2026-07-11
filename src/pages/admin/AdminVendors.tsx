@@ -18,6 +18,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
+import { SizesEditor, ColorsEditor, normalizeSizes, normalizeColors, type SizeRow, type ColorRow } from "@/components/admin/VariantEditors";
+import BrandGalleryManager from "@/components/admin/BrandGalleryManager";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { useAllProducts } from "@/hooks/useSupabaseData";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1096,7 +1098,7 @@ function ProductEditDialog({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("brands")
-        .select("id, product_id, brand_name, description, cost_price, price, compare_at_price, stored_image_url, image_url, thumbnail_url, weight_kg, weight_range_kg, pack_count, diaper_type, item_type, size_variant, variant_type, tier, in_stock, low_stock_threshold, vendor_id")
+        .select("id, product_id, brand_name, description, cost_price, price, compare_at_price, stored_image_url, stored_images, image_url, thumbnail_url, weight_kg, weight_range_kg, pack_count, diaper_type, item_type, size_variant, variant_type, tier, in_stock, low_stock_threshold, vendor_id")
         .eq("id", row.brand_id)
         .single();
       if (error) throw error;
@@ -1437,6 +1439,16 @@ function ProductEditDialog({
           {newImage && <p className="text-[11px] text-amber-700">New image will be saved with your changes below.</p>}
         </section>
 
+        {/* Multi-image gallery — persists each change immediately via the
+            admin-brand-image-upload edge function (independent of Save). */}
+        {brand?.id && (
+          <BrandGalleryManager
+            brandId={brand.id}
+            initialPrimary={brand.stored_image_url ?? null}
+            initialGallery={Array.isArray(brand.stored_images) ? brand.stored_images : []}
+          />
+        )}
+
         {/* Brand attributes */}
         <section className="space-y-2 border-t pt-4">
           <h3 className="text-sm font-semibold text-[#2D6A4F]">Attributes</h3>
@@ -1657,6 +1669,9 @@ function AddProductDialog({
   const [packCount, setPackCount] = useState("");
   const [diaperType, setDiaperType] = useState("");
   const [weightRange, setWeightRange] = useState("");
+  // Optional per-product variants → pending_sizes / pending_colors jsonb columns.
+  const [pendingSizes, setPendingSizes] = useState<SizeRow[]>([]);
+  const [pendingColors, setPendingColors] = useState<ColorRow[]>([]);
   const [saving, setSaving] = useState(false);
 
   const productMatches = useMemo(() => {
@@ -1720,6 +1735,9 @@ function AddProductDialog({
           pack_count: has("pack_count") && packCount ? Math.round(Number(packCount)) : null,
           color: has("color") ? (color.trim() || null) : null,
           weight_range_kg: has("weight_range_kg") ? (weightRange.trim() || null) : null,
+          // Optional variant lists (empty arrays when the vendor adds none).
+          pending_sizes: normalizeSizes(pendingSizes),
+          pending_colors: normalizeColors(pendingColors),
           // Vendor: existing → vendor_id; new → vendor_name/phone/whatsapp; none → all null.
           // The approval promotion links the existing vendor or creates the new one.
           vendor_id: vendorMode === "existing" ? addVendorId : null,
@@ -1883,6 +1901,26 @@ function AddProductDialog({
                   submission form. Offer where the map lists "gender" once supported. */}
             </div>
           )}
+
+          {/* Optional sizes / colours — for clothing, shoes and other variant
+              products. Left empty for products that don't come in variants. */}
+          <div className="border-t pt-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              If this product comes in sizes or colours, add them here. Leave empty otherwise.
+            </p>
+            <div>
+              <Label className="text-xs">Sizes (optional)</Label>
+              <div className="mt-1">
+                <SizesEditor value={pendingSizes} onChange={setPendingSizes} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Colours (optional)</Label>
+              <div className="mt-1">
+                <ColorsEditor value={pendingColors} onChange={setPendingColors} />
+              </div>
+            </div>
+          </div>
 
           <div>
             <BrandImageUpload label="Product image *" currentUrl={imageUrl} onUploaded={setImageUrl}

@@ -820,6 +820,7 @@ export type Database = {
           sku: string | null
           stock_quantity: number | null
           stored_image_url: string | null
+          stored_images: string[]
           thumbnail_url: string | null
           tier: string
           updated_at: string
@@ -854,6 +855,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number | null
           stored_image_url?: string | null
+          stored_images?: string[]
           thumbnail_url?: string | null
           tier: string
           updated_at?: string
@@ -888,6 +890,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number | null
           stored_image_url?: string | null
+          stored_images?: string[]
           thumbnail_url?: string | null
           tier?: string
           updated_at?: string
@@ -1781,6 +1784,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "customer_addresses_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "admin_customer_accounts"
+            referencedColumns: ["customer_id"]
+          },
           {
             foreignKeyName: "customer_addresses_customer_id_fkey"
             columns: ["customer_id"]
@@ -4107,6 +4117,79 @@ export type Database = {
           },
         ]
       }
+      klump_webhook_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          order_id: string | null
+          payload: Json | null
+          processed_at: string | null
+          webhook_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          order_id?: string | null
+          payload?: Json | null
+          processed_at?: string | null
+          webhook_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          order_id?: string | null
+          payload?: Json | null
+          processed_at?: string | null
+          webhook_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "klump_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "pending_refunds"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       logistics_companies: {
         Row: {
           display_order: number
@@ -5702,11 +5785,14 @@ export type Database = {
           existing_product_id: string | null
           id: string
           image_url: string | null
+          is_consumable: boolean | null
           item_type: string | null
           new_product_name: string | null
           notes: string | null
           pack_count: number | null
           promoted_brand_id: string | null
+          reorder_days: number | null
+          reorder_label: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           reviewer_note: string | null
@@ -5733,11 +5819,14 @@ export type Database = {
           existing_product_id?: string | null
           id?: string
           image_url?: string | null
+          is_consumable?: boolean | null
           item_type?: string | null
           new_product_name?: string | null
           notes?: string | null
           pack_count?: number | null
           promoted_brand_id?: string | null
+          reorder_days?: number | null
+          reorder_label?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           reviewer_note?: string | null
@@ -5764,11 +5853,14 @@ export type Database = {
           existing_product_id?: string | null
           id?: string
           image_url?: string | null
+          is_consumable?: boolean | null
           item_type?: string | null
           new_product_name?: string | null
           notes?: string | null
           pack_count?: number | null
           promoted_brand_id?: string | null
+          reorder_days?: number | null
+          reorder_label?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           reviewer_note?: string | null
@@ -7660,6 +7752,13 @@ export type Database = {
             foreignKeyName: "referral_credits_referral_code_id_fkey"
             columns: ["referral_code_id"]
             isOneToOne: false
+            referencedRelation: "admin_referral_tracking"
+            referencedColumns: ["referral_code_id"]
+          },
+          {
+            foreignKeyName: "referral_credits_referral_code_id_fkey"
+            columns: ["referral_code_id"]
+            isOneToOne: false
             referencedRelation: "referral_codes"
             referencedColumns: ["id"]
           },
@@ -7745,6 +7844,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "referral_redemptions_referral_code_id_fkey"
+            columns: ["referral_code_id"]
+            isOneToOne: false
+            referencedRelation: "admin_referral_tracking"
+            referencedColumns: ["referral_code_id"]
+          },
           {
             foreignKeyName: "referral_redemptions_referral_code_id_fkey"
             columns: ["referral_code_id"]
@@ -8811,6 +8917,13 @@ export type Database = {
             foreignKeyName: "subscriptions_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
+            referencedRelation: "admin_customer_accounts"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
             referencedRelation: "customer_account_view"
             referencedColumns: ["id"]
           },
@@ -9029,6 +9142,35 @@ export type Database = {
       }
     }
     Views: {
+      admin_customer_accounts: {
+        Row: {
+          account_created_at: string | null
+          acquisition_channel: string | null
+          active_subscription_count: number | null
+          avg_order_value: number | null
+          created_at: string | null
+          customer_id: string | null
+          customer_ref: string | null
+          email: string | null
+          email_verified: boolean | null
+          first_paid_at: string | null
+          full_name: string | null
+          has_account: boolean | null
+          last_login_at: string | null
+          last_order_at: string | null
+          paid_order_count: number | null
+          phone: string | null
+          referral_codes_owned: number | null
+          saved_address_count: number | null
+          subscription_count: number | null
+          total_order_count: number | null
+          total_paid: number | null
+          total_referrals: number | null
+          total_referrer_credit: number | null
+          whatsapp_number: string | null
+        }
+        Relationships: []
+      }
       admin_order_item_profit_view: {
         Row: {
           brand_name: string | null
@@ -9220,6 +9362,75 @@ export type Database = {
           },
         ]
       }
+      admin_referral_tracking: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          discount_amount: number | null
+          expires_at: string | null
+          is_active: boolean | null
+          is_expired: boolean | null
+          last_redeemed_at: string | null
+          max_uses: number | null
+          min_order_amount: number | null
+          redemption_count: number | null
+          referral_code_id: string | null
+          referrer_credit: number | null
+          referrer_email: string | null
+          referrer_name: string | null
+          referrer_order_id: string | null
+          referrer_order_number: string | null
+          referrer_phone: string | null
+          times_used: number | null
+          total_credit_earned: number | null
+          total_discount_given: number | null
+          total_earned: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "referral_codes_referrer_order_id_fkey"
+            columns: ["referrer_order_id"]
+            isOneToOne: false
+            referencedRelation: "pending_refunds"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       admin_returns_view: {
         Row: {
           admin_notes: string | null
@@ -9319,6 +9530,7 @@ export type Database = {
           sku: string | null
           stock_quantity: number | null
           stored_image_url: string | null
+          stored_images: string[] | null
           thumbnail_url: string | null
           tier: string | null
           updated_at: string | null
@@ -9345,6 +9557,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number | null
           stored_image_url?: string | null
+          stored_images?: string[] | null
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
@@ -9371,6 +9584,7 @@ export type Database = {
           sku?: string | null
           stock_quantity?: number | null
           stored_image_url?: string | null
+          stored_images?: string[] | null
           thumbnail_url?: string | null
           tier?: string | null
           updated_at?: string | null
@@ -10342,6 +10556,37 @@ export type Database = {
           new_quote_number: string
         }[]
       }
+      finance_marketing_by_channel: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          channel: string
+          is_measurable: boolean
+          pct_of_total: number
+          spend: number
+        }[]
+      }
+      finance_monthly_trend: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          avg_markup_pct: number
+          avg_order_value: number
+          cogs: number
+          delivery_costs: number
+          depreciation: number
+          ebitda: number
+          extra_costs: number
+          gross_margin_pct: number
+          gross_profit: number
+          month: string
+          net_margin_pct: number
+          net_profit: number
+          paid_orders: number
+          paystack_fees: number
+          revenue: number
+          total_expenses: number
+          total_payroll: number
+        }[]
+      }
       finance_period_depreciation: {
         Args: { p_end: string; p_start: string }
         Returns: number
@@ -10374,6 +10619,23 @@ export type Database = {
           unique_customers: number
         }[]
       }
+      finance_projection_scenarios: {
+        Args: never
+        Returns: {
+          basis_gross_margin_pct: number
+          basis_gross_profit: number
+          basis_month: string
+          basis_monthly_burn: number
+          basis_revenue: number
+          capital_remaining: number
+          months_of_data: number
+          proj_3mo_gross_profit_growth20: number
+          proj_3mo_revenue_flat: number
+          proj_3mo_revenue_growth20: number
+          proj_6mo_revenue_growth20: number
+          runway_months_at_current_burn: number
+        }[]
+      }
       finance_quote_pipeline_detail: {
         Args: { p_end: string; p_start: string }
         Returns: {
@@ -10381,6 +10643,7 @@ export type Database = {
           customer_name: string
           is_converted: boolean
           is_paid: boolean
+          last_viewed_at: string
           quote_number: string
           status: string
           total: number
@@ -10406,6 +10669,20 @@ export type Database = {
           viewed_live_value: number
           weighted_at_historical_rate: number
           weighted_pipeline_value: number
+        }[]
+      }
+      finance_unit_economics: {
+        Args: { p_end: string; p_start: string }
+        Returns: {
+          avg_cogs_per_order: number
+          avg_extra_cost_per_order: number
+          avg_gross_margin_pct: number
+          avg_gross_profit_per_order: number
+          avg_order_value: number
+          largest_order_pct_of_revenue: number
+          largest_order_value: number
+          paid_orders: number
+          total_revenue: number
         }[]
       }
       fire_push_trigger: {

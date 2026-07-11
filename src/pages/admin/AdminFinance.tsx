@@ -11,6 +11,7 @@ import {
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReactNode } from "react";
+import { generatePLPdf, generateRunwayPdf, generateKpiPdf, generateFinancialStatusReportPdf, periodLabelFromRange } from "@/lib/financePdf";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar,
@@ -356,8 +357,8 @@ function DashboardTab() {
     setCustomApplied({ start: customStart, end: customEnd });
   };
   const pm = pmRows?.[0];
-  // OpEx = operating expenses + payroll (EBITDA intentionally omitted: with no
-  // depreciation/amortisation logged it would equal Net Profit and mislead).
+  // OpEx = operating expenses + payroll. Waterfall: Gross Profit - OpEx = EBITDA,
+  // then EBITDA - Depreciation = Net Profit (RPC now returns ebitda + depreciation).
   const pmOpex = pm ? (Number(pm.total_expenses) || 0) + (Number(pm.total_payroll) || 0) : null;
   const [editingCapital, setEditingCapital] = useState(false);
   const [capitalDraft, setCapitalDraft] = useState("");
@@ -417,6 +418,63 @@ function DashboardTab() {
     }));
   }, [plAll]);
 
+  // Branded, data-driven PDF exports (never DOM capture). Cash Position uses
+  // finance_runway; Key Metrics uses the selected-range finance_period_metrics.
+  const [exportingDoc, setExportingDoc] = useState<null | "runway" | "kpi">(null);
+  const exportRunway = async () => {
+    setExportingDoc("runway");
+    try {
+      const doc = await generateRunwayPdf(runway || {});
+      doc.save("BundledMum-Cash-Position-and-Runway.pdf");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the runway PDF");
+    } finally {
+      setExportingDoc(null);
+    }
+  };
+  const exportKpi = async () => {
+    setExportingDoc("kpi");
+    try {
+      const label = pmRange ? periodLabelFromRange(pmRange.start, pmRange.end) : "";
+      const doc = await generateKpiPdf(label, pm || {});
+      doc.save("BundledMum-Key-Metrics.pdf");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the KPI PDF");
+    } finally {
+      setExportingDoc(null);
+    }
+  };
+
+  // AI-narrated Financial Status Report. Range defaults to launch (18 May 2026)
+  // to today. The edge function pulls locked figures + Claude prose; the PDF
+  // renders figures-only if the narrative call failed (never blank).
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [reportStart, setReportStart] = useState("2026-05-01");
+  const [reportEnd, setReportEnd] = useState(todayIso);
+  const [reportBusy, setReportBusy] = useState(false);
+  const exportStatusReport = async () => {
+    if (reportStart > reportEnd) { toast.error("Start date must be on or before the end date."); return; }
+    setReportBusy(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("generate-financial-report", {
+        body: { p_start: reportStart, p_end: reportEnd },
+      });
+      if (error) {
+        let msg = error.message || "request failed";
+        try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error; } catch { /* keep */ }
+        throw new Error(msg);
+      }
+      if (!data?.figures) throw new Error(data?.error || "No figures returned");
+      if (data.narrative_error && !data.narrative) toast.warning("AI narrative unavailable; exporting figures only.");
+      const doc = await generateFinancialStatusReportPdf(data.figures, data.narrative || null);
+      doc.save(`BundledMum-Financial-Status-Report-${reportStart}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the report");
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -433,7 +491,36 @@ function DashboardTab() {
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={exportKpi} disabled={!!exportingDoc}
+            className="inline-flex items-center gap-1 rounded-lg border border-forest text-forest px-3 py-1.5 text-xs font-semibold hover:bg-forest/5 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" /> {exportingDoc === "kpi" ? "..." : "KPI PDF"}
+          </button>
+          <button type="button" onClick={exportRunway} disabled={!!exportingDoc}
+            className="inline-flex items-center gap-1 rounded-lg border border-forest text-forest px-3 py-1.5 text-xs font-semibold hover:bg-forest/5 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" /> {exportingDoc === "runway" ? "..." : "Runway PDF"}
+          </button>
+          <span className="text-[10px] text-text-light">Live — refreshes every 30s</span>
+        </div>
+      </div>
+
+      {/* AI-narrated Financial Status Report (investor). Own range; defaults to launch to today. */}
+      <div className="rounded-xl border border-forest/30 bg-forest/[0.04] p-3 flex flex-wrap items-end gap-3">
+        <div>
+          <div className="text-sm font-semibold text-forest">Financial Status Report</div>
+          <div className="text-[11px] text-text-med">AI-narrated, investor-ready. Numbers are locked from the finance RPCs.</div>
+        </div>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">From</span>
+          <input type="date" value={reportStart} onChange={(e) => setReportStart(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide font-semibold text-text-light">To</span>
+          <input type="date" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} className="border border-border rounded-lg px-2 py-1 text-xs bg-card focus:outline-none focus:ring-2 focus:ring-forest/30" />
+        </label>
+        <button type="button" onClick={exportStatusReport} disabled={reportBusy} className={btnPrimary + " sm:ml-auto"}>
+          <FileText className="w-4 h-4" /> {reportBusy ? "Generating report..." : "Financial Status Report"}
+        </button>
       </div>
 
       {/* Custom range inputs — only when Custom is active */}
@@ -459,12 +546,14 @@ function DashboardTab() {
         <KpiCard title="Gross Revenue" source="auto" value={acqNgn(pm?.gross_revenue)} />
         <KpiCard title="Gross Profit" source="auto" value={acqNgn(pm?.gross_profit)} badge={acqPct(pm?.gross_margin_pct)} />
         <KpiCard title="Gross Margin %" source="auto" value={acqPct(pm?.gross_margin_pct)} />
-        <KpiCard title="Net Profit" source="auto" value={acqNgn(pm?.net_profit)} negative={Number(pm?.net_profit) < 0} badge={acqPct(pm?.net_margin_pct)} />
-        <KpiCard title="Net Margin %" source="auto" value={acqPct(pm?.net_margin_pct)} negative={Number(pm?.net_margin_pct) < 0} />
         <KpiCard title="Total COGS" source="auto" value={acqNgn(pm?.total_cogs)} />
         <KpiCard title="Total Expenses" source="auto" value={acqNgn(pm?.total_expenses)} />
         <KpiCard title="Total Payroll" source="auto" value={acqNgn(pm?.total_payroll)} />
         <KpiCard title="Operating Expenses (OpEx)" source="auto" value={acqNgn(pmOpex)} subtitle="Expenses + payroll" />
+        <KpiCard title="EBITDA" source="auto" value={acqNgn(pm?.ebitda)} negative={Number(pm?.ebitda) < 0} subtitle="Earnings before interest, tax, depreciation & amortisation" />
+        <KpiCard title="Depreciation" source="auto" value={acqNgn(pm?.depreciation)} subtitle="Non-cash: asset depreciation this period" />
+        <KpiCard title="Net Profit" source="auto" value={acqNgn(pm?.net_profit)} negative={Number(pm?.net_profit) < 0} badge={acqPct(pm?.net_margin_pct)} />
+        <KpiCard title="Net Margin %" source="auto" value={acqPct(pm?.net_margin_pct)} negative={Number(pm?.net_margin_pct) < 0} />
         <KpiCard title="Paid Orders" source="auto" value={acqCount(pm?.paid_orders)} />
         <KpiCard title="Avg Order Value" source="auto" value={acqNgn(pm?.avg_order_value)} />
       </div>
@@ -1004,7 +1093,30 @@ function PLTab() {
     return Object.values(m).sort((a, b) => b.amount - a.amount);
   }, [expensesPeriod]);
 
-  const print = () => window.print();
+  // Export a real, branded P&L document drawn from finance_period_metrics for
+  // the P&L tab's selected period (replaces the old window.print(), which the
+  // global print stylesheet blanked because this view has no print-allow class).
+  const [exporting, setExporting] = useState(false);
+  const exportPL = async () => {
+    setExporting(true);
+    try {
+      const yr = p.resolved.year;
+      const mo = p.resolved.month; // 1-12, or undefined for YTD
+      const start = mo ? `${yr}-${String(mo).padStart(2, "0")}-01` : `${yr}-01-01`;
+      const end = mo
+        ? `${yr}-${String(mo).padStart(2, "0")}-${String(new Date(yr, mo, 0).getDate()).padStart(2, "0")}`
+        : `${yr}-12-31`;
+      const { data, error } = await (supabase as any).rpc("finance_period_metrics", { p_start: start, p_end: end });
+      if (error) throw error;
+      const m = (Array.isArray(data) ? data[0] : data) || {};
+      const doc = await generatePLPdf(periodLabelFromRange(start, end), m);
+      doc.save(`BundledMum-P-and-L-${start}.pdf`);
+    } catch (e: any) {
+      toast.error(e?.message || "Could not generate the P&L PDF");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -1025,8 +1137,8 @@ function PLTab() {
             <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} />
             Compare previous
           </label>
-          <button onClick={print} className={btnPrimary}>
-            <Printer className="w-4 h-4" /> Export PDF
+          <button onClick={exportPL} disabled={exporting} className={btnPrimary}>
+            <Printer className="w-4 h-4" /> {exporting ? "Generating..." : "Export PDF"}
           </button>
         </div>
       </div>

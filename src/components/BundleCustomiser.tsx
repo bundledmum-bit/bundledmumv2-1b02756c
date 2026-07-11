@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ShoppingBag, X, RotateCcw, Plus } from "lucide-react";
 import { fmt, useCart } from "@/lib/cart";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import { analytics } from "@/lib/ga";
 import { getBrandImage } from "@/lib/brandImage";
 import {
@@ -42,6 +43,7 @@ interface Props {
 
 export default function BundleCustomiser({ productId, productName, bundleLabel, bundleSku, editApi }: Props) {
   const { addToCart } = useCart();
+  const variantReq = useVariantRequirements();
   const navigate = useNavigate();
 
   // Hooks must be called unconditionally. When editApi is provided we
@@ -224,8 +226,11 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         quantity: i.quantity,
         lineTotal: i.selected_brand.price * i.quantity,
         isDefault: i.is_default,
-        color: i.selected_color_name ?? i.selected_gender ?? null,
-        size: i.selected_size_label ?? i.selected_brand.size_variant ?? null,
+        // Explicit choice wins; else the brand's variant axis / gender; else
+        // the product's pre-set default so a variant-requiring child is never
+        // captured without a size/colour.
+        color: i.selected_color_name ?? i.selected_gender ?? (variantReq.requiresColor(i.product_id) ? variantReq.defaultColor(i.product_id) : null),
+        size: i.selected_size_label ?? i.selected_brand.size_variant ?? (variantReq.requiresSize(i.product_id) ? variantReq.defaultSize(i.product_id) : null),
       })),
       removedDefaultCount,
     } as any);

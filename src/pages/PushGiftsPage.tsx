@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import Seo from "@/components/Seo";
 import Breadcrumb from "@/components/Breadcrumb";
-import { useCart, fmt, getBrandForBudget } from "@/lib/cart";
+import { useCart, fmt, getBrandForBudget, getMissingVariantAxes } from "@/lib/cart";
 import { toast } from "sonner";
 import ProductImage from "@/components/ProductImage";
 import SpendMoreBanner from "@/components/SpendMoreBanner";
@@ -57,6 +57,9 @@ function PushGiftCard({ product, onAdd }: { product: Product; onAdd: (item: any)
 
   const handleAdd = () => {
     if (isOutOfStock) return;
+    // Variant-requiring product: open its detail drawer to choose size/colour
+    // instead of adding blind (the drawer enforces the selection).
+    if (getMissingVariantAxes(product).length) { onViewDetail(); return; }
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})` });
   };
 

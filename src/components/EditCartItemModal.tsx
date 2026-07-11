@@ -109,8 +109,10 @@ export default function EditCartItemModal({
 
   const requiresSize = sizes.length > 0;
   const sizeMissing = requiresSize && !size;
+  const requiresColor = colors.length > 0;
+  const colorMissing = requiresColor && !color;
   const brandOos = !!selectedBrand && (!selectedBrand.in_stock || (selectedBrand.price ?? 0) <= 0);
-  const cantSave = !selectedBrand || brandOos || sizeMissing;
+  const cantSave = !selectedBrand || brandOos || sizeMissing || colorMissing;
 
   const newPrice = selectedBrand?.price ?? item.price ?? 0;
   const priceDelta = newPrice - (item.price || 0);
@@ -255,7 +257,9 @@ export default function EditCartItemModal({
           {/* Color (only if rows exist) */}
           {colors.length > 0 && (
             <div>
-              <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-2">Colour</label>
+              <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-2">
+                Colour {colorMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
+              </label>
               <div className="flex flex-wrap gap-2">
                 {colors.map(c => {
                   const oos = c.in_stock === false;
@@ -278,6 +282,9 @@ export default function EditCartItemModal({
                   );
                 })}
               </div>
+              {colorMissing && (
+                <p className="text-[11px] text-coral mt-2">Please select a color.</p>
+              )}
             </div>
           )}
 

@@ -375,11 +375,14 @@ function BrandSelect({
   );
 }
 
+const ADD_BATCH = 60;
+
 export function ProductEligibility() {
   const [rows, setRows] = useState<EligibilityRow[]>([]);
   const [query, setQuery] = useState(""); // filters the on-list section groups
   const [addQuery, setAddQuery] = useState(""); // filters the add-products area
   const [showAdd, setShowAdd] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(ADD_BATCH);
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
@@ -523,7 +526,11 @@ export function ProductEligibility() {
   }, [rows, addQuery]);
 
   const onCount = rows.filter((r) => r.on_hospital_list).length;
-  const ADD_CAP = 60;
+
+  // A fresh search (or clearing it) starts its own load-more batch.
+  useEffect(() => {
+    setVisibleCount(ADD_BATCH);
+  }, [addQuery]);
 
   return (
     <div className="space-y-5">
@@ -560,7 +567,7 @@ export function ProductEligibility() {
             ) : (
               <>
                 <div className="divide-y divide-border">
-                  {offList.slice(0, ADD_CAP).map((row) => (
+                  {offList.slice(0, visibleCount).map((row) => (
                     <div key={row.product_id} className="flex items-center justify-between gap-3 py-2.5">
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-text-dark truncate">{row.name}</div>
@@ -579,11 +586,23 @@ export function ProductEligibility() {
                     </div>
                   ))}
                 </div>
-                {offList.length > ADD_CAP && (
+                {offList.length > visibleCount ? (
+                  <div className="mt-3 flex items-center gap-3">
+                    <button
+                      onClick={() => setVisibleCount((v) => v + ADD_BATCH)}
+                      className="rounded-lg border border-input px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                    >
+                      Load more products
+                    </button>
+                    <p className="text-xs text-text-light">
+                      Showing {Math.min(visibleCount, offList.length)} of {offList.length}
+                    </p>
+                  </div>
+                ) : offList.length > ADD_BATCH ? (
                   <p className="text-xs text-text-light mt-3">
-                    Showing {ADD_CAP} of {offList.length}. Search to narrow.
+                    Showing all {offList.length}
                   </p>
-                )}
+                ) : null}
               </>
             )}
           </div>

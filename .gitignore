@@ -12,8 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Local env files — never commit secrets (use .env.example as the template)
-.env
+# Env files. Per Lovable docs (https://docs.lovable.dev/integrations/cloud),
+# the frontend build reads VITE_* vars from a COMMITTED .env — NOT from Secrets —
+# so .env must NOT be gitignored in this project. .env holds ONLY public /
+# publishable VITE_* values (never secret keys). The .local / .production
+# variants stay ignored for genuine local-only secrets and overrides.
 .env.local
 .env.production
 .env.*.local

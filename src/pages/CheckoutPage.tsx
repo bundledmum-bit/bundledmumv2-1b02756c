@@ -30,6 +30,32 @@ interface FormData {
 
 type SavedOrderResult = { id: string; orderNumber: string | null; share_token: string | null };
 
+// Klump's checkout SDK. Loaded from the document head, it renders a
+// "Pay with Klump" button into the #klump__checkout mount div and launches the
+// payment widget when a Klump instance is created: `new Klump(payload)`.
+//
+// IMPORTANT — how the constructor is exposed: klump.js declares `class Klump {}`
+// at the TOP LEVEL of a classic <script>. A top-level class binding lives in the
+// global LEXICAL environment: it is reachable as a bare `Klump` identifier but is
+// NOT a property of window (the SDK never assigns window.Klump), so
+// `window.Klump` is ALWAYS undefined. Verified by decoding the SDK: it defines a
+// validated constructor (publicKey, amount, currency, items, shipping_fee,
+// meta_data, redirect_url, merchant_reference, onSuccess/onOpen/onError) and has
+// no window assignment and no data-* attribute reads. Indirect eval runs in
+// global scope, where the lexical `Klump` binding resolves — this returns the
+// constructor once klump.js has executed, or null if it hasn't loaded yet.
+const KLUMP_SCRIPT_ID = "klump-js-sdk";
+const KLUMP_SCRIPT_SRC = "https://js.useklump.com/klump.js";
+const KLUMP_CHECKOUT_DIV_ID = "klump__checkout";
+function resolveKlumpCtor(): any {
+  try {
+    // eslint-disable-next-line no-eval
+    return (0, eval)("typeof Klump !== 'undefined' ? Klump : null");
+  } catch {
+    return null;
+  }
+}
+
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
 interface StockIssue {
@@ -144,7 +170,7 @@ export default function CheckoutPage() {
   // Unpriced "other items not listed" note from /hospital-list. Forwarded onto
   // the order as custom_items_request; NEVER added to any total.
   const [customItemsRequest] = useState<string>(() => getCustomItemsRequest().trim());
-  const [payment, setPayment] = useState<"card" | "transfer" | "ussd">("card");
+  const [payment, setPayment] = useState<"card" | "transfer" | "ussd" | "klump">("card");
   const [giftWrap, setGiftWrap] = useState(false);
   // Session-scoped: once the customer makes any explicit choice on the
   // gift-wrap checkbox, that choice wins over the auto-rule until reload.
@@ -284,27 +310,56 @@ export default function CheckoutPage() {
   }, [selectedLga, selectedZone]);
 
   // Payment method toggles from site_settings
-  const [enabledPayments, setEnabledPayments] = useState<Record<string, boolean>>({ card: true, transfer: true, ussd: true });
+  const [enabledPayments, setEnabledPayments] = useState<Record<string, boolean>>({ card: true, transfer: true, ussd: true, klump: false });
+  const [klumpPublicKey, setKlumpPublicKey] = useState("");
   useEffect(() => {
     supabase
       .from("site_settings")
       .select("key, value")
-      .in("key", ["payment_method_card_enabled", "payment_method_transfer_enabled", "payment_method_ussd_enabled"])
+      .in("key", ["payment_method_card_enabled", "payment_method_transfer_enabled", "payment_method_ussd_enabled", "payment_method_klump_enabled", "klump_public_key"])
       .then(({ data }) => {
         if (!data) return;
-        const map: Record<string, boolean> = { card: true, transfer: true, ussd: true };
+        const map: Record<string, boolean> = { card: true, transfer: true, ussd: true, klump: false };
         for (const row of data) {
+          if (row.key === "klump_public_key") {
+            if (typeof row.value === "string") setKlumpPublicKey(row.value);
+            continue;
+          }
           const val = row.value === true || row.value === "true" || row.value === "1";
           if (row.key === "payment_method_card_enabled") map.card = val;
           if (row.key === "payment_method_transfer_enabled") map.transfer = val;
           if (row.key === "payment_method_ussd_enabled") map.ussd = val;
+          if (row.key === "payment_method_klump_enabled") map.klump = val;
         }
         setEnabledPayments(map);
         const enabled = Object.entries(map).filter(([, v]) => v).map(([k]) => k);
-        if (enabled.length === 1) setPayment(enabled[0] as any);
+        // Pre-select from a ?pay= deep-link (e.g. the quote page's "Pay with
+        // Klump" CTA → /checkout?pay=klump). Honoured only when that method is
+        // enabled; otherwise fall through to the normal auto-select silently.
+        const preselect = new URLSearchParams(location.search).get("pay");
+        if (preselect && map[preselect]) setPayment(preselect as any);
+        else if (enabled.length === 1) setPayment(enabled[0] as any);
         else if (enabled.length > 0 && !map[payment]) setPayment(enabled[0] as any);
       });
   }, []);
+
+  // Load Klump's SDK (deferred, per Klump's docs) only when the toggle is on,
+  // so storefronts without Klump never fetch a third-party script. The SDK
+  // scans for #klump__checkout on load and renders its "Pay with Klump" button
+  // into it — the mount div is rendered in JSX whenever enabledPayments.klump
+  // is true, and React commits that JSX before this effect runs, so the div
+  // exists in the DOM by the time the script executes. The Klump constructor is
+  // then resolvable via resolveKlumpCtor() (a global lexical binding, not
+  // window.Klump).
+  useEffect(() => {
+    if (!enabledPayments.klump) return;
+    if (document.getElementById(KLUMP_SCRIPT_ID)) return;
+    const script = document.createElement("script");
+    script.id = KLUMP_SCRIPT_ID;
+    script.src = KLUMP_SCRIPT_SRC;
+    script.defer = true;
+    document.head.appendChild(script);
+  }, [enabledPayments.klump]);
 
   useEffect(() => {
     document.title = "Secure Checkout | BundledMum";
@@ -703,7 +758,7 @@ export default function CheckoutPage() {
   // add_payment_info — fire each time the user changes payment method.
   // Wrap setPayment so the event fires alongside the state update.
   const lastPaymentFiredRef = useRef<string | null>(null);
-  const selectPayment = (method: "card" | "transfer" | "ussd") => {
+  const selectPayment = (method: "card" | "transfer" | "ussd" | "klump") => {
     setPayment(method);
     if (!cart || cart.length === 0) return;
     if (lastPaymentFiredRef.current === method) return;
@@ -979,7 +1034,7 @@ export default function CheckoutPage() {
     subtotal, deliveryFee: delivery, serviceFee, giftWrapFee,
     total: grand,
     paymentMethod: payment,
-    paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : "PAID",
+    paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : payment === "klump" ? "PENDING_KLUMP" : "PAID",
     paystackRef: paystackRef || null,
     paystackStatus: paystackStatus || null,
     giftWrap: effectiveGiftWrap, notes: "",
@@ -1324,7 +1379,30 @@ export default function CheckoutPage() {
     navigate(`/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`);
   };
 
+  // Post-payment finalize: fire the logging/linking side-effects WITHOUT
+  // awaiting them, then advance to the confirmation page immediately. These
+  // are best-effort (Google Sheets sync via a no-cors fetch that has no
+  // timeout and can hang; quote-linking). Awaiting them — as the code used to —
+  // stranded the customer on the "Confirming your order… please don't close
+  // this page" overlay after a SUCCESSFUL payment whenever the sheets webhook
+  // stalled. They must never gate the customer's advance. Shared by every
+  // payment method (bank transfer, Klump, Paystack) so none can strand.
+  const finalizeAndConfirm = (
+    savedOrder: SavedOrderResult,
+    orderData: ReturnType<typeof buildOrderData>,
+  ) => {
+    clearCart();
+    void syncOrderToSheets({
+      orderId: savedOrder.id,
+      orderNumber: savedOrder.orderNumber,
+      fallbackData: orderData,
+    });
+    void linkQuoteIfPending(savedOrder.id);
+    navigateToConfirmation(savedOrder);
+  };
+
   const placeOrder = async () => {
+    if (processing) return; // re-entrancy guard: the Klump mount div is a second trigger
     const cartSnapshot = getLiveCart();
     if (!cartSnapshot.length) {
       toast.error("Your cart is empty. Please add items before checking out.");
@@ -1353,14 +1431,114 @@ export default function CheckoutPage() {
         toast.error("We couldn't place your order. Please try again.");
         return;
       }
-      await syncOrderToSheets({
-        orderId: savedOrder.id,
-        orderNumber: savedOrder.orderNumber,
-        fallbackData: orderData,
+      finalizeAndConfirm(savedOrder, orderData);
+      return;
+    }
+
+    if (payment === "klump") {
+      if (!klumpPublicKey) {
+        setProcessing(false);
+        toast.error("Buy Now Pay Later is not configured. Please choose another payment method.");
+        return;
+      }
+      // Resolve the Klump constructor from the global LEXICAL scope (bare
+      // `Klump`), NOT window.Klump — klump.js declares it as a top-level class in
+      // a classic script, so it is never a window property (see resolveKlumpCtor).
+      // null means klump.js hasn't executed yet.
+      const KlumpCtor = resolveKlumpCtor();
+      if (typeof KlumpCtor !== "function") {
+        setProcessing(false);
+        toast.error("Klump is still loading. Please wait a moment and try again.");
+        return;
+      }
+
+      // Order is created PENDING first — Klump collects the payment, then the
+      // klump-webhook edge function verifies it server-side and marks the order
+      // paid (matched via meta_data.order_id). The frontend never flips
+      // payment_status itself.
+      const orderData = buildOrderData(cartSnapshot);
+      const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
+      if (!savedOrder) {
+        setProcessing(false);
+        toast.error("We couldn't place your order. Please try again.");
+        return;
+      }
+
+      const num = savedOrder.orderNumber || "";
+      const shareToken = savedOrder.share_token || "";
+      const redirectUrl = `${window.location.origin}/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`;
+
+      // Klump REQUIRES amount === Σ(unit_price × quantity) + shipping_fee, or it
+      // rejects the transaction. Our grand total also includes delivery, service
+      // and gift-wrap fees minus any discounts, so we send the real cart lines
+      // and fold everything else into shipping_fee — the identity holds while the
+      // shopper is still charged the exact order total. If discounts ever exceed
+      // the add-ons (shipping_fee would go negative, which Klump disallows), fall
+      // back to a single line item priced at the order total so it still holds.
+      // Prices are integer naira; do not divide or multiply. unit_price/amount/
+      // shipping_fee must all be integers.
+      const cartLines = cartSnapshot.map((it: any) => ({
+        name: it.name,
+        unit_price: Math.round(Number(it.selectedBrand?.price ?? it.price ?? 0)),
+        quantity: Number(it.qty),
+      }));
+      const itemsSum = cartLines.reduce((s, it) => s + it.unit_price * it.quantity, 0);
+      const amount = Math.round(grand);
+      let items = cartLines;
+      let shippingFee = amount - itemsSum;
+      if (shippingFee < 0) {
+        items = [{ name: `Order ${num || "total"}`, unit_price: amount, quantity: 1 }];
+        shippingFee = 0;
+      }
+
+      pixelTrack("AddPaymentInfo", pixelMoney(grand));
+
+      // Payload shape verbatim from Klump's live "Checkout Widget" docs.
+      new KlumpCtor({
+        publicKey: klumpPublicKey,
+        data: {
+          amount,
+          shipping_fee: shippingFee,
+          currency: "NGN",
+          first_name: form.firstName || undefined,
+          last_name: form.lastName || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          redirect_url: redirectUrl,
+          merchant_reference: num,
+          // MANDATORY: klump-webhook matches the payment to OUR order ONLY via
+          // meta_data.order_id — the successful-payment event carries no
+          // merchant_reference, so this is the sole link back to the order.
+          meta_data: {
+            order_id: savedOrder.id,
+            customer_name: `${form.firstName} ${form.lastName}`.trim(),
+            email: form.email,
+            phone: form.phone,
+          },
+          items,
+        },
+        // Klump's SDK constructor VALIDATES that every lifecycle callback is a
+        // function and throws "<name> callback is required" otherwise — the
+        // live console showed "onLoad callback is required". Provide ALL five
+        // (onLoad, onOpen, onSuccess, onError, onClose) so the constructor can
+        // never throw for a missing callback and the widget always opens.
+        onLoad: () => { console.log("[checkout] Klump widget loaded"); },
+        onOpen: () => { console.log("[checkout] Klump widget opened"); },
+        onSuccess: () => {
+          // Klump fired onSuccess = the customer completed payment. Advance to
+          // the confirmation page right away; the order stays payment_status
+          // pending until the klump-webhook marks it paid. Side-effects are
+          // non-blocking (see finalizeAndConfirm) so a stalled sheets sync can
+          // never strand the customer on the "Confirming your order…" overlay.
+          finalizeAndConfirm(savedOrder, orderData);
+        },
+        onError: (err: unknown) => {
+          console.error("[checkout] Klump error:", err);
+          setProcessing(false);
+          toast.error("Klump payment could not be started. Please try again or choose another payment method.");
+        },
+        onClose: () => { setProcessing(false); },
       });
-      await linkQuoteIfPending(savedOrder.id);
-      clearCart();
-      await navigateToConfirmation(savedOrder);
       return;
     }
 
@@ -1407,14 +1585,7 @@ export default function CheckoutPage() {
             return;
           }
 
-          await syncOrderToSheets({
-            orderId: savedOrder.id,
-            orderNumber: savedOrder.orderNumber,
-            fallbackData: orderData,
-          });
-          await linkQuoteIfPending(savedOrder.id);
-          clearCart();
-          await navigateToConfirmation(savedOrder);
+          finalizeAndConfirm(savedOrder, orderData);
         },
         onCancel: () => { setProcessing(false); toast.error("Payment cancelled"); },
       });
@@ -1431,14 +1602,7 @@ export default function CheckoutPage() {
           triggerRecoveryModal("dev-demo-save", "DEMO save failed");
           return;
         }
-        await syncOrderToSheets({
-          orderId: savedOrder.id,
-          orderNumber: savedOrder.orderNumber,
-          fallbackData: orderData,
-        });
-        await linkQuoteIfPending(savedOrder.id);
-        clearCart();
-        await navigateToConfirmation(savedOrder);
+        finalizeAndConfirm(savedOrder, orderData);
         return;
       }
       setProcessing(false);
@@ -1950,6 +2114,7 @@ export default function CheckoutPage() {
                     { id: "card" as const, icon: "💳", label: "Card Payment", sub: "Visa, Mastercard, Verve — instant" },
                     { id: "transfer" as const, icon: "🏦", label: "Bank Transfer", sub: "Pay directly to our account" },
                     { id: "ussd" as const, icon: "📱", label: "USSD / Mobile Money", sub: "*737#, *901# and more" },
+                    { id: "klump" as const, icon: "🛍️", label: "Buy Now Pay Later (Klump)", sub: "Split your payment into installments" },
                   ];
                   const visible = allMethods.filter(m => enabledPayments[m.id]);
                   if (visible.length === 0) return (
@@ -1990,6 +2155,27 @@ export default function CheckoutPage() {
                   <div className="mt-2.5 text-coral text-xs">⚠️ Send exact amount, use your phone number as reference.</div>
                 </div>
               )}
+              {payment === "klump" && (
+                <div className="mt-3 bg-warm-cream rounded-lg p-3.5 animate-fade-in">
+                  <div className="text-text-med text-[13px] flex items-center gap-1.5">
+                    <span>🛍️</span> You'll complete payment through Klump's secure checkout. Your order is confirmed once Klump verifies the payment.
+                  </div>
+                </div>
+              )}
+              {/* Klump SDK mount point (per Klump's docs). It must exist in the
+                  DOM for the SDK to attach window.Klump, so it is rendered
+                  whenever Klump is enabled — visually present only when Klump is
+                  the chosen method, and kept in-DOM-but-hidden otherwise. The SDK
+                  renders its "Pay with Klump" button inside; clicking it routes
+                  to the same placeOrder flow as the main CTA below. */}
+              {enabledPayments.klump && (
+                <div
+                  id={KLUMP_CHECKOUT_DIV_ID}
+                  onClick={() => { if (payment === "klump") void placeOrder(); }}
+                  className={payment === "klump" ? "mt-3" : "sr-only"}
+                  aria-hidden={payment !== "klump"}
+                />
+              )}
             </div>
 
             {stockIssues.length > 0 && (
@@ -2008,6 +2194,11 @@ export default function CheckoutPage() {
               </div>
             )}
 
+            {/* For Klump, the #klump__checkout widget button (rendered in the
+                Payment Method section above) is the sole CTA — it already runs
+                placeOrder (order-first) on click, so we hide this button to
+                avoid a duplicate/confusing second trigger. */}
+            {payment !== "klump" && (
             <button
               onClick={placeOrder}
               disabled={
@@ -2032,6 +2223,7 @@ export default function CheckoutPage() {
                 ? "Calculating delivery…"
                 : <>Place Order — {fmt(grand)} 🔒</>}
             </button>
+            )}
             {isExpressOrder && !expressAcknowledged && (
               <p className="text-center text-amber-700 text-[12px] mt-2">
                 Please accept the {expressDisplayName} terms above to continue.
@@ -2156,6 +2348,13 @@ export default function CheckoutPage() {
             <div className="text-[10px] text-text-light font-semibold uppercase tracking-wide">Total</div>
             <div className="text-sm font-bold text-forest tabular-nums">{fmt(grand)}</div>
           </div>
+          {/* For Klump, the widget button above is the CTA — keep the total
+              visible but replace this button with a hint pointing to it. */}
+          {payment === "klump" ? (
+            <div className="flex-1 text-center text-xs text-text-med font-semibold">
+              Tap “Pay with Klump” above to complete your order
+            </div>
+          ) : (
           <button
             onClick={placeOrder}
             disabled={
@@ -2179,6 +2378,7 @@ export default function CheckoutPage() {
               ? "Calculating…"
               : <>Place Order →</>}
           </button>
+          )}
         </div>
       </div>
 

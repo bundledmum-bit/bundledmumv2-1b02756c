@@ -31,7 +31,11 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     ? (product.brands.find(b => b.id === selectedBrandId) || defaultBrand)
     : defaultBrand;
   const [selectedBrand, setSelectedBrand] = useState<Brand>(seedBrand);
-  const [selectedSize, setSelectedSize] = useState(product.sizes?.[Math.floor((product.sizes?.length || 0) / 2)] || "");
+  // No auto-pick: a size-required product must have the customer's explicit
+  // choice (via the inline size picker below) before it can be added —
+  // otherwise handleAdd routes to the detail page. Colour has no inline picker
+  // on the card, so colour-required products always route to detail to choose.
+  const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor] = useState("");
   const { cart, updateQty } = useCart();
 
@@ -69,7 +73,9 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
 
   const handleAdd = () => {
     if (isOutOfStock) return;
-    if (needsSizeChoice) { window.location.href = `/products/${product.slug}`; return; }
+    // Route to the detail page to choose any required variant not yet picked
+    // (size can be chosen inline; colour has no inline picker on the card).
+    if ((product.sizes?.length && !selectedSize) || (product.colors?.length && !selectedColor)) { window.location.href = `/products/${product.slug}`; return; }
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})`, selectedSize, selectedColor });
   };
 

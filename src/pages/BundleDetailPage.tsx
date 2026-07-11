@@ -6,6 +6,7 @@ import { ArrowLeft, Share2, ArrowLeftRight, Plus, Trash2, X, Pencil, MessageCirc
 import { buildWhatsAppOrderHref } from "@/lib/whatsapp";
 import { useState, useEffect, useMemo } from "react";
 import { useBundle, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import type { BundleItem } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
 import BundleItemSwapPopup from "@/components/BundleItemSwapPopup";
@@ -18,6 +19,7 @@ export default function BundleDetailPage() {
   const { data: allBundles } = useBundles();
   const { data: allProducts } = useAllProducts();
   const { addToCart, cart } = useCart();
+  const variantReq = useVariantRequirements();
 
   // Fast lookup by product_id so we can resolve a BundleItem back to its
   // full Product (brands, sizes, subcategory) when the attribute picker
@@ -105,9 +107,16 @@ export default function BundleDetailPage() {
       : null);
 
   const handleAdd = () => {
-    // Add each individual product as a separate cart item
+    // Add each individual product as a separate cart item. Bundle items that
+    // require a size/colour (product_sizes / product_colors rows) get the
+    // bundle's sensible pre-set default variant (is_default size / first
+    // colour) so they never enter the cart variant-less — otherwise the cart
+    // guard and server-side place-order would reject them at checkout.
+    let addedCount = 0;
     allItems.forEach(item => {
-      addToCart({
+      const selectedSize = variantReq.requiresSize(item.productId) ? variantReq.defaultSize(item.productId) : undefined;
+      const selectedColor = variantReq.requiresColor(item.productId) ? variantReq.defaultColor(item.productId) : undefined;
+      const ok = addToCart({
         id: item.productId || item.name,
         name: item.name,
         price: item.price,
@@ -115,12 +124,19 @@ export default function BundleDetailPage() {
         baseImg: item.imageUrl || item.emoji || "📦",
         brands: [{ id: item.brandId || "default", label: item.brand, price: item.price, img: item.imageUrl || item.emoji || "📦", tier: 1 }],
         selectedBrand: { id: item.brandId || "default", label: item.brand, price: item.price, img: item.imageUrl || item.emoji || "📦", tier: 1 },
+        selectedSize: selectedSize ?? undefined,
+        selectedColor: selectedColor ?? undefined,
         bundleName: bundle.name,
       });
+      if (ok) addedCount++;
     });
-    toast.success(`✓ ${bundle.name} (${allItems.length} items) added to cart!`, {
-      action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
-    });
+    if (addedCount === allItems.length) {
+      toast.success(`✓ ${bundle.name} (${allItems.length} items) added to cart!`, {
+        action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
+      });
+    } else {
+      toast.error(`Some items need a size or colour chosen — please open them individually to add.`);
+    }
   };
 
   const shareUrl = isCustomized

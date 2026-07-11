@@ -65,6 +65,13 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
   useEffect(() => { setSelectedSize(""); }, [product.id]);
   const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
   const sizeMissing = requiresSizeChoice && !selectedSize;
+  // Colour parity with size: never pre-selected, resets per product, and
+  // gates Add to Cart when the product has product_colors rows (e.g. Nylon Bag).
+  const [selectedColorName, setSelectedColorName] = useState<string>("");
+  useEffect(() => { setSelectedColorName(""); }, [product.id]);
+  const requiresColorChoice = !!(product.colors && product.colors.length > 0);
+  const colorMissing = requiresColorChoice && !selectedColorName;
+  const variantMissing = sizeMissing || colorMissing;
   const { cart, addToCart, updateQty } = useCart();
   const { data: settings } = useSiteSettings();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -75,7 +82,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
     product.id,
     selectedBrand?.id,
     selectedSize || null,
-    null,
+    selectedColorName || null,
     null,
   );
   const cartItem = cart.find(c => c._key === currentVariantKey);
@@ -124,17 +131,19 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
 
   const handleAdd = () => {
     if (isOutOfStock) return;
-    if (product.sizes && product.sizes.length > 0 && !selectedSize) {
-      toast.error("Please select a size.");
+    if (variantMissing) {
+      toast.error(`Please select ${sizeMissing && colorMissing ? "a size & color" : colorMissing ? "a color" : "a size"}.`);
       return;
     }
-    addToCart({
+    const added = addToCart({
       ...product,
       selectedBrand,
       price: selectedBrand.price,
       name: `${product.name} (${selectedBrand.label})`,
       selectedSize,
+      selectedColor: selectedColorName || null,
     });
+    if (!added) return;
     toast.success(`✓ ${product.name} added to cart`, {
       action: { label: "View Cart →", onClick: () => window.location.href = "/cart" },
     });
@@ -309,6 +318,27 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             </div>
           )}
 
+          {/* Colour Selector (product_colors) — no auto-pick, mirrors size. */}
+          {requiresColorChoice && (
+            <div className="mb-3">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Select Colour {colorMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {product.colors!.map(c => (
+                  <button key={c.name} onClick={() => setSelectedColorName(c.name)}
+                    className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body inline-flex items-center gap-1.5 ${selectedColorName === c.name ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}>
+                    {c.hex && <span className="w-3 h-3 rounded-full border border-border" style={{ backgroundColor: c.hex }} />}
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+              {colorMissing && (
+                <p className="text-[11px] text-muted-foreground mt-2">Select a color to continue.</p>
+              )}
+            </div>
+          )}
+
           {isLowStock && (
             <p className="text-[#E65100] text-xs font-semibold mb-3">🔥 Only {selectedBrand.stockQuantity} left!</p>
           )}
@@ -348,12 +378,12 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
                   Cart →
                 </Link>
               </div>
-            ) : sizeMissing ? (
+            ) : variantMissing ? (
               <button
                 disabled
                 className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
               >
-                Select a Size
+                {sizeMissing && colorMissing ? "Select Size & Colour" : colorMissing ? "Select a Colour" : "Select a Size"}
               </button>
             ) : (
               <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body interactive flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
