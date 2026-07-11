@@ -77,8 +77,20 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     if (cartItem) updateQty(cartItem._key, newQty);
   };
 
-  const visibleBrands = product.brands.slice(0, 3);
-  const hiddenCount = product.brands.length - 3;
+  // When a brand was matched by search (selectedBrandId), hoist it to the
+  // front so its pill is always visible instead of hiding behind "+N more".
+  // The remaining pills keep their existing order.
+  const orderedBrands = (() => {
+    const idx = selectedBrandId ? product.brands.findIndex(b => b.id === selectedBrandId) : -1;
+    if (idx > 0) {
+      const rest = product.brands.slice();
+      const [m] = rest.splice(idx, 1);
+      return [m, ...rest];
+    }
+    return product.brands;
+  })();
+  const visibleBrands = orderedBrands.slice(0, 3);
+  const hiddenCount = orderedBrands.length - 3;
 
   return (
     <div className={`bg-card rounded-[16px] border border-border/60 overflow-hidden flex flex-col group transition-shadow hover:shadow-md ${(allBrandsOos || productLevelOos) ? "opacity-60" : ""}`}>
