@@ -109,6 +109,17 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
       toast.error(`Weight is required so courier costs can be calculated correctly. Fix "${label}".`);
       return;
     }
+    // A compare-at (was) price must be GREATER than the selling price, or empty.
+    // Reject anything else so an inverted or fabricated discount can't be saved.
+    const badCapIdx = brands.findIndex((b: any) => {
+      const cap = b.compare_at_price == null || b.compare_at_price === "" ? null : Number(b.compare_at_price);
+      return cap != null && !(cap > (Number(b.price) || 0));
+    });
+    if (badCapIdx >= 0) {
+      const label = brands[badCapIdx]?.brand_name?.trim() || `Brand #${badCapIdx + 1}`;
+      toast.error(`Compare-at price must be greater than the selling price, or left empty. Fix "${label}".`);
+      return;
+    }
     setSaving(true);
     try {
       const slug = form.slug || autoSlug(form.name);

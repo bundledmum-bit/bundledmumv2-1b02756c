@@ -168,15 +168,31 @@ function AdminLayoutInner() {
   // include it, so it's discoverable without duplicating a seeded row.
   const navTree = useMemo<NavTreeEntry[]>(() => {
     const base = visibleNav;
+    const extras: NavTreeEntry[] = [];
+
     const hasPush = base.some(
       (e) => e.to === "/admin/push" || e.navKey === "push_notifications" || e.children.some((c) => c.to === "/admin/push"),
     );
     const canSeePush = isSuperAdmin || can("settings", "view") || can("settings", "manage");
-    if (hasPush || !canSeePush) return base;
-    return [
-      ...base,
-      { to: "/admin/push", label: "Push Notifications", icon: Bell, exact: false, navKey: "push_notifications", children: [] },
-    ];
+    if (!hasPush && canSeePush) {
+      extras.push({ to: "/admin/push", label: "Push Notifications", icon: Bell, exact: false, navKey: "push_notifications", children: [] });
+    }
+
+    // Deals management (curated deal products + deals storefront settings).
+    const hasDeals = base.some((e) => e.to === "/admin/deals" || e.navKey === "deals");
+    const canSeeDeals = isSuperAdmin || can("promotions", "view") || can("promotions", "manage") || can("content", "edit_settings");
+    if (!hasDeals && canSeeDeals) {
+      extras.push({ to: "/admin/deals", label: "Deals", icon: Tag, exact: false, navKey: "deals", children: [] });
+    }
+
+    // Homepage content (hero slides, category tiles, most-loved brands).
+    const hasHome = base.some((e) => e.to === "/admin/home-content" || e.navKey === "home_content");
+    const canSeeHome = isSuperAdmin || can("content", "edit_settings") || can("content", "view");
+    if (!hasHome && canSeeHome) {
+      extras.push({ to: "/admin/home-content", label: "Homepage", icon: Layout, exact: false, navKey: "home_content", children: [] });
+    }
+
+    return extras.length ? [...base, ...extras] : base;
   }, [visibleNav, isSuperAdmin, can]);
 
   // Flat lookup for the search palette (parents + children).
