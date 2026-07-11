@@ -13,7 +13,7 @@ const RESTRICTED_TABS: Record<string, { module: string; action: string }> = {
   "Quiz Lead Notifications": { module: "settings", action: "manage_notifications" },
 };
 
-const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "textarea" | "number" | "toggle" | "color" | "url" | "email" }[]> = {
+const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "textarea" | "number" | "toggle" | "color" | "url" | "email"; note?: string }[]> = {
   General: [
     { key: "site_name", label: "Site Name", type: "text" },
     { key: "site_tagline", label: "Tagline", type: "text" },
@@ -21,6 +21,7 @@ const TAB_KEYS: Record<string, { key: string; label: string; type: "text" | "tex
     { key: "whatsapp_number", label: "WhatsApp Number", type: "text" },
     { key: "office_address", label: "Office Address", type: "textarea" },
     { key: "currency_symbol", label: "Currency Symbol", type: "text" },
+    { key: "storefront_legacy_redirects_enabled", label: "Redirect old category URLs to the new shop structure", type: "toggle", note: "When on, old /shop/:slug and ?category= links forward to the new /shop/{parent}/{slug} pages. Turning it off stops all legacy URL redirects immediately (takes effect on next page load, no deploy)." },
   ],
   Homepage: [
     { key: "hero_badge", label: "Hero Badge Text", type: "text" },
@@ -210,7 +211,8 @@ export default function AdminSettings() {
                         // payment methods + the service-fee group.
                         if (
                           field.key.startsWith("payment_method_") ||
-                          field.key.startsWith("service_fee_")
+                          field.key.startsWith("service_fee_") ||
+                          field.key === "storefront_legacy_redirects_enabled"
                         ) {
                           saveSetting.mutate({ key: field.key, value: newVal });
                         }
@@ -233,6 +235,7 @@ export default function AdminSettings() {
                     onChange={e => setEditValues(prev => ({ ...prev, [field.key]: field.type === "number" ? e.target.value : JSON.stringify(e.target.value) }))}
                     className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
                 )}
+                {field.note && <p className="text-[11px] text-text-light mt-1.5 leading-relaxed">{field.note}</p>}
               </div>
             );
           })}

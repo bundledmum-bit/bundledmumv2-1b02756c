@@ -44,6 +44,7 @@ import {
 import BundleDetailPage from "@/pages/BundleDetailPage";
 import ShopPage from "@/pages/ShopPage";
 import SubcategoryPage from "@/pages/SubcategoryPage";
+import LegacyShopRedirect from "@/components/shop/LegacyShopRedirect";
 import DealsPage from "@/pages/DealsPage";
 import CategoryPage from "@/pages/CategoryPage";
 import QuizPage from "@/pages/QuizPage";
@@ -307,12 +308,12 @@ function StorefrontShell() {
           <Route path="/bundles/postpartum-recovery-kits" element={<BundleCategoryRecoveryKitsPage />} />
           <Route path="/bundles/maternity-bundles" element={<BundleCategoryMaternityPage />} />
           <Route path="/bundles/:bundleId" element={<BundleDetailPage />} />
-          <Route path="/shop" element={<ShopPage />} />
-          <Route path="/shop/baby" element={<ShopPage />} />
-          <Route path="/shop/mum" element={<ShopPage />} />
+          <Route path="/shop" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
+          <Route path="/shop/baby" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
+          <Route path="/shop/mum" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
           <Route path="/shop/baby/:category" element={<SubcategoryPage tab="baby" />} />
           <Route path="/shop/mum/:category" element={<SubcategoryPage tab="mum" />} />
-          <Route path="/shop/:slug" element={<CategoryPage />} />
+          <Route path="/shop/:slug" element={<LegacyShopRedirect><CategoryPage /></LegacyShopRedirect>} />
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/subscribe" element={<SubscribeLanding />} />
           <Route path="/subscriptions" element={<SubscriptionPage />} />
