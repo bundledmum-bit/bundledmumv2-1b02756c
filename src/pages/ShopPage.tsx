@@ -13,7 +13,7 @@ import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
 import CategoryNav from "@/components/shop/CategoryNav";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
-import { isProductOOS } from "@/lib/supabaseAdapters";
+import { isProductOOS, hasInStockBrand } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -318,6 +318,9 @@ export default function ShopPage() {
     // applied identically in browse and search modes so the chips behave the
     // same whether or not a query is active.
     const passesFilters = (p: Product): boolean => {
+      // Hide any product with no in-stock brand at all (products with some
+      // in-stock brands stay; individual OOS variants keep their badge).
+      if (!hasInStockBrand(p)) return false;
       if (categoryF && p.subcategory !== categoryF) return false;
       if (brandF && !p.brands.some(b => b.label.toLowerCase() === brandF.toLowerCase())) return false;
       if (inStockOnlyF && !p.brands.some(b => b.inStock)) return false;
@@ -598,6 +601,12 @@ export default function ShopPage() {
               className="w-full rounded-pill bg-background border border-border text-foreground text-sm pl-11 pr-4 py-2.5 outline-none placeholder:text-text-light focus:border-forest transition-colors min-h-[44px]"
             />
           </div>
+          {/* Section subtitle (admin: shop_all/baby/mum_subtitle). Empty = hidden. */}
+          {(() => {
+            const subKey = isBaby ? "shop_baby_subtitle" : isMum ? "shop_mum_subtitle" : "shop_all_subtitle";
+            const sub = (siteSettings as any)?.[subKey];
+            return sub ? <p className="text-muted-foreground text-[13px] mt-2">{sub}</p> : null;
+          })()}
           {/* Section tabs — wrap so every tab is visible without scrolling */}
           <div className="flex flex-wrap gap-2 mt-2.5">
             {[
@@ -615,14 +624,24 @@ export default function ShopPage() {
         </div>
       </div>
 
-      {/* Slim trust strip */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] md:text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><Truck className="w-3.5 h-3.5 text-forest" /> Fast Lagos delivery</span>
-          <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-forest" /> Authentic brands</span>
-          <span className="inline-flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5 text-forest" /> Easy returns</span>
-        </div>
-      </div>
+      {/* Slim trust strip — admin: shop_trust_items (JSON). Empty = hidden. */}
+      {(() => {
+        const raw = (siteSettings as any)?.shop_trust_items;
+        const arr = Array.isArray(raw)
+          ? raw
+          : (typeof raw === "string" && raw.trim() ? (() => { try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; } catch { return []; } })() : []);
+        const items = arr.map((x: any) => (typeof x === "string" ? x : x?.label || x?.text || "")).filter(Boolean);
+        if (items.length === 0) return null;
+        return (
+          <div className="border-b border-border bg-card">
+            <div className="max-w-[1200px] mx-auto px-3 md:px-6 py-2 flex flex-wrap gap-x-5 gap-y-1 text-[11px] md:text-xs text-muted-foreground">
+              {items.map((label: string, i: number) => (
+                <span key={i} className="inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-forest" /> {label}</span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Filter + Sort toolbar — same controls on mobile and desktop. Filter
           opens category / price / brand; Sort covers popularity and price. */}

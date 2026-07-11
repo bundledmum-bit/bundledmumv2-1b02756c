@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { adaptProducts } from "@/lib/supabaseAdapters";
+import { adaptProducts, hasInStockBrand } from "@/lib/supabaseAdapters";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import Seo from "@/components/Seo";
 import ProductCard from "@/components/shop/ProductCard";
@@ -23,16 +23,15 @@ function useSubcategoryProducts(categorySlug: string) {
         .select(PRODUCT_COLS)
         .eq("subcategory", categorySlug)
         .eq("is_active", true)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        // display_order is the canonical ordering across the whole shop
+        // (populated on all active products); stage_order is only partially
+        // populated, so it can't be the ranking column.
+        .order("display_order");
       if (error) throw error;
       const rows = (data || []) as any[];
-      rows.sort((a, b) => {
-        const aSO = a.stage_order == null ? Number.POSITIVE_INFINITY : a.stage_order;
-        const bSO = b.stage_order == null ? Number.POSITIVE_INFINITY : b.stage_order;
-        if (aSO !== bSO) return aSO - bSO;
-        return (a.name || "").localeCompare(b.name || "");
-      });
-      return adaptProducts(rows);
+      // Hide products with no in-stock brand at all.
+      return adaptProducts(rows).filter(hasInStockBrand);
     },
     enabled: !!categorySlug,
     staleTime: 5 * 60 * 1000,

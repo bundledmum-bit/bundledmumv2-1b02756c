@@ -108,6 +108,14 @@ export function isProductOOS(product: Product): boolean {
   return false;
 }
 
+// A product is shown on listings only if at least one of its brands is truly
+// in stock (in_stock = true). Products with no in-stock brand are hidden from
+// shop / subcategory / category / deals listings. Individual out-of-stock
+// variants on an otherwise-in-stock product keep their per-variant badge.
+export function hasInStockBrand(product: Product): boolean {
+  return Array.isArray(product?.brands) && product.brands.some(b => b && b.inStock === true);
+}
+
 export interface BundleItem {
   name: string;
   brand: string;

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { adaptProducts, type Product } from "@/lib/supabaseAdapters";
+import { adaptProducts, hasInStockBrand, type Product } from "@/lib/supabaseAdapters";
 import { trackEcommerce } from "@/lib/ga";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import { useCategoryPagePins } from "@/hooks/useMerchandising";
@@ -25,16 +25,14 @@ function useCategoryProducts(slug: string) {
         .select(PRODUCT_COLS)
         .eq("subcategory", slug)
         .eq("is_active", true)
-        .is("deleted_at", null);
+        .is("deleted_at", null)
+        // Canonical shop ordering (see SubcategoryPage). Admin category pins
+        // are applied on top of this in the component.
+        .order("display_order");
       if (error) throw error;
       const rows = data || [];
-      rows.sort((a: any, b: any) => {
-        const aSO = a.stage_order == null ? Number.POSITIVE_INFINITY : a.stage_order;
-        const bSO = b.stage_order == null ? Number.POSITIVE_INFINITY : b.stage_order;
-        if (aSO !== bSO) return aSO - bSO;
-        return (a.name || "").localeCompare(b.name || "");
-      });
-      return adaptProducts(rows);
+      // Hide products with no in-stock brand at all.
+      return adaptProducts(rows).filter(hasInStockBrand);
     },
     enabled: !!slug,
     staleTime: 5 * 60 * 1000,
@@ -71,7 +69,8 @@ export default function CategoryPage() {
     const seen = new Set<string>();
     const merged: Product[] = [];
     for (const pin of pins) {
-      if (!seen.has(pin.product.id)) {
+      // Pinned products are still subject to the in-stock rule.
+      if (!seen.has(pin.product.id) && hasInStockBrand(pin.product)) {
         seen.add(pin.product.id);
         merged.push(pin.product);
       }

@@ -3,18 +3,29 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, ArrowRight } from "lucide-react";
 import { useSiteSettings, useBundles, useAllProducts } from "@/hooks/useSupabaseData";
 import { useCart, fmt } from "@/lib/cart";
-import HeroCarousel, { type HeroContent } from "@/components/home/HeroCarousel";
-import FlashDeals, { selectDealProducts } from "@/components/home/FlashDeals";
+import HeroCarousel, { type HeroSlide } from "@/components/home/HeroCarousel";
+import FlashDeals, { useDealProducts } from "@/components/home/FlashDeals";
 
 /**
- * PREVIEW homepage in the "BundledMum Prototype" layout.
+ * Homepage in the "BundledMum Prototype" layout.
  *
- * TEXT POLICY: real copy resolves from the database (site_settings.hero_title /
- * hero_subtitle / cta_button_text, bundles, product prices). Sections that need
- * a backend field they do not have yet use placeholders derived from real data,
- * documented in docs/storefront-redesign-backend-audit.md (home_categories,
- * home_loved_baby_brands, deals_ends_at / deals_heading). No em dashes.
+ * Copy and curation resolve from admin settings:
+ *   - Hero slides:        site_settings.home_hero_slides (fallback: derived images + hero copy)
+ *   - Category tiles:     site_settings.home_categories (fallback image per label)
+ *   - Most loved brands:  site_settings.home_loved_baby_brands + home_loved_baby_heading
+ *   - Deals:              get_deal_products() gated by deals_enabled, with deals_heading/subtitle/ends_at
+ * No em dashes.
  */
+
+// site_settings JSON values may arrive as a parsed array (jsonb) or a JSON
+// string; normalise to an array either way.
+function asArray(v: any): any[] {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
+  }
+  return [];
+}
 
 function HeroSearchBar() {
   const navigate = useNavigate();
@@ -46,8 +57,7 @@ export default function PrototypeHome() {
   const heroSubtitle = settings?.hero_subtitle || "Thoughtfully sourced essentials, bundles & gifts for every stage.";
   const bundleCtaLabel = settings?.cta_button_text || "Build My Bundle";
 
-  // Hero: fixed brand copy (from the DB) plus a set of real images that
-  // cross-fade behind it. Only the image changes; the text and CTAs stay put.
+  // Derived imagery used as fallbacks when admin has not configured a field.
   const heroImages = useMemo(() => {
     const imgs: string[] = [];
     (bundles as any[]).forEach((b) => { if (b?.imageUrl) imgs.push(b.imageUrl); });
@@ -55,18 +65,34 @@ export default function PrototypeHome() {
     if (p?.imageUrl) imgs.push(p.imageUrl);
     return Array.from(new Set(imgs)).slice(0, 5);
   }, [bundles, products]);
-  const heroContent: HeroContent = {
-    title: heroTitle,
-    subtitle: heroSubtitle,
-    ctaLabel: bundleCtaLabel,
-    ctaHref: "/quiz",
-    secondaryLabel: "Shop now",
-    secondaryHref: "/shop",
-  };
 
-  // Shop-by-Category tiles. No admin field yet, so the imagery is derived from
-  // real category products/bundles. Proposed: site_settings.home_categories
-  // = [{ label, href, image_url }]. See the audit.
+  // Hero slides: admin-curated (home_hero_slides) when present, else a fallback
+  // built from real imagery + the DB brand copy so the hero never renders empty.
+  const heroSlides: HeroSlide[] = useMemo(() => {
+    const configured = asArray(settings?.home_hero_slides)
+      .filter((s: any) => s && (s.title || s.image_url))
+      .map((s: any) => ({
+        image: s.image_url || null,
+        title: s.title || heroTitle,
+        subtitle: s.subtitle || undefined,
+        ctaLabel: s.cta_text || bundleCtaLabel,
+        ctaHref: s.cta_href || "/quiz",
+      }));
+    if (configured.length > 0) return configured;
+    const base = {
+      title: heroTitle,
+      subtitle: heroSubtitle,
+      ctaLabel: bundleCtaLabel,
+      ctaHref: "/quiz",
+      secondaryLabel: "Shop now",
+      secondaryHref: "/shop",
+    };
+    if (heroImages.length === 0) return [{ ...base, image: null }];
+    return heroImages.map((img) => ({ ...base, image: img }));
+  }, [settings?.home_hero_slides, heroImages, heroTitle, heroSubtitle, bundleCtaLabel]);
+
+  // Category tiles: admin-curated labels/hrefs (home_categories); image falls
+  // back to a derived image matched by label when image_url is null.
   const catImg = useMemo(() => {
     const prods = products as any[];
     const bnds = bundles as any[];
@@ -79,29 +105,44 @@ export default function PrototypeHome() {
         || bnds.filter((b) => b.imageUrl)[1]?.imageUrl || null,
     };
   }, [products, bundles]);
-  const categories = [
-    { label: "Maternity", href: "/shop/mum", image: catImg.mum },
-    { label: "Baby", href: "/shop/baby", image: catImg.baby },
-    { label: "Bundles", href: "/bundles", image: catImg.bundles },
-    { label: "Gifts", href: "/bundles/baby-shower-gift-boxes", image: catImg.gifts },
-  ];
-
-  // "Our Most Loved Baby Items": premium baby brands. The raw brand_name data
-  // is inconsistent (some values carry pack info like "Waterwipes (54pcs)"), so
-  // match brand/product names against a canonical premium-brand list and show
-  // one clean card per brand. Admin curation needs a backend field
-  // (home_loved_baby_brands). See the audit.
-  const babyBrands = useMemo(() => {
-    const CANON = [
-      "WaterWipes", "Huggies", "Pampers", "Mustela", "Tommee Tippee", "Kendamil",
-      "NAN Optipro", "Aptamil", "Sebamed", "Cow & Gate", "Mothercare", "SMA Gold",
-      "Molfix", "Johnson", "Nuby", "Graco", "Yara",
+  const deriveCatImage = (label: string): string | null => {
+    const l = (label || "").toLowerCase();
+    if (/matern|mum/.test(l)) return catImg.mum;
+    if (/baby/.test(l)) return catImg.baby;
+    if (/gift/.test(l)) return catImg.gifts;
+    if (/bundle|kit/.test(l)) return catImg.bundles;
+    return null;
+  };
+  const categories = useMemo(() => {
+    const configured = asArray(settings?.home_categories)
+      .filter((c: any) => c && c.label && c.href)
+      .map((c: any) => ({ label: c.label, href: c.href, image: c.image_url || deriveCatImage(c.label) }));
+    if (configured.length > 0) return configured;
+    // Last-resort fallback if the setting is somehow empty.
+    return [
+      { label: "Maternity", href: "/shop/mum", image: catImg.mum },
+      { label: "Baby", href: "/shop/baby", image: catImg.baby },
+      { label: "Bundles", href: "/bundles", image: catImg.bundles },
+      { label: "Gifts", href: "/bundles/baby-shower-gift-boxes", image: catImg.gifts },
     ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.home_categories, catImg]);
+
+  // Most Loved Baby Items: brand list from admin (home_loved_baby_brands),
+  // matched against real baby products to show one clean card per brand.
+  const lovedHeading = settings?.home_loved_baby_heading || "Our Most Loved Baby Items";
+  const lovedBrandNames = useMemo(() => {
+    return asArray(settings?.home_loved_baby_brands)
+      .map((x: any) => (typeof x === "string" ? x : x?.name || x?.label || x?.brand || ""))
+      .filter(Boolean) as string[];
+  }, [settings?.home_loved_baby_brands]);
+  const babyBrands = useMemo(() => {
     const babyProducts = (products as any[]).filter((p) => p.category === "baby");
     const squash = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const out: Array<{ name: string; image: string | null; minPrice: number }> = [];
-    for (const canon of CANON) {
+    for (const canon of lovedBrandNames) {
       const key = squash(canon);
+      if (!key) continue;
       let image: string | null = null;
       let minPrice = Infinity;
       let found = false;
@@ -120,16 +161,19 @@ export default function PrototypeHome() {
       if (out.length >= 10) break;
     }
     return out;
-  }, [products]);
+  }, [products, lovedBrandNames]);
 
   // Free-delivery progress from the real cart total + the admin threshold.
   const threshold = parseInt(settings?.free_delivery_nationwide_threshold_naira ?? settings?.default_free_threshold ?? "0", 10) || 0;
   const remaining = Math.max(0, threshold - subtotal);
   const pct = threshold > 0 ? Math.min(100, Math.round((subtotal / threshold) * 100)) : 0;
 
-  // Flash Deals: prefer genuinely on-sale products (compareAtPrice > price),
-  // fall back to the first products so the section always populates in preview.
-  const deals = useMemo(() => selectDealProducts(products as any[], 10), [products]);
+  // Deals: admin-curated via get_deal_products(), gated by deals_enabled.
+  const { items: dealItems } = useDealProducts();
+  const dealsEnabled = settings?.deals_enabled !== false && settings?.deals_enabled !== "false";
+  const dealsHeading = (settings?.deals_heading as string) || "Deals";
+  const dealsSubtitle = (settings?.deals_subtitle as string) || "";
+  const dealsEndsAt = (settings?.deals_ends_at as string | null) || null;
 
   return (
     <div className="bg-background min-h-screen pt-[76px]">
@@ -137,15 +181,15 @@ export default function PrototypeHome() {
       {/* Real h1 for SEO/a11y; the visible hero title is an h2 in the carousel. */}
       <h1 className="sr-only">{heroTitle}</h1>
 
-      {/* Hero: search + carousel (static copy, cross-fading image) */}
+      {/* Hero: search + carousel */}
       <section className="px-4 md:px-6 pt-4 pb-2">
         <HeroSearchBar />
         <div className="mt-4">
-          <HeroCarousel images={heroImages} content={heroContent} />
+          <HeroCarousel slides={heroSlides} />
         </div>
       </section>
 
-      {/* Shop by Category (image tiles; larger on desktop) */}
+      {/* Shop by Category */}
       <section className="px-4 md:px-6 py-5">
         <h2 className="text-lg md:text-xl font-bold text-foreground mb-3">Shop by Category</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -165,13 +209,11 @@ export default function PrototypeHome() {
         </div>
       </section>
 
-      {/* Our Most Loved Baby Items: premium baby brands.
-          Preview label pending admin field (see audit: rename most_loved_heading
-          and add home_loved_baby_brands). */}
+      {/* Our Most Loved Baby Items */}
       {babyBrands.length > 0 && (
         <section className="py-5">
           <div className="px-4 md:px-6 flex items-center justify-between mb-3">
-            <h2 className="text-lg md:text-xl font-bold text-foreground">Our Most Loved Baby Items</h2>
+            <h2 className="text-lg md:text-xl font-bold text-foreground">{lovedHeading}</h2>
             <Link to="/shop/baby" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5">View all <ArrowRight className="w-3.5 h-3.5" /></Link>
           </div>
           <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
@@ -207,8 +249,10 @@ export default function PrototypeHome() {
         </section>
       )}
 
-      {/* Flash Deals: countdown, sale prices, and in-place add-to-cart */}
-      <FlashDeals products={deals} heading="Flash Deals" />
+      {/* Deals rail (admin-curated) */}
+      {dealsEnabled && (
+        <FlashDeals items={dealItems} heading={dealsHeading} subtitle={dealsSubtitle} endsAt={dealsEndsAt} />
+      )}
      </div>
     </div>
   );

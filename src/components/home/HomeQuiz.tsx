@@ -164,6 +164,9 @@ function QuizScreen({
   const labelCategoriesHint = s("quiz_label_what_you_need_hint", "You can pick more than one.");
   const labelGender = s("quiz_label_gender", "BABY'S GENDER");
   const ctaLabel = s("quiz_cta_label", "Build My List");
+  // Optional per-step helper lines (admin: quiz_help_*). Empty = render nothing.
+  const helpBudget = s("quiz_help_budget", "");
+  const helpGender = s("quiz_help_gender", "");
 
   const toggleCategory = (c: Category) => {
     const next = new Set(categories);
@@ -246,7 +249,7 @@ function QuizScreen({
         {step === 0 && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
-            <p className="text-muted-foreground text-[13px] mb-4">We match products to what you want to spend.</p>
+            {helpBudget && <p className="text-muted-foreground text-[13px] mb-4">{helpBudget}</p>}
             <div className="relative">
               {budget > 0 && (
                 <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
@@ -324,7 +327,7 @@ function QuizScreen({
         {step === 2 && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelGender}</h2>
-            <p className="text-muted-foreground text-[13px] mb-4">This helps us pick colours and gender-specific items.</p>
+            {helpGender && <p className="text-muted-foreground text-[13px] mb-4">{helpGender}</p>}
             <div className="space-y-2">
               {genderCards.map(g => {
                 const selected = gender === g.id;
