@@ -89,8 +89,12 @@ type BrandHit = {
   cost_price: number | null;
   in_stock: boolean;
   image_url: string | null;
+  // PER BRAND: true = THIS brand is already on deals (never a sibling).
   on_deals: boolean;
   has_promo: boolean;
+  // How many brands of this product are already featured (incl. this one).
+  // Informational only — never a reason to block adding another sibling brand.
+  product_brands_on_deals: number | null;
 };
 
 // LOSS -> red, thin (< ~10% of what the customer pays) -> amber, else forest.
@@ -645,6 +649,15 @@ export default function AdminDeals() {
                       {b.sku ? `${b.sku} · ` : ""}{naira(b.price)}{b.cost_price != null ? ` · cost ${naira(b.cost_price)}` : ""}
                       {b.has_promo ? " · promo live" : ""}{!b.in_stock ? " · out of stock" : ""}
                     </p>
+                    {/* Sibling context — informational ONLY. A brand is still
+                        addable even when other brands of the same product are
+                        already featured (each becomes its own deal card). */}
+                    {(() => {
+                      const others = (b.product_brands_on_deals || 0) - (b.on_deals ? 1 : 0);
+                      return others > 0 ? (
+                        <p className="text-[11px] text-forest">{others} other brand{others === 1 ? "" : "s"} of this product {others === 1 ? "is" : "are"} already on deals</p>
+                      ) : null;
+                    })()}
                     </div>
                   </div>
                   <button
