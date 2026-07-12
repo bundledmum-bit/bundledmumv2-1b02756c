@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowUp, ArrowDown, Trash2, Plus, Search, AlertTriangle, Pencil } from "lucide-react";
+import { ArrowUp, ArrowDown, Trash2, Plus, Search, AlertTriangle, Pencil, ImageOff } from "lucide-react";
 
 /**
  * Deals management. Curation is product-level (admin_add/remove/set_deal_product),
@@ -15,6 +15,26 @@ import { ArrowUp, ArrowDown, Trash2, Plus, Search, AlertTriangle, Pencil } from 
 
 const inputCls = "w-full border border-input rounded-lg px-3 py-2 text-sm bg-background";
 const naira = (n: any) => (n == null ? "" : `₦${Number(n).toLocaleString("en-NG")}`);
+
+// Compact square product thumbnail. Neutral placeholder when there is no image
+// or when a URL fails to load — never a broken image.
+function DealThumb({ url, alt }: { url: string | null | undefined; alt: string }) {
+  return (
+    <div className="w-10 h-10 rounded-md bg-muted border border-border overflow-hidden flex-shrink-0 flex items-center justify-center">
+      {url ? (
+        <img
+          src={url}
+          alt={alt}
+          loading="lazy"
+          className="w-full h-full object-cover"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : (
+        <ImageOff className="w-4 h-4 text-text-light" />
+      )}
+    </div>
+  );
+}
 
 type DealRow = {
   deal_id: string;
@@ -44,6 +64,7 @@ type DealRow = {
   your_margin: number | null;
   margin_pct: number | null;
   below_cost: boolean;
+  image_url: string | null;
 };
 
 type BrandHit = {
@@ -367,12 +388,15 @@ export default function AdminDeals() {
             ) : (
               (brandHits || []).map((b) => (
                 <div key={b.brand_id} className="flex items-center justify-between gap-3 p-2.5">
-                  <div className="min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <DealThumb url={b.image_url} alt={b.product_name} />
+                    <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{b.brand_name} <span className="text-text-light">· {b.product_name}</span></p>
                     <p className="text-[11px] text-text-light">
                       {b.sku ? `${b.sku} · ` : ""}{naira(b.price)}{b.cost_price != null ? ` · cost ${naira(b.cost_price)}` : ""}
                       {b.has_promo ? " · promo live" : ""}{!b.in_stock ? " · out of stock" : ""}
                     </p>
+                    </div>
                   </div>
                   <button
                     disabled={b.on_deals || addDeal.isPending}
@@ -402,7 +426,9 @@ export default function AdminDeals() {
               return (
                 <div key={d.deal_id} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <DealThumb url={d.image_url} alt={d.product_name} />
+                      <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{d.product_name}</span>
                         {!d.is_active && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">inactive</span>}
@@ -412,6 +438,7 @@ export default function AdminDeals() {
                       </div>
                       <p className="text-coral text-xs font-semibold mt-0.5">{d.brand_name}{d.sku ? ` · ${d.sku}` : ""}</p>
                       <p className="text-xs text-text-med mt-0.5">{d.promo_label || "No promo"}{d.eval_qty ? ` · at qty ${d.eval_qty}` : ""}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => move(i, -1)} disabled={i === 0 || reorder.isPending} className="p-1 rounded hover:bg-muted disabled:opacity-30" aria-label="Move up"><ArrowUp className="w-3.5 h-3.5" /></button>
