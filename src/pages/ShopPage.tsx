@@ -7,6 +7,7 @@ import BundleSections from "@/components/BundleSections";
 import ShopSectionsRenderer from "@/components/ShopSectionsRenderer";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
+import { useBrandPromo } from "@/hooks/useBrandPricing";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
@@ -56,8 +57,14 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   const productHref = deepLinkSku
     ? `/products/${product.slug}?sku=${encodeURIComponent(deepLinkSku)}`
     : `/products/${product.slug}`;
-  const showSale = selectedBrand.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
-  const savePct = showSale ? Math.round(((selectedBrand.compareAtPrice! - selectedBrand.price) / selectedBrand.compareAtPrice!) * 100) : 0;
+  // Brand-wide promo (single source of truth) so shop shows the same price as
+  // PDP/search/deals. Falls back to the static compare-at sale when no promo.
+  const promo = useBrandPromo(selectedBrand.id);
+  const promoLive = !!promo?.promoLabel;
+  const cardPrice = promoLive ? promo!.unitPrice : selectedBrand.price;
+  const cardStrike = promoLive ? (promo!.compareAt ?? promo!.listPrice) : selectedBrand.compareAtPrice;
+  const showSale = !!(cardStrike && cardStrike > cardPrice);
+  const savePct = showSale && cardStrike ? Math.round(((cardStrike - cardPrice) / cardStrike) * 100) : 0;
 
   useEffect(() => {
     if (selectedBrandId) {
@@ -213,12 +220,15 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
         {/* Price + rating */}
         <div className="mt-auto pt-1 space-y-0.5">
           <div className="flex items-baseline gap-1.5">
-            <span className="font-mono-price text-forest font-bold text-[16px]">{fmt(selectedBrand.price)}</span>
-            {showSale && <span className="font-mono-price text-muted-foreground text-[11px] line-through">{fmt(selectedBrand.compareAtPrice!)}</span>}
+            <span className="font-mono-price text-forest font-bold text-[16px]">{fmt(cardPrice)}</span>
+            {showSale && <span className="font-mono-price text-muted-foreground text-[11px] line-through">{fmt(cardStrike!)}</span>}
             {!showSale && product.brands.length > 1 && (
               <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...product.brands.map(b => b.price)))}</span>
             )}
           </div>
+          {promoLive && (
+            <span className="inline-block rounded-pill bg-coral/10 text-coral text-[10px] font-bold px-2 py-0.5">{promo!.promoLabel}</span>
+          )}
           <div className="flex items-center gap-1">
             <span className="text-coral text-[11px]">★ {product.rating}</span>
             <span className="text-muted-foreground text-[10px]">({product.reviews})</span>

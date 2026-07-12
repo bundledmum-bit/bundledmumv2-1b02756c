@@ -23,18 +23,29 @@ export function pad(n: number) {
 }
 
 // Curated deal item: the full adapted product plus the specific brand the deal
-// is for (so pricing and add-to-cart use the right variant).
-export type DealItem = { product: any; brandId: string };
+// is for (so add-to-cart uses the right variant), PLUS the promo fields straight
+// from get_deal_products (the single source of truth — effective price, strike,
+// promo label and per-brand end time). Display uses the RPC values; the frontend
+// never recomputes a promo price.
+export type DealItem = {
+  product: any;
+  brandId: string;
+  price: number;              // EFFECTIVE price after promo (from the RPC)
+  compareAt: number | null;   // strike-through
+  promoType: string | null;
+  promoLabel: string | null;
+  promoEndsAt: string | null;
+};
 
 // Fetch the admin-curated deal list and resolve each row to the full adapted
 // product (so add-to-cart stays cart/checkout compatible), preserving the RPC's
-// display_order. Rows whose product isn't shoppable are dropped.
+// display_order AND its promo pricing. Rows whose product isn't shoppable are dropped.
 export function useDealProducts() {
   const { data: allProducts } = useAllProducts();
   const rpc = useQuery({
     queryKey: ["deal_products"],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_deal_products");
+      const { data, error } = await (supabase as any).rpc("get_deal_products");
       if (error) throw error;
       return (data || []) as any[];
     },
@@ -45,7 +56,17 @@ export function useDealProducts() {
     return (rpc.data || [])
       .map((r: any) => {
         const product = byId.get(r.product_id);
-        return product ? { product, brandId: r.brand_id as string } : null;
+        return product
+          ? {
+              product,
+              brandId: r.brand_id as string,
+              price: Number(r.price) || 0,
+              compareAt: r.compare_at_price != null ? Number(r.compare_at_price) : null,
+              promoType: r.promo_type ?? null,
+              promoLabel: r.promo_label ?? null,
+              promoEndsAt: r.promo_ends_at ?? null,
+            }
+          : null;
       })
       .filter(Boolean) as DealItem[];
   }, [rpc.data, allProducts]);
@@ -91,13 +112,22 @@ export function useCountdown(endsAt?: string | null) {
 // zoomable=false (default, homepage rail): tapping the product image
 //   navigates to the product page.
 // zoomable=true (deals grid): tapping the image opens a lightbox.
-export function FlashDealCard({ product, brandId, className = "", zoomable = false }: { product: any; brandId?: string; className?: string; zoomable?: boolean }) {
+export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, promoLabel, promoEndsAt, className = "", zoomable = false }: { product: any; brandId?: string; price?: number; compareAt?: number | null; promoLabel?: string | null; promoEndsAt?: string | null; className?: string; zoomable?: boolean }) {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty } = useCart();
   const [zoomed, setZoomed] = useState(false);
+  // Per-brand promo countdown (from get_deal_products.promo_ends_at). When it
+  // passes the RPC simply stops applying the promo — nothing to clear here.
+  const promoCountdown = useCountdown(promoEndsAt);
   const pricing = getDealPricing(product, brandId);
   if (!pricing) return null;
-  const { brand, was, onSale, savePct: save } = pricing;
+  const { brand } = pricing;
+  // DISPLAY comes from the RPC (single source of truth) when provided; fall back
+  // to the brand's compare_at only if the deal fields weren't passed.
+  const price = dealPrice != null ? dealPrice : pricing.price;
+  const was = compareAt != null && compareAt > price ? compareAt : pricing.was;
+  const onSale = was != null && was > price;
+  const save = onSale ? Math.round(((was - price) / was) * 100) : 0;
   const stock: number | null = brand.stockQuantity ?? null;
   const needsSize = product.sizes && product.sizes.length > 0;
 
@@ -111,8 +141,11 @@ export function FlashDealCard({ product, brandId, className = "", zoomable = fal
 
   const imageUrl = brand.imageUrl || product.imageUrl;
 
-  // Real sale badge only.
-  const badges = onSale ? (
+  // Promo label from the RPC wins (e.g. "Buy 1, get 1 free"); otherwise the
+  // discount percent for a plain price drop.
+  const badges = promoLabel ? (
+    <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5 max-w-[90%] truncate">{promoLabel}</span>
+  ) : onSale ? (
     <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">-{save}%</span>
   ) : null;
 
@@ -150,9 +183,15 @@ export function FlashDealCard({ product, brandId, className = "", zoomable = fal
             {product.name}
           </Link>
           <div className="flex items-baseline gap-1.5">
-            <span className="font-mono-price text-coral font-bold text-sm">{fmt(brand.price)}</span>
+            <span className="font-mono-price text-coral font-bold text-sm">{fmt(price)}</span>
             {onSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(was!)}</span>}
           </div>
+          {promoCountdown && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-coral">
+              <Clock className="w-3 h-3" />
+              <span className="font-mono-price">{pad(promoCountdown.h)}:{pad(promoCountdown.m)}:{pad(promoCountdown.s)}</span>
+            </span>
+          )}
           <div className="mt-auto pt-0.5">
             {cartItem ? (
               <QtyControl qty={cartItem.qty} onUpdate={(q: number) => updateQty(cartItem._key, q)} maxQty={stock ?? undefined} />
@@ -190,9 +229,9 @@ export function FlashDealCard({ product, brandId, className = "", zoomable = fal
             <div className="p-4">
               <p className="font-semibold text-sm text-foreground leading-snug mb-1">{product.name}</p>
               <div className="flex items-baseline gap-2 mb-3">
-                <span className="font-mono-price text-coral font-bold text-lg">{fmt(brand.price)}</span>
+                <span className="font-mono-price text-coral font-bold text-lg">{fmt(price)}</span>
                 {onSale && <span className="font-mono-price text-muted-foreground text-xs line-through">{fmt(was!)}</span>}
-                {onSale && <span className="text-xs font-bold text-coral">Save {save}%</span>}
+                {promoLabel ? <span className="text-xs font-bold text-coral">{promoLabel}</span> : onSale ? <span className="text-xs font-bold text-coral">Save {save}%</span> : null}
               </div>
               <Link
                 to={`/products/${product.slug}`}
@@ -237,7 +276,7 @@ export default function FlashDeals({ items, heading, subtitle, endsAt }: { items
         </Link>
       </div>
       <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
-        {items.map((d) => <FlashDealCard key={d.product.id} product={d.product} brandId={d.brandId} className="snap-start shrink-0 w-[172px]" />)}
+        {items.map((d) => <FlashDealCard key={d.product.id} product={d.product} brandId={d.brandId} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="snap-start shrink-0 w-[172px]" />)}
       </div>
     </section>
   );

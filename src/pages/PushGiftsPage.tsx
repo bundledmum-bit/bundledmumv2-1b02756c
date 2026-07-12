@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Seo from "@/components/Seo";
 import Breadcrumb from "@/components/Breadcrumb";
 import { useCart, fmt, getBrandForBudget, getMissingVariantAxes } from "@/lib/cart";
@@ -41,6 +41,7 @@ const FILTER_TABS = [
 ];
 
 function PushGiftCard({ product, onAdd }: { product: Product; onAdd: (item: any) => void }) {
+  const navigate = useNavigate();
   const defaultBrand = getBrandForBudget(product, "standard");
   const [selectedBrand, setSelectedBrand] = useState<Brand>(defaultBrand);
   const { cart, updateQty } = useCart();
@@ -57,9 +58,9 @@ function PushGiftCard({ product, onAdd }: { product: Product; onAdd: (item: any)
 
   const handleAdd = () => {
     if (isOutOfStock) return;
-    // Variant-requiring product: open its detail drawer to choose size/colour
-    // instead of adding blind (the drawer enforces the selection).
-    if (getMissingVariantAxes(product).length) { onViewDetail(); return; }
+    // Variant-requiring product: route to its detail page to choose size/colour
+    // instead of adding blind (the cart guard also blocks variant-less adds).
+    if (getMissingVariantAxes(product).length) { navigate(`/products/${product.slug}`); return; }
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})` });
   };
 

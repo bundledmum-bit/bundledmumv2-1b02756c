@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { computeAutoFees, type AutoFeesResult } from "@/lib/computeAutoFees";
+import { useCartEffectivePricing, type BrandPrice } from "@/hooks/useBrandPricing";
 import { trackEvent } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { trackEcommerce } from "@/lib/ga";
@@ -150,7 +151,15 @@ interface CartContextType {
     },
   ) => string | null;
   totalItems: number;
+  // Promo-aware subtotal: sum of each line's effective line_total from
+  // get_brand_effective_price (falls back to list price for lines without a
+  // brand or while pricing loads). This is what the customer actually pays.
   subtotal: number;
+  // Raw list-price subtotal (no promotions) — kept for reference/comparison.
+  listSubtotal: number;
+  // Per-line effective pricing from the RPC (promo label, saving, compare-at).
+  lineEffective: (brandId?: string | null, qty?: number) => BrandPrice | null;
+  pricingReady: boolean;
   // Auto-applied fee rules (gift wrap + service & packaging), computed
   // server-side via the compute_auto_fees RPC. Null until first resolved.
   autoFees: AutoFeesResult | null;
@@ -406,7 +415,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
-  const subtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+
+  // Promo-aware pricing: every line priced through get_brand_effective_price so
+  // the cart shows the same total the customer is charged (BOGO handled by the
+  // RPC's line_total — never unit_price * qty here). Lines with no brand fall
+  // back to list price.
+  const { priceLine, ready: pricingReady } = useCartEffectivePricing(
+    cart.map((i) => ({ brandId: i.selectedBrand?.id, qty: i.qty })),
+  );
+  const listSubtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const subtotal = cart.reduce((sum, i) => {
+    const ep = priceLine(i.selectedBrand?.id, i.qty);
+    return sum + (ep ? ep.lineTotal : i.price * i.qty);
+  }, 0);
+  const lineEffective = (brandId?: string | null, qty = 1) => priceLine(brandId, qty);
 
   // ── Auto-applied fees ─────────────────────────────────────────────
   // Recompute via the DB RPC whenever the cart changes, debounced 300ms
@@ -436,7 +458,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [feeItemsSig]);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, autoFees, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
+    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, listSubtotal, lineEffective, pricingReady, autoFees, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
       {children}
     </CartContext.Provider>
   );

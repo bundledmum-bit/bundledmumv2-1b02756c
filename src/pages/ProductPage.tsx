@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Brand } from "@/lib/supabaseAdapters";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
+import { useBrandPromo } from "@/hooks/useBrandPricing";
+import { useCountdown } from "@/components/home/FlashDeals";
 import KlumpAdBanner from "@/components/KlumpAdBanner";
 import { brandOptionName } from "@/lib/brandOptions";
 import { toast } from "sonner";
@@ -392,9 +394,19 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
   const isOutOfStock = isProductOOS(product) || !selectedBrand?.inStock;
   const isLowStock = !isOutOfStock && selectedBrand?.stockQuantity != null && selectedBrand.stockQuantity > 0 && selectedBrand.stockQuantity <= 5;
-  const showSalePrice = selectedBrand?.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
-  const savings = showSalePrice ? selectedBrand.compareAtPrice! - selectedBrand.price : 0;
-  const savingsPercent = showSalePrice ? Math.round((savings / selectedBrand.compareAtPrice!) * 100) : 0;
+  // Brand-wide promotion (single source of truth). When live, the effective
+  // price + strike-through + label + countdown all come from the RPC so the same
+  // price shows here, on shop, in search and on /deals.
+  const promo = useBrandPromo(selectedBrand?.id);
+  const promoLive = !!promo?.promoLabel;
+  const effectivePrice = promoLive ? promo!.unitPrice : selectedBrand?.price;
+  const promoCountdown = useCountdown(promo?.promoEndsAt);
+  const showSalePrice = promoLive
+    ? (promo!.compareAt ?? promo!.listPrice) > (promo!.unitPrice ?? 0)
+    : selectedBrand?.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
+  const strikePrice = promoLive ? (promo!.compareAt ?? promo!.listPrice) : selectedBrand?.compareAtPrice;
+  const savings = showSalePrice ? (strikePrice! - (effectivePrice ?? 0)) : 0;
+  const savingsPercent = showSalePrice && strikePrice ? Math.round((savings / strikePrice) * 100) : 0;
 
   // Build image gallery from brand images (each brand with an image = one slide)
   const brandImages: { url: string; alt: string; brandId: string }[] = [];
@@ -1123,13 +1135,25 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             </div>
 
             {/* Price block */}
-            <div className="flex items-baseline gap-3 mb-1 pb-4 border-b border-border">
-              <span className="font-mono-price text-[28px] md:text-[34px] font-bold text-forest leading-none">{fmt(selectedBrand.price)}</span>
-              {showSalePrice && (
-                <span className="font-mono-price text-muted-foreground text-lg line-through">{fmt(selectedBrand.compareAtPrice!)}</span>
-              )}
-              {showSalePrice && (
-                <span className="bg-destructive/10 text-destructive text-xs font-bold px-2 py-0.5 rounded-pill">-{savingsPercent}%</span>
+            <div className="mb-1 pb-4 border-b border-border">
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <span className="font-mono-price text-[28px] md:text-[34px] font-bold text-forest leading-none">{fmt(effectivePrice ?? selectedBrand.price)}</span>
+                {showSalePrice && (
+                  <span className="font-mono-price text-muted-foreground text-lg line-through">{fmt(strikePrice!)}</span>
+                )}
+                {showSalePrice && (
+                  <span className="bg-destructive/10 text-destructive text-xs font-bold px-2 py-0.5 rounded-pill">-{savingsPercent}%</span>
+                )}
+              </div>
+              {promoLive && (
+                <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                  <span className="rounded-pill bg-coral text-white text-[11px] font-bold px-2 py-0.5">{promo!.promoLabel}</span>
+                  {promoCountdown && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-coral">
+                      <span className="font-mono-price">Ends in {promoCountdown.h}h {promoCountdown.m}m {promoCountdown.s}s</span>
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             <div className="mb-4" />

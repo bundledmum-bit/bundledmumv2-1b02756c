@@ -119,7 +119,7 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
-  const { cart, setCart, clearCart, addToCart, subtotal, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
+  const { cart, setCart, clearCart, addToCart, subtotal, lineEffective, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
   // Image zoom + Edit modal local state. Both are page-scoped because the
@@ -593,6 +593,10 @@ export default function CartPage() {
                     (liveBrand && liveBrand.inStock !== false && (liveBrand.price || 0) > 0)
                     || liveProduct.brands.some(b => b.inStock !== false && (b.price || 0) > 0)
                   );
+              // Effective (promo-aware) pricing from get_brand_effective_price.
+              // BOGO/discount line_total comes from the RPC, never computed here.
+              const ep = item.type === "bundle" ? null : lineEffective(item.selectedBrand?.id, item.qty);
+              const lineTotal = ep ? ep.lineTotal : item.price * item.qty;
               return (
               <div key={item._key} className={`bg-card rounded-card shadow-card p-3 sm:p-4 ${!stillShoppable ? "opacity-60" : ""}`}>
                 {!stillShoppable && (
@@ -642,6 +646,9 @@ export default function CartPage() {
                       {item.selectedColor && <span className="font-body text-[11px] text-text-light">Colour: {formatColor(item.selectedColor)}</span>}
                     </div>
                     <p className="font-body font-bold text-coral text-sm mt-1">{fmt(item.price)}</p>
+                    {ep?.promoLabel && (
+                      <span className="inline-block mt-1 rounded-pill bg-coral/10 text-coral text-[10px] font-bold px-2 py-0.5">{ep.promoLabel}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button onClick={() => saveForLater(item._key)} className="text-text-light hover:text-forest interactive h-9 w-9 flex items-center justify-center" title="Save for later">
@@ -697,7 +704,12 @@ export default function CartPage() {
                       <Pencil className="h-3 w-3" /> Edit
                     </button>
                   </div>
-                  <p className="font-body font-bold text-sm">{fmt(item.price * item.qty)}</p>
+                  <div className="text-right">
+                    <p className="font-body font-bold text-sm">{fmt(lineTotal)}</p>
+                    {ep && ep.saving > 0 && (
+                      <p className="text-[11px] text-forest font-semibold">You save {fmt(ep.saving)}</p>
+                    )}
+                  </div>
                 </div>
                 )}
               </div>
