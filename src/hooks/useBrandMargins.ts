@@ -150,22 +150,49 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
 // Single-row update.
 // ---------------------------------------------------------------------------
 
+// One admin_save_brand_price result (returns TABLE(...) -> array of one row).
+export interface SaveBrandPriceResult {
+  saved: boolean;
+  needs_confirmation: boolean;
+  floor_price: number | null;
+  resulting_markup: number | null;
+  message: string | null;
+}
+
+// Turn a raw floor/permission error into a human message.
+export function friendlyPriceError(e: any): string {
+  const msg = String(e?.message || e || "");
+  if (/super\s*admin|not\s*authoris|permission|only a super/i.test(msg)) {
+    return "Only a super admin can price below the markup floor.";
+  }
+  return msg || "Save failed";
+}
+
+// Inline single-brand price save. NEVER writes brands.price directly — routes
+// through admin_save_brand_price so the floor + super-admin guard apply. Returns
+// the RPC row; the caller shows the confirm dialog when needs_confirmation and
+// re-calls with confirm=true.
 export function useUpdateBrandPrice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ brandId, newPrice }: { brandId: string; newPrice: number }) => {
-      const truncated = Math.trunc(newPrice);
-      const { error } = await supabase
-        .from("brands")
-        .update({ price: truncated })
-        .eq("id", brandId);
+    mutationFn: async ({ brandId, cost, newPrice, confirm }: {
+      brandId: string; cost: number; newPrice: number; confirm?: boolean;
+    }): Promise<SaveBrandPriceResult> => {
+      const { data, error } = await supabase.rpc("admin_save_brand_price", {
+        p_brand_id: brandId,
+        p_cost_price: Math.trunc(cost),
+        p_price: Math.trunc(newPrice),
+        p_confirm_below_floor: !!confirm,
+      });
       if (error) throw error;
-      return truncated;
+      return (Array.isArray(data) ? data[0] : data) as SaveBrandPriceResult;
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["brand-margins"] });
-      qc.invalidateQueries({ queryKey: ["bundle-tier-rollup"] });
-      qc.invalidateQueries({ queryKey: ["bundle-staleness"] });
+    onSuccess: (res) => {
+      if (res?.saved) {
+        qc.invalidateQueries({ queryKey: ["brand-margins"] });
+        qc.invalidateQueries({ queryKey: ["bundle-tier-rollup"] });
+        qc.invalidateQueries({ queryKey: ["bundle-staleness"] });
+      }
     },
   });
 }
@@ -174,52 +201,85 @@ export function useUpdateBrandPrice() {
 // Bulk apply margin %.
 // ---------------------------------------------------------------------------
 
-interface BulkResult {
-  updated: number;
-  skipped: number;
+// One below-floor row surfaced by the bulk dry run for the summary dialog.
+export interface BulkBelowFloorItem {
+  brandId: string;
+  brandName: string;
+  price: number;                    // proposed retail
+  cost: number;
+  resultingMarkup: number | null;
+  floorPrice: number | null;
 }
 
-async function applyMarginToBrandIds(brandIds: string[], marginPct: number): Promise<BulkResult> {
-  if (brandIds.length === 0) return { updated: 0, skipped: 0 };
+export interface BulkDryRunResult {
+  updated: number;                  // at/above floor — SAVED on this pass
+  skippedNoCost: number;            // no cost_price — cannot be priced by the RPC
+  belowFloor: BulkBelowFloorItem[]; // NOT saved; need explicit confirmation
+}
 
-  // Fetch cost prices in one shot.
+// PHASE 1 — dry run: call admin_save_brand_price(confirm=false) for every
+// costed brand. At/above-floor rows save immediately; below-floor rows come back
+// needs_confirmation (unsaved) and are collected for the single summary dialog.
+// Brands with no cost_price are skipped cleanly (the RPC requires a cost).
+async function dryRunApplyMargin(brandIds: string[], marginPct: number): Promise<BulkDryRunResult> {
+  if (brandIds.length === 0) return { updated: 0, skippedNoCost: 0, belowFloor: [] };
+
   const { data: rows, error } = await supabase
     .from("brands")
-    .select("id, cost_price")
+    .select("id, brand_name, cost_price")
     .in("id", brandIds);
   if (error) throw error;
 
-  const updates: Array<{ id: string; price: number }> = [];
-  let skipped = 0;
-  for (const r of (rows || []) as any[]) {
-    if (r.cost_price == null) {
-      skipped += 1;
-      continue;
-    }
-    const cost = Number(r.cost_price);
-    const newPrice = Math.trunc(cost * (1 + marginPct / 100));
-    updates.push({ id: r.id, price: newPrice });
-  }
+  const planned = ((rows || []) as any[])
+    .map((r) => ({ id: r.id, brandName: r.brand_name || "", cost: r.cost_price == null ? null : Number(r.cost_price) }))
+    .filter((r) => r.cost != null && (r.cost as number) > 0) as { id: string; brandName: string; cost: number }[];
+  const skippedNoCost = (rows || []).length - planned.length;
+
+  const outcomes = await Promise.all(planned.map(async (p) => {
+    const price = Math.trunc(p.cost * (1 + marginPct / 100));
+    const { data, error: se } = await supabase.rpc("admin_save_brand_price", {
+      p_brand_id: p.id, p_cost_price: Math.trunc(p.cost), p_price: price, p_confirm_below_floor: false,
+    });
+    if (se) throw se;
+    const res = (Array.isArray(data) ? data[0] : data) as SaveBrandPriceResult;
+    return { p, price, res };
+  }));
 
   let updated = 0;
-  // Issue parallel single-row updates. We don't use upsert here because
-  // brands has required NOT-NULL columns we don't want to round-trip.
-  const failures: any[] = [];
-  await Promise.all(
-    updates.map(async (u) => {
-      const { error: ue } = await supabase
-        .from("brands")
-        .update({ price: u.price })
-        .eq("id", u.id);
-      if (ue) failures.push(ue);
-      else updated += 1;
-    }),
-  );
-  if (failures.length > 0 && updated === 0) {
-    // All failed — surface the first error.
-    throw failures[0];
+  const belowFloor: BulkBelowFloorItem[] = [];
+  for (const o of outcomes) {
+    if (o.res?.needs_confirmation) {
+      belowFloor.push({
+        brandId: o.p.id, brandName: o.p.brandName, price: o.price, cost: o.p.cost,
+        resultingMarkup: o.res.resulting_markup, floorPrice: o.res.floor_price,
+      });
+    } else if (o.res?.saved) {
+      updated += 1;
+    }
   }
-  return { updated, skipped };
+  return { updated, skippedNoCost, belowFloor };
+}
+
+// PHASE 2 — force the collected below-floor rows with confirm=true. Only a super
+// admin can complete this; a non-super-admin throws (surfaced by the caller).
+async function forceApplyBelowFloor(items: BulkBelowFloorItem[]): Promise<number> {
+  let forced = 0;
+  for (const it of items) {
+    const { error } = await supabase.rpc("admin_save_brand_price", {
+      p_brand_id: it.brandId, p_cost_price: Math.trunc(it.cost), p_price: Math.trunc(it.price), p_confirm_below_floor: true,
+    });
+    if (error) throw error;
+    forced += 1;
+  }
+  return forced;
+}
+
+export function useForceApplyBelowFloor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (items: BulkBelowFloorItem[]) => forceApplyBelowFloor(items),
+    onSuccess: () => invalidateAll(qc),
+  });
 }
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
@@ -232,7 +292,7 @@ export function useBulkApplyMargin() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ brandIds, marginPct }: { brandIds: string[]; marginPct: number }) =>
-      applyMarginToBrandIds(brandIds, marginPct),
+      dryRunApplyMargin(brandIds, marginPct),
     onSuccess: () => invalidateAll(qc),
   });
 }
@@ -250,7 +310,7 @@ export function useBulkApplyMarginByCategory() {
         .eq("products.category", category);
       if (error) throw error;
       const ids = ((data || []) as any[]).map(r => r.id);
-      return applyMarginToBrandIds(ids, marginPct);
+      return dryRunApplyMargin(ids, marginPct);
     },
     onSuccess: () => invalidateAll(qc),
   });
@@ -267,7 +327,7 @@ export function useBulkApplyMarginByBundleTier() {
         .eq("is_active", true);
       if (be) throw be;
       const bundleIds = ((bundles || []) as any[]).map(b => b.id);
-      if (bundleIds.length === 0) return { updated: 0, skipped: 0 };
+      if (bundleIds.length === 0) return { updated: 0, skippedNoCost: 0, belowFloor: [] };
 
       const { data: items, error: ie } = await supabase
         .from("bundle_items")
@@ -275,7 +335,7 @@ export function useBulkApplyMarginByBundleTier() {
         .in("bundle_id", bundleIds);
       if (ie) throw ie;
       const productIds = Array.from(new Set(((items || []) as any[]).map(i => i.product_id)));
-      if (productIds.length === 0) return { updated: 0, skipped: 0 };
+      if (productIds.length === 0) return { updated: 0, skippedNoCost: 0, belowFloor: [] };
 
       const { data: brands, error: bre } = await supabase
         .from("brands")
@@ -285,7 +345,7 @@ export function useBulkApplyMarginByBundleTier() {
         .in("product_id", productIds);
       if (bre) throw bre;
       const brandIds = ((brands || []) as any[]).map(b => b.id);
-      return applyMarginToBrandIds(brandIds, marginPct);
+      return dryRunApplyMargin(brandIds, marginPct);
     },
     onSuccess: () => invalidateAll(qc),
   });

@@ -13,7 +13,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  useBrandMargins, useUpdateBrandPrice, type BrandMarginRow, type BundleTier,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  useBrandMargins, useUpdateBrandPrice, friendlyPriceError, type BrandMarginRow, type BundleTier,
 } from "@/hooks/useBrandMargins";
 import { fmt } from "@/lib/cart";
 import { BulkApplyModal, type BulkApplyScope } from "./BulkApplyModal";
@@ -616,13 +619,56 @@ function BrandRow({
   });
 
   // Reset drafts when server retail / cost changes (e.g. bulk apply).
-  useEffect(() => {
+  const resetDrafts = () => {
     setRetailDraft(String(row.retailPrice));
     const m = computeMarginPct(row.retailPrice, cost);
     setPctDraft(m == null ? "" : m.toFixed(1));
     const n = computeMarginNaira(row.retailPrice, cost);
     setNaiDraft(n == null ? "" : String(n));
+  };
+  useEffect(() => {
+    resetDrafts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.retailPrice, cost]);
+
+  // A below-floor save that came back needs_confirmation; the dialog re-calls
+  // the RPC with confirm=true.
+  const [pendingConfirm, setPendingConfirm] = useState<{ newPrice: number; message: string; floorPrice: number | null } | null>(null);
+
+  // Central price save — ALWAYS via admin_save_brand_price (never a direct
+  // write). No cost => the RPC can't price it, so block with a clear message.
+  const savePrice = async (newPrice: number) => {
+    if (cost == null || cost <= 0) {
+      toast.error("Set a cost price for this brand (in the product editor) before pricing.");
+      resetDrafts();
+      return;
+    }
+    try {
+      const res = await update.mutateAsync({ brandId: row.id, cost, newPrice, confirm: false });
+      if (res?.needs_confirmation) {
+        setPendingConfirm({ newPrice, message: res.message || "", floorPrice: res.floor_price });
+      } else if (res?.saved) {
+        toast.success(res.message || "Saved");
+      }
+    } catch (e) {
+      toast.error(friendlyPriceError(e));
+      resetDrafts();
+    }
+  };
+
+  const confirmBelowFloor = async () => {
+    if (!pendingConfirm || cost == null) { setPendingConfirm(null); return; }
+    try {
+      const res = await update.mutateAsync({ brandId: row.id, cost, newPrice: pendingConfirm.newPrice, confirm: true });
+      toast.success(res?.message || "Saved below the floor");
+    } catch (e) {
+      toast.error(friendlyPriceError(e));
+      resetDrafts();
+    } finally {
+      setPendingConfirm(null);
+    }
+  };
+  const cancelConfirm = () => { setPendingConfirm(null); resetDrafts(); };
 
   const commitRetail = () => {
     const r = Number(retailDraft);
@@ -633,13 +679,7 @@ function BrandRow({
     }
     const truncated = Math.trunc(r);
     if (truncated === row.retailPrice) return;
-    update.mutate(
-      { brandId: row.id, newPrice: truncated },
-      {
-        onSuccess: () => toast.success("Saved"),
-        onError: (e: any) => toast.error(e?.message || "Save failed"),
-      },
-    );
+    savePrice(truncated);
   };
 
   // Margin % is gross margin against the SELLING price:
@@ -660,13 +700,7 @@ function BrandRow({
     }
     const newRetail = Math.trunc(cost / (1 - pct / 100));
     if (newRetail === row.retailPrice) return;
-    update.mutate(
-      { brandId: row.id, newPrice: newRetail },
-      {
-        onSuccess: () => toast.success("Saved"),
-        onError: (e: any) => toast.error(e?.message || "Save failed"),
-      },
-    );
+    savePrice(newRetail);
   };
 
   const commitNaira = () => {
@@ -675,13 +709,7 @@ function BrandRow({
     if (!Number.isFinite(n)) return;
     const newRetail = Math.trunc(cost + n);
     if (newRetail === row.retailPrice) return;
-    update.mutate(
-      { brandId: row.id, newPrice: newRetail },
-      {
-        onSuccess: () => toast.success("Saved"),
-        onError: (e: any) => toast.error(e?.message || "Save failed"),
-      },
-    );
+    savePrice(newRetail);
   };
 
   const onKeyEnter = (fn: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -700,6 +728,7 @@ function BrandRow({
   const negativeCls = negative ? "text-red-600 font-semibold" : "";
 
   return (
+    <>
     <TableRow className={noCost ? "bg-red-50/50" : undefined}>
       <TableCell>
         <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label="Select brand" />
@@ -790,5 +819,30 @@ function BrandRow({
         )}
       </TableCell>
     </TableRow>
+
+    <Dialog open={!!pendingConfirm} onOpenChange={(v) => { if (!v) cancelConfirm(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Price below the markup floor</DialogTitle>
+          <DialogDescription>
+            {pendingConfirm?.message
+              || (pendingConfirm?.floorPrice != null
+                    ? `This price is below the markup floor of ${fmt(pendingConfirm.floorPrice)}.`
+                    : "This price is below the markup floor.")}
+          </DialogDescription>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground">
+          {row.productName} · {row.brandName} → {fmt(pendingConfirm?.newPrice ?? row.retailPrice)}.
+          Only a super admin can save below the floor.
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={cancelConfirm} disabled={update.isPending}>Cancel</Button>
+          <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={confirmBelowFloor} disabled={update.isPending}>
+            Save anyway
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
