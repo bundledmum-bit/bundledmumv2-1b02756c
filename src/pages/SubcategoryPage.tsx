@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { adaptProducts, hasInStockBrand } from "@/lib/supabaseAdapters";
 import { useProductCategories } from "@/hooks/useProductCategories";
+import { useMerchandisedRanking } from "@/hooks/useMerchandising";
 import Seo from "@/components/Seo";
 import ProductCard from "@/components/shop/ProductCard";
 import ShopPageHeader from "@/components/shop/ShopPageHeader";
@@ -41,7 +42,21 @@ function useSubcategoryProducts(categorySlug: string) {
 export default function SubcategoryPage({ tab }: { tab: "baby" | "mum" }) {
   const { category } = useParams<{ category: string }>();
   const { data: categories } = useProductCategories();
-  const { data: products, isLoading } = useSubcategoryProducts(category || "");
+  const { data: rawProducts, isLoading } = useSubcategoryProducts(category || "");
+
+  // Order via the merchandising ranking for this subcategory scope (pinned
+  // 1..25, then daily seeded shuffle). Restrict to the RPC's membership; the
+  // resolved lead brand drives each card's brand + price.
+  const { orderIndex: merchOrder, brandByProduct: merchBrand, ready: merchReady } = useMerchandisedRanking(
+    category ? `sub:${category}` : null,
+  );
+  const products = useMemo(() => {
+    const list = rawProducts || [];
+    if (!merchReady || merchOrder.size === 0) return list;
+    return list
+      .filter((p) => merchOrder.has(p.id))
+      .sort((a, b) => (merchOrder.get(a.id)! - merchOrder.get(b.id)!));
+  }, [rawProducts, merchOrder, merchReady]);
 
   const catInfo = useMemo(
     () => (categories || []).find((c) => c.slug === category),
@@ -118,7 +133,7 @@ export default function SubcategoryPage({ tab }: { tab: "baby" | "mum" }) {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <ProductCard key={product.id} product={product} leadBrandId={merchBrand.get(product.id)} />
             ))}
           </div>
         )}

@@ -10,6 +10,7 @@ import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useBrandPromo } from "@/hooks/useBrandPricing";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
+import { useMerchandisedRanking } from "@/hooks/useMerchandising";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
 import CategoryNav from "@/components/shop/CategoryNav";
@@ -332,6 +333,13 @@ export default function ShopPage() {
 
   const { data: allProducts, isLoading } = useAllProducts();
   const { data: siteSettings } = useSiteSettings();
+
+  // NEW flat-grid ranking. The scope is the tab; subcategory filters still
+  // FILTER this list (they don't switch scope — that's the /shop/{parent}/{slug}
+  // route). Default "popular" sort = this ranking (pinned 1..25, then daily
+  // seeded shuffle). Explicit sorts and search override it below.
+  const merchScope = tab === "baby" ? "baby" : tab === "mum" ? "mum" : tab === "push-gift" ? "push-gift" : "all";
+  const { orderIndex: merchOrder, brandByProduct: merchBrand, ready: merchReady } = useMerchandisedRanking(merchScope);
   const { data: categories } = useProductCategories();
   const deliveryText = siteSettings?.delivery_text || "";
 
@@ -443,7 +451,7 @@ export default function ShopPage() {
         });
       }
     } else {
-      // BROWSE MODE — unchanged: one hit per product, dedup by name.
+      // BROWSE MODE — one hit per product, dedup by name.
       let raw = (allProducts || []).filter(passesTab).filter(passesFilters);
       const seen = new Set<string>();
       hits = [];
@@ -451,7 +459,9 @@ export default function ShopPage() {
         const key = p.name.toLowerCase().trim();
         if (seen.has(key)) continue;
         seen.add(key);
-        hits.push({ product: p, isBrandMatch: false });
+        // Surface the merchandised lead brand (pinned brand > promo > cheapest)
+        // for this product so the card shows exactly what the ranking resolved.
+        hits.push({ product: p, brandId: merchBrand.get(p.id), isBrandMatch: false });
       }
     }
 
@@ -464,13 +474,26 @@ export default function ShopPage() {
       }
       return Math.min(...h.product.brands.map(br => Number(br.price) || 0));
     };
+    const explicitSort =
+      sortBy === "price-low" || sortBy === "price_asc" || sortBy === "price-high" || sortBy === "price_desc" ||
+      sortBy === "rating" || sortBy === "name_asc" || sortBy === "newest";
     if (sortBy === "price-low"  || sortBy === "price_asc")  hits.sort((a, b) => priceOf(a) - priceOf(b));
     if (sortBy === "price-high" || sortBy === "price_desc") hits.sort((a, b) => priceOf(b) - priceOf(a));
     if (sortBy === "rating")    hits.sort((a, b) => b.product.rating - a.product.rating);
     if (sortBy === "name_asc")  hits.sort((a, b) => a.product.name.localeCompare(b.product.name));
     if (sortBy === "newest")    hits.sort((a: any, b: any) => ((b.product as any).created_at || "").localeCompare((a.product as any).created_at || ""));
+
+    // DEFAULT "popular" order IS the merchandised ranking: restrict browse mode
+    // to the RPC's scope membership and order by it (pinned first, then the
+    // daily seeded shuffle). Only when not searching and no explicit sort — the
+    // filters above already narrowed the list, they just don't re-sort it.
+    if (!q && !explicitSort && merchReady && merchOrder.size > 0) {
+      hits = hits
+        .filter((h) => merchOrder.has(h.product.id))
+        .sort((a, b) => (merchOrder.get(a.product.id)! - merchOrder.get(b.product.id)!));
+    }
     return hits;
-  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF, searchData, showAllBrands]);
+  }, [allProducts, tab, search, categoryF, brandF, sortBy, inStockOnlyF, priceMinF, priceMaxF, searchData, showAllBrands, merchOrder, merchBrand, merchReady]);
 
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;

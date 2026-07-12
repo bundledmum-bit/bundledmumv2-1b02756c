@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase as supabaseTyped } from "@/integrations/supabase/client";
@@ -37,6 +38,69 @@ const PRODUCT_COLS =
   `*, brands:brands_public!brands_product_id_fkey(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
 
 export type ShopVariant = "all" | "baby" | "mum";
+
+// ----------------------------------------------------------------------------
+// NEW flat-grid ranking — get_merchandised_products(scope, seed)
+// ----------------------------------------------------------------------------
+
+/** One RPC row: the resolved brand + effective promo price for the card. */
+export interface MerchRankRow {
+  product_id: string;
+  name: string;
+  slug: string;
+  category: string | null;
+  subcategory: string | null;
+  brand_id: string | null;
+  brand_name: string | null;
+  sku: string | null;
+  price: number | null;
+  compare_at_price: number | null;
+  promo_type: string | null;
+  promo_label: string | null;
+  promo_ends_at: string | null;
+  image_url: string | null;
+  rank_position: number | null;
+  is_pinned: boolean;
+}
+
+/**
+ * The single-source storefront ranking for a scope. The RPC applies the
+ * active/in-stock/bundle rules, promo pricing, the pinned 1..25 order and the
+ * SEEDED daily shuffle for the tail — the frontend renders what it returns, in
+ * the order it returns.
+ *
+ * SEED: we pass p_seed = null, so the DB uses today's Lagos date. The full
+ * ordered list for the scope is fetched ONCE (react-query cached by scope) and
+ * pagination is client-side slicing of that single list — so the order is
+ * identical across every "page" (no per-request seed, no page-2 duplicates).
+ */
+export function useMerchandisedRanking(scope: string | null | undefined) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["merchandised-ranking", scope],
+    enabled: !!scope,
+    // Stable for the session: today's Lagos date drives the shuffle server-side.
+    staleTime: STALE_5MIN,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_merchandised_products", { p_scope: scope, p_seed: null });
+      if (error) throw error;
+      return (data || []) as MerchRankRow[];
+    },
+  });
+  const rows = data ?? [];
+  // Memoised so consumers can depend on these maps without re-running effects
+  // every render.
+  const orderIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    rows.forEach((r, i) => m.set(r.product_id, i));
+    return m;
+  }, [data]);
+  const brandByProduct = useMemo(() => {
+    const m = new Map<string, string>();
+    rows.forEach((r) => { if (r.brand_id) m.set(r.product_id, r.brand_id); });
+    return m;
+  }, [data]);
+  return { rows, orderIndex, brandByProduct, ready: !!data, isLoading };
+}
 
 export interface MerchSection {
   id: string;
