@@ -1150,7 +1150,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   <span className="rounded-pill bg-coral text-white text-[11px] font-bold px-2 py-0.5">{promo!.promoLabel}</span>
                   {promoCountdown && (
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-coral">
-                      <span className="font-mono-price">Ends in {promoCountdown.h}h {promoCountdown.m}m {promoCountdown.s}s</span>
+                      <span className="font-mono-price">Ends in {promoCountdown.d > 0 ? `${promoCountdown.d}d ` : ""}{promoCountdown.h}h {promoCountdown.m}m {promoCountdown.s}s</span>
                     </span>
                   )}
                 </div>

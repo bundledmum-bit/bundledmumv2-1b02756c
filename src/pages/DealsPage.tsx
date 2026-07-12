@@ -53,7 +53,7 @@ export default function DealsPage() {
           {countdown && (
             <span className="inline-flex items-center gap-2 rounded-pill bg-white/15 border border-white/25 text-white text-sm font-semibold px-4 py-2.5 backdrop-blur-sm">
               <Clock className="w-4 h-4" />
-              Ends in <span className="font-mono-price">{pad(countdown.h)}:{pad(countdown.m)}:{pad(countdown.s)}</span>
+              Ends in <span className="font-mono-price">{countdown.d > 0 && `${countdown.d}d `}{pad(countdown.h)}:{pad(countdown.m)}:{pad(countdown.s)}</span>
             </span>
           )}
         </div>

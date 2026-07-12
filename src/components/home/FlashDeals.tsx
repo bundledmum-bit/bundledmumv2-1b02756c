@@ -106,8 +106,13 @@ export function useCountdown(endsAt?: string | null) {
   if (!Number.isFinite(end)) return null;
   const diff = end - now;
   if (diff <= 0) return null;
+  // At 48 hours or more, split off whole DAYS and show hours-within-day (0..23).
+  // Under 48 hours, `d` is 0 and `h` stays the TOTAL hours — byte-identical to
+  // the previous behaviour, so nothing below the threshold changes.
+  const useDays = diff >= 48 * 3_600_000;
   return {
-    h: Math.floor(diff / 3_600_000),
+    d: useDays ? Math.floor(diff / 86_400_000) : 0,
+    h: useDays ? Math.floor((diff % 86_400_000) / 3_600_000) : Math.floor(diff / 3_600_000),
     m: Math.floor((diff % 3_600_000) / 60_000),
     s: Math.floor((diff % 60_000) / 1000),
   };
@@ -203,7 +208,7 @@ export function FlashDealCard({ product, brandId, brandName, sku, price: dealPri
           {promoCountdown && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-coral">
               <Clock className="w-3 h-3" />
-              <span className="font-mono-price">{pad(promoCountdown.h)}:{pad(promoCountdown.m)}:{pad(promoCountdown.s)}</span>
+              <span className="font-mono-price">{promoCountdown.d > 0 && `${promoCountdown.d}d `}{pad(promoCountdown.h)}:{pad(promoCountdown.m)}:{pad(promoCountdown.s)}</span>
             </span>
           )}
           <div className="mt-auto pt-0.5">
@@ -280,7 +285,7 @@ export default function FlashDeals({ items, heading, subtitle, endsAt }: { items
             {countdown && (
               <span className="inline-flex items-center gap-1 rounded-pill bg-foreground text-white text-[11px] font-semibold px-2.5 py-1">
                 <Clock className="w-3 h-3" />
-                <span className="font-mono-price">{pad(countdown.h)}<span className="opacity-60">:</span>{pad(countdown.m)}<span className="opacity-60">:</span>{pad(countdown.s)}</span>
+                <span className="font-mono-price">{countdown.d > 0 && `${countdown.d}d `}{pad(countdown.h)}<span className="opacity-60">:</span>{pad(countdown.m)}<span className="opacity-60">:</span>{pad(countdown.s)}</span>
               </span>
             )}
           </div>
