@@ -37,7 +37,10 @@ export default function AdminInventory() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("brands")
-        .select("*, products(name, emoji, is_active)")
+        // Disambiguate: a reverse FK products.hospital_list_default_brand_id ->
+        // brands.id makes a bare products embed ambiguous (PGRST201). Pin the
+        // intended brands.product_id relationship by name.
+        .select("*, products!brands_product_id_fkey(name, emoji, is_active)")
         .order("brand_name");
       if (error) throw error;
       return data;

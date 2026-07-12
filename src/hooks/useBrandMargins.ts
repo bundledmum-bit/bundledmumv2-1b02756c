@@ -55,7 +55,11 @@ export function useBrandMargins(filters?: BrandMarginFilters) {
       const { data: brandRows, error: be } = await supabase
         .from("brands")
         .select(
-          "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, tier, products!inner(id, name, category, subcategory, is_active)",
+          // products!inner is now AMBIGUOUS: a reverse FK
+          // products.hospital_list_default_brand_id -> brands.id was added, so
+          // PostgREST sees two brands<->products relationships (PGRST201). Pin
+          // the intended one by its FK name.
+          "id, product_id, brand_name, image_url, stored_image_url, price, cost_price, in_stock, tier, products!brands_product_id_fkey!inner(id, name, category, subcategory, is_active)",
         )
         .range(0, 9999);
       if (be) throw be;
@@ -240,7 +244,7 @@ export function useBulkApplyMarginByCategory() {
       // In-stock brands of active products in that category.
       const { data, error } = await supabase
         .from("brands")
-        .select("id, products!inner(category, is_active)")
+        .select("id, products!brands_product_id_fkey!inner(category, is_active)")
         .eq("in_stock", true)
         .eq("products.is_active", true)
         .eq("products.category", category);
@@ -275,7 +279,7 @@ export function useBulkApplyMarginByBundleTier() {
 
       const { data: brands, error: bre } = await supabase
         .from("brands")
-        .select("id, products!inner(is_active)")
+        .select("id, products!brands_product_id_fkey!inner(is_active)")
         .eq("in_stock", true)
         .eq("products.is_active", true)
         .in("product_id", productIds);
