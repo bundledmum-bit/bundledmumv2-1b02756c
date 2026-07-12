@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { X, Plus, Trash2, Copy } from "lucide-react";
+import { X, Plus, Trash2, Copy, AlertTriangle } from "lucide-react";
 import ProductImageManager from "@/components/admin/ProductImageManager";
 import SEOEditor from "@/components/admin/SEOEditor";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
@@ -37,6 +37,110 @@ const removeBrandImage = (b: any, url: string | null): any => {
   const next = brandGallery(b).filter((u) => u !== url);
   return { ...b, images: next, image_url: next[0] || null };
 };
+
+// ── Brand pricing RPCs (single source of truth — never compute the 39% maths
+// or write brands.price directly here) ───────────────────────────────────────
+async function priceHelper(cost: number, price: number | null, markup: number | null) {
+  const { data, error } = await (supabase as any).rpc("admin_price_helper", {
+    p_cost_price: cost, p_price: price, p_markup_percent: markup,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data[0] : data) || null;
+}
+async function saveBrandPrice(brandId: string, cost: number, price: number, confirmBelowFloor: boolean) {
+  const { data, error } = await (supabase as any).rpc("admin_save_brand_price", {
+    p_brand_id: brandId, p_cost_price: cost, p_price: price, p_confirm_below_floor: confirmBelowFloor,
+  });
+  if (error) throw error;
+  return (Array.isArray(data) ? data[0] : data) || null;
+}
+
+// Selling price / two-way Markup % / Cost, all derived from cost via
+// admin_price_helper (debounced). Entering a cost with no price pre-fills the
+// 39% default; editing price updates markup and vice versa; markup is disabled
+// until a cost exists.
+function BrandPricing({ price, cost, markup, onChange }: {
+  price: number;
+  cost: number;
+  markup: number | null;
+  onChange: (patch: Partial<{ price: number; cost_price: number; markup: number | null }>) => void;
+}) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [belowFloor, setBelowFloor] = useState(false);
+  const debounce = (fn: () => void) => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(fn, 400); };
+
+  // Surface the current markup on load when both cost and price are present.
+  useEffect(() => {
+    if (cost > 0 && price > 0 && markup == null) {
+      (async () => {
+        const r = await priceHelper(cost, price, null).catch(() => null);
+        if (r) { onChange({ markup: Number(r.suggested_markup) }); setBelowFloor(!!r.below_floor); }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCost = (v: number) => {
+    onChange({ cost_price: v });
+    debounce(async () => {
+      if (!v) { onChange({ markup: null }); setBelowFloor(false); return; }
+      if (!price) {
+        const r = await priceHelper(v, null, null).catch(() => null);
+        if (r) { onChange({ price: Number(r.default_price), markup: Number(r.default_markup) }); setBelowFloor(false); }
+      } else {
+        const r = await priceHelper(v, price, null).catch(() => null);
+        if (r) { onChange({ markup: Number(r.suggested_markup) }); setBelowFloor(!!r.below_floor); }
+      }
+    });
+  };
+  const handlePrice = (v: number) => {
+    onChange({ price: v });
+    if (!cost) return;
+    debounce(async () => {
+      const r = await priceHelper(cost, v, null).catch(() => null);
+      if (r) { onChange({ markup: Number(r.suggested_markup) }); setBelowFloor(!!r.below_floor); }
+    });
+  };
+  const handleMarkup = (v: number) => {
+    onChange({ markup: v });
+    if (!cost) return;
+    debounce(async () => {
+      const r = await priceHelper(cost, null, v).catch(() => null);
+      if (r) { onChange({ price: Number(r.suggested_price) }); setBelowFloor(!!r.below_floor); }
+    });
+  };
+
+  return (
+    <>
+      <div>
+        <label className="text-[10px] font-semibold text-text-med block mb-0.5">Selling Price (₦)</label>
+        <input type="number" value={price || ""} onChange={e => handlePrice(parseInt(e.target.value) || 0)}
+          className={`w-full border rounded-lg px-2 py-1.5 text-xs bg-background ${belowFloor ? "border-red-400" : "border-input"}`} />
+        {belowFloor && <p className="text-[9px] text-red-600 mt-0.5">Below the 39% floor</p>}
+      </div>
+      <div>
+        <label className="text-[10px] font-semibold text-text-med block mb-0.5">Markup %</label>
+        <input type="number" step="any" value={markup ?? ""} disabled={!cost}
+          placeholder={cost ? "" : "Set cost first"}
+          onChange={e => handleMarkup(parseFloat(e.target.value) || 0)}
+          className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background disabled:opacity-50 disabled:cursor-not-allowed" />
+      </div>
+      <div>
+        <label className="text-[10px] font-semibold text-text-med block mb-0.5 flex items-center gap-1">
+          Cost Price (₦)
+          {cost > 0 ? (
+            <span className="inline-flex items-center text-[9px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded">COGS tracked</span>
+          ) : (
+            <span className="inline-flex items-center text-[9px] font-semibold text-text-light bg-muted px-1 rounded">No cost set</span>
+          )}
+        </label>
+        <input type="number" value={cost || ""} placeholder="What we pay supplier"
+          onChange={e => handleCost(parseInt(e.target.value) || 0)}
+          className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background" />
+      </div>
+    </>
+  );
+}
 
 const CATEGORIES = ["baby", "mum", "both", "push-gift"];
 const PRIORITIES = ["essential", "recommended", "nice-to-have"];
@@ -89,6 +193,11 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
     return map;
   });
   const [saving, setSaving] = useState(false);
+  // Below-floor confirmation: save() populates this and awaits the resolve.
+  const [belowFloorDialog, setBelowFloorDialog] = useState<{
+    items: { name: string; floor_price: number; message: string }[];
+    resolve: (confirm: boolean) => void;
+  } | null>(null);
   const [publishMode, setPublishMode] = useState<"active" | "inactive" | "schedule">(
     product?.scheduled_for ? "schedule" : product?.is_active ? "active" : "inactive"
   );
@@ -202,10 +311,12 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         // Full overwrite of the gallery with EXACTLY the current UI state — never
         // merge with the previously-stored array, so deletions actually persist.
         const images = brandGallery(b);
+        // NOTE: price + cost_price are deliberately NOT written here. They go
+        // through admin_save_brand_price below so the DB floor trigger and the
+        // below-floor confirmation apply. A direct below-floor write would throw.
         return {
           product_id: productId,
           brand_name: b.brand_name,
-          price: b.price,
           tier: b.tier,
           is_default_for_tier: b.is_default_for_tier || false,
           size_variant: b.size_variant || null,
@@ -216,7 +327,6 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
           compare_at_price: b.compare_at_price || null,
           stock_quantity: b.stock_quantity,
           in_stock: b.in_stock ?? true,
-          cost_price: b.cost_price || 0,
           weight_range_kg: b.weight_range_kg?.trim?.() || b.weight_range_kg || null,
           pack_count: b.pack_count != null && b.pack_count !== "" ? Number(b.pack_count) : null,
           diaper_type: b.diaper_type || null,
@@ -235,16 +345,52 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
           if (delErr) throw delErr;
         }
       }
-      // Per-row UPDATE for kept rows, INSERT for newly-added rows.
+      // Per-row UPDATE for kept rows, INSERT for newly-added rows — NON-price
+      // fields only. Inserts need a NOT NULL price, so seed a floor-safe
+      // placeholder (the 39% default when a cost is set); the real price is set
+      // right after via admin_save_brand_price.
+      const pricePlan: { brandId: string; cost: number; price: number; name: string }[] = [];
       for (let i = 0; i < brands.length; i++) {
         const b = brands[i];
         const payload = buildBrandPayload(b, i);
+        const cost = Number(b.cost_price) || 0;
+        const price = Number(b.price) || 0;
         if (b.id) {
           const { error: upErr } = await (supabase.from("brands") as any).update(payload).eq("id", b.id);
           if (upErr) throw upErr;
+          pricePlan.push({ brandId: b.id, cost, price, name: b.brand_name || "brand" });
         } else {
-          const { error: insErr } = await (supabase.from("brands") as any).insert(payload);
+          let placeholder = price;
+          if (cost > 0) {
+            const helper = await priceHelper(cost, null, null).catch(() => null);
+            if (helper) placeholder = Number(helper.default_price);
+          }
+          const { data: ins, error: insErr } = await (supabase.from("brands") as any)
+            .insert({ ...payload, price: placeholder }).select("id").single();
           if (insErr) throw insErr;
+          pricePlan.push({ brandId: ins.id, cost, price, name: b.brand_name || "brand" });
+        }
+      }
+
+      // Set every brand's real price/cost via admin_save_brand_price. First pass
+      // with confirm=false: at/above floor saves immediately; below floor comes
+      // back needs_confirmation. If any need confirmation, ask once, then re-call
+      // with confirm=true (only a super admin can complete a below-floor save).
+      const belowFloor: { brandId: string; cost: number; price: number; name: string; floor_price: number; message: string }[] = [];
+      for (const p of pricePlan) {
+        const r = await saveBrandPrice(p.brandId, p.cost, p.price, false);
+        if (r?.needs_confirmation) belowFloor.push({ ...p, floor_price: Number(r.floor_price), message: r.message || "" });
+      }
+      if (belowFloor.length > 0) {
+        const confirmed = await new Promise<boolean>((resolve) => setBelowFloorDialog({ items: belowFloor, resolve }));
+        setBelowFloorDialog(null);
+        if (confirmed) {
+          for (const p of belowFloor) {
+            const r = await saveBrandPrice(p.brandId, p.cost, p.price, true);
+            if (r?.message) toast.success(r.message);
+          }
+        } else {
+          toast.message("Below-floor prices were left unchanged. Other fields saved.");
         }
       }
 
@@ -292,6 +438,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
   const labelCls = "text-xs font-semibold text-text-med block mb-1";
 
   return (
+    <>
     <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-start justify-center pt-6 overflow-y-auto">
       <div className="bg-card border border-border rounded-xl w-full max-w-3xl mx-4 mb-10">
         <div className="flex items-center justify-between p-4 border-b border-border">
@@ -449,23 +596,13 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                         {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
                       </select></div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Selling Price (₦)</label>
-                      <input type="number" value={b.price} onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, price: parseInt(e.target.value) || 0 } : br))}
-                        className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background" /></div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-text-med block mb-0.5 flex items-center gap-1">
-                        Cost Price (₦)
-                        {(b.cost_price || 0) > 0 ? (
-                          <span className="inline-flex items-center text-[9px] font-semibold text-emerald-700 bg-emerald-100 px-1 rounded">COGS tracked</span>
-                        ) : (
-                          <span className="inline-flex items-center text-[9px] font-semibold text-text-light bg-muted px-1 rounded">No cost set</span>
-                        )}
-                      </label>
-                      <input type="number" value={b.cost_price || ""} placeholder="What we pay supplier"
-                        onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, cost_price: parseInt(e.target.value) || 0 } : br))}
-                        className="w-full border border-input rounded-lg px-2 py-1.5 text-xs bg-background" />
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    <BrandPricing
+                      price={Number(b.price) || 0}
+                      cost={Number(b.cost_price) || 0}
+                      markup={b.markup ?? null}
+                      onChange={patch => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, ...patch } : br))}
+                    />
                     <div><label className="text-[10px] font-semibold text-text-med block mb-0.5">Compare-at (₦)</label>
                       <input type="number" value={b.compare_at_price || ""} placeholder="Optional"
                         onChange={e => setBrands(bs => bs.map((br, idx) => idx === i ? { ...br, compare_at_price: parseInt(e.target.value) || null } : br))}
@@ -681,6 +818,35 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         </div>
       </div>
     </div>
+
+    {/* Below-floor confirmation — the super admin decides, but deliberately. */}
+    {belowFloorDialog && (
+      <div className="fixed inset-0 bg-foreground/60 z-[110] flex items-center justify-center p-4"
+        onClick={() => belowFloorDialog.resolve(false)}>
+        <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+            <h3 className="font-bold text-base">Price below the markup floor</h3>
+          </div>
+          <div className="space-y-2 mb-4">
+            {belowFloorDialog.items.map((it, idx) => (
+              <div key={idx} className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[13px] text-red-800">
+                <span className="font-semibold">{it.name}: </span>
+                {it.message || `This price is below the markup floor of ₦${Number(it.floor_price).toLocaleString("en-NG")}.`}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-text-med mb-4">Only a super admin can save below the floor. Save anyway?</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => belowFloorDialog.resolve(false)}
+              className="px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted">Cancel</button>
+            <button onClick={() => belowFloorDialog.resolve(true)}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700">Save anyway</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
