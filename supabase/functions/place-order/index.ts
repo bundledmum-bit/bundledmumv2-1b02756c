@@ -38,11 +38,13 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // 1. Insert order
+    // 1. Insert order. share_token (column default gen_random_uuid) is returned
+    // so the confirmation page can carry it in the URL — the confirmation
+    // endpoint resolves by order_number, so this is an enhancement, not a gate.
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .insert(order)
-      .select("id, order_number")
+      .select("id, order_number, share_token")
       .single();
 
     if (orderError || !orderData) {
@@ -256,6 +258,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         id: orderData.id,
         order_number: finalOrderNumber,
+        share_token: orderData.share_token ?? null,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

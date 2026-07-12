@@ -36,10 +36,11 @@ export default function OrderConfirmedPage() {
     queryKey: ["order-confirmed", orderNumber, shareToken],
     enabled: !!orderNumber,
     queryFn: async () => {
-      // Secured endpoint requires order_number + share_token. Without a token
-      // the order is never returned, so don't burn the retry budget.
-      if (!shareToken) return null;
-      // Use edge function to fetch order (bypasses RLS)
+      // Look the order up by order_number via the service-role edge function
+      // (bypasses RLS). The share_token is passed when we have it, but is NOT
+      // required — the endpoint resolves by order_number. Hard-requiring a token
+      // here was the bug: place-order doesn't return one, so `shareToken` was
+      // always "" and every paid customer saw "Order not found".
       const MAX_ATTEMPTS = 10;
       const DELAY = 2000;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -155,9 +156,30 @@ export default function OrderConfirmedPage() {
     </div>
   );
 
+  // We could not resolve the order from the URL yet. NEVER imply the order
+  // failed — a paying customer must not think their money vanished. Reassure
+  // and route them to their email / WhatsApp instead.
   if (!order) return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
-      <div className="text-center"><h1 className="text-2xl font-bold mb-2">Order not found</h1><p className="text-muted-foreground mb-4">Order not found. Please check your confirmation email for the link.</p><Link to="/" className="text-forest font-semibold hover:underline">Go Home</Link></div>
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+      <div className="text-center max-w-md">
+        <div className="text-4xl mb-3">✅</div>
+        <h1 className="text-2xl font-bold mb-2">We're still confirming your order</h1>
+        <p className="text-muted-foreground mb-5">
+          Your payment went through. We're finalising the details now — your confirmation email is on its way{orderNumber ? <> (order <span className="font-semibold">#{orderNumber}</span>)</> : null}. If you don't see it shortly, message us on WhatsApp and we'll sort it out right away.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          {whatsapp && (
+            <a
+              href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(`Hi BundledMum! I just placed an order${orderNumber ? ` (${orderNumber})` : ""} and want to confirm it. Thank you!`)}`}
+              target="_blank" rel="noopener noreferrer"
+              className="rounded-pill bg-[#25D366] text-primary-foreground px-6 py-3 font-semibold text-sm inline-flex items-center justify-center"
+            >
+              💬 Confirm on WhatsApp
+            </a>
+          )}
+          <Link to="/" className="rounded-pill border-2 border-forest text-forest px-6 py-3 font-semibold text-sm inline-flex items-center justify-center hover:bg-forest/5">Go Home</Link>
+        </div>
+      </div>
     </div>
   );
 
