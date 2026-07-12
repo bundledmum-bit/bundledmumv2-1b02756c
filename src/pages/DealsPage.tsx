@@ -106,7 +106,7 @@ export default function DealsPage() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {filtered.map((d) => (
-              <FlashDealCard key={d.product.id} product={d.product} brandId={d.brandId} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="w-full" zoomable />
+              <FlashDealCard key={d.dealId} product={d.product} brandId={d.brandId} brandName={d.brandName} sku={d.sku} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="w-full" zoomable />
             ))}
           </div>
         )}

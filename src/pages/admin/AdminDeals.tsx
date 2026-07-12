@@ -17,9 +17,9 @@ const inputCls = "w-full border border-input rounded-lg px-3 py-2 text-sm bg-bac
 const naira = (n: any) => (n == null ? "" : `₦${Number(n).toLocaleString("en-NG")}`);
 
 type DealRow = {
+  deal_id: string;
   product_id: string;
   product_name: string;
-  category: string | null;
   subcategory: string | null;
   display_order: number;
   is_active: boolean;
@@ -252,40 +252,39 @@ export default function AdminDeals() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  // ---- Deal product list (with promo margins) ----
+  // ---- Deal BRAND list (one row per brand; same product can appear more than
+  // once with different brands). Margins per the previous prompt still apply. ----
   const { data: deals, isLoading } = useQuery({
-    queryKey: ["admin-deal-products"],
+    queryKey: ["admin-deal-brands"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("admin_list_deal_products");
+      const { data, error } = await (supabase as any).rpc("admin_list_deal_brands");
       if (error) throw error;
       return (data || []) as DealRow[];
     },
   });
   const ordered = useMemo(() => [...(deals || [])].sort((a, b) => a.display_order - b.display_order), [deals]);
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin-deal-products"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin-deal-brands"] });
 
   const addDeal = useMutation({
-    mutationFn: async (productId: string) => {
-      const { error } = await (supabase as any).rpc("admin_add_deal_product", { p_product_id: productId });
+    mutationFn: async (brandId: string) => {
+      const { error } = await (supabase as any).rpc("admin_add_deal_brand", { p_brand_id: brandId });
       if (error) throw error;
     },
-    onSuccess: () => { refresh(); toast.success("Added to deals"); },
+    onSuccess: () => { refresh(); toast.success("Brand added to deals"); },
     onError: (e: any) => toast.error(e.message),
   });
   const removeDeal = useMutation({
-    mutationFn: async (productId: string) => {
-      const { error } = await (supabase as any).rpc("admin_remove_deal_product", { p_product_id: productId });
+    mutationFn: async (brandId: string) => {
+      const { error } = await (supabase as any).rpc("admin_remove_deal_brand", { p_brand_id: brandId });
       if (error) throw error;
     },
-    onSuccess: () => { refresh(); toast.success("Removed from deals"); },
+    onSuccess: () => { refresh(); toast.success("Brand removed from deals"); },
     onError: (e: any) => toast.error(e.message),
   });
   const reorder = useMutation({
     mutationFn: async (rows: DealRow[]) => {
-      for (let i = 0; i < rows.length; i++) {
-        const { error } = await (supabase as any).rpc("admin_set_deal_order", { p_product_id: rows[i].product_id, p_order: i });
-        if (error) throw error;
-      }
+      const { error } = await (supabase as any).rpc("admin_reorder_deals", { p_brand_ids: rows.map((r) => r.brand_id) });
+      if (error) throw error;
     },
     onSuccess: () => { refresh(); },
     onError: (e: any) => toast.error(e.message),
@@ -377,7 +376,7 @@ export default function AdminDeals() {
                   </div>
                   <button
                     disabled={b.on_deals || addDeal.isPending}
-                    onClick={() => addDeal.mutate(b.product_id)}
+                    onClick={() => addDeal.mutate(b.brand_id)}
                     className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-coral text-white px-3 py-1.5 text-xs font-semibold hover:bg-coral-dark disabled:opacity-40"
                   >
                     <Plus className="w-3.5 h-3.5" /> {b.on_deals ? "Added" : "Add"}
@@ -401,24 +400,24 @@ export default function AdminDeals() {
             {ordered.map((d, i) => {
               const tone = marginTone(d.your_margin, d.customer_pays, d.below_cost);
               return (
-                <div key={d.product_id} className="rounded-lg border border-border p-3">
+                <div key={d.deal_id} className="rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold">{d.product_name}</span>
-                        <span className="text-xs text-text-light">{d.brand_name}{d.sku ? ` · ${d.sku}` : ""}</span>
                         {!d.is_active && <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">inactive</span>}
                         {d.promo_type && (d.promo_live
                           ? <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">live</span>
                           : <span className="text-[10px] font-semibold text-text-light bg-muted px-1.5 py-0.5 rounded">scheduled/ended</span>)}
                       </div>
+                      <p className="text-coral text-xs font-semibold mt-0.5">{d.brand_name}{d.sku ? ` · ${d.sku}` : ""}</p>
                       <p className="text-xs text-text-med mt-0.5">{d.promo_label || "No promo"}{d.eval_qty ? ` · at qty ${d.eval_qty}` : ""}</p>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => move(i, -1)} disabled={i === 0 || reorder.isPending} className="p-1 rounded hover:bg-muted disabled:opacity-30" aria-label="Move up"><ArrowUp className="w-3.5 h-3.5" /></button>
                       <button onClick={() => move(i, 1)} disabled={i === ordered.length - 1 || reorder.isPending} className="p-1 rounded hover:bg-muted disabled:opacity-30" aria-label="Move down"><ArrowDown className="w-3.5 h-3.5" /></button>
                       <button onClick={() => setEditing(editing === d.brand_id ? null : d.brand_id)} className="p-1.5 rounded hover:bg-muted text-forest" aria-label="Edit promo"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => removeDeal.mutate(d.product_id)} disabled={removeDeal.isPending} className="p-1.5 rounded hover:bg-destructive/10 text-destructive" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => removeDeal.mutate(d.brand_id)} disabled={removeDeal.isPending} className="p-1.5 rounded hover:bg-destructive/10 text-destructive" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
 

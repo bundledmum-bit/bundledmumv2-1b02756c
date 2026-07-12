@@ -28,8 +28,12 @@ export function pad(n: number) {
 // promo label and per-brand end time). Display uses the RPC values; the frontend
 // never recomputes a promo price.
 export type DealItem = {
+  dealId: string;             // one row PER BRAND — unique key, never dedup by product
   product: any;
+  productName: string;
   brandId: string;
+  brandName: string | null;
+  sku: string | null;
   price: number;              // EFFECTIVE price after promo (from the RPC)
   compareAt: number | null;   // strike-through
   promoType: string | null;
@@ -58,8 +62,12 @@ export function useDealProducts() {
         const product = byId.get(r.product_id);
         return product
           ? {
+              dealId: (r.deal_id ?? `${r.product_id}:${r.brand_id}`) as string,
               product,
+              productName: (r.product_name ?? product.name) as string,
               brandId: r.brand_id as string,
+              brandName: r.brand_name ?? null,
+              sku: r.sku ?? null,
               price: Number(r.price) || 0,
               compareAt: r.compare_at_price != null ? Number(r.compare_at_price) : null,
               promoType: r.promo_type ?? null,
@@ -112,7 +120,7 @@ export function useCountdown(endsAt?: string | null) {
 // zoomable=false (default, homepage rail): tapping the product image
 //   navigates to the product page.
 // zoomable=true (deals grid): tapping the image opens a lightbox.
-export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, promoLabel, promoEndsAt, className = "", zoomable = false }: { product: any; brandId?: string; price?: number; compareAt?: number | null; promoLabel?: string | null; promoEndsAt?: string | null; className?: string; zoomable?: boolean }) {
+export function FlashDealCard({ product, brandId, brandName, sku, price: dealPrice, compareAt, promoLabel, promoEndsAt, className = "", zoomable = false }: { product: any; brandId?: string; brandName?: string | null; sku?: string | null; price?: number; compareAt?: number | null; promoLabel?: string | null; promoEndsAt?: string | null; className?: string; zoomable?: boolean }) {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty } = useCart();
   const [zoomed, setZoomed] = useState(false);
@@ -140,6 +148,9 @@ export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, p
   };
 
   const imageUrl = brand.imageUrl || product.imageUrl;
+  // Deep-link each card to its specific brand via ?sku so the PDP opens on it.
+  const productHref = `/products/${product.slug}${sku ? `?sku=${encodeURIComponent(sku)}` : ""}`;
+  const displayName = brandName ? `${product.name}` : product.name;
 
   // Promo label from the RPC wins (e.g. "Buy 1, get 1 free"); otherwise the
   // discount percent for a plain price drop.
@@ -169,7 +180,7 @@ export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, p
             </span>
           </button>
         ) : (
-          <Link to={`/products/${product.slug}`} className="aspect-square bg-warm-cream relative overflow-hidden block">
+          <Link to={productHref} className="aspect-square bg-warm-cream relative overflow-hidden block">
             {cardImage}
             {badges}
           </Link>
@@ -177,11 +188,14 @@ export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, p
 
         <div className="p-2.5 flex flex-col gap-1.5 flex-1">
           <Link
-            to={`/products/${product.slug}`}
-            className="font-semibold text-xs text-foreground line-clamp-2 leading-snug min-h-[32px] hover:text-forest transition-colors"
+            to={productHref}
+            className="font-semibold text-xs text-foreground line-clamp-2 leading-snug hover:text-forest transition-colors"
           >
-            {product.name}
+            {displayName}
           </Link>
+          {brandName && (
+            <span className="text-coral text-[11px] font-semibold -mt-0.5 truncate">{brandName}</span>
+          )}
           <div className="flex items-baseline gap-1.5">
             <span className="font-mono-price text-coral font-bold text-sm">{fmt(price)}</span>
             {onSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(was!)}</span>}
@@ -227,14 +241,15 @@ export function FlashDealCard({ product, brandId, price: dealPrice, compareAt, p
               <ProductImage imageUrl={imageUrl} emoji={brand.img} alt={product.name} className="w-full h-full" emojiClassName="text-8xl" />
             </div>
             <div className="p-4">
-              <p className="font-semibold text-sm text-foreground leading-snug mb-1">{product.name}</p>
+              <p className="font-semibold text-sm text-foreground leading-snug">{product.name}</p>
+              {brandName && <p className="text-coral text-xs font-semibold mb-1">{brandName}</p>}
               <div className="flex items-baseline gap-2 mb-3">
                 <span className="font-mono-price text-coral font-bold text-lg">{fmt(price)}</span>
                 {onSale && <span className="font-mono-price text-muted-foreground text-xs line-through">{fmt(was!)}</span>}
                 {promoLabel ? <span className="text-xs font-bold text-coral">{promoLabel}</span> : onSale ? <span className="text-xs font-bold text-coral">Save {save}%</span> : null}
               </div>
               <Link
-                to={`/products/${product.slug}`}
+                to={productHref}
                 onClick={() => setZoomed(false)}
                 className="block text-center rounded-pill bg-forest text-white py-2.5 text-sm font-semibold hover:bg-forest-deep transition-colors"
               >
@@ -276,7 +291,7 @@ export default function FlashDeals({ items, heading, subtitle, endsAt }: { items
         </Link>
       </div>
       <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
-        {items.map((d) => <FlashDealCard key={d.product.id} product={d.product} brandId={d.brandId} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="snap-start shrink-0 w-[172px]" />)}
+        {items.map((d) => <FlashDealCard key={d.dealId} product={d.product} brandId={d.brandId} brandName={d.brandName} sku={d.sku} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="snap-start shrink-0 w-[172px]" />)}
       </div>
     </section>
   );
