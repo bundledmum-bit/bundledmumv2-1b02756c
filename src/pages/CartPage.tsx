@@ -119,7 +119,7 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
-  const { cart, setCart, clearCart, addToCart, subtotal, lineEffective, totalItems, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
+  const { cart, setCart, clearCart, addToCart, subtotal, lineEffective, totalItems, gifts, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
   // Image zoom + Edit modal local state. Both are page-scoped because the
@@ -715,6 +715,52 @@ export default function CartPage() {
               </div>
               );
             })}
+
+            {/* Auto-added GIFT lines — DERIVED from get_earned_gifts, never
+                editable. They appear because a trigger item is in the cart;
+                remove or reduce that trigger and the gift disappears on the
+                next render. Priced by the RPC (free = ₦0). */}
+            {gifts.map(g => (
+              <div key={g.key} className="bg-card rounded-card shadow-card p-3 sm:p-4 border border-coral/40">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 rounded-md overflow-hidden border border-border bg-warm-cream relative">
+                    <img
+                      src={g.giftImageUrl || "/placeholder.svg"}
+                      alt={g.giftProductName || "Gift"}
+                      loading="lazy"
+                      className="w-16 h-16 sm:w-20 sm:h-20 object-cover"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="inline-flex items-center gap-1 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">
+                        🎁 {g.giftUnitPrice === 0 ? "Free gift" : `${Math.round(100 - (g.giftUnitPrice / (g.giftListPrice || 1)) * 100)}% off gift`}
+                      </span>
+                    </div>
+                    <h3 className="font-body font-semibold text-[13px] sm:text-sm leading-tight line-clamp-2 mt-1">
+                      {g.giftProductName}{g.giftBrandName ? ` (${g.giftBrandName})` : ""}
+                    </h3>
+                    {g.promoLabel && (
+                      <p className="font-body text-[11px] text-forest mt-0.5">{g.promoLabel}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-body font-bold text-coral text-sm">
+                        {g.giftUnitPrice === 0 ? "FREE" : fmt(g.giftUnitPrice)}
+                      </span>
+                      {g.giftListPrice > g.giftUnitPrice && (
+                        <span className="font-body text-[11px] text-text-light line-through">{fmt(g.giftListPrice)}</span>
+                      )}
+                      {g.giftQty > 1 && <span className="font-body text-[11px] text-text-med">× {g.giftQty}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-body font-bold text-sm">{g.giftLineTotal === 0 ? "FREE" : fmt(g.giftLineTotal)}</p>
+                    <p className="text-[10px] text-text-light mt-0.5 max-w-[92px]">Added automatically</p>
+                  </div>
+                </div>
+              </div>
+            ))}
 
             {savedItems.length > 0 && (
               <div className="mt-6">

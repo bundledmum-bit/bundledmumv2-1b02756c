@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { computeAutoFees, type AutoFeesResult } from "@/lib/computeAutoFees";
-import { useCartEffectivePricing, type BrandPrice } from "@/hooks/useBrandPricing";
+import { useCartEffectivePricing, useEarnedGifts, type BrandPrice, type EarnedGift } from "@/hooks/useBrandPricing";
 import { trackEvent } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { trackEcommerce } from "@/lib/ga";
@@ -160,6 +160,12 @@ interface CartContextType {
   // Per-line effective pricing from the RPC (promo label, saving, compare-at).
   lineEffective: (brandId?: string | null, qty?: number) => BrandPrice | null;
   pricingReady: boolean;
+  // Cross-product GIFT promotions, DERIVED from get_earned_gifts on every cart
+  // change. Never persisted — removing/reducing the trigger drops the gift.
+  // Each line is priced by the RPC (gift_line_total, 0 when free) and is folded
+  // into `subtotal` so the customer sees exactly what they pay.
+  gifts: EarnedGift[];
+  giftsSubtotal: number;
   // Auto-applied fee rules (gift wrap + service & packaging), computed
   // server-side via the compute_auto_fees RPC. Null until first resolved.
   autoFees: AutoFeesResult | null;
@@ -424,11 +430,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cart.map((i) => ({ brandId: i.selectedBrand?.id, qty: i.qty })),
   );
   const listSubtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const subtotal = cart.reduce((sum, i) => {
+  const paidSubtotal = cart.reduce((sum, i) => {
     const ep = priceLine(i.selectedBrand?.id, i.qty);
     return sum + (ep ? ep.lineTotal : i.price * i.qty);
   }, 0);
   const lineEffective = (brandId?: string | null, qty = 1) => priceLine(brandId, qty);
+
+  // Cross-product gifts — DERIVED from the real cart, never persisted. Folded
+  // into the subtotal so the total the customer sees == the total they pay
+  // (free gifts add 0; an X%-off gift adds its RPC line_total).
+  const gifts = useEarnedGifts(cart.map((i) => ({ brandId: i.selectedBrand?.id, qty: i.qty })));
+  const giftsSubtotal = gifts.reduce((sum, g) => sum + g.giftLineTotal, 0);
+  const subtotal = paidSubtotal + giftsSubtotal;
 
   // ── Auto-applied fees ─────────────────────────────────────────────
   // Recompute via the DB RPC whenever the cart changes, debounced 300ms
@@ -458,7 +471,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [feeItemsSig]);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, listSubtotal, lineEffective, pricingReady, autoFees, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
+    <CartContext.Provider value={{ cart, addToCart, setCart, clearCart, updateQty, removeFromCart, getCartItem, updateVariant, totalItems, subtotal, listSubtotal, lineEffective, pricingReady, gifts, giftsSubtotal, autoFees, justAdded, savedItems, saveForLater, moveToCart, removeSaved }}>
       {children}
     </CartContext.Provider>
   );

@@ -83,7 +83,7 @@ function cartItemHasIssue(item: any, issues: StockIssue[]): boolean {
 }
 
 export default function CheckoutPage() {
-  const { cart, subtotal, clearCart, totalItems, autoFees } = useCart();
+  const { cart, subtotal, clearCart, totalItems, gifts, autoFees } = useCart();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -2256,6 +2256,20 @@ export default function CheckoutPage() {
                       {item.selectedBrand && <div className="text-forest text-[10px] mt-0.5">{item.selectedBrand.label} · Qty {item.qty}</div>}
                     </div>
                     <div className="font-bold text-[13px] flex-shrink-0">{fmt(item.price * item.qty)}</div>
+                  </div>
+                ))}
+                {/* Auto-added gift lines — derived, priced by the RPC (free = ₦0). */}
+                {gifts.map(g => (
+                  <div key={g.key} className="flex items-center gap-3 pb-3 border-b border-border/50">
+                    <div className="w-12 h-12 bg-warm-cream rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden border border-coral/40">
+                      <img src={g.giftImageUrl || "/placeholder.svg"} alt={g.giftProductName || "Gift"} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[9px] font-bold text-coral mb-0.5 truncate">🎁 {g.giftUnitPrice === 0 ? "Free gift" : "Gift"}</div>
+                      <div className="text-xs font-semibold leading-tight truncate">{g.giftProductName}{g.giftBrandName ? ` (${g.giftBrandName})` : ""}</div>
+                      <div className="text-forest text-[10px] mt-0.5">Qty {g.giftQty}</div>
+                    </div>
+                    <div className="font-bold text-[13px] flex-shrink-0">{g.giftLineTotal === 0 ? "FREE" : fmt(g.giftLineTotal)}</div>
                   </div>
                 ))}
               </div>

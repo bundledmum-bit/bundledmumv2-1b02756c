@@ -107,28 +107,46 @@ function fromLocalInput(v: string): string | null {
 
 // Live promo preview for a single brand, recomputed via admin_preview_promotion
 // as the admin edits — BEFORE saving.
-function usePromoPreview(brandId: string, promoType: string, discountPercent: string, buyQty: string, getPct: string) {
-  const validDiscount = promoType === "discount" && Number(discountPercent) > 0;
-  const validBogo = promoType === "bogo" && Number(buyQty) > 0 && getPct !== "";
-  const enabled = validDiscount || validBogo;
+interface PromoPreviewInput {
+  brandId: string;
+  promoType: string;
+  discountPercent: string;
+  buyQty: string;
+  getPct: string;
+  triggerQty: string;
+  giftBrandId: string;
+  giftQty: string;
+  giftPct: string;
+}
+function usePromoPreview(p: PromoPreviewInput) {
+  const validDiscount = p.promoType === "discount" && Number(p.discountPercent) > 0;
+  const validBogo = p.promoType === "bogo" && Number(p.buyQty) > 0 && p.getPct !== "";
+  const validGift =
+    p.promoType === "gift" &&
+    Number(p.triggerQty) > 0 &&
+    !!p.giftBrandId &&
+    p.giftBrandId !== p.brandId &&
+    Number(p.giftQty) > 0 &&
+    p.giftPct !== "";
+  const enabled = validDiscount || validBogo || validGift;
   const { data } = useQuery({
-    queryKey: ["promo-preview", brandId, promoType, discountPercent, buyQty, getPct],
+    queryKey: ["promo-preview", p.brandId, p.promoType, p.discountPercent, p.buyQty, p.getPct, p.triggerQty, p.giftBrandId, p.giftQty, p.giftPct],
     enabled,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("admin_preview_promotion", {
-        p_brand_id: brandId,
-        p_promo_type: promoType,
-        p_discount_percent: promoType === "discount" ? Number(discountPercent) : null,
-        p_bogo_buy_qty: promoType === "bogo" ? Number(buyQty) : null,
-        p_bogo_get_percent_off: promoType === "bogo" ? Number(getPct) : null,
-        // Gift params (this editor only sets discount/bogo). Sent explicitly so
-        // the call resolves to the current gift-aware overload unambiguously —
-        // PostgREST otherwise can't choose between two overloads if a stale one
-        // lingers during a migration (PGRST201/203), which silently breaks BOGO.
-        p_trigger_qty: null,
-        p_gift_brand_id: null,
-        p_gift_qty: null,
-        p_gift_percent_off: null,
+        p_brand_id: p.brandId,
+        p_promo_type: p.promoType,
+        p_discount_percent: p.promoType === "discount" ? Number(p.discountPercent) : null,
+        p_bogo_buy_qty: p.promoType === "bogo" ? Number(p.buyQty) : null,
+        p_bogo_get_percent_off: p.promoType === "bogo" ? Number(p.getPct) : null,
+        // Gift params — sent explicitly (nulls when unused) so the call resolves
+        // to the current gift-aware overload unambiguously. PostgREST otherwise
+        // can't choose between overloads if a stale one lingers during a
+        // migration (PGRST201/203), which silently broke BOGO before.
+        p_trigger_qty: p.promoType === "gift" ? Number(p.triggerQty) : null,
+        p_gift_brand_id: p.promoType === "gift" ? p.giftBrandId : null,
+        p_gift_qty: p.promoType === "gift" ? Number(p.giftQty) : null,
+        p_gift_percent_off: p.promoType === "gift" ? Number(p.giftPct) : null,
       });
       if (error) throw error;
       return (data && data[0]) || null;
@@ -137,21 +155,94 @@ function usePromoPreview(brandId: string, promoType: string, discountPercent: st
   return data || null;
 }
 
+// Gift brand picker — reuses admin_search_brands_for_deals. The gift MUST be a
+// different brand than the trigger (the RPC also rejects self-gifts), so the
+// trigger brand is filtered out of the results.
+function GiftBrandPicker({
+  excludeBrandId, valueId, valueLabel, onPick,
+}: {
+  excludeBrandId: string;
+  valueId: string;
+  valueLabel: string;
+  onPick: (id: string, label: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const { data: hits } = useQuery({
+    queryKey: ["gift-brand-search", q],
+    enabled: q.trim().length >= 2,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("admin_search_brands_for_deals", { p_query: q.trim(), p_limit: 20 });
+      if (error) throw error;
+      return (data || []) as BrandHit[];
+    },
+  });
+  const results = (hits || []).filter((b) => b.brand_id !== excludeBrandId);
+
+  if (valueId) {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <span className="rounded-lg border border-border bg-card px-2 py-1.5">🎁 {valueLabel}</span>
+        <button type="button" onClick={() => onPick("", "")} className="text-xs text-forest font-semibold hover:underline">Change</button>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-light pointer-events-none" />
+        <input className="w-full border border-input rounded-lg pl-8 pr-2 py-1.5 text-sm bg-background" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the gift brand…" />
+      </div>
+      {q.trim().length >= 2 && (
+        <div className="mt-1.5 border border-border rounded-lg divide-y divide-border max-h-52 overflow-y-auto">
+          {results.length === 0 ? (
+            <p className="text-xs text-text-med p-2">No other matching brands.</p>
+          ) : (
+            results.map((b) => (
+              <button
+                key={b.brand_id}
+                type="button"
+                onClick={() => { onPick(b.brand_id, `${b.brand_name} · ${b.product_name}`); setQ(""); }}
+                className="w-full text-left flex items-center gap-2 p-2 hover:bg-muted"
+              >
+                <DealThumb url={b.image_url} alt={b.product_name} />
+                <span className="min-w-0">
+                  <span className="block text-sm truncate">{b.brand_name} <span className="text-text-light">· {b.product_name}</span></span>
+                  <span className="block text-[11px] text-text-light">{naira(b.price)}{!b.in_stock ? " · out of stock" : ""}</span>
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
   const queryClient = useQueryClient();
-  const [promoType, setPromoType] = useState<string>(row.promo_type === "bogo" ? "bogo" : "discount");
+  const [promoType, setPromoType] = useState<string>(
+    row.promo_type === "bogo" ? "bogo" : row.promo_type === "gift" ? "gift" : "discount",
+  );
   const [discountPercent, setDiscountPercent] = useState<string>(row.discount_percent != null ? String(row.discount_percent) : "");
   const [buyQty, setBuyQty] = useState<string>(row.bogo_buy_qty != null ? String(row.bogo_buy_qty) : "1");
   const [getPct, setGetPct] = useState<string>(row.bogo_get_percent_off != null ? String(row.bogo_get_percent_off) : "100");
+  // Gift promo state — a fresh gift starts capped at 1 per order (the safe
+  // default; uncapped gifts scale with trigger qty and can bleed stock).
+  const [triggerQty, setTriggerQty] = useState<string>("1");
+  const [giftBrandId, setGiftBrandId] = useState<string>("");
+  const [giftBrandLabel, setGiftBrandLabel] = useState<string>("");
+  const [giftQty, setGiftQty] = useState<string>("1");
+  const [giftPct, setGiftPct] = useState<string>("100");
+  const [giftMaxPerOrder, setGiftMaxPerOrder] = useState<string>("1");
   const [startsAt, setStartsAt] = useState<string>(toLocalInput(row.starts_at));
   const [endsAt, setEndsAt] = useState<string>(toLocalInput(row.ends_at));
 
-  const preview = usePromoPreview(row.brand_id, promoType, discountPercent, buyQty, getPct);
+  const preview = usePromoPreview({ brandId: row.brand_id, promoType, discountPercent, buyQty, getPct, triggerQty, giftBrandId, giftQty, giftPct });
 
   const save = useMutation({
     mutationFn: async () => {
       // Validate BEFORE the RPC so a malformed promo can never save blind and
-      // then silently fail the DB CHECK constraint (buy qty / get% NOT NULL).
+      // then silently fail a DB CHECK constraint or the self-gift guard.
       if (promoType === "bogo") {
         const bq = Number(buyQty);
         const gp = Number(getPct);
@@ -160,6 +251,19 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         }
         if (!Number.isFinite(gp) || gp < 1 || gp > 100) {
           throw new Error("‘Get next at % off’ must be between 1 and 100 (100 = free).");
+        }
+      } else if (promoType === "gift") {
+        const tq = Number(triggerQty);
+        const gq = Number(giftQty);
+        const gp = Number(giftPct);
+        if (!Number.isInteger(tq) || tq < 1) throw new Error("Trigger quantity must be a whole number of 1 or more.");
+        if (!giftBrandId) throw new Error("Pick the brand to give away.");
+        if (giftBrandId === row.brand_id) throw new Error("The gift must be a DIFFERENT brand — a same-brand offer is a BOGO, not a gift.");
+        if (!Number.isInteger(gq) || gq < 1) throw new Error("Gift quantity must be a whole number of 1 or more.");
+        if (!Number.isFinite(gp) || gp < 1 || gp > 100) throw new Error("Gift % off must be between 1 and 100 (100 = free).");
+        if (giftMaxPerOrder !== "") {
+          const cap = Number(giftMaxPerOrder);
+          if (!Number.isInteger(cap) || cap < 1) throw new Error("Max per order must be a whole number of 1 or more (or blank for uncapped).");
         }
       } else {
         const dp = Number(discountPercent);
@@ -175,15 +279,15 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         p_bogo_get_percent_off: promoType === "bogo" ? Number(getPct) : null,
         p_starts_at: fromLocalInput(startsAt) ?? new Date().toISOString(),
         p_ends_at: fromLocalInput(endsAt),
-        // Gift params (this editor only sets discount/bogo). Passed explicitly so
-        // PostgREST resolves to the current gift-aware overload unambiguously — a
-        // stale narrower overload lingering during a DB migration otherwise makes
-        // the named-arg call ambiguous (PGRST201/203) and BOGO saves fail silently.
-        p_trigger_qty: null,
-        p_gift_brand_id: null,
-        p_gift_qty: null,
-        p_gift_percent_off: null,
-        p_gift_max_per_order: null,
+        // Gift params — populated only for a gift promo, explicit nulls otherwise.
+        // Always sending the full set keeps PostgREST resolution unambiguous
+        // against the gift-aware overload (a stale narrower overload lingering
+        // during a migration would otherwise cause PGRST201/203 silent failures).
+        p_trigger_qty: promoType === "gift" ? Number(triggerQty) : null,
+        p_gift_brand_id: promoType === "gift" ? giftBrandId : null,
+        p_gift_qty: promoType === "gift" ? Number(giftQty) : null,
+        p_gift_percent_off: promoType === "gift" ? Number(giftPct) : null,
+        p_gift_max_per_order: promoType === "gift" ? (giftMaxPerOrder === "" ? null : Number(giftMaxPerOrder)) : null,
       });
       if (error) throw error;
     },
@@ -217,14 +321,16 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
       <div className="flex flex-wrap items-center gap-2">
         <select className="border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={promoType} onChange={(e) => setPromoType(e.target.value)}>
           <option value="discount">% discount</option>
-          <option value="bogo">Buy X get Y</option>
+          <option value="bogo">Buy X get Y (same brand)</option>
+          <option value="gift">Gift (different brand)</option>
         </select>
-        {promoType === "discount" ? (
+        {promoType === "discount" && (
           <label className="text-sm flex items-center gap-1.5">
             <input type="number" min={1} max={100} className="w-20 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} placeholder="%" />
             % off
           </label>
-        ) : (
+        )}
+        {promoType === "bogo" && (
           <div className="flex items-center gap-1.5 text-sm">
             Buy
             <input type="number" min={1} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={buyQty} onChange={(e) => setBuyQty(e.target.value)} />
@@ -234,6 +340,47 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
           </div>
         )}
       </div>
+
+      {promoType === "gift" && (
+        <div className="rounded-lg border border-border bg-card p-3 space-y-2.5">
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            Buy
+            <input type="number" min={1} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={triggerQty} onChange={(e) => setTriggerQty(e.target.value)} />
+            of <span className="font-semibold">{row.brand_name}</span>, give away:
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            <input type="number" min={1} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={giftQty} onChange={(e) => setGiftQty(e.target.value)} />
+            ×
+            <div className="min-w-[220px] flex-1">
+              <GiftBrandPicker
+                excludeBrandId={row.brand_id}
+                valueId={giftBrandId}
+                valueLabel={giftBrandLabel}
+                onPick={(id, label) => { setGiftBrandId(id); setGiftBrandLabel(label); }}
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            at
+            <input type="number" min={1} max={100} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={giftPct} onChange={(e) => setGiftPct(e.target.value)} />
+            % off <span className="text-text-light">(100 = free)</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-sm">
+            <span className="font-semibold">Max per order</span>
+            <input type="number" min={1} className="w-20 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={giftMaxPerOrder} onChange={(e) => setGiftMaxPerOrder(e.target.value)} placeholder="uncapped" />
+            <span className="text-text-light">(blank = uncapped)</span>
+          </div>
+          {giftMaxPerOrder === "" && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-[12px] text-amber-800">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>
+                <strong>Uncapped:</strong> the gift scales with the trigger quantity — buying {Number(triggerQty) > 1 ? `${triggerQty}×` : "5×"} the trigger gives away that many gifts.
+                A B1G1-free on a 5-unit order can bleed ~₦27,500 of stock. Set a cap (default 1) unless you really mean it.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <label className="text-xs font-semibold text-text-med">Starts at
           <input type="datetime-local" className={inputCls} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
@@ -253,7 +400,13 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono-price">
             <span className="text-text-med">List</span><span className="text-right">{naira(preview.list_price)}</span>
             <span className="text-text-med">Customer pays</span><span className="text-right">{naira(preview.customer_pays)}</span>
-            <span className="text-text-med">Your cost</span><span className="text-right">{naira(preview.your_cost)}</span>
+            {promoType === "gift" && preview.gift_cost != null && (
+              <>
+                <span className="text-text-med">↳ Gift cost (in the total)</span>
+                <span className="text-right">{naira(preview.gift_cost)}</span>
+              </>
+            )}
+            <span className="text-text-med">Your cost{promoType === "gift" ? " (incl. gift)" : ""}</span><span className="text-right">{naira(preview.your_cost)}</span>
             <span className="text-text-med font-semibold">Your margin</span>
             <span className={`text-right font-bold ${tone.cls}`}>{naira(preview.your_margin)} ({preview.margin_pct}%)</span>
           </div>

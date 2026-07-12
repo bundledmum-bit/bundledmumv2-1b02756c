@@ -92,6 +92,55 @@ Deno.serve(async (req) => {
       bundle_name: item.bundleName || null,
     }));
 
+    // 3b. Cross-product GIFT lines. get_earned_gifts is the SINGLE SOURCE OF
+    // TRUTH — recompute from the SUBMITTED cart (never trust a gift the client
+    // sends) so a customer can't check out with a free item they didn't earn,
+    // and so the pricing matches what the cart showed. The RPC already applies
+    // the per-order cap and skips gifts whose brand went out of stock between
+    // cart and checkout — in that case it simply returns fewer rows and we add
+    // fewer lines (graceful, never a crash). Free gifts price at 0.
+    try {
+      const cartForGifts = Array.from(
+        items.reduce((m: Map<string, number>, it: any) => {
+          const bid = toUuidOrNull(it.brandId);
+          const qty = Number(it.qty) || 0;
+          if (bid && qty > 0) m.set(bid, (m.get(bid) || 0) + qty);
+          return m;
+        }, new Map<string, number>()),
+      ).map(([brand_id, qty]) => ({ brand_id, qty }));
+
+      if (cartForGifts.length) {
+        const { data: earned, error: giftErr } = await supabase.rpc("get_earned_gifts", {
+          p_cart: cartForGifts,
+        });
+        if (giftErr) {
+          console.error(`[place-order] get_earned_gifts failed for order ${orderData.id}:`, giftErr.message);
+        } else if (Array.isArray(earned) && earned.length) {
+          for (const g of earned) {
+            orderItems.push({
+              order_id: orderData.id,
+              // Prefixed so the gift is unmistakable in the admin + emails.
+              product_name: `🎁 Gift: ${g.gift_product_name}`,
+              brand_name: g.gift_brand_name || "Gift",
+              brand_id: toUuidOrNull(g.gift_brand_id),
+              product_id: toUuidOrNull(g.gift_product_id),
+              quantity: Number(g.gift_qty) || 1,
+              unit_price: Number(g.gift_unit_price) || 0,
+              line_total: Number(g.gift_line_total) || 0,
+              size: null,
+              color: null,
+              bundle_name: g.promo_label || null,
+              // COGS of the giveaway — so finance sees the true cost of gifts.
+              line_cost: Number(g.gift_line_cost) || 0,
+            } as any);
+          }
+          console.log(`[place-order] added ${earned.length} gift line(s) to order ${orderData.id}`);
+        }
+      }
+    } catch (giftCatch) {
+      console.error(`[place-order] gift derivation EXCEPTION for order ${orderData.id}:`, giftCatch);
+    }
+
     try {
       const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
       if (itemsError) {
