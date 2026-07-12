@@ -161,9 +161,10 @@ export function DealCountdown({
   );
 }
 
-// Calm ended-deal banner. No urgency (no red, no pulse) — the deal is over but
-// the products STAY on the page at their normal price (prices already reverted
-// server-side). `onDark` variant for the /deals gradient header.
+// Ended-deal banner. The HEADING is red so it can't be missed (no pulse/animation
+// — steady red, not fake urgency). The products STAY on the page at their normal
+// price (prices already reverted server-side). `onDark` uses a solid red banner
+// so the red still reads on the /deals green gradient header.
 export function DealsEndedBanner({
   heading, message, onDark = false, className = "",
 }: {
@@ -175,11 +176,11 @@ export function DealsEndedBanner({
   return (
     <div
       className={`rounded-lg px-3 py-2 ${
-        onDark ? "bg-white/10 border border-white/25 text-white" : "bg-muted border border-border"
+        onDark ? "bg-red-600 border border-red-500 text-white" : "bg-red-50 border border-red-200"
       } ${className}`}
     >
-      <p className={`font-bold text-sm ${onDark ? "text-white" : "text-foreground"}`}>{heading}</p>
-      <p className={`text-xs mt-0.5 ${onDark ? "text-white/80" : "text-muted-foreground"}`}>{message}</p>
+      <p className={`font-bold text-sm ${onDark ? "text-white" : "text-red-600"}`}>{heading}</p>
+      <p className={`text-xs mt-0.5 ${onDark ? "text-white/90" : "text-red-600/80"}`}>{message}</p>
     </div>
   );
 }
