@@ -1,6 +1,7 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmt } from "@/lib/cart";
 import { packCountLabel } from "@/lib/diaperBrand";
+import { brandOptionName } from "@/lib/brandOptions";
 
 interface BrandLike {
   id: string;
@@ -40,7 +41,7 @@ export default function BrandSelect({
   const isOos = (b: BrandLike) => !b.inStock || productOos;
   const optionText = (b: BrandLike) => {
     const pc = packCountLabel(b as any);
-    return `${b.label}${pc ? ` ${pc}` : ""} — ${fmt(b.price)}${isOos(b) ? " — Out of stock" : ""}`;
+    return `${brandOptionName(b, brands)}${pc ? ` ${pc}` : ""} — ${fmt(b.price)}${isOos(b) ? " — Out of stock" : ""}`;
   };
 
   return (

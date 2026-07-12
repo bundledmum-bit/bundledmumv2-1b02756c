@@ -8,6 +8,7 @@ import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Bran
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import KlumpAdBanner from "@/components/KlumpAdBanner";
+import { brandOptionName } from "@/lib/brandOptions";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
@@ -970,7 +971,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                     ) : null}
                   </Link>
                   <div className="p-3 flex flex-col gap-2 flex-1">
-                    <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">{brand.label}</p>
+                    <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">{brandOptionName(brand, product.brands)}</p>
                     <div className="flex items-baseline gap-1.5">
                       <span className="font-mono-price text-forest font-bold text-[15px]">{fmt(brand.price)}</span>
                       {onSale && (

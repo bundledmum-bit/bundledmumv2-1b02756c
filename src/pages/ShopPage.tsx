@@ -13,6 +13,7 @@ import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
 import CategoryNav from "@/components/shop/CategoryNav";
 import CardAttributeSelect from "@/components/shop/CardAttributeSelect";
+import { brandOptionName } from "@/lib/brandOptions";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS, hasInStockBrand } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -115,7 +116,7 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
       label: "Brand",
       options: orderedBrands.map(b => {
         const pc = packCountLabel(b);
-        return { value: b.id, label: `${b.label}${pc ? ` ${pc}` : ""}${!b.inStock ? " — Out of stock" : ""}`, disabled: !b.inStock };
+        return { value: b.id, label: `${brandOptionName(b, product.brands)}${pc ? ` ${pc}` : ""}${!b.inStock ? " — Out of stock" : ""}`, disabled: !b.inStock };
       }),
       value: selectedBrand.id,
       onChange: (id) => { const b = product.brands.find(x => x.id === id); if (b) setSelectedBrand(b); },
