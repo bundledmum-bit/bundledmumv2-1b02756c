@@ -119,6 +119,76 @@ export function useCountdown(endsAt?: string | null) {
   };
 }
 
+// Master-timer state for a deals surface. `countdown` is the live tick (null
+// once passed); `ended` is true only when a REAL end date has passed. This is a
+// DISPLAY decision (which banner to show) — it does NOT compute promo expiry or
+// price: the RPCs already revert expired promos. A null endsAt is neither live
+// nor ended (no timer configured).
+export function useDealTimerState(endsAt?: string | null): {
+  countdown: ReturnType<typeof useCountdown>;
+  ended: boolean;
+} {
+  const countdown = useCountdown(endsAt);
+  const end = endsAt ? new Date(endsAt).getTime() : NaN;
+  const ended = !!endsAt && !countdown && Number.isFinite(end) && end <= Date.now();
+  return { countdown, ended };
+}
+
+// Conspicuous live countdown. High-contrast coral, larger type — one of the
+// first things the eye lands on. Keeps the >=48h day format ("3d 04:12:08").
+// `onDark` swaps to a translucent white treatment for the /deals gradient header.
+export function DealCountdown({
+  countdown, onDark = false, className = "",
+}: {
+  countdown: NonNullable<ReturnType<typeof useCountdown>>;
+  onDark?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg font-bold shadow-sm px-3 py-1.5 text-sm md:text-base ${
+        onDark
+          ? "bg-white/15 border border-white/30 text-white backdrop-blur-sm"
+          : "bg-coral text-white"
+      } ${className}`}
+    >
+      <Clock className="w-4 h-4 shrink-0" />
+      <span className="text-[10px] font-semibold uppercase tracking-wide opacity-90">Ends in</span>
+      <span className="font-mono-price tabular-nums whitespace-nowrap">
+        {countdown.d > 0 && `${countdown.d}d `}{pad(countdown.h)}:{pad(countdown.m)}:{pad(countdown.s)}
+      </span>
+    </span>
+  );
+}
+
+// Calm ended-deal banner. No urgency (no red, no pulse) — the deal is over but
+// the products STAY on the page at their normal price (prices already reverted
+// server-side). `onDark` variant for the /deals gradient header.
+export function DealsEndedBanner({
+  heading, message, onDark = false, className = "",
+}: {
+  heading: string;
+  message: string;
+  onDark?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 ${
+        onDark ? "bg-white/10 border border-white/25 text-white" : "bg-muted border border-border"
+      } ${className}`}
+    >
+      <p className={`font-bold text-sm ${onDark ? "text-white" : "text-foreground"}`}>{heading}</p>
+      <p className={`text-xs mt-0.5 ${onDark ? "text-white/80" : "text-muted-foreground"}`}>{message}</p>
+    </div>
+  );
+}
+
+// Default copy for the ended state, overridable from site_settings.
+export const DEALS_ENDED_HEADING = "This deal has ended";
+export const DEALS_ENDED_MESSAGE =
+  "Our next deal is coming soon. Products below are still available at their normal price.";
+
 // Layout-agnostic card: no width/shrink/snap classes of its own, so it drops
 // cleanly into either a horizontal snap rail (the homepage) or a CSS grid
 // (the /deals page) -- the caller controls sizing via `className`.
@@ -276,30 +346,37 @@ export function FlashDealCard({ product, brandId, brandName, sku, price: dealPri
 
 // Homepage deals rail. Heading/subtitle come from the caller (admin settings).
 // The countdown only shows when a real endsAt is passed.
-export default function FlashDeals({ items, heading, subtitle, endsAt }: { items: DealItem[]; heading?: string; subtitle?: string; endsAt?: string | null }) {
-  const countdown = useCountdown(endsAt);
+export default function FlashDeals({ items, heading, subtitle, endsAt, endedHeading, endedMessage }: { items: DealItem[]; heading?: string; subtitle?: string; endsAt?: string | null; endedHeading?: string; endedMessage?: string }) {
+  const { countdown, ended } = useDealTimerState(endsAt);
   if (!items?.length) return null;
 
   return (
     <section className="py-5">
-      <div className="px-4 md:px-6 flex items-center justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-lg md:text-xl font-bold text-foreground inline-flex items-center gap-1.5 shrink-0">
-              {heading || "Deals"}
-            </h2>
-            {countdown && (
-              <span className="inline-flex items-center gap-1 rounded-pill bg-foreground text-white text-[11px] font-semibold px-2.5 py-1">
-                <Clock className="w-3 h-3" />
-                <span className="font-mono-price">{countdown.d > 0 && `${countdown.d}d `}{pad(countdown.h)}<span className="opacity-60">:</span>{pad(countdown.m)}<span className="opacity-60">:</span>{pad(countdown.s)}</span>
-              </span>
-            )}
-          </div>
-          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+      <div className="px-4 md:px-6 mb-3">
+        {/* Row 1: title + "See all" only. The title truncates (min-w-0) and
+            "See all" never shrinks or wraps, so it is ALWAYS tappable. The
+            countdown lives on its OWN row below and can never overlap it —
+            the previous bug was the countdown sharing this row inside a
+            non-wrapping flex, overflowing onto / past "See all" on mobile. */}
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg md:text-xl font-bold text-foreground truncate min-w-0">
+            {heading || "Deals"}
+          </h2>
+          <Link to="/deals" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5 shrink-0 whitespace-nowrap">
+            See all <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
-        <Link to="/deals" className="text-xs font-semibold text-forest hover:underline inline-flex items-center gap-0.5 shrink-0">
-          See all <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        {/* Row 2: the live timer (conspicuous) OR the ended banner. */}
+        {countdown ? (
+          <div className="mt-2"><DealCountdown countdown={countdown} /></div>
+        ) : ended ? (
+          <DealsEndedBanner
+            className="mt-2"
+            heading={endedHeading || DEALS_ENDED_HEADING}
+            message={endedMessage || DEALS_ENDED_MESSAGE}
+          />
+        ) : null}
       </div>
       <div className="flex gap-3 overflow-x-auto px-4 md:px-6 pb-1 snap-x scrollbar-none">
         {items.map((d) => <FlashDealCard key={d.dealId} product={d.product} brandId={d.brandId} brandName={d.brandName} sku={d.sku} price={d.price} compareAt={d.compareAt} promoLabel={d.promoLabel} promoEndsAt={d.promoEndsAt} className="snap-start shrink-0 w-[172px]" />)}

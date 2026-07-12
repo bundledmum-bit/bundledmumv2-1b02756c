@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import Seo from "@/components/Seo";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
-import { Clock } from "lucide-react";
 import Breadcrumb from "@/components/Breadcrumb";
 import {
   FlashDealCard,
-  useCountdown,
-  pad,
+  useDealTimerState,
+  DealCountdown,
+  DealsEndedBanner,
+  DEALS_ENDED_HEADING,
+  DEALS_ENDED_MESSAGE,
   useDealProducts,
 } from "@/components/home/FlashDeals";
 
@@ -29,7 +31,9 @@ export default function DealsPage() {
   const heading = (settings?.deals_heading as string) || "Deals";
   const subtitle = (settings?.deals_subtitle as string) || "";
   const endsAt = (settings?.deals_ends_at as string | null) || null;
-  const countdown = useCountdown(endsAt);
+  const { countdown, ended } = useDealTimerState(endsAt);
+  const endedHeading = (settings?.deals_ended_heading as string) || DEALS_ENDED_HEADING;
+  const endedMessage = (settings?.deals_ended_message as string) || DEALS_ENDED_MESSAGE;
 
   const filtered = useMemo(
     () => items.filter((d) => category === "all" || d.product.category === category),
@@ -46,16 +50,15 @@ export default function DealsPage() {
       {/* Compact, wide header. */}
       <div className="bg-gradient-to-r from-forest-deep to-forest">
         <div className="max-w-[1180px] mx-auto px-4 md:px-6 py-5 md:py-7 flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h1 className="pf text-white font-bold text-2xl md:text-[32px]">{heading}</h1>
             {subtitle && <p className="mt-1 text-white/80 text-sm md:text-[15px]">{subtitle}</p>}
           </div>
-          {countdown && (
-            <span className="inline-flex items-center gap-2 rounded-pill bg-white/15 border border-white/25 text-white text-sm font-semibold px-4 py-2.5 backdrop-blur-sm">
-              <Clock className="w-4 h-4" />
-              Ends in <span className="font-mono-price">{countdown.d > 0 && `${countdown.d}d `}{pad(countdown.h)}:{pad(countdown.m)}:{pad(countdown.s)}</span>
-            </span>
-          )}
+          {countdown ? (
+            <DealCountdown countdown={countdown} onDark />
+          ) : ended ? (
+            <DealsEndedBanner onDark heading={endedHeading} message={endedMessage} className="w-full sm:w-auto sm:max-w-sm" />
+          ) : null}
         </div>
       </div>
 

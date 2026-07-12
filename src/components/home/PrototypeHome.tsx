@@ -177,6 +177,8 @@ export default function PrototypeHome() {
   const dealsHeading = (settings?.deals_heading as string) || "Deals";
   const dealsSubtitle = (settings?.deals_subtitle as string) || "";
   const dealsEndsAt = (settings?.deals_ends_at as string | null) || null;
+  const dealsEndedHeading = (settings?.deals_ended_heading as string) || undefined;
+  const dealsEndedMessage = (settings?.deals_ended_message as string) || undefined;
 
   return (
     <div className="bg-background min-h-screen pt-[76px]">
@@ -254,7 +256,7 @@ export default function PrototypeHome() {
 
       {/* Deals rail (admin-curated) */}
       {dealsEnabled && (
-        <FlashDeals items={dealItems} heading={dealsHeading} subtitle={dealsSubtitle} endsAt={dealsEndsAt} />
+        <FlashDeals items={dealItems} heading={dealsHeading} subtitle={dealsSubtitle} endsAt={dealsEndsAt} endedHeading={dealsEndedHeading} endedMessage={dealsEndedMessage} />
       )}
      </div>
     </div>
