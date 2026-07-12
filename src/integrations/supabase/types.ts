@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      _category_backup_other_20260711: {
+        Row: {
+          hospital_list_section: string | null
+          id: string | null
+          name: string | null
+          old_category: string | null
+          snapshot_at: string | null
+          subcategory: string | null
+        }
+        Insert: {
+          hospital_list_section?: string | null
+          id?: string | null
+          name?: string | null
+          old_category?: string | null
+          snapshot_at?: string | null
+          subcategory?: string | null
+        }
+        Update: {
+          hospital_list_section?: string | null
+          id?: string | null
+          name?: string | null
+          old_category?: string | null
+          snapshot_at?: string | null
+          subcategory?: string | null
+        }
+        Relationships: []
+      }
+      _price_backup_markup39_20260709: {
+        Row: {
+          brand_name: string | null
+          cost_price: number | null
+          id: string | null
+          old_price: number | null
+          proposed_new_price: number | null
+          sku: string | null
+          snapshot_at: string | null
+        }
+        Insert: {
+          brand_name?: string | null
+          cost_price?: number | null
+          id?: string | null
+          old_price?: number | null
+          proposed_new_price?: number | null
+          sku?: string | null
+          snapshot_at?: string | null
+        }
+        Update: {
+          brand_name?: string | null
+          cost_price?: number | null
+          id?: string | null
+          old_price?: number | null
+          proposed_new_price?: number | null
+          sku?: string | null
+          snapshot_at?: string | null
+        }
+        Relationships: []
+      }
       abandoned_carts: {
         Row: {
           cart_items: Json
@@ -792,6 +849,77 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      brand_promotions: {
+        Row: {
+          bogo_buy_qty: number | null
+          bogo_get_percent_off: number | null
+          brand_id: string
+          created_at: string
+          created_by: string | null
+          discount_percent: number | null
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          promo_type: string
+          starts_at: string
+        }
+        Insert: {
+          bogo_buy_qty?: number | null
+          bogo_get_percent_off?: number | null
+          brand_id: string
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          promo_type: string
+          starts_at?: string
+        }
+        Update: {
+          bogo_buy_qty?: number | null
+          bogo_get_percent_off?: number | null
+          brand_id?: string
+          created_at?: string
+          created_by?: string | null
+          discount_percent?: number | null
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          promo_type?: string
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brand_promotions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["brand_id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       brands: {
         Row: {
@@ -1890,6 +2018,79 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Relationships: []
+      }
+      deals_products: {
+        Row: {
+          added_by: string | null
+          brand_id: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          product_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          brand_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          product_id: string
+        }
+        Update: {
+          added_by?: string | null
+          brand_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_products_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_products_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_products_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_products_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["brand_id"]
+          },
+          {
+            foreignKeyName: "deals_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["product_id"]
+          },
+        ]
       }
       deliverable_states: {
         Row: {
@@ -4508,6 +4709,75 @@ export type Database = {
           },
         ]
       }
+      merch_rankings: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          pinned_brand_id: string | null
+          position: number
+          product_id: string
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          pinned_brand_id?: string | null
+          position: number
+          product_id: string
+          scope: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          pinned_brand_id?: string | null
+          position?: number
+          product_id?: string
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "merch_rankings_pinned_brand_id_fkey"
+            columns: ["pinned_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_rankings_pinned_brand_id_fkey"
+            columns: ["pinned_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_rankings_pinned_brand_id_fkey"
+            columns: ["pinned_brand_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["brand_id"]
+          },
+          {
+            foreignKeyName: "merch_rankings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "merch_rankings_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["product_id"]
+          },
+        ]
+      }
       merch_section_products: {
         Row: {
           category_slug: string
@@ -5790,6 +6060,8 @@ export type Database = {
           new_product_name: string | null
           notes: string | null
           pack_count: number | null
+          pending_colors: Json
+          pending_sizes: Json
           promoted_brand_id: string | null
           reorder_days: number | null
           reorder_label: string | null
@@ -5824,6 +6096,8 @@ export type Database = {
           new_product_name?: string | null
           notes?: string | null
           pack_count?: number | null
+          pending_colors?: Json
+          pending_sizes?: Json
           promoted_brand_id?: string | null
           reorder_days?: number | null
           reorder_label?: string | null
@@ -5858,6 +6132,8 @@ export type Database = {
           new_product_name?: string | null
           notes?: string | null
           pack_count?: number | null
+          pending_colors?: Json
+          pending_sizes?: Json
           promoted_brand_id?: string | null
           reorder_days?: number | null
           reorder_label?: string | null
@@ -6275,6 +6551,7 @@ export type Database = {
           gender_relevant: boolean | null
           gift_box_markup_pct: number | null
           hospital_list_default_brand_id: string | null
+          hospital_list_eligible: boolean
           hospital_list_section: string | null
           hospital_types: string[] | null
           how_to_use: string | null
@@ -6342,6 +6619,7 @@ export type Database = {
           gender_relevant?: boolean | null
           gift_box_markup_pct?: number | null
           hospital_list_default_brand_id?: string | null
+          hospital_list_eligible?: boolean
           hospital_list_section?: string | null
           hospital_types?: string[] | null
           how_to_use?: string | null
@@ -6409,6 +6687,7 @@ export type Database = {
           gender_relevant?: boolean | null
           gift_box_markup_pct?: number | null
           hospital_list_default_brand_id?: string | null
+          hospital_list_eligible?: boolean
           hospital_list_section?: string | null
           hospital_types?: string[] | null
           how_to_use?: string | null
@@ -10459,6 +10738,45 @@ export type Database = {
         Args: { p_from_date: string; p_months: number }
         Returns: string
       }
+      admin_add_deal_brand: { Args: { p_brand_id: string }; Returns: boolean }
+      admin_clear_brand_promotion: {
+        Args: { p_brand_id: string }
+        Returns: boolean
+      }
+      admin_list_deal_brands: {
+        Args: never
+        Returns: {
+          below_cost: boolean
+          bogo_buy_qty: number
+          bogo_get_percent_off: number
+          brand_id: string
+          brand_name: string
+          cost_price: number
+          customer_pays: number
+          deal_id: string
+          discount_percent: number
+          display_order: number
+          ends_at: string
+          eval_qty: number
+          image_url: string
+          in_stock: boolean
+          is_active: boolean
+          list_price: number
+          margin_pct: number
+          normal_revenue: number
+          product_id: string
+          product_name: string
+          promo_label: string
+          promo_live: boolean
+          promo_type: string
+          revenue_given_up: number
+          sku: string
+          starts_at: string
+          subcategory: string
+          your_cost: number
+          your_margin: number
+        }[]
+      }
       admin_list_hospital_list_eligibility: {
         Args: never
         Returns: {
@@ -10476,6 +10794,30 @@ export type Database = {
           subcategory: string
         }[]
       }
+      admin_list_merch_ranking: {
+        Args: { p_scope: string }
+        Returns: {
+          brand_count: number
+          pinned_brand_id: string
+          pinned_brand_name: string
+          product_id: string
+          product_name: string
+          rank_position: number
+          resolved_brand_name: string
+          resolved_price: number
+          subcategory: string
+        }[]
+      }
+      admin_list_product_brands: {
+        Args: { p_product_id: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          in_stock: boolean
+          price: number
+          sku: string
+        }[]
+      }
       admin_list_product_brands_for_hospital_list: {
         Args: { p_product_id: string }
         Returns: {
@@ -10487,6 +10829,101 @@ export type Database = {
           price: number
         }[]
       }
+      admin_preview_promotion: {
+        Args: {
+          p_bogo_buy_qty?: number
+          p_bogo_get_percent_off?: number
+          p_brand_id: string
+          p_discount_percent?: number
+          p_promo_type: string
+        }
+        Returns: {
+          below_cost: boolean
+          customer_pays: number
+          list_price: number
+          margin_pct: number
+          promo_label: string
+          your_cost: number
+          your_margin: number
+        }[]
+      }
+      admin_price_helper: {
+        Args: {
+          p_cost_price: number
+          p_markup_percent?: number
+          p_price?: number
+        }
+        Returns: {
+          below_floor: boolean
+          cost_price: number
+          default_markup: number
+          default_price: number
+          floor_price: number
+          suggested_markup: number
+          suggested_price: number
+        }[]
+      }
+      admin_remove_deal_brand: {
+        Args: { p_brand_id: string }
+        Returns: boolean
+      }
+      admin_remove_merch_rank: {
+        Args: { p_product_id: string; p_scope: string }
+        Returns: boolean
+      }
+      admin_reorder_deals: { Args: { p_brand_ids: string[] }; Returns: boolean }
+      admin_reorder_merch: {
+        Args: { p_product_ids: string[]; p_scope: string }
+        Returns: boolean
+      }
+      admin_save_brand_price: {
+        Args: {
+          p_brand_id: string
+          p_confirm_below_floor?: boolean
+          p_cost_price: number
+          p_price: number
+        }
+        Returns: {
+          floor_price: number
+          message: string
+          needs_confirmation: boolean
+          resulting_markup: number
+          saved: boolean
+        }[]
+      }
+      admin_search_brands_for_deals: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          cost_price: number
+          has_promo: boolean
+          image_url: string
+          in_stock: boolean
+          on_deals: boolean
+          price: number
+          product_id: string
+          product_name: string
+          sku: string
+          subcategory: string
+        }[]
+      }
+      admin_set_brand_promotion: {
+        Args: {
+          p_bogo_buy_qty?: number
+          p_bogo_get_percent_off?: number
+          p_brand_id: string
+          p_discount_percent?: number
+          p_ends_at?: string
+          p_promo_type: string
+          p_starts_at?: string
+        }
+        Returns: string
+      }
+      admin_set_deal_order: {
+        Args: { p_brand_id: string; p_order: number }
+        Returns: boolean
+      }
       admin_set_hospital_list_brand: {
         Args: { p_brand_id: string; p_product_id: string }
         Returns: string
@@ -10494,6 +10931,15 @@ export type Database = {
       admin_set_hospital_list_section: {
         Args: { p_product_id: string; p_section: string }
         Returns: string
+      }
+      admin_set_merch_rank: {
+        Args: {
+          p_pinned_brand_id?: string
+          p_position: number
+          p_product_id: string
+          p_scope: string
+        }
+        Returns: boolean
       }
       admin_toggle_hospital_list_eligibility: {
         Args: { p_on: boolean; p_product_id: string }
@@ -10755,6 +11201,22 @@ export type Database = {
         }
         Returns: Json
       }
+      get_brand_effective_price: {
+        Args: { p_brand_id: string; p_qty?: number }
+        Returns: {
+          below_cost: boolean
+          compare_at: number
+          line_cost: number
+          line_margin: number
+          line_total: number
+          list_price: number
+          out_brand_id: string
+          promo_ends_at: string
+          promo_label: string
+          promo_type: string
+          unit_price: number
+        }[]
+      }
       get_cart_recommendations: {
         Args: { p_limit?: number; p_product_ids: string[] }
         Returns: {
@@ -10793,6 +11255,27 @@ export type Database = {
         }[]
       }
       get_dashboard_metrics: { Args: never; Returns: Json }
+      get_deal_products: {
+        Args: never
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          compare_at_price: number
+          deal_id: string
+          display_order: number
+          image_url: string
+          price: number
+          product_id: string
+          product_name: string
+          promo_ends_at: string
+          promo_label: string
+          promo_type: string
+          sku: string
+          slug: string
+          subcategory: string
+        }[]
+      }
       get_default_service_fee: { Args: never; Returns: number }
       get_delivery_fee: {
         Args: { p_city: string; p_state: string; p_subtotal: number }
@@ -10812,6 +11295,27 @@ export type Database = {
       get_hospital_list_funnel: {
         Args: { p_end?: string; p_source?: string; p_start?: string }
         Returns: Json
+      }
+      get_merchandised_products: {
+        Args: { p_scope: string; p_seed?: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          category: string
+          compare_at_price: number
+          image_url: string
+          is_pinned: boolean
+          name: string
+          price: number
+          product_id: string
+          promo_ends_at: string
+          promo_label: string
+          promo_type: string
+          rank_position: number
+          sku: string
+          slug: string
+          subcategory: string
+        }[]
       }
       get_order_picking_items: {
         Args: { p_order_id: string }
