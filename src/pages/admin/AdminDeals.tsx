@@ -53,8 +53,19 @@ type DealRow = {
   discount_percent: number | null;
   bogo_buy_qty: number | null;
   bogo_get_percent_off: number | null;
+  gift_brand_id: string | null;
+  gift_brand_name: string | null;
+  gift_qty: number | null;
+  gift_percent_off: number | null;
+  gift_max_per_order: number | null;
+  trigger_qty: number | null;
   starts_at: string | null;
   ends_at: string | null;
+  // Master-timer control: true = expires with site_settings.deals_ends_at (own
+  // ends_at is NULL); false = custom, uses its own ends_at, immune to the master.
+  follows_master_timer: boolean | null;
+  // The date that ACTUALLY applies (master or custom), resolved server-side.
+  effective_ends_at: string | null;
   promo_live: boolean;
   eval_qty: number | null;
   customer_pays: number | null;
@@ -103,6 +114,13 @@ function fromLocalInput(v: string): string | null {
   if (!v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+// Human-readable date, e.g. "18 Jul 2026".
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
 // Live promo preview for a single brand, recomputed via admin_preview_promotion
@@ -218,7 +236,7 @@ function GiftBrandPicker({
   );
 }
 
-function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
+function PromoEditor({ row, masterEndsAt, onDone }: { row: DealRow; masterEndsAt: string | null; onDone: () => void }) {
   const queryClient = useQueryClient();
   const [promoType, setPromoType] = useState<string>(
     row.promo_type === "bogo" ? "bogo" : row.promo_type === "gift" ? "gift" : "discount",
@@ -226,16 +244,24 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
   const [discountPercent, setDiscountPercent] = useState<string>(row.discount_percent != null ? String(row.discount_percent) : "");
   const [buyQty, setBuyQty] = useState<string>(row.bogo_buy_qty != null ? String(row.bogo_buy_qty) : "1");
   const [getPct, setGetPct] = useState<string>(row.bogo_get_percent_off != null ? String(row.bogo_get_percent_off) : "100");
-  // Gift promo state — a fresh gift starts capped at 1 per order (the safe
-  // default; uncapped gifts scale with trigger qty and can bleed stock).
-  const [triggerQty, setTriggerQty] = useState<string>("1");
-  const [giftBrandId, setGiftBrandId] = useState<string>("");
-  const [giftBrandLabel, setGiftBrandLabel] = useState<string>("");
-  const [giftQty, setGiftQty] = useState<string>("1");
-  const [giftPct, setGiftPct] = useState<string>("100");
-  const [giftMaxPerOrder, setGiftMaxPerOrder] = useState<string>("1");
+  // Gift promo state — prefilled from the row when editing an existing gift.
+  // A fresh gift starts capped at 1 per order (the safe default; uncapped gifts
+  // scale with trigger qty and can bleed stock).
+  const [triggerQty, setTriggerQty] = useState<string>(row.trigger_qty != null ? String(row.trigger_qty) : "1");
+  const [giftBrandId, setGiftBrandId] = useState<string>(row.gift_brand_id ?? "");
+  const [giftBrandLabel, setGiftBrandLabel] = useState<string>(row.gift_brand_name ?? "");
+  const [giftQty, setGiftQty] = useState<string>(row.gift_qty != null ? String(row.gift_qty) : "1");
+  const [giftPct, setGiftPct] = useState<string>(row.gift_percent_off != null ? String(row.gift_percent_off) : "100");
+  const [giftMaxPerOrder, setGiftMaxPerOrder] = useState<string>(
+    row.promo_type === "gift" ? (row.gift_max_per_order != null ? String(row.gift_max_per_order) : "") : "1",
+  );
   const [startsAt, setStartsAt] = useState<string>(toLocalInput(row.starts_at));
   const [endsAt, setEndsAt] = useState<string>(toLocalInput(row.ends_at));
+  // End-date mode. New promos default to "master"; existing promos reflect the
+  // stored flag (all of Marvellous's current 5 are custom → they show as custom).
+  const [endMode, setEndMode] = useState<"master" | "custom">(
+    row.follows_master_timer === false ? "custom" : "master",
+  );
 
   const preview = usePromoPreview({ brandId: row.brand_id, promoType, discountPercent, buyQty, getPct, triggerQty, giftBrandId, giftQty, giftPct });
 
@@ -271,6 +297,12 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
           throw new Error("Discount % must be between 1 and 100.");
         }
       }
+      // A custom end date is REQUIRED when not following the master timer (the
+      // RPC rejects a null one). Catch it here with a clear message.
+      const customEnd = endMode === "custom" ? fromLocalInput(endsAt) : null;
+      if (endMode === "custom" && !customEnd) {
+        throw new Error("Pick a custom end date, or switch to ‘Follows the master deal timer’.");
+      }
       const { error } = await (supabase as any).rpc("admin_set_brand_promotion", {
         p_brand_id: row.brand_id,
         p_promo_type: promoType,
@@ -278,7 +310,9 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         p_bogo_buy_qty: promoType === "bogo" ? Number(buyQty) : null,
         p_bogo_get_percent_off: promoType === "bogo" ? Number(getPct) : null,
         p_starts_at: fromLocalInput(startsAt) ?? new Date().toISOString(),
-        p_ends_at: fromLocalInput(endsAt),
+        // Following the master → no own end date (the RPC also forces NULL);
+        // custom → the chosen date (validated non-null above).
+        p_ends_at: customEnd,
         // Gift params — populated only for a gift promo, explicit nulls otherwise.
         // Always sending the full set keeps PostgREST resolution unambiguous
         // against the gift-aware overload (a stale narrower overload lingering
@@ -288,6 +322,9 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         p_gift_qty: promoType === "gift" ? Number(giftQty) : null,
         p_gift_percent_off: promoType === "gift" ? Number(giftPct) : null,
         p_gift_max_per_order: promoType === "gift" ? (giftMaxPerOrder === "" ? null : Number(giftMaxPerOrder)) : null,
+        // 13th param (NEW): true = expire with the master timer (own ends_at
+        // forced NULL); false = use the custom p_ends_at, immune to the master.
+        p_follows_master_timer: endMode === "master",
       });
       if (error) throw error;
     },
@@ -385,9 +422,34 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         <label className="text-xs font-semibold text-text-med">Starts at
           <input type="datetime-local" className={inputCls} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
         </label>
-        <label className="text-xs font-semibold text-text-med">Ends at (blank = runs until cleared)
-          <input type="datetime-local" className={inputCls} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-        </label>
+        <div className="text-xs font-semibold text-text-med">
+          When does it end?
+          <div className="mt-1 rounded-lg border border-input bg-background p-2.5 space-y-2 font-normal">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" name={`endmode-${row.brand_id}`} className="mt-0.5" checked={endMode === "master"} onChange={() => setEndMode("master")} />
+              <span className="text-[13px]">
+                <span className="font-semibold text-text-med">Follows the master deal timer</span>
+                <span className="block text-[12px] text-text-light">
+                  Ends {fmtDate(masterEndsAt)} (master timer). Change the master and this promo moves with it.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" name={`endmode-${row.brand_id}`} className="mt-0.5" checked={endMode === "custom"} onChange={() => setEndMode("custom")} />
+              <span className="text-[13px] flex-1">
+                <span className="font-semibold text-text-med">Custom end date</span>
+                {endMode === "custom" && (
+                  <>
+                    <input type="datetime-local" className={`${inputCls} mt-1`} value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+                    <span className="mt-1 inline-flex items-center gap-1 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5">
+                      Custom end date, not affected by the master timer
+                    </span>
+                  </>
+                )}
+              </span>
+            </label>
+          </div>
+        </div>
       </div>
 
       {/* Live preview — updates BEFORE saving. */}
@@ -625,6 +687,12 @@ export default function AdminDeals() {
                       </div>
                       <p className="text-coral text-xs font-semibold mt-0.5">{d.brand_name}{d.sku ? ` · ${d.sku}` : ""}</p>
                       <p className="text-xs text-text-med mt-0.5">{d.promo_label || "No promo"}{d.eval_qty ? ` · at qty ${d.eval_qty}` : ""}</p>
+                      {/* At-a-glance: which timer governs this promo's end. */}
+                      {d.promo_type && (
+                        d.follows_master_timer
+                          ? <span className="mt-1 inline-flex items-center gap-1 rounded bg-forest-light text-forest text-[10px] font-semibold px-1.5 py-0.5">⏱ Master timer · ends {fmtDate(d.effective_ends_at)}</span>
+                          : <span className="mt-1 inline-flex items-center gap-1 rounded bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-1.5 py-0.5">📌 Custom end · {fmtDate(d.effective_ends_at)}</span>
+                      )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -652,7 +720,7 @@ export default function AdminDeals() {
                     </div>
                   )}
 
-                  {editing === d.brand_id && <PromoEditor row={d} onDone={() => setEditing(null)} />}
+                  {editing === d.brand_id && <PromoEditor row={d} masterEndsAt={(settingsMap.get("deals_ends_at") as string) || null} onDone={() => setEditing(null)} />}
                 </div>
               );
             })}
