@@ -12,6 +12,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import CategoryTiles from "@/components/shop/CategoryTiles";
 import CategoryNav from "@/components/shop/CategoryNav";
+import CardAttributeSelect from "@/components/shop/CardAttributeSelect";
 import type { Product, Brand } from "@/lib/supabaseAdapters";
 import { isProductOOS, hasInStockBrand } from "@/lib/supabaseAdapters";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,12 +32,12 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     ? (product.brands.find(b => b.id === selectedBrandId) || defaultBrand)
     : defaultBrand;
   const [selectedBrand, setSelectedBrand] = useState<Brand>(seedBrand);
-  // No auto-pick: a size-required product must have the customer's explicit
-  // choice (via the inline size picker below) before it can be added —
-  // otherwise handleAdd routes to the detail page. Colour has no inline picker
-  // on the card, so colour-required products always route to detail to choose.
+  // No auto-pick: size/colour-required products must have the customer's
+  // explicit choice (via the dropdowns below) before they can be added. Every
+  // variant axis is inline-selectable on the card now, so the shopper never has
+  // to open the detail page just to pick a variant.
   const [selectedSize, setSelectedSize] = useState("");
-  const [selectedColor] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
   const { cart, updateQty } = useCart();
 
   const cartKey = cartItemKey(product.id, selectedBrand.id, selectedSize || null, selectedColor || null, null);
@@ -69,13 +70,14 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     setSelectedBrand(defaultBrand);
   }, [defaultBudget, forceBrand, selectedBrandId]);
 
-  const needsSizeChoice = !!(product.sizes && product.sizes.length > 0 && !selectedSize);
+  // A variant axis is "missing" when the product carries it but nothing is
+  // picked yet. Add-to-cart stays gated until every required axis is chosen.
+  const sizeMissing = !!(product.sizes?.length && !selectedSize);
+  const colorMissing = !!(product.colors?.length && !selectedColor);
+  const attrMissing = sizeMissing || colorMissing;
 
   const handleAdd = () => {
-    if (isOutOfStock) return;
-    // Route to the detail page to choose any required variant not yet picked
-    // (size can be chosen inline; colour has no inline picker on the card).
-    if ((product.sizes?.length && !selectedSize) || (product.colors?.length && !selectedColor)) { window.location.href = `/products/${product.slug}`; return; }
+    if (isOutOfStock || attrMissing) return;
     onAdd({ ...product, selectedBrand, price: selectedBrand.price, name: `${product.name} (${selectedBrand.label})`, selectedSize, selectedColor });
   };
 
@@ -84,8 +86,7 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   };
 
   // When a brand was matched by search (selectedBrandId), hoist it to the
-  // front so its pill is always visible instead of hiding behind "+N more".
-  // The remaining pills keep their existing order.
+  // front so it leads the brand dropdown. The rest keep their existing order.
   const orderedBrands = (() => {
     const idx = selectedBrandId ? product.brands.findIndex(b => b.id === selectedBrandId) : -1;
     if (idx > 0) {
@@ -95,8 +96,51 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
     }
     return product.brands;
   })();
-  const visibleBrands = orderedBrands.slice(0, 3);
-  const hiddenCount = orderedBrands.length - 3;
+
+  // Variant axes rendered on the card as dropdowns. Data-driven so the card
+  // handles any number of options without growing tall, and a future product
+  // attribute only needs another entry here — brand, size and colour are wired
+  // today; add the next axis the same way and it renders identically.
+  const attributeAxes: {
+    key: string;
+    label: string;
+    placeholder?: string;
+    options: { value: string; label: string; disabled?: boolean }[];
+    value: string | undefined;
+    onChange: (v: string) => void;
+  }[] = [];
+  if (product.brands.length > 1) {
+    attributeAxes.push({
+      key: "brand",
+      label: "Brand",
+      options: orderedBrands.map(b => {
+        const pc = packCountLabel(b);
+        return { value: b.id, label: `${b.label}${pc ? ` ${pc}` : ""}${!b.inStock ? " — Out of stock" : ""}`, disabled: !b.inStock };
+      }),
+      value: selectedBrand.id,
+      onChange: (id) => { const b = product.brands.find(x => x.id === id); if (b) setSelectedBrand(b); },
+    });
+  }
+  if (product.sizes?.length) {
+    attributeAxes.push({
+      key: "size",
+      label: "Size",
+      placeholder: "Select size",
+      options: product.sizes.map(s => ({ value: s, label: s })),
+      value: selectedSize || undefined,
+      onChange: setSelectedSize,
+    });
+  }
+  if (product.colors?.length) {
+    attributeAxes.push({
+      key: "colour",
+      label: "Colour",
+      placeholder: "Select colour",
+      options: product.colors.map(c => ({ value: c.name, label: c.name })),
+      value: selectedColor || undefined,
+      onChange: setSelectedColor,
+    });
+  }
 
   return (
     <div className={`bg-card rounded-[16px] border border-border/60 overflow-hidden flex flex-col group transition-shadow hover:shadow-md ${(allBrandsOos || productLevelOos) ? "opacity-60" : ""}`}>
@@ -147,37 +191,20 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
           ) : null;
         })()}
 
-        {/* Brand selector pills */}
-        {product.brands.length > 1 && (
-          <div className="flex flex-wrap gap-1">
-            {visibleBrands.map(b => {
-              const bOos = !b.inStock;
-              const pcLabel = packCountLabel(b);
-              return (
-                <button key={b.id} onClick={() => setSelectedBrand(b)}
-                  className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body inline-flex items-center gap-0.5 min-h-[28px] ${bOos ? "opacity-40" : ""} ${selectedBrand.id === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground hover:border-forest/30"}`}>
-                  {b.label}{pcLabel ? ` ${pcLabel}` : ""}
-                  {b.id === defaultBrand.id && !bOos && <span className="text-coral text-[9px] ml-0.5">★</span>}
-                </button>
-              );
-            })}
-            {hiddenCount > 0 && (
-              <Link to={`/products/${product.slug}`}
-                className="px-2 py-0.5 rounded-pill text-[10px] font-semibold border border-border text-forest hover:border-forest min-h-[28px] inline-flex items-center">
-                +{hiddenCount} more
-              </Link>
-            )}
-          </div>
-        )}
-
-        {/* Size chips */}
-        {product.sizes && product.sizes.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {product.sizes.map(s => (
-              <button key={s} onClick={() => setSelectedSize(s)}
-                className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body min-h-[28px] ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                {s}
-              </button>
+        {/* Variant selectors — brand, size, colour, and any future attribute
+            axis, each a compact dropdown so the card stays short no matter how
+            many options a product carries. */}
+        {attributeAxes.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {attributeAxes.map(axis => (
+              <CardAttributeSelect
+                key={axis.key}
+                label={axis.label}
+                placeholder={axis.placeholder}
+                options={axis.options}
+                value={axis.value}
+                onChange={axis.onChange}
+              />
             ))}
           </div>
         )}
@@ -205,9 +232,13 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
           </div>
         ) : cartItem ? (
           <QtyControl qty={cartItem.qty} onUpdate={handleQtyChange} maxQty={selectedBrand.stockQuantity ?? undefined} />
+        ) : attrMissing ? (
+          <button disabled className="w-full rounded-pill bg-muted text-muted-foreground text-[12px] font-semibold py-2.5 min-h-[40px] cursor-not-allowed font-body">
+            {sizeMissing && colorMissing ? "Select Size & Colour" : sizeMissing ? "Select a Size" : "Select a Colour"}
+          </button>
         ) : (
           <button onClick={handleAdd} className="w-full rounded-pill bg-coral text-white text-[12px] font-semibold py-2.5 min-h-[40px] hover:bg-coral-dark transition-colors font-body">
-            {needsSizeChoice ? "Choose Size →" : "Add to Cart"}
+            Add to Cart
           </button>
         )}
       </div>
