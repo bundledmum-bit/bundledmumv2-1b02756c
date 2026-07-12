@@ -370,6 +370,17 @@ export default function CheckoutPage() {
     if (cart.length === 0 && !processing) navigate("/cart");
   }, [cart, processing]);
 
+  // The "Confirming your order…" overlay AND the Paystack/Klump launch states
+  // are CONDITIONAL RENDERS inside this page (they swap on `processing`, not a
+  // route change), so the app-wide <ScrollToTop> never fires for them. Without
+  // this, the overlay inherits the scroll offset of the Place-Order button —
+  // which sits at the very bottom of a long checkout — so the customer sees the
+  // footer right after paying. Reset to the top INSTANTLY (no animation) the
+  // moment we enter the processing state, so it simply renders from the top.
+  useEffect(() => {
+    if (processing) window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [processing]);
+
   // Returning-customer pre-fill: if the shopper is authenticated, pull
   // their saved name / phone / address from customer_account_view (the
   // view is RLS-gated to the caller's own row, so no params needed).

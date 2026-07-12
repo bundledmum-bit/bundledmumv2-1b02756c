@@ -1261,6 +1261,19 @@ export default function HomeQuiz({
   onSubmit?: (answers: { budget: number; categories: Category[]; gender: Gender }) => void;
 } = {}) {
   const [screen, setScreen] = useState<Screen>(initialState?.autoAdvance || "quiz");
+
+  // Advancing to the WhatsApp-capture or Results screen is a CONDITIONAL RENDER
+  // (screen state flips, not a route change), so the app-wide <ScrollToTop>
+  // never fires. Without this the results can render mid-page/at the footer,
+  // inheriting the previous screen's scroll. These transitions only happen on
+  // the full-page /quiz flow (the homepage's inline quiz navigates to /quiz
+  // before any screen change, and stays on "quiz" here), so resetting the
+  // window scroll is safe. Instant (no animation) — never seen scrolling.
+  useEffect(() => {
+    if (screen === "whatsapp" || screen === "results") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [screen]);
   const [budget, setBudget] = useState<number>(initialState?.budget ?? DEFAULT_BUDGET);
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
