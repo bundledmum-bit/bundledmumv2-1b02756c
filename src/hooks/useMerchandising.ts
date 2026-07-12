@@ -37,7 +37,7 @@ const ADMIN_BRAND_COLS = `${BRAND_COLS}, cost_price, sku`;
 const PRODUCT_COLS =
   `*, brands:brands_public!brands_product_id_fkey(${BRAND_COLS}), product_sizes(*), product_colors(*), product_tags(*), product_images(*)`;
 
-export type ShopVariant = "all" | "baby" | "mum";
+export type ShopVariant = "all" | "baby" | "mum" | "other";
 
 // ----------------------------------------------------------------------------
 // NEW flat-grid ranking — get_merchandised_products(scope, seed)

@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import Breadcrumb from "@/components/Breadcrumb";
 
-export type ShopAccent = "all" | "baby" | "mum";
+export type ShopAccent = "all" | "baby" | "mum" | "other";
 
 type Crumb = { label: string; href?: string };
 

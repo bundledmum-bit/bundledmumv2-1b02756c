@@ -271,11 +271,12 @@ export default function ShopPage() {
   const pathShop: ShopVariant | null =
     location.pathname === "/shop/baby" ? "baby"
     : location.pathname === "/shop/mum" ? "mum"
+    : location.pathname === "/shop/other" ? "other"
     : location.pathname === "/shop" ? "all"
     : null;
-  // /shop/baby and /shop/mum pin the tab; /shop honours the ?tab param so
-  // "Gifts" (push-gift) filters in place rather than loading another page.
-  const tab = pathShop === "baby" ? "baby" : pathShop === "mum" ? "mum" : (searchParams.get("tab") || "all");
+  // /shop/baby, /shop/mum and /shop/other pin the tab; /shop honours the ?tab
+  // param so "Gifts" (push-gift) filters in place rather than loading a page.
+  const tab = pathShop === "baby" ? "baby" : pathShop === "mum" ? "mum" : pathShop === "other" ? "other" : (searchParams.get("tab") || "all");
   const budgetF = searchParams.get("budget") || "all";
   const categoryF = searchParams.get("category") || "";
   const brandF = searchParams.get("brand") || "";
@@ -338,7 +339,7 @@ export default function ShopPage() {
   // FILTER this list (they don't switch scope — that's the /shop/{parent}/{slug}
   // route). Default "popular" sort = this ranking (pinned 1..25, then daily
   // seeded shuffle). Explicit sorts and search override it below.
-  const merchScope = tab === "baby" ? "baby" : tab === "mum" ? "mum" : tab === "push-gift" ? "push-gift" : "all";
+  const merchScope = tab === "baby" ? "baby" : tab === "mum" ? "mum" : tab === "other" ? "other" : tab === "push-gift" ? "push-gift" : "all";
   const { orderIndex: merchOrder, brandByProduct: merchBrand, ready: merchReady } = useMerchandisedRanking(merchScope);
   const { data: categories } = useProductCategories();
   const deliveryText = siteSettings?.delivery_text || "";
@@ -354,7 +355,7 @@ export default function ShopPage() {
   };
 
   useEffect(() => {
-    const titles: Record<string, string> = { all: "All Products", baby: "Baby Shop", mum: "Mum Shop", "push-gift": "Push Gifts" };
+    const titles: Record<string, string> = { all: "All Products", baby: "Baby Shop", mum: "Mum Shop", other: "Other", "push-gift": "Push Gifts" };
     document.title = `${titles[tab] || "All Products"} | BundledMum`;
   }, [tab]);
 
@@ -417,6 +418,7 @@ export default function ShopPage() {
     const passesTab = (p: Product): boolean => {
       if (tab === "baby") return p.category === "baby";
       if (tab === "mum") return p.category === "mum";
+      if (tab === "other") return p.category === "other";
       if (tab === "push-gift") return p.category === "push-gift";
       return true;
     };
@@ -718,6 +720,7 @@ export default function ShopPage() {
               { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" },
               { label: "💛 Mum", to: "/shop/mum", active: tab === "mum" },
               { label: "🎁 Gifts", to: "/shop?tab=push-gift", active: tab === "push-gift" },
+              { label: "📦 Other", to: "/shop/other", active: tab === "other" },
             ].map(c => (
               <Link key={c.label} to={c.to}
                 className={`rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>

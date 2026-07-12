@@ -97,6 +97,7 @@ export default function AdminMerchandising() {
       { value: "baby", label: "Baby" },
       { value: "mum", label: "Mum" },
       { value: "push-gift", label: "Gifts" },
+      { value: "other", label: "Other" },
     ];
     const subs = (categories || [])
       .slice()

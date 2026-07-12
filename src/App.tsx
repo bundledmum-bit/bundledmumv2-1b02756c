@@ -311,6 +311,7 @@ function StorefrontShell() {
           <Route path="/shop" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
           <Route path="/shop/baby" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
           <Route path="/shop/mum" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
+          <Route path="/shop/other" element={<LegacyShopRedirect><ShopPage /></LegacyShopRedirect>} />
           <Route path="/shop/baby/:category" element={<SubcategoryPage tab="baby" />} />
           <Route path="/shop/mum/:category" element={<SubcategoryPage tab="mum" />} />
           <Route path="/shop/:slug" element={<LegacyShopRedirect><CategoryPage /></LegacyShopRedirect>} />
