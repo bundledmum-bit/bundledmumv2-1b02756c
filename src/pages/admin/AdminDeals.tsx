@@ -121,6 +121,14 @@ function usePromoPreview(brandId: string, promoType: string, discountPercent: st
         p_discount_percent: promoType === "discount" ? Number(discountPercent) : null,
         p_bogo_buy_qty: promoType === "bogo" ? Number(buyQty) : null,
         p_bogo_get_percent_off: promoType === "bogo" ? Number(getPct) : null,
+        // Gift params (this editor only sets discount/bogo). Sent explicitly so
+        // the call resolves to the current gift-aware overload unambiguously —
+        // PostgREST otherwise can't choose between two overloads if a stale one
+        // lingers during a migration (PGRST201/203), which silently breaks BOGO.
+        p_trigger_qty: null,
+        p_gift_brand_id: null,
+        p_gift_qty: null,
+        p_gift_percent_off: null,
       });
       if (error) throw error;
       return (data && data[0]) || null;
@@ -142,6 +150,23 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
 
   const save = useMutation({
     mutationFn: async () => {
+      // Validate BEFORE the RPC so a malformed promo can never save blind and
+      // then silently fail the DB CHECK constraint (buy qty / get% NOT NULL).
+      if (promoType === "bogo") {
+        const bq = Number(buyQty);
+        const gp = Number(getPct);
+        if (!Number.isInteger(bq) || bq < 1) {
+          throw new Error("Buy quantity must be a whole number of 1 or more.");
+        }
+        if (!Number.isFinite(gp) || gp < 1 || gp > 100) {
+          throw new Error("‘Get next at % off’ must be between 1 and 100 (100 = free).");
+        }
+      } else {
+        const dp = Number(discountPercent);
+        if (!Number.isFinite(dp) || dp < 1 || dp > 100) {
+          throw new Error("Discount % must be between 1 and 100.");
+        }
+      }
       const { error } = await (supabase as any).rpc("admin_set_brand_promotion", {
         p_brand_id: row.brand_id,
         p_promo_type: promoType,
@@ -150,6 +175,15 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
         p_bogo_get_percent_off: promoType === "bogo" ? Number(getPct) : null,
         p_starts_at: fromLocalInput(startsAt) ?? new Date().toISOString(),
         p_ends_at: fromLocalInput(endsAt),
+        // Gift params (this editor only sets discount/bogo). Passed explicitly so
+        // PostgREST resolves to the current gift-aware overload unambiguously — a
+        // stale narrower overload lingering during a DB migration otherwise makes
+        // the named-arg call ambiguous (PGRST201/203) and BOGO saves fail silently.
+        p_trigger_qty: null,
+        p_gift_brand_id: null,
+        p_gift_qty: null,
+        p_gift_percent_off: null,
+        p_gift_max_per_order: null,
       });
       if (error) throw error;
     },
@@ -158,7 +192,7 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
       toast.success("Promotion saved");
       onDone();
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(`Could not save promotion: ${e.message || e}`),
   });
   const clear = useMutation({
     mutationFn: async () => {
@@ -195,7 +229,7 @@ function PromoEditor({ row, onDone }: { row: DealRow; onDone: () => void }) {
             Buy
             <input type="number" min={1} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={buyQty} onChange={(e) => setBuyQty(e.target.value)} />
             get 1 at
-            <input type="number" min={0} max={100} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={getPct} onChange={(e) => setGetPct(e.target.value)} />
+            <input type="number" min={1} max={100} className="w-16 border border-input rounded-lg px-2 py-1.5 text-sm bg-background" value={getPct} onChange={(e) => setGetPct(e.target.value)} />
             % off <span className="text-text-light">(100 = free)</span>
           </div>
         )}
