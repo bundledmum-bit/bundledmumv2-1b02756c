@@ -130,6 +130,92 @@ export function useEarnedGifts(lines: { brandId?: string | null; qty: number }[]
   return data ?? [];
 }
 
+// ── Promo DISPLAY (get_brand_promo_display) ──────────────────────────
+// DISPLAY ONLY — makes an offer visible BEFORE the customer decides (shop card,
+// PDP, deal card). Never a price authority: get_brand_effective_price prices the
+// line and get_earned_gifts drives the cart. Returns null when the brand has no
+// live promo. A gift whose brand is out of stock is returned but must NOT be
+// advertised (the offer can't be honoured) — `advertisable` encodes that rule.
+export interface BrandPromoDisplay {
+  brandId: string;
+  promoType: "discount" | "bogo" | "gift";
+  headline: string;         // short badge text, e.g. "FREE Dettol (250ml)"
+  detail: string;           // full plain-English sentence
+  promoEndsAt: string | null;
+  discountPercent: number | null;
+  listPrice: number | null;
+  promoPrice: number | null;
+  bogoBuyQty: number | null;
+  bogoGetPercentOff: number | null;
+  bogoAddQty: number | null;   // how many to add to benefit (buy + free)
+  triggerQty: number | null;
+  giftBrandId: string | null;
+  giftBrandName: string | null;
+  giftProductName: string | null;
+  giftSku: string | null;
+  giftImageUrl: string | null;
+  giftQty: number | null;
+  giftPercentOff: number | null;
+  giftListPrice: number | null;
+  giftPromoPrice: number | null;
+  giftMaxPerOrder: number | null;
+  giftInStock: boolean | null;
+  // False only for a gift whose giveaway brand is out of stock. Callers must
+  // hide the promo entirely when this is false.
+  advertisable: boolean;
+}
+
+function toBrandPromoDisplay(brandId: string, r: any): BrandPromoDisplay {
+  const promoType = r.promo_type as BrandPromoDisplay["promoType"];
+  const giftInStock = r.gift_in_stock == null ? null : !!r.gift_in_stock;
+  return {
+    brandId,
+    promoType,
+    headline: r.headline ?? "",
+    detail: r.detail ?? "",
+    promoEndsAt: r.promo_ends_at ?? null,
+    discountPercent: r.discount_percent != null ? Number(r.discount_percent) : null,
+    listPrice: r.list_price != null ? Number(r.list_price) : null,
+    promoPrice: r.promo_price != null ? Number(r.promo_price) : null,
+    bogoBuyQty: r.bogo_buy_qty != null ? Number(r.bogo_buy_qty) : null,
+    bogoGetPercentOff: r.bogo_get_percent_off != null ? Number(r.bogo_get_percent_off) : null,
+    bogoAddQty: r.bogo_add_qty != null ? Number(r.bogo_add_qty) : null,
+    triggerQty: r.trigger_qty != null ? Number(r.trigger_qty) : null,
+    giftBrandId: r.gift_brand_id ?? null,
+    giftBrandName: r.gift_brand_name ?? null,
+    giftProductName: r.gift_product_name ?? null,
+    giftSku: r.gift_sku ?? null,
+    giftImageUrl: r.gift_image_url ?? null,
+    giftQty: r.gift_qty != null ? Number(r.gift_qty) : null,
+    giftPercentOff: r.gift_percent_off != null ? Number(r.gift_percent_off) : null,
+    giftListPrice: r.gift_list_price != null ? Number(r.gift_list_price) : null,
+    giftPromoPrice: r.gift_promo_price != null ? Number(r.gift_promo_price) : null,
+    giftMaxPerOrder: r.gift_max_per_order != null ? Number(r.gift_max_per_order) : null,
+    giftInStock,
+    advertisable: !(promoType === "gift" && giftInStock === false),
+  };
+}
+
+export async function fetchBrandPromoDisplay(brandId: string): Promise<BrandPromoDisplay | null> {
+  const { data, error } = await (supabase as any).rpc("get_brand_promo_display", { p_brand_id: brandId });
+  if (error || !data || !data[0]) return null;
+  return toBrandPromoDisplay(brandId, data[0]);
+}
+
+// Display-only promo for one brand. Returns null when there is no live promo OR
+// when it must not be advertised (an out-of-stock gift), so a caller can render
+// `display && <badge>` without re-checking stock.
+export function useBrandPromoDisplay(brandId: string | null | undefined) {
+  const { data } = useQuery({
+    queryKey: ["brand-promo-display", brandId],
+    enabled: !!brandId,
+    staleTime: 60_000,
+    queryFn: () => fetchBrandPromoDisplay(brandId as string),
+  });
+  if (!data || !data.advertisable) return null;
+  return data;
+}
+
 // One brand (default qty 1) — for storefront display: promo badge, strike-through
 // compare-at, countdown, and the effective price. React-query caches per brand so
 // many cards showing the same brand share a single call.

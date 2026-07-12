@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { adaptProduct, isProductOOS, isProductShoppable, type Product, type Brand } from "@/lib/supabaseAdapters";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
-import { useBrandPromo } from "@/hooks/useBrandPricing";
+import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 import { useCountdown } from "@/components/home/FlashDeals";
 import KlumpAdBanner from "@/components/KlumpAdBanner";
 import { brandOptionName } from "@/lib/brandOptions";
@@ -400,7 +400,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const promo = useBrandPromo(selectedBrand?.id);
   const promoLive = !!promo?.promoLabel;
   const effectivePrice = promoLive ? promo!.unitPrice : selectedBrand?.price;
-  const promoCountdown = useCountdown(promo?.promoEndsAt);
+  // DISPLAY promo (get_brand_promo_display) — makes the offer legible BEFORE the
+  // decision: the plain-English detail, and for a gift the actual giveaway
+  // product. Null when there's no live promo or an out-of-stock gift. The
+  // countdown reads its promo_ends_at so a gift (no price change) still counts down.
+  const promoDisplay = useBrandPromoDisplay(selectedBrand?.id);
+  const promoCountdown = useCountdown(promoDisplay?.promoEndsAt ?? promo?.promoEndsAt);
   const showSalePrice = promoLive
     ? (promo!.compareAt ?? promo!.listPrice) > (promo!.unitPrice ?? 0)
     : selectedBrand?.compareAtPrice && selectedBrand.compareAtPrice > selectedBrand.price;
@@ -1145,13 +1150,59 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   <span className="bg-destructive/10 text-destructive text-xs font-bold px-2 py-0.5 rounded-pill">-{savingsPercent}%</span>
                 )}
               </div>
-              {promoLive && (
-                <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                  <span className="rounded-pill bg-coral text-white text-[11px] font-bold px-2 py-0.5">{promo!.promoLabel}</span>
-                  {promoCountdown && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-coral">
-                      <span className="font-mono-price">Ends in {promoCountdown.d > 0 ? `${promoCountdown.d}d ` : ""}{promoCountdown.h}h {promoCountdown.m}m {promoCountdown.s}s</span>
-                    </span>
+              {promoDisplay && (
+                <div className="mt-2.5 rounded-xl border border-coral/40 bg-coral/5 p-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="rounded-pill bg-coral text-white text-[11px] font-bold px-2 py-0.5">{promoDisplay.headline}</span>
+                    {promoCountdown && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-coral">
+                        <span className="font-mono-price">Ends in {promoCountdown.d > 0 ? `${promoCountdown.d}d ` : ""}{promoCountdown.h}h {promoCountdown.m}m {promoCountdown.s}s</span>
+                      </span>
+                    )}
+                  </div>
+                  {/* Plain-English explanation. For a BOGO this is the explicit
+                      "Add N to your cart and one is free" instruction. */}
+                  <p className="text-[13px] text-foreground/80 mt-1.5 leading-snug">{promoDisplay.detail}</p>
+
+                  {/* BOGO — make the required action unmissable using bogo_add_qty. */}
+                  {promoDisplay.promoType === "bogo" && promoDisplay.bogoAddQty != null && (
+                    <p className="text-[12px] font-bold text-coral mt-1.5">
+                      👉 Add {promoDisplay.bogoAddQty} to your cart to unlock this offer.
+                    </p>
+                  )}
+
+                  {/* GIFT — SHOW the giveaway itself so the customer sees what
+                      they get: image, name and its strike-through list price. */}
+                  {promoDisplay.promoType === "gift" && (
+                    <div className="mt-2.5 flex items-center gap-3 rounded-lg bg-card border border-border p-2">
+                      <div className="w-14 h-14 rounded-md overflow-hidden border border-border bg-warm-cream flex-shrink-0">
+                        <img
+                          src={promoDisplay.giftImageUrl || "/placeholder.svg"}
+                          alt={promoDisplay.giftProductName || "Gift"}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold text-coral uppercase tracking-wide">
+                          {promoDisplay.giftPromoPrice === 0 ? "Free gift" : "Gift"}
+                        </div>
+                        <div className="text-[13px] font-semibold leading-tight truncate">
+                          {promoDisplay.giftProductName}{promoDisplay.giftBrandName ? ` (${promoDisplay.giftBrandName})` : ""}
+                        </div>
+                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                          <span className="font-mono-price text-coral font-bold text-sm">
+                            {promoDisplay.giftPromoPrice === 0 ? "FREE" : fmt(promoDisplay.giftPromoPrice ?? 0)}
+                          </span>
+                          {promoDisplay.giftListPrice != null && promoDisplay.giftListPrice > (promoDisplay.giftPromoPrice ?? 0) && (
+                            <span className="font-mono-price text-muted-foreground text-[11px] line-through">
+                              was {fmt(promoDisplay.giftListPrice)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

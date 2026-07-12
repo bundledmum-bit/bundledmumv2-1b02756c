@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import ProductImage from "@/components/ProductImage";
 import { fmt } from "@/lib/cart";
 import { isProductOOS, type Product } from "@/lib/supabaseAdapters";
-import { useBrandPromo } from "@/hooks/useBrandPricing";
+import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 
 // Shared premium product card for every listing surface (Shop, category,
 // subcategory, search). One card == one product. When a product carries more
@@ -26,6 +26,11 @@ export default function ProductCard({ product, className = "", leadBrandId }: { 
   // Effective (promo) price for the displayed brand — single source of truth.
   const promo = useBrandPromo(leadBrand?.id);
   const promoLive = !!promo?.promoLabel;
+  // Promo DISPLAY badge (headline). Only shown when we can name one exact brand:
+  // a merchandised lead brand, or a single-brand product. Multi-brand "from"
+  // cards stay unbadged rather than claim one brand's offer for all of them.
+  const badgeBrandId = leadBrand?.id ?? (brands.length === 1 ? cheapestBrand?.id : undefined);
+  const promoDisplay = useBrandPromoDisplay(badgeBrandId);
   const multiBrand = brands.length > 1 && !leadBrand;
   const minPrice = leadBrand
     ? (promoLive ? promo!.unitPrice : (displayBrand?.price || 0))
@@ -65,9 +70,9 @@ export default function ProductCard({ product, className = "", leadBrandId }: { 
           <span className="absolute top-2 left-2 rounded-pill bg-midnight/80 text-primary-foreground text-[10px] font-bold px-2 py-0.5">
             Sold out
           </span>
-        ) : promoLive ? (
+        ) : promoDisplay ? (
           <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5 max-w-[92%] truncate">
-            {promo!.promoLabel}
+            {promoDisplay.headline}
           </span>
         ) : onSale ? (
           <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5">

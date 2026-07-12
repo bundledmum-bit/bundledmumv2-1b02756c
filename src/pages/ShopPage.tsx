@@ -7,7 +7,7 @@ import BundleSections from "@/components/BundleSections";
 import ShopSectionsRenderer from "@/components/ShopSectionsRenderer";
 import type { ShopVariant } from "@/hooks/useMerchandising";
 import { useCart, fmt, getBrandForBudget, cartItemKey } from "@/lib/cart";
-import { useBrandPromo } from "@/hooks/useBrandPricing";
+import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 import { toast } from "sonner";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useMerchandisedRanking } from "@/hooks/useMerchandising";
@@ -62,6 +62,10 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
   // PDP/search/deals. Falls back to the static compare-at sale when no promo.
   const promo = useBrandPromo(selectedBrand.id);
   const promoLive = !!promo?.promoLabel;
+  // Promo DISPLAY headline for the currently-selected brand (exact — the shopper
+  // picks the brand on the card). Null when there's no live promo or it can't be
+  // advertised (out-of-stock gift).
+  const promoDisplay = useBrandPromoDisplay(selectedBrand.id);
   const cardPrice = promoLive ? promo!.unitPrice : selectedBrand.price;
   const cardStrike = promoLive ? (promo!.compareAt ?? promo!.listPrice) : selectedBrand.compareAtPrice;
   const showSale = !!(cardStrike && cardStrike > cardPrice);
@@ -227,8 +231,8 @@ function ProductCard({ product, defaultBudget = "standard", forceBrand, selected
               <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...product.brands.map(b => b.price)))}</span>
             )}
           </div>
-          {promoLive && (
-            <span className="inline-block rounded-pill bg-coral/10 text-coral text-[10px] font-bold px-2 py-0.5">{promo!.promoLabel}</span>
+          {promoDisplay && (
+            <span className="inline-block rounded-pill bg-coral/10 text-coral text-[10px] font-bold px-2 py-0.5 max-w-full truncate">{promoDisplay.headline}</span>
           )}
           <div className="flex items-center gap-1">
             <span className="text-coral text-[11px]">★ {product.rating}</span>

@@ -7,6 +7,7 @@ import { useAllProducts } from "@/hooks/useSupabaseData";
 import { supabase } from "@/integrations/supabase/client";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
+import { useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 
 /**
  * Deals rail + shared deal card. Deals are an admin-curated list served by the
@@ -132,6 +133,10 @@ export function FlashDealCard({ product, brandId, brandName, sku, price: dealPri
   // Per-brand promo countdown (from get_deal_products.promo_ends_at). When it
   // passes the RPC simply stops applying the promo — nothing to clear here.
   const promoCountdown = useCountdown(promoEndsAt);
+  // DISPLAY headline (buy-X-get-Y / gift / % off). Names the gift and stays
+  // hidden for an out-of-stock gift. Falls back to the RPC's promoLabel when a
+  // display row isn't available.
+  const promoDisplay = useBrandPromoDisplay(brandId);
   const pricing = getDealPricing(product, brandId);
   if (!pricing) return null;
   const { brand } = pricing;
@@ -157,10 +162,11 @@ export function FlashDealCard({ product, brandId, brandName, sku, price: dealPri
   const productHref = `/products/${product.slug}${sku ? `?sku=${encodeURIComponent(sku)}` : ""}`;
   const displayName = brandName ? `${product.name}` : product.name;
 
-  // Promo label from the RPC wins (e.g. "Buy 1, get 1 free"); otherwise the
-  // discount percent for a plain price drop.
-  const badges = promoLabel ? (
-    <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5 max-w-[90%] truncate">{promoLabel}</span>
+  // Promo headline wins (names the gift / states the BOGO); then the RPC's
+  // promoLabel, then the discount percent for a plain price drop.
+  const badgeText = promoDisplay?.headline || promoLabel;
+  const badges = badgeText ? (
+    <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5 max-w-[90%] truncate">{badgeText}</span>
   ) : onSale ? (
     <span className="absolute top-2 left-2 rounded-pill bg-coral text-white text-[10px] font-bold px-2 py-0.5">-{save}%</span>
   ) : null;
@@ -251,7 +257,7 @@ export function FlashDealCard({ product, brandId, brandName, sku, price: dealPri
               <div className="flex items-baseline gap-2 mb-3">
                 <span className="font-mono-price text-coral font-bold text-lg">{fmt(price)}</span>
                 {onSale && <span className="font-mono-price text-muted-foreground text-xs line-through">{fmt(was!)}</span>}
-                {promoLabel ? <span className="text-xs font-bold text-coral">{promoLabel}</span> : onSale ? <span className="text-xs font-bold text-coral">Save {save}%</span> : null}
+                {badgeText ? <span className="text-xs font-bold text-coral">{badgeText}</span> : onSale ? <span className="text-xs font-bold text-coral">Save {save}%</span> : null}
               </div>
               <Link
                 to={productHref}
