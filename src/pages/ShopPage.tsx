@@ -719,8 +719,8 @@ export default function ShopPage() {
               { label: "All", to: "/shop", active: tab === "all" },
               { label: "👶 Baby", to: "/shop/baby", active: tab === "baby" },
               { label: "💛 Mum", to: "/shop/mum", active: tab === "mum" },
-              { label: "🎁 Gifts", to: "/shop?tab=push-gift", active: tab === "push-gift" },
               { label: "📦 Other", to: "/shop/other", active: tab === "other" },
+              { label: "🎁 Gifts", to: "/shop?tab=push-gift", active: tab === "push-gift" },
             ].map(c => (
               <Link key={c.label} to={c.to}
                 className={`rounded-pill px-3.5 py-1.5 text-[13px] font-semibold border transition-colors min-h-[36px] inline-flex items-center ${c.active ? "bg-forest border-forest text-primary-foreground" : "bg-card border-border text-muted-foreground"}`}>
