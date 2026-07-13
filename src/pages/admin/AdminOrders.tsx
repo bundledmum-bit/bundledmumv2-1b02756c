@@ -876,9 +876,16 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
     staleTime: 30_000,
   });
 
-  const pageUrl: string | null = created?.page_url || elig?.existing_page_url || null;
-  const amount = Number(created?.amount ?? elig?.amount ?? o.total ?? 0) || 0;
-  const orderNumber = elig?.order_number || o.order_number || "";
+  // klump_page_eligibility OUT params carry an out_ prefix (they collided with
+  // column names otherwise). `eligible`/`reason` are unprefixed. `created` and
+  // `data` below are the edge-function response (page_url/amount — unchanged).
+  const pageUrl: string | null = created?.page_url || elig?.out_existing_page_url || null;
+  const amount = Number(created?.amount ?? elig?.out_amount ?? o.total ?? 0) || 0;
+  const orderNumber = elig?.out_order_number || o.order_number || "";
+  // Guard against a silent empty state: if the RPC returned a row but `eligible`
+  // is not a boolean (e.g. a future field-name drift), show an error instead of
+  // a misleading "not eligible".
+  const eligShapeBad = !!elig && typeof elig.eligible !== "boolean";
 
   const waHref = (() => {
     if (!pageUrl) return null;
@@ -938,6 +945,8 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
         <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Checking eligibility…</div>
       ) : eligError ? (
         <div className="text-xs text-destructive flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Couldn't check eligibility: {(eligError as any)?.message || "unknown error"}</div>
+      ) : eligShapeBad ? (
+        <div className="text-xs text-destructive flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Unexpected response from the eligibility check. Refresh and try again.</div>
       ) : pageUrl ? (
         <>
           <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 mb-2">

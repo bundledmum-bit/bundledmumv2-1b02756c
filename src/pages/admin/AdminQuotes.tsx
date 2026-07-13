@@ -937,7 +937,9 @@ function QuotePaymentLinkCard({
 
   const pageUrl = result?.page_url || null;
   const orderNumber = result?.order_number || "";
-  const amount = Number(result?.amount ?? ready?.total ?? 0) || 0;
+  // quote_ready_for_payment OUT params carry an out_ prefix; `ready`/`reason`
+  // are unprefixed. `result` is our own state (from the edge-fn response).
+  const amount = Number(result?.amount ?? ready?.out_total ?? 0) || 0;
 
   const waHref = (() => {
     if (!pageUrl) return null;
@@ -963,15 +965,16 @@ function QuotePaymentLinkCard({
         toast.error(`Could not convert quote: ${m}`);
         return;
       }
+      // convert_quote_to_pending_order OUT params carry an out_ prefix.
       const row = (Array.isArray(conv) ? conv[0] : conv) || null;
-      if (!row?.order_id) {
+      if (!row?.out_order_id) {
         setErr("Conversion returned no order id.");
         toast.error("Conversion returned no order id.");
         return;
       }
       queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
       // 2. Create the Klump page against the new order.
-      const { data: page, error: pageErr } = await (supabase as any).functions.invoke("klump-create-payment-page", { body: { order_id: row.order_id } });
+      const { data: page, error: pageErr } = await (supabase as any).functions.invoke("klump-create-payment-page", { body: { order_id: row.out_order_id } });
       let bodyErr: string | null = null;
       const ctx = (pageErr as any)?.context;
       if (ctx && typeof ctx.clone === "function") {
@@ -981,12 +984,13 @@ function QuotePaymentLinkCard({
         const m = bodyErr || page?.error || (pageErr as any)?.message || "Payment page creation failed.";
         // The order WAS created (irreversible). Say so clearly — the admin can
         // finish from the order detail page's Klump link card.
-        setErr(`Order ${row.order_number} was created, but the Klump link could not be generated: ${m}. Open the order to retry.`);
+        setErr(`Order ${row.out_order_number} was created, but the Klump link could not be generated: ${m}. Open the order to retry.`);
         toast.error(`Klump link failed: ${m}`);
         refetch();
         return;
       }
-      setResult({ order_number: page.order_number || row.order_number, amount: Number(page.amount ?? row.total) || 0, page_url: page.page_url });
+      // page.* is the edge-function response (unchanged); row.* is the RPC OUT.
+      setResult({ order_number: page.order_number || row.out_order_number, amount: Number(page.amount ?? row.out_total) || 0, page_url: page.page_url });
       toast.success(page.reused ? "Order ready — existing Klump link loaded." : "Order created and Klump payment link ready.");
     } catch (e: any) {
       const m = e?.message || "Something went wrong.";
@@ -1004,7 +1008,11 @@ function QuotePaymentLinkCard({
     else toast.error("Couldn't copy — select the link and copy manually");
   };
 
-  const missing: string[] = Array.isArray(ready?.missing_fields) ? ready!.missing_fields : [];
+  const missing: string[] = Array.isArray(ready?.out_missing_fields) ? ready!.out_missing_fields : [];
+  // Guard against a silent empty state: if the RPC returned a row but `ready` is
+  // not a boolean (e.g. a future field-name drift), treat it as an error rather
+  // than rendering a misleading "not ready".
+  const readyShapeBad = !!ready && typeof ready.ready !== "boolean";
 
   return (
     <section className="bg-card border border-border rounded-xl p-4">
@@ -1017,6 +1025,8 @@ function QuotePaymentLinkCard({
         <div className="flex items-center gap-2 text-xs text-text-med"><Loader2 className="w-4 h-4 animate-spin" /> Checking…</div>
       ) : readyErr ? (
         <div className="text-xs text-destructive flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Couldn't check readiness: {(readyErr as any)?.message || "unknown error"}</div>
+      ) : readyShapeBad ? (
+        <div className="text-xs text-destructive flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Unexpected response from the readiness check. Refresh and try again.</div>
       ) : pageUrl ? (
         <>
           <p className="text-[11px] text-green-700 font-semibold mb-1.5">Order {orderNumber} created — payment link ready.</p>
@@ -1039,10 +1049,10 @@ function QuotePaymentLinkCard({
             </a>
           </div>
         </>
-      ) : ready?.existing_order_number ? (
+      ) : ready?.out_existing_order_number ? (
         <div className="text-xs">
           <p className="text-green-700 font-semibold mb-1">This quote is already converted.</p>
-          <p className="text-text-med">Order <span className="font-mono font-semibold text-foreground">{ready.existing_order_number}</span> — open it on the <Link to="/admin/orders" className="text-forest font-semibold hover:underline">Orders page</Link> to send its Klump link.</p>
+          <p className="text-text-med">Order <span className="font-mono font-semibold text-foreground">{ready.out_existing_order_number}</span> — open it on the <Link to="/admin/orders" className="text-forest font-semibold hover:underline">Orders page</Link> to send its Klump link.</p>
         </div>
       ) : ready?.ready ? (
         <>
