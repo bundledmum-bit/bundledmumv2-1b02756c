@@ -3,7 +3,8 @@ import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon, Copy, Link2, AlertTriangle } from "lucide-react";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, format } from "date-fns";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import AdminOrderCard from "@/components/admin/AdminOrderCard";
@@ -81,6 +82,18 @@ const DATE_PRESET_GROUPS: { label: string; presets: (keyof typeof DATE_PRESET_LA
 ];
 
 export const fmt = (n: number) => `₦${n.toLocaleString()}`;
+
+// Normalise a Nigerian phone number to the international digits wa.me needs
+// (234XXXXXXXXXX). Handles 0803…, +234803…, 234803…, and bare 803…. Returns ""
+// when there aren't enough digits to be a real number.
+export function normalizeNgPhoneForWa(raw: string | null | undefined): string {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("234")) return digits;              // already international
+  if (digits.startsWith("0")) return `234${digits.slice(1)}`; // 0803… → 234803…
+  if (digits.length === 10) return `234${digits}`;           // 803… → 234803…
+  return digits;                                             // fall back to raw digits
+}
 // Parse the customer's unlisted-items note into clean lines (strip leading
 // bullets, drop empties). Pure text — never priced, never an order_item.
 const parseUnlistedItems = (text: string | null | undefined): string[] =>
@@ -842,6 +855,134 @@ export default function AdminOrders() {
 }
 
 // ═══════ ORDER DETAIL PAGE ═══════
+// Admin-only manual Klump BNPL link for an order. Used when the on-site Klump
+// widget fails the customer (lender decline, ad-blocker, network, outage). The
+// backend edge function sends Klump reference = our order_number, so a payment
+// through this link is auto-reconciled by the hourly reconciler (marks paid,
+// records commission, sends confirmation). Nothing here marks the order paid.
+function KlumpPaymentLinkCard({ order: o }: { order: any }) {
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<{ page_url: string; amount?: number } | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Pre-flight: is this order eligible, and does a link already exist?
+  const { data: elig, isLoading, error: eligError } = useQuery({
+    queryKey: ["klump-page-eligibility", o.id],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("klump_page_eligibility", { p_order_id: o.id });
+      if (error) throw error;
+      return (data && data[0]) || null;
+    },
+    staleTime: 30_000,
+  });
+
+  const pageUrl: string | null = created?.page_url || elig?.existing_page_url || null;
+  const amount = Number(created?.amount ?? elig?.amount ?? o.total ?? 0) || 0;
+  const orderNumber = elig?.order_number || o.order_number || "";
+
+  const waHref = (() => {
+    if (!pageUrl) return null;
+    const phone = normalizeNgPhoneForWa(o.customer_phone);
+    if (!phone) return null;
+    const firstName = String(o.customer_name || "").split(" ")[0] || "there";
+    const msg = `Hi ${firstName}, here is your Klump payment link for order ${orderNumber} (${fmt(amount)}): ${pageUrl}`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  })();
+
+  const create = async () => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("klump-create-payment-page", {
+        body: { order_id: o.id },
+      });
+      // Klump's 400 (already paid / under 25k) arrives as a non-2xx wrapper —
+      // dig the real message out of the response body so it's never generic.
+      let bodyErr: string | null = null;
+      const ctx = (error as any)?.context;
+      if (ctx && typeof ctx.clone === "function") {
+        try { const b = await ctx.clone().json(); bodyErr = b?.error || null; } catch { /* ignore */ }
+      }
+      if (error || !data?.page_url) {
+        const msg = bodyErr || data?.error || (error as any)?.message || "Could not create the Klump payment link.";
+        setCreateError(msg);
+        toast.error(`Klump link failed: ${msg}`);
+        return;
+      }
+      setCreated({ page_url: data.page_url, amount: data.amount });
+      toast.success(data.reused ? "Existing Klump link loaded." : "Klump payment link created.");
+    } catch (e: any) {
+      const msg = e?.message || "Could not create the Klump payment link.";
+      setCreateError(msg);
+      toast.error(`Klump link failed: ${msg}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!pageUrl) return;
+    const ok = await copyToClipboard(pageUrl);
+    if (ok) toast.success("Link copied");
+    else toast.error("Couldn't copy — select the link and copy manually");
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 mb-4">
+      <h3 className="text-sm font-bold mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-forest" /> Klump payment link</h3>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        Send the customer a Buy-Now-Pay-Later link if the on-site Klump widget failed them (lender decline, ad-blocker, network).
+      </p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> Checking eligibility…</div>
+      ) : eligError ? (
+        <div className="text-xs text-destructive flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Couldn't check eligibility: {(eligError as any)?.message || "unknown error"}</div>
+      ) : pageUrl ? (
+        <>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 mb-2">
+            <span className="text-xs font-mono break-all min-w-0 flex-1">{pageUrl}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copyLink} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+              <Copy className="w-3.5 h-3.5" /> Copy link
+            </button>
+            {waHref ? (
+              <a href={waHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-1.5 text-xs font-semibold hover:brightness-95">
+                <Send className="w-3.5 h-3.5" /> Send on WhatsApp
+              </a>
+            ) : (
+              <span className="text-[11px] text-muted-foreground self-center">No valid phone number on file for WhatsApp.</span>
+            )}
+            <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+              <ExternalLink className="w-3.5 h-3.5" /> Open
+            </a>
+          </div>
+        </>
+      ) : elig?.eligible ? (
+        <>
+          <button onClick={create} disabled={creating} className="inline-flex items-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:bg-forest-deep disabled:opacity-50">
+            {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+            {creating ? "Creating…" : `Send Klump payment link (${fmt(amount)})`}
+          </button>
+          {createError && <p className="text-xs text-destructive mt-2 flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /> {createError}</p>}
+        </>
+      ) : (
+        <>
+          <button disabled title={elig?.reason || "Not eligible"} className="inline-flex items-center gap-1.5 rounded-lg bg-muted text-muted-foreground px-3 py-1.5 text-xs font-semibold cursor-not-allowed">
+            <Link2 className="w-3.5 h-3.5" /> Send Klump payment link
+          </button>
+          <p className="text-xs text-amber-700 mt-2">{elig?.reason || "This order isn't eligible for a Klump payment link."}</p>
+        </>
+      )}
+
+      <p className="text-[11px] text-muted-foreground mt-3">
+        The customer pays via Klump. The order will be marked paid automatically once Klump confirms.
+      </p>
+    </div>
+  );
+}
+
 function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPrint }: { order: any; adminUser: any; can: (m: string, a: string) => boolean; isSuperAdmin: boolean; onBack: () => void; onPrint: () => void | Promise<void> }) {
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState(o.order_status);
@@ -1206,6 +1347,13 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           </div>
         </div>
       </div>
+
+      {/* Manual Klump payment link — only for unpaid orders, and only for
+          admins who can act on the order. The backend edge function is admin-
+          gated too. Hidden once the order is paid (nothing to collect). */}
+      {o.payment_status !== "paid" && can("orders", "edit_status") && (
+        <KlumpPaymentLinkCard order={o} />
+      )}
 
       {/* Order Summary */}
       <div className="bg-card border border-border rounded-xl p-5 mb-4">
