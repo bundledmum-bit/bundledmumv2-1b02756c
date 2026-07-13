@@ -56,6 +56,28 @@ function resolveKlumpCtor(): any {
   }
 }
 
+// Pull Klump's transaction reference out of whatever a lifecycle callback
+// receives. klump.js forwards the raw iframe payload to its callbacks and does
+// not name a `reference` field itself (the only reference literal in the SDK is
+// `merchant_reference`, which is OUR order number), so we probe the shapes Klump
+// is known to send — top-level, nested under `data`, or under `transaction`.
+// Returns null when nothing reference-like is present (e.g. onOpen with no data).
+function extractKlumpReference(payload: any): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const d = payload.data && typeof payload.data === "object" ? payload.data : {};
+  const t = payload.transaction && typeof payload.transaction === "object" ? payload.transaction : {};
+  const dt = d.transaction && typeof d.transaction === "object" ? d.transaction : {};
+  const candidates = [
+    payload.reference, payload.transaction_reference, payload.klump_reference, payload.klumpReference,
+    d.reference, d.transaction_reference, d.klump_reference,
+    t.reference, dt.reference,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.trim();
+  }
+  return null;
+}
+
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
 interface StockIssue {
@@ -1504,6 +1526,33 @@ export default function CheckoutPage() {
 
       pixelTrack("AddPaymentInfo", pixelMoney(grand));
 
+      // Persist Klump's transaction reference the MOMENT any callback exposes it
+      // — NOT only on success. If the browser dies mid-payment, onSuccess never
+      // fires, but by then we've already written the reference (from onOpen /
+      // onClose), so the reconciler can still verify the order against Klump's
+      // GET /v1/transactions/{reference}/verify. Fire-and-forget: a failed write
+      // is logged and NEVER blocks or breaks the payment flow. Deduped so we
+      // only write once (the RPC also refuses to overwrite an existing ref).
+      let klumpRefSaved = false;
+      const captureKlumpRef = (payload: any) => {
+        if (klumpRefSaved) return;
+        const reference = extractKlumpReference(payload);
+        if (!reference) return;
+        klumpRefSaved = true;
+        void (async () => {
+          try {
+            const { error } = await (supabase as any).rpc("set_order_klump_reference", {
+              p_order_id: savedOrder.id,
+              p_reference: reference,
+            });
+            if (error) console.error("[checkout] set_order_klump_reference failed:", error);
+            else console.log("[checkout] Klump reference saved:", reference);
+          } catch (e) {
+            console.error("[checkout] set_order_klump_reference exception:", e);
+          }
+        })();
+      };
+
       // Payload shape verbatim from Klump's live "Checkout Widget" docs.
       new KlumpCtor({
         publicKey: klumpPublicKey,
@@ -1534,21 +1583,31 @@ export default function CheckoutPage() {
         // (onLoad, onOpen, onSuccess, onError, onClose) so the constructor can
         // never throw for a missing callback and the widget always opens.
         onLoad: () => { console.log("[checkout] Klump widget loaded"); },
-        onOpen: () => { console.log("[checkout] Klump widget opened"); },
-        onSuccess: () => {
-          // Klump fired onSuccess = the customer completed payment. Advance to
-          // the confirmation page right away; the order stays payment_status
-          // pending until the klump-webhook marks it paid. Side-effects are
-          // non-blocking (see finalizeAndConfirm) so a stalled sheets sync can
-          // never strand the customer on the "Confirming your order…" overlay.
+        onOpen: (data: any) => {
+          console.log("[checkout] Klump widget opened");
+          // EARLIEST capture point — grab the reference here if Klump surfaces it
+          // on open, before we know the payment outcome.
+          captureKlumpRef(data);
+        },
+        onSuccess: (data: any) => {
+          // Klump fired onSuccess = the customer completed payment. Capture the
+          // reference too (in case it only appears here), then advance to the
+          // confirmation page right away; the order stays payment_status pending
+          // until the klump-webhook marks it paid. Side-effects are non-blocking
+          // (see finalizeAndConfirm) so a stalled sheets sync can never strand
+          // the customer on the "Confirming your order…" overlay.
+          captureKlumpRef(data);
           finalizeAndConfirm(savedOrder, orderData);
         },
-        onError: (err: unknown) => {
+        onError: (err: any) => {
+          // A payment can fail AFTER a transaction (and reference) exists — still
+          // try to capture it so the reconciler can check what happened.
+          captureKlumpRef(err);
           console.error("[checkout] Klump error:", err);
           setProcessing(false);
           toast.error("Klump payment could not be started. Please try again or choose another payment method.");
         },
-        onClose: () => { setProcessing(false); },
+        onClose: (data: any) => { captureKlumpRef(data); setProcessing(false); },
       });
       return;
     }
