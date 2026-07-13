@@ -56,39 +56,6 @@ function resolveKlumpCtor(): any {
   }
 }
 
-// Pull Klump's transaction reference out of whatever a lifecycle callback
-// receives. klump.js forwards the raw iframe payload to its callbacks and does
-// not name a `reference` field itself (the only reference literal in the SDK is
-// `merchant_reference`, which is OUR order number), so we cannot rely on a fixed
-// key path. Instead DEEP-SCAN the payload (bounded) for any string value whose
-// KEY looks like a transaction reference — excluding `merchant_reference` and
-// any value we already know (our order number / order id), so we never write
-// our own identifiers back as the Klump reference. Returns null when nothing
-// reference-like is present (e.g. onLoad/onOpen fired before a transaction).
-function extractKlumpReference(payload: any, exclude: (string | null | undefined)[] = []): string | null {
-  const banned = new Set(exclude.filter(Boolean).map((v) => String(v)));
-  const seen = new Set<any>();
-  const REF_KEY = /reference|(^|_|-)ref($|_|-)|trx_?ref|txn_?ref|transaction_?id/i;
-  let found: string | null = null;
-  const walk = (obj: any, depth: number) => {
-    if (found || obj == null || typeof obj !== "object" || depth > 6 || seen.has(obj)) return;
-    seen.add(obj);
-    for (const [key, val] of Object.entries(obj)) {
-      if (found) return;
-      if (typeof val === "string") {
-        const v = val.trim();
-        // Skip merchant_reference (our order number) and any known identifier.
-        if (!v || banned.has(v) || /merchant/i.test(key)) continue;
-        if (REF_KEY.test(key)) { found = v; return; }
-      } else if (val && typeof val === "object") {
-        walk(val, depth + 1);
-      }
-    }
-  };
-  walk(payload, 0);
-  return found;
-}
-
 /** Item in the `stock_issues` array returned by the place-order edge
  *  function when one or more cart items are unavailable (HTTP 409). */
 interface StockIssue {
@@ -1537,59 +1504,15 @@ export default function CheckoutPage() {
 
       pixelTrack("AddPaymentInfo", pixelMoney(grand));
 
-      // Persist Klump's transaction reference the MOMENT any callback exposes it
-      // — NOT only on success. If the browser dies mid-payment, onSuccess never
-      // fires, but by then we've already written the reference, so the
-      // reconciler can still verify the order against Klump's
-      // GET /v1/transactions/{reference}/verify. Fire-and-forget: a failed write
-      // is logged LOUDLY and NEVER blocks or breaks the payment flow.
-      //
-      // p_order_id MUST be the order UUID (savedOrder.id), never the order_number
-      // — the RPC returns false and writes nothing (no error) for a wrong id.
-      const klumpOrderId = savedOrder.id;
-      let klumpRefSaved = false;   // set only after a confirmed write
-      let klumpRefInFlight = false;
-      const logKlump = (name: string, payload: any) => {
-        let shown: string;
-        try { shown = JSON.stringify(payload); } catch { shown = String(payload); }
-        // Log the FULL payload of every lifecycle callback — this is how we
-        // proved onLoad/onOpen carry no reference (only {status,type}). If Klump
-        // ever adds a reference to onSuccess, it shows up here and the deep
-        // extractor below captures it.
-        console.log(`[checkout][klump] ${name} payload=${shown}`);
-      };
-      const captureKlumpRef = (source: string, payload: any) => {
-        if (klumpRefSaved || klumpRefInFlight) return;
-        const reference = extractKlumpReference(payload, [num, savedOrder.id]);
-        if (!reference) {
-          console.log(`[checkout][klump] ${source}: no transaction reference in payload yet`);
-          return;
-        }
-        klumpRefInFlight = true;
-        console.log(`[checkout][klump] capturing reference from ${source}: "${reference}" for order ${klumpOrderId}`);
-        void (async () => {
-          try {
-            const { data, error } = await (supabase as any).rpc("set_order_klump_reference", {
-              p_order_id: klumpOrderId,
-              p_reference: reference,
-            });
-            if (error) {
-              console.error("[checkout][klump] set_order_klump_reference ERRORED:", error, { p_order_id: klumpOrderId, p_reference: reference });
-            } else if (data === false) {
-              // 200 + false = the RPC wrote NOTHING (bad id / empty ref / already
-              // set / already paid). Never let this pass silently again.
-              console.error("[checkout][klump] set_order_klump_reference returned FALSE — wrote NOTHING. args:", { p_order_id: klumpOrderId, p_reference: reference });
-            } else {
-              klumpRefSaved = true;
-              console.log(`[checkout][klump] reference saved OK (RPC returned ${JSON.stringify(data)}):`, reference);
-            }
-          } catch (e) {
-            console.error("[checkout][klump] set_order_klump_reference EXCEPTION:", e);
-          } finally {
-            klumpRefInFlight = false;
-          }
-        })();
-      };
+      // NOTE: we deliberately do NO reference capture inside the Klump callbacks.
+      // Verified live: onLoad/onOpen only ever carry {data:{status,type}} — never
+      // a reference — so callback capture never worked, and any object-walk we ran
+      // inside a Klump callback is pure risk: if it ever threw, the widget would
+      // break for a paying customer. The reference is a nice-to-have (Klump's
+      // /verify accepts our merchant_reference and an hourly reconciler recovers
+      // paid orders by order number), so the only capture we keep is on the
+      // redirect landing page (OrderConfirmedPage) — outside any Klump callback,
+      // where it cannot affect the payment flow. Keep these callbacks minimal.
 
       // Payload shape verbatim from Klump's live "Checkout Widget" docs.
       new KlumpCtor({
@@ -1620,32 +1543,22 @@ export default function CheckoutPage() {
         // live console showed "onLoad callback is required". Provide ALL five
         // (onLoad, onOpen, onSuccess, onError, onClose) so the constructor can
         // never throw for a missing callback and the widget always opens.
-        // EVERY callback logs its FULL payload and attempts capture — we do not
-        // know which one Klump first populates with the reference, so we try them
-        // all (deduped) and capture at the earliest that carries it.
-        onLoad: (data: any) => { logKlump("onLoad", data); captureKlumpRef("onLoad", data); },
-        onOpen: (data: any) => { logKlump("onOpen", data); captureKlumpRef("onOpen", data); },
-        onSuccess: (data: any) => {
-          // Klump fired onSuccess = the customer completed payment. Capture the
-          // reference too (in case it only appears here), then advance to the
-          // confirmation page right away; the order stays payment_status pending
-          // until the klump-webhook marks it paid. Side-effects are non-blocking
-          // (see finalizeAndConfirm) so a stalled sheets sync can never strand
-          // the customer on the "Confirming your order…" overlay.
-          logKlump("onSuccess", data);
-          captureKlumpRef("onSuccess", data);
+        // Minimal, side-effect-free lifecycle handlers. They MUST NOT touch the
+        // callback payload (no property reads, no JSON.stringify, no object walk)
+        // so nothing here can ever throw and break the widget for the customer.
+        onLoad: () => {},
+        onOpen: () => {},
+        onSuccess: () => {
+          // Payment completed. Advance to the confirmation page; the order stays
+          // payment_status pending until the klump-webhook/reconciler marks it
+          // paid. Side-effects are non-blocking (see finalizeAndConfirm).
           finalizeAndConfirm(savedOrder, orderData);
         },
-        onError: (err: any) => {
-          // A payment can fail AFTER a transaction (and reference) exists — still
-          // try to capture it so the reconciler can check what happened.
-          logKlump("onError", err);
-          captureKlumpRef("onError", err);
-          console.error("[checkout] Klump error:", err);
+        onError: () => {
           setProcessing(false);
           toast.error("Klump payment could not be started. Please try again or choose another payment method.");
         },
-        onClose: (data: any) => { logKlump("onClose", data); captureKlumpRef("onClose", data); setProcessing(false); },
+        onClose: () => { setProcessing(false); },
       });
       return;
     }

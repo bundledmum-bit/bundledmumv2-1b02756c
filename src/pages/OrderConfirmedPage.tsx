@@ -159,40 +159,43 @@ export default function OrderConfirmedPage() {
   // order). Fire-and-forget; a false/failed write is logged LOUDLY, never
   // blocks. The webhook/reconciler still owns marking the order paid.
   useEffect(() => {
-    if (!order || order.payment_method !== "klump" || !order.id) return;
-    if (order.payment_reference) return; // already captured (webhook or a prior visit)
-    const params = new URLSearchParams(window.location.search);
-    let reference: string | null = null;
-    for (const [k, v] of params.entries()) {
-      if (k === "order" || k === "token" || !v) continue;
-      // Any reference-like param Klump may append, excluding our merchant ref.
-      if (/reference|(^|_|-)ref($|_|-)|trxref|txn|transaction_id/i.test(k) && !/merchant/i.test(k)) {
-        reference = v.trim();
-        break;
-      }
-    }
-    if (!reference) {
-      console.log("[order-confirmed][klump] no Klump reference in the return URL:", window.location.search);
-      return;
-    }
-    console.log(`[order-confirmed][klump] capturing reference "${reference}" for order ${order.id}`);
-    void (async () => {
-      try {
-        const { data, error } = await (supabase as any).rpc("set_order_klump_reference", {
-          p_order_id: order.id,
-          p_reference: reference,
-        });
-        if (error) {
-          console.error("[order-confirmed][klump] set_order_klump_reference ERRORED:", error, { p_order_id: order.id, p_reference: reference });
-        } else if (data === false) {
-          console.error("[order-confirmed][klump] set_order_klump_reference returned FALSE — wrote NOTHING. args:", { p_order_id: order.id, p_reference: reference });
-        } else {
-          console.log(`[order-confirmed][klump] reference saved OK (RPC returned ${JSON.stringify(data)}):`, reference);
+    // Fully defensive: this is a best-effort capture, never allowed to throw and
+    // break the confirmation page. Everything is wrapped in try/catch.
+    try {
+      if (!order || order.payment_method !== "klump" || !order.id) return;
+      if (order.payment_reference) return; // already captured (webhook or a prior visit)
+      const params = new URLSearchParams(window.location.search);
+      let reference: string | null = null;
+      for (const [k, v] of params.entries()) {
+        if (k === "order" || k === "token" || !v) continue;
+        // Any reference-like param Klump may append, excluding our merchant ref.
+        if (/reference|(^|_|-)ref($|_|-)|trxref|txn|transaction_id/i.test(k) && !/merchant/i.test(k)) {
+          reference = String(v).trim();
+          break;
         }
-      } catch (e) {
-        console.error("[order-confirmed][klump] set_order_klump_reference EXCEPTION:", e);
       }
-    })();
+      if (!reference) return;
+      void (async () => {
+        try {
+          const { data, error } = await (supabase as any).rpc("set_order_klump_reference", {
+            p_order_id: order.id,
+            p_reference: reference,
+          });
+          if (error) {
+            console.error("[order-confirmed][klump] set_order_klump_reference ERRORED:", error);
+          } else if (data === false) {
+            console.error("[order-confirmed][klump] set_order_klump_reference returned FALSE — wrote NOTHING for", order.id);
+          } else {
+            console.log("[order-confirmed][klump] reference saved:", reference);
+          }
+        } catch (e) {
+          console.error("[order-confirmed][klump] set_order_klump_reference EXCEPTION:", e);
+        }
+      })();
+    } catch (e) {
+      // A capture failure must never affect the confirmation page.
+      console.error("[order-confirmed][klump] reference-capture setup failed (ignored):", e);
+    }
   }, [order]);
 
   if (isLoading) return (
