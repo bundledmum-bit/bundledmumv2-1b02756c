@@ -150,6 +150,51 @@ export default function OrderConfirmedPage() {
     if (order) window.scrollTo({ top: 0, left: 0 });
   }, [order, bankName, bankAccountNumber]);
 
+  // ── Klump reference capture (the reliable landing point) ─────────────
+  // RUNTIME-VERIFIED: Klump's onLoad/onOpen callbacks carry no transaction
+  // reference (only {status,type}), so capturing at the checkout widget never
+  // had one to grab. Klump sends the customer back to our redirect_url after
+  // payment with its reference in the query string — THIS page. Read it here and
+  // persist it via set_order_klump_reference (order UUID comes from the loaded
+  // order). Fire-and-forget; a false/failed write is logged LOUDLY, never
+  // blocks. The webhook/reconciler still owns marking the order paid.
+  useEffect(() => {
+    if (!order || order.payment_method !== "klump" || !order.id) return;
+    if (order.payment_reference) return; // already captured (webhook or a prior visit)
+    const params = new URLSearchParams(window.location.search);
+    let reference: string | null = null;
+    for (const [k, v] of params.entries()) {
+      if (k === "order" || k === "token" || !v) continue;
+      // Any reference-like param Klump may append, excluding our merchant ref.
+      if (/reference|(^|_|-)ref($|_|-)|trxref|txn|transaction_id/i.test(k) && !/merchant/i.test(k)) {
+        reference = v.trim();
+        break;
+      }
+    }
+    if (!reference) {
+      console.log("[order-confirmed][klump] no Klump reference in the return URL:", window.location.search);
+      return;
+    }
+    console.log(`[order-confirmed][klump] capturing reference "${reference}" for order ${order.id}`);
+    void (async () => {
+      try {
+        const { data, error } = await (supabase as any).rpc("set_order_klump_reference", {
+          p_order_id: order.id,
+          p_reference: reference,
+        });
+        if (error) {
+          console.error("[order-confirmed][klump] set_order_klump_reference ERRORED:", error, { p_order_id: order.id, p_reference: reference });
+        } else if (data === false) {
+          console.error("[order-confirmed][klump] set_order_klump_reference returned FALSE — wrote NOTHING. args:", { p_order_id: order.id, p_reference: reference });
+        } else {
+          console.log(`[order-confirmed][klump] reference saved OK (RPC returned ${JSON.stringify(data)}):`, reference);
+        }
+      } catch (e) {
+        console.error("[order-confirmed][klump] set_order_klump_reference EXCEPTION:", e);
+      }
+    })();
+  }, [order]);
+
   if (isLoading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="text-center"><div className="mx-auto h-14 w-14 border-4 border-border border-t-forest rounded-full animate-spin mb-4" /><p className="text-muted-foreground">Loading your order details...</p></div>

@@ -1552,7 +1552,11 @@ export default function CheckoutPage() {
       const logKlump = (name: string, payload: any) => {
         let shown: string;
         try { shown = JSON.stringify(payload); } catch { shown = String(payload); }
-        console.log(`[checkout][klump] ${name} fired. order_id=${klumpOrderId} payload=${shown}`);
+        // Log the FULL payload of every lifecycle callback — this is how we
+        // proved onLoad/onOpen carry no reference (only {status,type}). If Klump
+        // ever adds a reference to onSuccess, it shows up here and the deep
+        // extractor below captures it.
+        console.log(`[checkout][klump] ${name} payload=${shown}`);
       };
       const captureKlumpRef = (source: string, payload: any) => {
         if (klumpRefSaved || klumpRefInFlight) return;
