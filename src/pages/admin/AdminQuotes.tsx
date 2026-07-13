@@ -41,13 +41,17 @@ export const STATUS_COLORS: Record<string, string> = {
   viewed:    "bg-indigo-100 text-indigo-700 border-indigo-200",
   accepted:  "bg-amber-100 text-amber-800 border-amber-200",
   converted: "bg-green-100 text-green-700 border-green-200",
+  // Paid = the order for this quote is actually paid (set by a DB trigger).
+  // Solid emerald so it's unmistakably distinct from 'converted' (light green,
+  // order exists but NOT yet paid).
+  paid:      "bg-emerald-600 text-white border-emerald-700",
   declined:  "bg-red-100 text-red-700 border-red-200",
   expired:   "bg-orange-100 text-orange-700 border-orange-200",
   archived:  "bg-muted text-muted-foreground border-border",
 };
 
-type QuoteStatus = "all" | "draft" | "sent" | "viewed" | "accepted" | "converted" | "declined" | "expired" | "archived";
-const STATUS_TABS: QuoteStatus[] = ["all", "draft", "sent", "viewed", "accepted", "converted", "declined", "expired", "archived"];
+type QuoteStatus = "all" | "draft" | "sent" | "viewed" | "accepted" | "converted" | "paid" | "declined" | "expired" | "archived";
+const STATUS_TABS: QuoteStatus[] = ["all", "draft", "sent", "viewed", "accepted", "converted", "paid", "declined", "expired", "archived"];
 
 // supabase-js wraps non-2xx edge-function responses as FunctionsHttpError
 // with a generic "Edge Function returned a non-2xx status code" message.
