@@ -9,7 +9,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
-  Files, Workflow,
+  Files, Workflow, Link2, AlertTriangle,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
@@ -893,6 +893,183 @@ function ProfitRow({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+// Normalise a Nigerian phone to the international digits wa.me needs
+// (234XXXXXXXXXX). Handles 0803…, +234803…, 234803…, and bare 803….
+function normalizeNgPhoneForWa(raw: string | null | undefined): string {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("234")) return digits;
+  if (digits.startsWith("0")) return `234${digits.slice(1)}`;
+  if (digits.length === 10) return `234${digits}`;
+  return digits;
+}
+
+// Convert-and-pay: turns an accepted quote into a PENDING order and creates a
+// Klump payment page against it, so the admin can WhatsApp the customer a link.
+// The hourly reconciler marks the order paid once Klump confirms (matched by
+// order_number = Klump merchant_reference). Nothing here marks the order paid.
+// customerSig is a debounced signature of the quote's customer fields — when it
+// changes (after autosave persists an edit) the eligibility check re-runs.
+function QuotePaymentLinkCard({
+  quoteId, customerName, customerPhone, customerSig, canConvert,
+}: {
+  quoteId: string;
+  customerName: string;
+  customerPhone: string;
+  customerSig: string;
+  canConvert: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ order_number: string; amount: number; page_url: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const { data: ready, isLoading, error: readyErr, refetch } = useQuery({
+    queryKey: ["quote-ready-for-payment", quoteId, customerSig],
+    enabled: !!quoteId,
+    staleTime: 10_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("quote_ready_for_payment", { p_quote_id: quoteId });
+      if (error) throw error;
+      return (data && data[0]) || null;
+    },
+  });
+
+  const pageUrl = result?.page_url || null;
+  const orderNumber = result?.order_number || "";
+  const amount = Number(result?.amount ?? ready?.total ?? 0) || 0;
+
+  const waHref = (() => {
+    if (!pageUrl) return null;
+    const phone = normalizeNgPhoneForWa(customerPhone);
+    if (!phone) return null;
+    const firstName = String(customerName || "").split(" ")[0] || "there";
+    const msg = `Hi ${firstName}, here is your payment link for order ${orderNumber} (${fmtN(amount)}): ${pageUrl}`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  })();
+
+  const run = async () => {
+    if (!ready?.ready || busy) return;
+    if (!window.confirm("This will create an order from this quote and send the customer a payment link. Continue?")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      // 1. Convert the quote → pending order. The RPC RAISES if not ready, so
+      // any message here is authoritative — surface it loudly.
+      const { data: conv, error: convErr } = await (supabase as any).rpc("convert_quote_to_pending_order", { p_quote_id: quoteId });
+      if (convErr) {
+        const m = convErr.message || "Conversion failed.";
+        setErr(m);
+        toast.error(`Could not convert quote: ${m}`);
+        return;
+      }
+      const row = (Array.isArray(conv) ? conv[0] : conv) || null;
+      if (!row?.order_id) {
+        setErr("Conversion returned no order id.");
+        toast.error("Conversion returned no order id.");
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
+      // 2. Create the Klump page against the new order.
+      const { data: page, error: pageErr } = await (supabase as any).functions.invoke("klump-create-payment-page", { body: { order_id: row.order_id } });
+      let bodyErr: string | null = null;
+      const ctx = (pageErr as any)?.context;
+      if (ctx && typeof ctx.clone === "function") {
+        try { const b = await ctx.clone().json(); bodyErr = b?.error || null; } catch { /* ignore */ }
+      }
+      if (pageErr || !page?.page_url) {
+        const m = bodyErr || page?.error || (pageErr as any)?.message || "Payment page creation failed.";
+        // The order WAS created (irreversible). Say so clearly — the admin can
+        // finish from the order detail page's Klump link card.
+        setErr(`Order ${row.order_number} was created, but the Klump link could not be generated: ${m}. Open the order to retry.`);
+        toast.error(`Klump link failed: ${m}`);
+        refetch();
+        return;
+      }
+      setResult({ order_number: page.order_number || row.order_number, amount: Number(page.amount ?? row.total) || 0, page_url: page.page_url });
+      toast.success(page.reused ? "Order ready — existing Klump link loaded." : "Order created and Klump payment link ready.");
+    } catch (e: any) {
+      const m = e?.message || "Something went wrong.";
+      setErr(m);
+      toast.error(`Send Klump link failed: ${m}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!pageUrl) return;
+    const ok = await copyToClipboard(pageUrl);
+    if (ok) toast.success("Link copied");
+    else toast.error("Couldn't copy — select the link and copy manually");
+  };
+
+  const missing: string[] = Array.isArray(ready?.missing_fields) ? ready!.missing_fields : [];
+
+  return (
+    <section className="bg-card border border-border rounded-xl p-4">
+      <h2 className="text-sm font-bold mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-forest" /> Klump payment link</h2>
+      <p className="text-[11px] text-text-med mb-3">
+        Convert this quote to a pending order and send the customer a Buy-Now-Pay-Later link.
+      </p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-text-med"><Loader2 className="w-4 h-4 animate-spin" /> Checking…</div>
+      ) : readyErr ? (
+        <div className="text-xs text-destructive flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0" /> Couldn't check readiness: {(readyErr as any)?.message || "unknown error"}</div>
+      ) : pageUrl ? (
+        <>
+          <p className="text-[11px] text-green-700 font-semibold mb-1.5">Order {orderNumber} created — payment link ready.</p>
+          <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2 mb-2">
+            <span className="text-[11px] font-mono break-all">{pageUrl}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={copyLink} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+              <CopyIcon className="w-3.5 h-3.5" /> Copy link
+            </button>
+            {waHref ? (
+              <a href={waHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-1.5 text-xs font-semibold hover:brightness-95">
+                <Send className="w-3.5 h-3.5" /> Send on WhatsApp
+              </a>
+            ) : (
+              <span className="text-[11px] text-text-med self-center">No valid phone number for WhatsApp.</span>
+            )}
+            <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+              <ExternalLink className="w-3.5 h-3.5" /> Open
+            </a>
+          </div>
+        </>
+      ) : ready?.existing_order_number ? (
+        <div className="text-xs">
+          <p className="text-green-700 font-semibold mb-1">This quote is already converted.</p>
+          <p className="text-text-med">Order <span className="font-mono font-semibold text-foreground">{ready.existing_order_number}</span> — open it on the <Link to="/admin/orders" className="text-forest font-semibold hover:underline">Orders page</Link> to send its Klump link.</p>
+        </div>
+      ) : ready?.ready ? (
+        <>
+          <button onClick={run} disabled={busy || !canConvert} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50">
+            {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating order & link…</> : <><Link2 className="w-4 h-4" /> Send Klump payment link ({fmtN(amount)})</>}
+          </button>
+          {!canConvert && <p className="text-[11px] text-amber-700 mt-2">You don't have permission to convert quotes.</p>}
+          {err && <p className="text-xs text-destructive mt-2 flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /> {err}</p>}
+        </>
+      ) : (
+        <>
+          <button disabled title={ready?.reason || "Not ready"} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-muted text-muted-foreground px-4 py-2 text-sm font-semibold cursor-not-allowed">
+            <Link2 className="w-4 h-4" /> Send Klump payment link
+          </button>
+          {missing.length > 0 ? (
+            <p className="text-xs text-amber-700 mt-2">Fill in the customer details before sending a payment link. Missing: <span className="font-semibold">{missing.join(", ")}</span></p>
+          ) : (
+            <p className="text-xs text-amber-700 mt-2">{ready?.reason || "This quote isn't ready for a payment link."}</p>
+          )}
+        </>
+      )}
+
+      <p className="text-[11px] text-text-med mt-3">The order will be marked paid automatically once Klump confirms payment.</p>
+    </section>
+  );
+}
+
 function QuoteEditor({
   quoteId,
   onClose,
@@ -1077,6 +1254,16 @@ function QuoteEditor({
   // total without a refetch round-trip after toggling.
   const giftWrapFeeNum = Number(((quoteData as any)?.gift_wrap_fee) || 0);
   const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum + giftWrapFeeNum - discountNum);
+
+  // Debounced signature of the customer fields — feeds the Klump payment-link
+  // eligibility check. Debounced 900ms (> the 500ms autosave) so the RPC reads
+  // the freshly-persisted quote, not stale DB values.
+  const custSig = `${form.customer_name}|${form.customer_phone}|${form.customer_email}|${form.delivery_address}|${form.delivery_city}|${form.delivery_state}`;
+  const [debouncedCustSig, setDebouncedCustSig] = useState(custSig);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedCustSig(custSig), 900);
+    return () => clearTimeout(t);
+  }, [custSig]);
 
   // Debounce the item-search input (~150 ms) — purely client-side filter.
   useEffect(() => {
@@ -2058,6 +2245,18 @@ function QuoteEditor({
               get_quote_profit (the RPC returns no cost data to other roles); the
               role check here just avoids a pointless call + hides it cleanly. */}
           {currentId && <QuoteProfitPanel quoteId={currentId} role={adminUser?.role} liveTotal={liveTotal} />}
+
+          {/* Convert-and-pay: turn the quote into a pending order + Klump link.
+              Only once the quote is saved; the RPCs/edge fn are admin-gated. */}
+          {currentId && canEdit && (
+            <QuotePaymentLinkCard
+              quoteId={currentId}
+              customerName={form.customer_name}
+              customerPhone={form.customer_phone}
+              customerSig={debouncedCustSig}
+              canConvert={canCreate}
+            />
+          )}
 
           {/* Share URL + preview — only shows after the quote is saved. */}
           {currentId && quoteData?.share_token && (
