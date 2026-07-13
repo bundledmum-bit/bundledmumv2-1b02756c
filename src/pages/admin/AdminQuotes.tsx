@@ -9,7 +9,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
-  Files, Workflow, Link2, AlertTriangle,
+  Files, Workflow, Link2, AlertTriangle, Mail,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
@@ -915,18 +915,22 @@ function normalizeNgPhoneForWa(raw: string | null | undefined): string {
 // customerSig is a debounced signature of the quote's customer fields — when it
 // changes (after autosave persists an edit) the eligibility check re-runs.
 function QuotePaymentLinkCard({
-  quoteId, customerName, customerPhone, customerSig, canConvert,
+  quoteId, customerName, customerPhone, customerEmail, customerSig, canConvert,
 }: {
   quoteId: string;
   customerName: string;
   customerPhone: string;
+  customerEmail: string;
   customerSig: string;
   canConvert: boolean;
 }) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ order_number: string; amount: number; page_url: string } | null>(null);
+  // order_id retained so the "Email payment link" button targets the NEW order,
+  // not the quote id.
+  const [result, setResult] = useState<{ order_id: string; order_number: string; amount: number; page_url: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [emailing, setEmailing] = useState(false);
 
   const { data: ready, isLoading, error: readyErr, refetch } = useQuery({
     queryKey: ["quote-ready-for-payment", quoteId, customerSig],
@@ -994,7 +998,7 @@ function QuotePaymentLinkCard({
         return;
       }
       // page.* is the edge-function response (unchanged); row.* is the RPC OUT.
-      setResult({ order_number: page.order_number || row.out_order_number, amount: Number(page.amount ?? row.out_total) || 0, page_url: page.page_url });
+      setResult({ order_id: row.out_order_id, order_number: page.order_number || row.out_order_number, amount: Number(page.amount ?? row.out_total) || 0, page_url: page.page_url });
       toast.success(page.reused ? "Order ready — existing Klump link loaded." : "Order created and Klump payment link ready.");
     } catch (e: any) {
       const m = e?.message || "Something went wrong.";
@@ -1010,6 +1014,34 @@ function QuotePaymentLinkCard({
     const ok = await copyToClipboard(pageUrl);
     if (ok) toast.success("Link copied");
     else toast.error("Couldn't copy — select the link and copy manually");
+  };
+
+  // Email the "Pay with Klump" template to the customer. Targets the ORDER id
+  // from the conversion (result.order_id), never the quote id. The edge function
+  // resolves the link and 400s if none exists. Loud on failure.
+  const emailLink = async () => {
+    if (emailing || !result?.order_id || !customerEmail) return;
+    setEmailing(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("send-transactional-email", {
+        body: { order_id: result.order_id, email_type: "payment_link_klump" },
+      });
+      let bodyErr: string | null = null;
+      const ctx = (error as any)?.context;
+      if (ctx && typeof ctx.clone === "function") {
+        try { const b = await ctx.clone().json(); bodyErr = b?.error || null; } catch { /* ignore */ }
+      }
+      if (error || data?.success === false) {
+        const msg = bodyErr || data?.error || (error as any)?.message || "The email could not be sent.";
+        toast.error(`Couldn't email the payment link: ${msg}`);
+        return;
+      }
+      toast.success(`Payment link emailed to ${data?.sent_to || customerEmail}`);
+    } catch (e: any) {
+      toast.error(`Couldn't email the payment link: ${e?.message || "unexpected error"}`);
+    } finally {
+      setEmailing(false);
+    }
   };
 
   const missing: string[] = Array.isArray(ready?.out_missing_fields) ? ready!.out_missing_fields : [];
@@ -1051,6 +1083,13 @@ function QuotePaymentLinkCard({
             <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
               <ExternalLink className="w-3.5 h-3.5" /> Open
             </a>
+            {customerEmail ? (
+              <button onClick={emailLink} disabled={emailing} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                {emailing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} {emailing ? "Emailing…" : "Email payment link"}
+              </button>
+            ) : (
+              <span className="text-[11px] text-text-med self-center" title="This quote has no customer email on file">No email on file — can't email the link.</span>
+            )}
           </div>
         </>
       ) : ready?.out_existing_order_number ? (
@@ -2267,6 +2306,7 @@ function QuoteEditor({
               quoteId={currentId}
               customerName={form.customer_name}
               customerPhone={form.customer_phone}
+              customerEmail={form.customer_email}
               customerSig={debouncedCustSig}
               canConvert={canCreate}
             />

@@ -3,7 +3,7 @@ import { useSearchParams, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon, Copy, Link2, AlertTriangle } from "lucide-react";
+import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon, Copy, Link2, AlertTriangle, Mail } from "lucide-react";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, format } from "date-fns";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
@@ -864,6 +864,7 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<{ page_url: string; amount?: number } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [emailing, setEmailing] = useState(false);
 
   // Pre-flight: is this order eligible, and does a link already exist?
   const { data: elig, isLoading, error: eligError } = useQuery({
@@ -934,6 +935,34 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
     else toast.error("Couldn't copy — select the link and copy manually");
   };
 
+  // Email the "Pay with Klump" template to the customer. The edge function
+  // resolves the link itself via get_order_payment_link and 400s if none exists,
+  // so a customer can never get an email with a dead button. Loud on failure.
+  const emailLink = async () => {
+    if (emailing || !o.customer_email) return;
+    setEmailing(true);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("send-transactional-email", {
+        body: { order_id: o.id, email_type: "payment_link_klump" },
+      });
+      let bodyErr: string | null = null;
+      const ctx = (error as any)?.context;
+      if (ctx && typeof ctx.clone === "function") {
+        try { const b = await ctx.clone().json(); bodyErr = b?.error || null; } catch { /* ignore */ }
+      }
+      if (error || data?.success === false) {
+        const msg = bodyErr || data?.error || (error as any)?.message || "The email could not be sent.";
+        toast.error(`Couldn't email the payment link: ${msg}`);
+        return;
+      }
+      toast.success(`Payment link emailed to ${data?.sent_to || o.customer_email}`);
+    } catch (e: any) {
+      toast.error(`Couldn't email the payment link: ${e?.message || "unexpected error"}`);
+    } finally {
+      setEmailing(false);
+    }
+  };
+
   return (
     <div className="bg-card border border-border rounded-xl p-5 mb-4">
       <h3 className="text-sm font-bold mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-forest" /> Klump payment link</h3>
@@ -966,6 +995,13 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
             <a href={pageUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
               <ExternalLink className="w-3.5 h-3.5" /> Open
             </a>
+            {o.customer_email ? (
+              <button onClick={emailLink} disabled={emailing} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                {emailing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} {emailing ? "Emailing…" : "Email payment link"}
+              </button>
+            ) : (
+              <span className="text-[11px] text-muted-foreground self-center" title="This order has no customer email on file">No email on file — can't email the link.</span>
+            )}
           </div>
         </>
       ) : elig?.eligible ? (
