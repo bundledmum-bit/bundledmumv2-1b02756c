@@ -9,7 +9,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
-  Files, Workflow, Link2, AlertTriangle, Mail,
+  Files, Workflow, Link2, AlertTriangle, Mail, RefreshCw,
 } from "lucide-react";
 import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
@@ -933,6 +933,11 @@ function QuotePaymentLinkCard({
   const [result, setResult] = useState<{ order_id: string; order_number: string; amount: number; page_url: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [emailing, setEmailing] = useState(false);
+  // Retry: Klump burns a link after its first transaction attempt. When the
+  // customer's attempt failed, mint a FRESH link (fresh reference) against the
+  // order we already created. `attempt` marks which link supersedes the old one.
+  const [regenerating, setRegenerating] = useState(false);
+  const [attempt, setAttempt] = useState<number | null>(null);
 
   const { data: ready, isLoading, error: readyErr, refetch } = useQuery({
     queryKey: ["quote-ready-for-payment", quoteId, customerSig],
@@ -1018,6 +1023,46 @@ function QuotePaymentLinkCard({
     else toast.error("Couldn't copy — select the link and copy manually");
   };
 
+  // Mint a fresh Klump link because the current one is burnt (customer already
+  // attempted and failed). Confirms first — the old link stops working. Targets
+  // the ORDER we already created (result.order_id), never the quote id.
+  const regenerate = async () => {
+    if (regenerating || !result?.order_id) return;
+    const ok = window.confirm(
+      "Klump only allows one payment attempt per link. If the customer already tried and failed, their link is now dead and they will see \"Merchant reference must be unique\". This creates a fresh link for them. The old link will stop working. Continue?",
+    );
+    if (!ok) return;
+    setRegenerating(true);
+    setErr(null);
+    try {
+      const { data, error } = await (supabase as any).functions.invoke("klump-create-payment-page", {
+        body: { order_id: result.order_id, retry: true },
+      });
+      let bodyErr: string | null = null;
+      const ctx = (error as any)?.context;
+      if (ctx && typeof ctx.clone === "function") {
+        try { const b = await ctx.clone().json(); bodyErr = b?.error || null; } catch { /* ignore */ }
+      }
+      if (error || !data?.page_url) {
+        const m = bodyErr || data?.error || (error as any)?.message || "Could not generate a new Klump link.";
+        setErr(m);
+        toast.error(`New Klump link failed: ${m}`);
+        return;
+      }
+      setResult((prev) => (prev ? { ...prev, page_url: data.page_url, amount: Number(data.amount ?? prev.amount) || prev.amount } : prev));
+      setAttempt(Number(data.attempt_number) || null);
+      toast.success(
+        `New Klump link ready${data.attempt_number ? ` (Attempt ${data.attempt_number})` : ""}. Send this new link — the old one no longer works.`,
+      );
+    } catch (e: any) {
+      const m = e?.message || "Could not generate a new Klump link.";
+      setErr(m);
+      toast.error(`New Klump link failed: ${m}`);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   // Email the "Pay with Klump" template to the customer. Targets the ORDER id
   // from the conversion (result.order_id), never the quote id. The edge function
   // resolves the link and 400s if none exists. Loud on failure.
@@ -1068,6 +1113,12 @@ function QuotePaymentLinkCard({
       ) : pageUrl ? (
         <>
           <p className="text-[11px] text-green-700 font-semibold mb-1.5">Order {orderNumber} created — payment link ready.</p>
+          {attempt && attempt > 1 && (
+            <div className="flex items-start gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 mb-2 text-[11px] text-amber-800">
+              <RefreshCw className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+              <span><span className="font-bold">Attempt {attempt}</span> — this is the new link. The previous link is now dead. Send this one to the customer.</span>
+            </div>
+          )}
           <div className="rounded-lg border border-border bg-muted/40 px-2.5 py-2 mb-2">
             <span className="text-[11px] font-mono break-all">{pageUrl}</span>
           </div>
@@ -1092,6 +1143,18 @@ function QuotePaymentLinkCard({
             ) : (
               <span className="text-[11px] text-text-med self-center" title="This quote has no customer email on file">No email on file — can't email the link.</span>
             )}
+          </div>
+          <div className="mt-2.5 pt-2.5 border-t border-border">
+            <button
+              onClick={regenerate}
+              disabled={regenerating}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 bg-amber-50 text-amber-800 px-3 py-1.5 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"
+            >
+              {regenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              {regenerating ? "Generating…" : "Generate new link (customer needs to retry)"}
+            </button>
+            <p className="text-[11px] text-text-med mt-1.5">Use this only if the customer tried the link and it failed — Klump kills a link after one attempt.</p>
+            {err && <p className="text-xs text-destructive mt-1.5 flex items-start gap-1.5"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /> {err}</p>}
           </div>
         </>
       ) : ready?.out_existing_order_number ? (
