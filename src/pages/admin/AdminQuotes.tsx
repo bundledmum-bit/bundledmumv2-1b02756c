@@ -1155,6 +1155,11 @@ function QuoteEditor({
   const [pendingProduct, setPendingProduct] = useState<any | null>(null);
   const [itemSearchRaw, setItemSearchRaw] = useState("");
   const [itemSearch, setItemSearch] = useState("");
+  // The item search is collapsed by default (just a small icon). It expands on
+  // click, or stays open whenever a query is active so the list is never
+  // silently filtered behind a hidden search bar.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   // Covers the full save + image-preload + PDF render window so the
   // button stays disabled while thumbnails are being fetched.
@@ -1325,6 +1330,18 @@ function QuoteEditor({
     const t = setTimeout(() => setItemSearch(itemSearchRaw), 150);
     return () => clearTimeout(t);
   }, [itemSearchRaw]);
+
+  // Autofocus the search input the moment it expands so the admin can type.
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus();
+  }, [searchOpen]);
+
+  // Closing the search MUST clear the query and restore the full item list —
+  // never leave the list filtered by a query the admin can no longer see.
+  const closeItemSearch = () => { setSearchOpen(false); setItemSearchRaw(""); setItemSearch(""); };
+  // Show the input (not the collapsed icon) while open OR while a query is
+  // active, so a filtered list is always visibly a search result.
+  const itemSearchExpanded = searchOpen || itemSearchRaw.trim().length > 0;
 
   // ── Batch variant data for all items currently in the quote ─────
   const productIds = useMemo(
@@ -1976,32 +1993,45 @@ function QuoteEditor({
               </div>
             )}
 
-            {/* Search/filter within existing items */}
+            {/* Search/filter within existing items — collapsed by default. */}
             {items.length > 0 && (
               <div className="mt-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                  <input
-                    value={itemSearchRaw}
-                    onChange={(e) => setItemSearchRaw(e.target.value)}
-                    placeholder="Search items in this quote…"
-                    className="w-full border border-input rounded-lg pl-9 pr-8 py-2 text-sm bg-background"
-                  />
-                  {itemSearchRaw && (
-                    <button
-                      type="button"
-                      onClick={() => { setItemSearchRaw(""); setItemSearch(""); }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      aria-label="Clear search"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                {itemSearchRaw && (
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    Showing {filteredItems.length} of {items.length} items
-                  </p>
+                {!itemSearchExpanded ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5"
+                    aria-label="Search items in this quote"
+                  >
+                    <Search className="w-3.5 h-3.5" /> Search items
+                  </button>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      <input
+                        ref={searchInputRef}
+                        value={itemSearchRaw}
+                        onChange={(e) => setItemSearchRaw(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); closeItemSearch(); } }}
+                        placeholder="Search items in this quote…"
+                        className="w-full border border-input rounded-lg pl-9 pr-8 py-2 text-sm bg-background"
+                      />
+                      <button
+                        type="button"
+                        onClick={closeItemSearch}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Close search"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {itemSearchRaw && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Showing {filteredItems.length} of {items.length} items
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -2013,7 +2043,7 @@ function QuoteEditor({
                 No items match &ldquo;{itemSearchRaw}&rdquo;.{" "}
                 <button
                   type="button"
-                  onClick={() => { setItemSearchRaw(""); setItemSearch(""); }}
+                  onClick={closeItemSearch}
                   className="text-forest underline hover:no-underline"
                 >
                   Clear search
