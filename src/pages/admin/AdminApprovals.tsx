@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
 import { SizesEditor, ColorsEditor, normalizeSizes, normalizeColors, type SizeRow, type ColorRow } from "@/components/admin/VariantEditors";
 import {
@@ -246,13 +246,264 @@ function RequesterLine({ req }: { req: ApprovalRequest }) {
   );
 }
 
+// approval_price_impact result for a pending request.
+interface PriceImpact {
+  has_cost_change: boolean;
+  brand_id: string | null;
+  brand_name: string | null;
+  product_name: string | null;
+  old_cost: number;
+  new_cost: number;
+  current_price: number;
+  markup_before: number;
+  markup_after: number;
+  floor_percent: number;
+  breaches_floor: boolean;
+  min_new_price: number;
+  price_to_hold_margin: number;
+  message: string;
+}
+
+// Shows the margin impact of a pending cost change: cost + price + markup
+// before/after, and a clear warning when the new cost breaches the floor.
+function MarginImpactPanel({ impact }: { impact: PriceImpact }) {
+  const breaches = !!impact.breaches_floor;
+  return (
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-[13px] ${breaches ? "border-red-300 bg-red-50" : "border-border bg-muted/40"}`}>
+      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+        <span className="text-text-med">Cost</span>
+        <span className="text-right font-semibold">{reviewNaira(impact.old_cost)} → {reviewNaira(impact.new_cost)}</span>
+        <span className="text-text-med">Price</span>
+        <span className="text-right font-semibold">{reviewNaira(impact.current_price)} <span className="text-text-light font-normal">(unchanged)</span></span>
+        <span className="text-text-med">Markup</span>
+        <span className="text-right font-semibold">
+          {Number(impact.markup_before).toFixed(1)}% → <span className={breaches ? "text-red-600" : "text-forest"}>{Number(impact.markup_after).toFixed(1)}%</span>
+        </span>
+      </div>
+      {breaches ? (
+        <div className="mt-2 flex items-start gap-1.5 text-[12px] text-red-700 font-medium">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /> <span>{impact.message}</span>
+        </div>
+      ) : (
+        <p className="mt-1.5 text-[11px] text-text-med">{impact.message}</p>
+      )}
+    </div>
+  );
+}
+
+// Below-floor cost-change approval: the admin sets the new selling price (with
+// Keep-the-floor / Hold-my-margin quick-fills and a live markup readout), then
+// approve_cost_change_with_price sets the price AND approves the cost change
+// atomically. The RPC rejects a below-floor price, so the button stays disabled
+// until the entered price clears the floor.
+function CostChangeApproveBlock({
+  req, impact, reviewerName, onDone,
+}: {
+  req: ApprovalRequest;
+  impact: PriceImpact;
+  reviewerName: string;
+  onDone: () => void;
+}) {
+  const [price, setPrice] = useState<string>(String(impact.min_new_price ?? impact.current_price ?? ""));
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const priceN = parseInt(price, 10);
+  const priceValid = Number.isFinite(priceN) && priceN > 0;
+  const liveMarkup = priceValid && impact.new_cost > 0 ? ((priceN - impact.new_cost) / impact.new_cost) * 100 : null;
+  const clears = liveMarkup != null && liveMarkup >= Number(impact.floor_percent);
+
+  const approve = async () => {
+    if (!priceValid || !clears || saving) return;
+    setSaving(true);
+    try {
+      const { data, error } = await (supabase as any).rpc("approve_cost_change_with_price", {
+        p_request_id: req.id,
+        p_new_price: priceN,
+        p_note: note.trim() || null,
+      });
+      if (error) { toast.error(`Approval failed: ${error.message || "unknown error"}`); return; }
+      if (data && typeof data === "object" && (data as any).success === false) {
+        toast.error(`Approval failed: ${(data as any).error || (data as any).message || "the price was rejected"}`);
+        return;
+      }
+      const setTo = (data as any)?.price_updated_to ?? priceN;
+      toast.success(`Approved — selling price set to ${reviewNaira(setTo)}.`);
+      notifyApproval({
+        type: "outcome", description: req.description, approved: true,
+        note: note.trim() || null, reviewer_name: reviewerName, requester_email: req.requester?.email || "",
+      });
+      onDone();
+    } catch (e: any) {
+      toast.error(`Approval failed: ${e?.message || "unexpected error"}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-border pt-3 space-y-2.5">
+      <p className="text-xs font-semibold text-text-med">Set the new selling price to approve</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setPrice(String(impact.min_new_price))}
+          className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
+          Keep the floor · {reviewNaira(impact.min_new_price)}
+        </button>
+        <button type="button" onClick={() => setPrice(String(impact.price_to_hold_margin))}
+          className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
+          Hold my margin · {reviewNaira(impact.price_to_hold_margin)}
+        </button>
+      </div>
+      <div className="flex items-center gap-2 max-w-[220px]">
+        <span className="text-sm text-text-med">₦</span>
+        <Input type="number" min={1} value={price} onChange={(e) => setPrice(e.target.value)} aria-label="New selling price" />
+      </div>
+      <p className="text-[11px]">
+        {liveMarkup != null ? (
+          <span className={clears ? "text-forest font-semibold" : "text-red-600 font-semibold"}>
+            {liveMarkup.toFixed(1)}% markup — {clears ? "clears the floor ✓" : `below the ${impact.floor_percent}% floor`}
+          </span>
+        ) : (
+          <span className="text-text-med">Enter a valid price.</span>
+        )}
+      </p>
+      <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note for the requester" rows={2} />
+      <div className="flex justify-end">
+        <Button size="sm" disabled={!priceValid || !clears || saving} onClick={approve}>
+          {saving ? "Working…" : `Approve at ${priceValid ? reviewNaira(priceN) : "…"}`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// One pending request card. Fetches the margin impact so a below-floor cost
+// change is approved via the price-choice flow (approve_cost_change_with_price),
+// while everything else keeps the normal approve/reject path.
+function PendingRequestCard({
+  req, currentAdmin, vendorNames, proposingId, onStartPropose,
+}: {
+  req: ApprovalRequest;
+  currentAdmin: CurrentAdmin;
+  vendorNames: Record<string, string>;
+  proposingId: string | null;
+  onStartPropose: (req: ApprovalRequest) => void;
+}) {
+  const qc = useQueryClient();
+  const process = useProcessApproval();
+  const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
+  const [note, setNote] = useState("");
+
+  const isBrandUpdate = req.target_table === "brands" && req.action === "update";
+  const { data: impactRows } = useQuery({
+    queryKey: ["approval-price-impact", req.id],
+    enabled: isBrandUpdate,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("approval_price_impact", { p_request_id: req.id });
+      if (error) throw error;
+      return (data || []) as PriceImpact[];
+    },
+  });
+  const impact: PriceImpact | null = impactRows?.[0] || null;
+  const hasCostChange = !!impact?.has_cost_change;
+  const breaches = hasCostChange && !!impact?.breaches_floor;
+
+  const reset = () => { setDecision(null); setNote(""); };
+  const reviewerName = currentAdmin.display_name || currentAdmin.email;
+
+  async function confirmDecision(approved: boolean) {
+    try {
+      await process.mutateAsync({ requestId: req.id, approved, note: note.trim() || null });
+      notifyApproval({
+        type: "outcome", description: req.description, approved,
+        note: note.trim() || null, reviewer_name: reviewerName, requester_email: req.requester?.email || "",
+      });
+      toast.success(approved ? "Approved" : "Rejected");
+      reset();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not process request");
+    }
+  }
+
+  const isOpen = decision !== null;
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <ActionBadge action={req.action} />
+            <Badge variant="secondary" className="text-[10px] font-mono">{req.target_table}</Badge>
+          </div>
+          <div className="text-sm font-semibold">{req.description}</div>
+          <RequesterLine req={req} />
+          {isBrandUpdate && <BrandUpdateReview req={req} vendorNames={vendorNames} />}
+          {req.action === "create_product" && <CreateProductReview recordId={req.target_record_id} />}
+          {hasCostChange && impact && <MarginImpactPanel impact={impact} />}
+        </div>
+        {!isOpen && (
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => { setDecision("reject"); setNote(""); }}>Reject</Button>
+            {/* A below-floor cost change is approved via the price block below, so
+                the generic Approve button is suppressed for it. */}
+            {!breaches && (
+              <Button
+                size="sm"
+                disabled={proposingId === req.id}
+                onClick={() => {
+                  if (req.action === "create_product") onStartPropose(req);
+                  else { setDecision("approve"); setNote(""); }
+                }}
+              >
+                {proposingId === req.id && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+                {req.action === "create_product"
+                  ? (proposingId === req.id ? "Preparing..." : "Review & approve")
+                  : "Approve"}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Below-floor cost change: set the new price + approve atomically. */}
+      {breaches && impact && decision !== "reject" && (
+        <CostChangeApproveBlock
+          req={req}
+          impact={impact}
+          reviewerName={reviewerName}
+          onDone={() => {
+            qc.invalidateQueries({ queryKey: ["approval-requests"] });
+            qc.invalidateQueries({ queryKey: ["pending-approvals-count"] });
+            reset();
+          }}
+        />
+      )}
+
+      {isOpen && (
+        <div className="mt-4 space-y-2 border-t border-border pt-3">
+          <label className="text-xs font-semibold text-text-med">Note (optional)</label>
+          <Textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add an optional note for the requester" rows={3} />
+          <div className="flex items-center gap-2 justify-end">
+            <button onClick={reset} className="text-xs text-text-med hover:underline" type="button">Cancel</button>
+            <Button
+              size="sm"
+              variant={decision === "reject" ? "destructive" : "default"}
+              disabled={process.isPending}
+              onClick={() => confirmDecision(decision === "approve")}
+            >
+              {process.isPending ? "Working..." : decision === "approve" ? "Confirm approval" : "Confirm rejection"}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
   const qc = useQueryClient();
   const { data, isLoading } = useApprovalRequests("pending");
-  const process = useProcessApproval();
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
-  const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
-  const [note, setNote] = useState("");
   // Review-and-edit modal for new-product approvals (propose -> edit -> apply).
   const [proposingId, setProposingId] = useState<string | null>(null);
   const [reviewReq, setReviewReq] = useState<ApprovalRequest | null>(null);
@@ -295,7 +546,6 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
     qc.invalidateQueries({ queryKey: ["vendors-picker"] });
     setReviewReq(null);
     setReviewDraft(null);
-    reset();
   }
 
   // Vendor id → name, to render vendor_id changes readably in the review.
@@ -309,12 +559,6 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
     staleTime: 60_000,
   });
   const vendorNames: Record<string, string> = Object.fromEntries(vendorRows.map(v => [v.id, v.name]));
-
-  const reset = () => {
-    setSelectedRequestId(null);
-    setDecision(null);
-    setNote("");
-  };
 
   if (isLoading) {
     return (
@@ -335,126 +579,18 @@ function PendingTab({ currentAdmin }: { currentAdmin: CurrentAdmin }) {
     );
   }
 
-  // Approve/Reject for update & delete requests, and Reject for create_product.
-  // create_product APPROVE is handled separately by the review-and-edit modal.
-  async function confirmDecision(req: ApprovalRequest, approved: boolean) {
-    try {
-      await process.mutateAsync({
-        requestId: req.id,
-        approved,
-        note: note.trim() || null,
-      });
-      // fire-and-forget notification
-      notifyApproval({
-        type: "outcome",
-        description: req.description,
-        approved,
-        note: note.trim() || null,
-        reviewer_name:
-          currentAdmin.display_name || currentAdmin.email,
-        requester_email: req.requester?.email || "",
-      });
-      toast.success(approved ? "Approved" : "Rejected");
-      reset();
-    } catch (e: any) {
-      toast.error(e?.message || "Could not process request");
-    }
-  }
-
   return (
     <div className="space-y-3">
-      {items.map(req => {
-        const isOpen = selectedRequestId === req.id && decision !== null;
-        return (
-          <Card key={req.id} className="p-4">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <ActionBadge action={req.action} />
-                  <Badge variant="secondary" className="text-[10px] font-mono">
-                    {req.target_table}
-                  </Badge>
-                </div>
-                <div className="text-sm font-semibold">{req.description}</div>
-                <RequesterLine req={req} />
-                {req.target_table === "brands" && req.action === "update" && (
-                  <BrandUpdateReview req={req} vendorNames={vendorNames} />
-                )}
-                {req.action === "create_product" && (
-                  <CreateProductReview recordId={req.target_record_id} />
-                )}
-              </div>
-              {!isOpen && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setSelectedRequestId(req.id);
-                      setDecision("reject");
-                      setNote("");
-                    }}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    size="sm"
-                    disabled={proposingId === req.id}
-                    onClick={() => {
-                      if (req.action === "create_product") {
-                        startPropose(req);
-                      } else {
-                        setSelectedRequestId(req.id);
-                        setDecision("approve");
-                        setNote("");
-                      }
-                    }}
-                  >
-                    {proposingId === req.id && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
-                    {req.action === "create_product"
-                      ? (proposingId === req.id ? "Preparing..." : "Review & approve")
-                      : "Approve"}
-                  </Button>
-                </div>
-              )}
-            </div>
-            {isOpen && (
-              <div className="mt-4 space-y-2 border-t border-border pt-3">
-                <label className="text-xs font-semibold text-text-med">
-                  Note (optional)
-                </label>
-                <Textarea
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
-                  placeholder="Add an optional note for the requester"
-                  rows={3}
-                />
-                <div className="flex items-center gap-2 justify-end">
-                  <button
-                    onClick={reset}
-                    className="text-xs text-text-med hover:underline"
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <Button
-                    size="sm"
-                    variant={decision === "reject" ? "destructive" : "default"}
-                    disabled={process.isPending}
-                    onClick={() => confirmDecision(req, decision === "approve")}
-                  >
-                    {process.isPending
-                      ? "Working..."
-                      : decision === "approve"
-                        ? "Confirm approval"
-                        : "Confirm rejection"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </Card>
-        );
-      })}
+      {items.map(req => (
+        <PendingRequestCard
+          key={req.id}
+          req={req}
+          currentAdmin={currentAdmin}
+          vendorNames={vendorNames}
+          proposingId={proposingId}
+          onStartPropose={startPropose}
+        />
+      ))}
 
       {reviewReq && reviewDraft && (
         <ReviewEditModal
