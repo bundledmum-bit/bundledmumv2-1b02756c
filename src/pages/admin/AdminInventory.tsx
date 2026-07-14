@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Search, Download, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import AdminInventoryCard from "@/components/admin/AdminInventoryCard";
+import { useBrandFloorSave } from "@/hooks/useBrandFloorSave";
 
 // Stock status helpers — module-level + exported so the mobile
 // AdminInventoryCard renders IDENTICAL status logic + badge colours as
@@ -31,6 +32,10 @@ export default function AdminInventory() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  // Price edits go through the markup-floor flow (never a raw brands write) so a
+  // below-floor price offers the Raise/Proceed dialog instead of a raw DB error.
+  const { save: saveBrandPrice, dialogNode: floorDialog } = useBrandFloorSave();
+  const refetchInventory = () => queryClient.invalidateQueries({ queryKey: ["admin-inventory"] });
 
   const { data: brands, isLoading } = useQuery({
     queryKey: ["admin-inventory"],
@@ -85,6 +90,7 @@ export default function AdminInventory() {
 
   return (
     <div>
+      {floorDialog}
       <div className="flex items-center justify-between mb-6">
         <h1 className="pf text-2xl font-bold">Inventory</h1>
         <button onClick={exportCSV} className="flex items-center gap-1.5 border border-border px-4 py-2 rounded-lg text-sm font-semibold hover:bg-muted">
@@ -160,7 +166,12 @@ export default function AdminInventory() {
                       <input type="number" defaultValue={b.price} min={0}
                         onBlur={e => {
                           const val = parseInt(e.target.value);
-                          if (val !== b.price) updateBrand.mutate({ id: b.id, updates: { price: val } });
+                          if (Number.isFinite(val) && val !== b.price) {
+                            void saveBrandPrice(b.id, Number(b.cost_price) || 0, val, {
+                              label: `${(b.products as any)?.name || ""} · ${b.brand_name}`,
+                              onSaved: refetchInventory,
+                            });
+                          }
                         }}
                         className="w-24 border border-input rounded px-2 py-1 text-xs bg-background" />
                     </td>

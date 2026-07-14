@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { X, Plus, Trash2, Copy, AlertTriangle } from "lucide-react";
+import { X, Plus, Trash2, Copy } from "lucide-react";
 import ProductImageManager from "@/components/admin/ProductImageManager";
 import SEOEditor from "@/components/admin/SEOEditor";
 import BrandImageUpload from "@/components/admin/BrandImageUpload";
@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useProductCategories } from "@/hooks/useProductCategories";
 import { useAdminUser } from "@/hooks/useAdminPermissions";
 import { useRequestAdminAction, notifyApproval } from "@/hooks/useApprovals";
+import { useBrandFloorSave } from "@/hooks/useBrandFloorSave";
 
 interface Props {
   product: any | null;
@@ -47,14 +48,6 @@ async function priceHelper(cost: number, price: number | null, markup: number | 
   if (error) throw error;
   return (Array.isArray(data) ? data[0] : data) || null;
 }
-async function saveBrandPrice(brandId: string, cost: number, price: number, confirmBelowFloor: boolean) {
-  const { data, error } = await (supabase as any).rpc("admin_save_brand_price", {
-    p_brand_id: brandId, p_cost_price: cost, p_price: price, p_confirm_below_floor: confirmBelowFloor,
-  });
-  if (error) throw error;
-  return (Array.isArray(data) ? data[0] : data) || null;
-}
-
 // Selling price / two-way Markup % / Cost, all derived from cost via
 // admin_price_helper (debounced). Entering a cost with no price pre-fills the
 // 39% default; editing price updates markup and vice versa; markup is disabled
@@ -193,11 +186,9 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
     return map;
   });
   const [saving, setSaving] = useState(false);
-  // Below-floor confirmation: save() populates this and awaits the resolve.
-  const [belowFloorDialog, setBelowFloorDialog] = useState<{
-    items: { name: string; floor_price: number; message: string }[];
-    resolve: (confirm: boolean) => void;
-  } | null>(null);
+  // Every brand price is saved through the shared markup-floor flow: at/above
+  // floor saves quietly; below floor opens the Raise/Proceed dialog per brand.
+  const { save: saveBrandPriceFloor, dialogNode: floorDialog } = useBrandFloorSave();
   const [publishMode, setPublishMode] = useState<"active" | "inactive" | "schedule">(
     product?.scheduled_for ? "schedule" : product?.is_active ? "active" : "inactive"
   );
@@ -372,26 +363,18 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         }
       }
 
-      // Set every brand's real price/cost via admin_save_brand_price. First pass
-      // with confirm=false: at/above floor saves immediately; below floor comes
-      // back needs_confirmation. If any need confirmation, ask once, then re-call
-      // with confirm=true (only a super admin can complete a below-floor save).
-      const belowFloor: { brandId: string; cost: number; price: number; name: string; floor_price: number; message: string }[] = [];
+      // Set every brand's real price/cost through the shared floor flow. At/above
+      // floor saves immediately (quiet — the form shows its own final toast);
+      // below floor opens the Raise/Proceed dialog for THAT brand and waits for
+      // the admin to choose before moving to the next. Never a raw below-floor
+      // write, so the raw DB trigger error can't surface.
+      let anyBelowUnsaved = false;
       for (const p of pricePlan) {
-        const r = await saveBrandPrice(p.brandId, p.cost, p.price, false);
-        if (r?.needs_confirmation) belowFloor.push({ ...p, floor_price: Number(r.floor_price), message: r.message || "" });
+        const ok = await saveBrandPriceFloor(p.brandId, p.cost, p.price, { label: p.name, quiet: true });
+        if (!ok) anyBelowUnsaved = true;
       }
-      if (belowFloor.length > 0) {
-        const confirmed = await new Promise<boolean>((resolve) => setBelowFloorDialog({ items: belowFloor, resolve }));
-        setBelowFloorDialog(null);
-        if (confirmed) {
-          for (const p of belowFloor) {
-            const r = await saveBrandPrice(p.brandId, p.cost, p.price, true);
-            if (r?.message) toast.success(r.message);
-          }
-        } else {
-          toast.message("Below-floor prices were left unchanged. Other fields saved.");
-        }
+      if (anyBelowUnsaved) {
+        toast.message("Some below-floor prices were left unchanged. All other fields saved.");
       }
 
       // Upsert sizes
@@ -819,33 +802,8 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
       </div>
     </div>
 
-    {/* Below-floor confirmation — the super admin decides, but deliberately. */}
-    {belowFloorDialog && (
-      <div className="fixed inset-0 bg-foreground/60 z-[110] flex items-center justify-center p-4"
-        onClick={() => belowFloorDialog.resolve(false)}>
-        <div className="bg-card border border-border rounded-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-            <h3 className="font-bold text-base">Price below the markup floor</h3>
-          </div>
-          <div className="space-y-2 mb-4">
-            {belowFloorDialog.items.map((it, idx) => (
-              <div key={idx} className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-[13px] text-red-800">
-                <span className="font-semibold">{it.name}: </span>
-                {it.message || `This price is below the markup floor of ₦${Number(it.floor_price).toLocaleString("en-NG")}.`}
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-text-med mb-4">Only a super admin can save below the floor. Save anyway?</p>
-          <div className="flex justify-end gap-2">
-            <button onClick={() => belowFloorDialog.resolve(false)}
-              className="px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted">Cancel</button>
-            <button onClick={() => belowFloorDialog.resolve(true)}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700">Save anyway</button>
-          </div>
-        </div>
-      </div>
-    )}
+    {/* Below-floor Raise/Proceed dialog (shared flow). */}
+    {floorDialog}
     </>
   );
 }
