@@ -254,48 +254,66 @@ interface PriceImpact {
   product_name: string | null;
   old_cost: number;
   new_cost: number;
+  cost_direction: "up" | "down" | "same";
   current_price: number;
   markup_before: number;
-  markup_after: number;
+  markup_after: number; // markup if the price is left unchanged
   floor_percent: number;
   breaches_floor: boolean;
-  min_new_price: number;
-  price_to_hold_margin: number;
+  min_new_price: number; // lowest price that clears the floor
+  price_to_hold_margin: number; // price that keeps the old markup
+  keep_current_price: number; // the current price, unchanged
+  severity: "blocked" | "warning" | "info";
   message: string;
 }
 
 // Shows the margin impact of a pending cost change: cost + price + markup
-// before/after, and a clear warning when the new cost breaches the floor.
+// before/after, styled by severity. 'blocked' = red (approving as-is fails),
+// 'warning' = amber (legal, but the margin moved a lot — look), 'info' =
+// neutral (small change). Shown for EVERY cost change, incl. cost decreases
+// where the markup balloons and we quietly lose competitiveness.
 function MarginImpactPanel({ impact }: { impact: PriceImpact }) {
-  const breaches = !!impact.breaches_floor;
+  const sev = impact.severity;
+  const s = sev === "blocked"
+    ? { box: "border-red-300 bg-red-50", accent: "text-red-600", msg: "text-red-700", icon: true }
+    : sev === "warning"
+    ? { box: "border-amber-300 bg-amber-50", accent: "text-amber-700", msg: "text-amber-800", icon: true }
+    : { box: "border-border bg-muted/40", accent: "text-forest", msg: "text-text-med", icon: false };
+  const costArrow = impact.cost_direction === "down" ? "↓" : impact.cost_direction === "up" ? "↑" : "";
   return (
-    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-[13px] ${breaches ? "border-red-300 bg-red-50" : "border-border bg-muted/40"}`}>
+    <div className={`mt-2 rounded-lg border px-3 py-2.5 text-[13px] ${s.box}`}>
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
         <span className="text-text-med">Cost</span>
-        <span className="text-right font-semibold">{reviewNaira(impact.old_cost)} → {reviewNaira(impact.new_cost)}</span>
+        <span className="text-right font-semibold">
+          {reviewNaira(impact.old_cost)} → {reviewNaira(impact.new_cost)}
+          {costArrow && <span className={`ml-1 ${s.accent}`}>{costArrow}</span>}
+        </span>
         <span className="text-text-med">Price</span>
         <span className="text-right font-semibold">{reviewNaira(impact.current_price)} <span className="text-text-light font-normal">(unchanged)</span></span>
         <span className="text-text-med">Markup</span>
         <span className="text-right font-semibold">
-          {Number(impact.markup_before).toFixed(1)}% → <span className={breaches ? "text-red-600" : "text-forest"}>{Number(impact.markup_after).toFixed(1)}%</span>
+          {Number(impact.markup_before).toFixed(1)}% → <span className={s.accent}>{Number(impact.markup_after).toFixed(1)}%</span>
         </span>
       </div>
-      {breaches ? (
-        <div className="mt-2 flex items-start gap-1.5 text-[12px] text-red-700 font-medium">
+      {s.icon ? (
+        <div className={`mt-2 flex items-start gap-1.5 text-[12px] font-medium ${s.msg}`}>
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /> <span>{impact.message}</span>
         </div>
       ) : (
-        <p className="mt-1.5 text-[11px] text-text-med">{impact.message}</p>
+        <p className={`mt-1.5 text-[11px] ${s.msg}`}>{impact.message}</p>
       )}
     </div>
   );
 }
 
-// Below-floor cost-change approval: the admin sets the new selling price (with
-// Keep-the-floor / Hold-my-margin quick-fills and a live markup readout), then
-// approve_cost_change_with_price sets the price AND approves the cost change
-// atomically. The RPC rejects a below-floor price, so the button stays disabled
-// until the entered price clears the floor.
+// Cost-change approval with an explicit price choice — shown for EVERY cost
+// change, not only breaching ones. The admin sets the new selling price via
+// three pre-fills (Keep current price / Hold my margin / Minimum allowed) or a
+// custom value, and can think in markup % instead of naira (the two inputs are
+// linked). approve_cost_change_with_price sets the price AND applies the cost
+// atomically — even when the admin keeps the current price. The RPC rejects a
+// below-floor price, so the button stays disabled until the price clears it
+// (for a 'blocked' change that means they MUST raise it before approving).
 function CostChangeApproveBlock({
   req, impact, reviewerName, onDone,
 }: {
@@ -304,14 +322,41 @@ function CostChangeApproveBlock({
   reviewerName: string;
   onDone: () => void;
 }) {
-  const [price, setPrice] = useState<string>(String(impact.min_new_price ?? impact.current_price ?? ""));
+  const cost = Number(impact.new_cost) || 0;
+  const markupOf = (p: number) => (cost > 0 ? ((p - cost) / cost) * 100 : null);
+  const priceForMarkup = (pct: number) => Math.ceil((cost * (1 + pct / 100)) / 25) * 25;
+
+  // Default to the current price ("leave it as is") — a deliberate baseline the
+  // admin then confirms or overrides. For a blocked change this starts below the
+  // floor, so the readout flags it and Approve stays disabled until they raise.
+  const initPrice = Number(impact.keep_current_price ?? impact.current_price ?? impact.min_new_price ?? 0) || 0;
+  const [price, setPrice] = useState<string>(String(initPrice));
+  const [markupStr, setMarkupStr] = useState<string>(() => {
+    const m = markupOf(initPrice);
+    return m == null ? "" : m.toFixed(1);
+  });
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Two linked inputs: editing the price recomputes the markup %, editing the
+  // markup % recomputes the price. Preset buttons feed through setPriceLinked.
+  const setPriceLinked = (v: string) => {
+    setPrice(v);
+    const n = parseInt(v, 10);
+    const m = Number.isFinite(n) && n > 0 ? markupOf(n) : null;
+    setMarkupStr(m == null ? "" : m.toFixed(1));
+  };
+  const setMarkupLinked = (v: string) => {
+    setMarkupStr(v);
+    const pct = parseFloat(v);
+    if (Number.isFinite(pct) && cost > 0) setPrice(String(priceForMarkup(pct)));
+  };
+
   const priceN = parseInt(price, 10);
   const priceValid = Number.isFinite(priceN) && priceN > 0;
-  const liveMarkup = priceValid && impact.new_cost > 0 ? ((priceN - impact.new_cost) / impact.new_cost) * 100 : null;
+  const liveMarkup = priceValid ? markupOf(priceN) : null;
   const clears = liveMarkup != null && liveMarkup >= Number(impact.floor_percent);
+  const keepsCurrent = priceValid && priceN === Number(impact.keep_current_price);
 
   const approve = async () => {
     if (!priceValid || !clears || saving) return;
@@ -327,8 +372,9 @@ function CostChangeApproveBlock({
         toast.error(`Approval failed: ${(data as any).error || (data as any).message || "the price was rejected"}`);
         return;
       }
-      const setTo = (data as any)?.price_updated_to ?? priceN;
-      toast.success(`Approved — selling price set to ${reviewNaira(setTo)}.`);
+      const setTo = (data as any)?.price_after ?? (data as any)?.price_updated_to ?? priceN;
+      const changed = (data as any)?.price_changed;
+      toast.success(changed === false ? `Approved — cost updated, price kept at ${reviewNaira(setTo)}.` : `Approved — selling price set to ${reviewNaira(setTo)}.`);
       notifyApproval({
         type: "outcome", description: req.description, approved: true,
         note: note.trim() || null, reviewer_name: reviewerName, requester_email: req.requester?.email || "",
@@ -341,27 +387,36 @@ function CostChangeApproveBlock({
     }
   };
 
+  const presetBtn = "rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted";
   return (
     <div className="mt-3 border-t border-border pt-3 space-y-2.5">
-      <p className="text-xs font-semibold text-text-med">Set the new selling price to approve</p>
+      <p className="text-xs font-semibold text-text-med">Set the selling price to approve this cost change</p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => setPrice(String(impact.min_new_price))}
-          className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
-          Keep the floor · {reviewNaira(impact.min_new_price)}
+        <button type="button" onClick={() => setPriceLinked(String(impact.keep_current_price))} className={presetBtn}>
+          Keep current price · {reviewNaira(impact.keep_current_price)}
         </button>
-        <button type="button" onClick={() => setPrice(String(impact.price_to_hold_margin))}
-          className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
+        <button type="button" onClick={() => setPriceLinked(String(impact.price_to_hold_margin))} className={presetBtn}>
           Hold my margin · {reviewNaira(impact.price_to_hold_margin)}
         </button>
+        <button type="button" onClick={() => setPriceLinked(String(impact.min_new_price))} className={presetBtn}>
+          Minimum allowed · {reviewNaira(impact.min_new_price)}
+        </button>
       </div>
-      <div className="flex items-center gap-2 max-w-[220px]">
-        <span className="text-sm text-text-med">₦</span>
-        <Input type="number" min={1} value={price} onChange={(e) => setPrice(e.target.value)} aria-label="New selling price" />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="flex items-center gap-2">
+          <span className="text-sm text-text-med">₦</span>
+          <div className="w-[130px]"><Input type="number" min={1} value={price} onChange={(e) => setPriceLinked(e.target.value)} aria-label="New selling price" /></div>
+        </label>
+        <label className="flex items-center gap-2">
+          <div className="w-[90px]"><Input type="number" value={markupStr} onChange={(e) => setMarkupLinked(e.target.value)} aria-label="Markup percent" /></div>
+          <span className="text-sm text-text-med">% markup</span>
+        </label>
       </div>
       <p className="text-[11px]">
         {liveMarkup != null ? (
           <span className={clears ? "text-forest font-semibold" : "text-red-600 font-semibold"}>
             {liveMarkup.toFixed(1)}% markup — {clears ? "clears the floor ✓" : `below the ${impact.floor_percent}% floor`}
+            {keepsCurrent && clears && <span className="text-text-med font-normal"> · price left unchanged</span>}
           </span>
         ) : (
           <span className="text-text-med">Enter a valid price.</span>
@@ -370,7 +425,7 @@ function CostChangeApproveBlock({
       <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note for the requester" rows={2} />
       <div className="flex justify-end">
         <Button size="sm" disabled={!priceValid || !clears || saving} onClick={approve}>
-          {saving ? "Working…" : `Approve at ${priceValid ? reviewNaira(priceN) : "…"}`}
+          {saving ? "Working…" : keepsCurrent ? `Approve, keep ${reviewNaira(priceN)}` : `Approve at ${priceValid ? reviewNaira(priceN) : "…"}`}
         </Button>
       </div>
     </div>
@@ -407,7 +462,6 @@ function PendingRequestCard({
   });
   const impact: PriceImpact | null = impactRows?.[0] || null;
   const hasCostChange = !!impact?.has_cost_change;
-  const breaches = hasCostChange && !!impact?.breaches_floor;
 
   const reset = () => { setDecision(null); setNote(""); };
   const reviewerName = currentAdmin.display_name || currentAdmin.email;
@@ -445,9 +499,10 @@ function PendingRequestCard({
         {!isOpen && (
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => { setDecision("reject"); setNote(""); }}>Reject</Button>
-            {/* A below-floor cost change is approved via the price block below, so
-                the generic Approve button is suppressed for it. */}
-            {!breaches && (
+            {/* Any cost change is approved via the price-choice block below (so the
+                admin always makes an explicit price decision), so the generic
+                Approve button is suppressed for it. */}
+            {!hasCostChange && (
               <Button
                 size="sm"
                 disabled={proposingId === req.id}
@@ -466,8 +521,9 @@ function PendingRequestCard({
         )}
       </div>
 
-      {/* Below-floor cost change: set the new price + approve atomically. */}
-      {breaches && impact && decision !== "reject" && (
+      {/* Cost change: set the selling price + approve atomically. Shown for every
+          cost change so the admin always makes an explicit price decision. */}
+      {hasCostChange && impact && decision !== "reject" && (
         <CostChangeApproveBlock
           req={req}
           impact={impact}
