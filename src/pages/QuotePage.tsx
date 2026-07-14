@@ -406,12 +406,15 @@ export default function QuotePage() {
             if (!items.some((it) => !!it.section)) {
               return <div className="divide-y divide-border">{items.map(renderRow)}</div>;
             }
-            // Otherwise group: Baby / Mother / Hospital (fixed order), Other last.
+            // Otherwise group: Baby / Mother / Hospital / Postpartum / Gift
+            // (fixed order), Other last.
             const byOrder = (a: typeof items[number], b: typeof items[number]) => (a.display_order || 0) - (b.display_order || 0);
             const SECTIONS = [
               { key: "baby", label: "Baby Items" },
               { key: "mother", label: "Mother Items" },
               { key: "hospital", label: "Hospital Items" },
+              { key: "postpartum", label: "Postpartum Items" },
+              { key: "gift", label: "Gift Items" },
             ];
             const groups = [
               ...SECTIONS.map((s) => ({ label: s.label, rows: items.filter((it) => it.section === s.key).sort(byOrder) })),

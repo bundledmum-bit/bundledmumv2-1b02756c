@@ -71,7 +71,7 @@ export interface QuoteItemForPdf {
   quantity: number;
   unit_price: number;
   line_total: number;
-  section?: string | null; // 'baby'|'mother'|'hospital'|null — optional grouping
+  section?: string | null; // baby|mother|hospital|postpartum|gift|null — optional grouping
   // CORS-safe Supabase Storage URL (brands.stored_image_url) only. The
   // caller is responsible for already having filtered out null/"" and
   // the CORS-blocked external brands.image_url — anything passed here is
@@ -295,12 +295,14 @@ export async function generateQuotePdf(quote: QuoteForPdf, contact: ContactBlock
     // No item sectioned → flat list exactly as before.
     y = renderItemsTable(y, quote.items) + 8;
   } else {
-    // Grouped: Baby → Mother → Hospital (fixed order), Other Items last;
-    // display_order preserved (the caller passes items pre-sorted).
+    // Grouped: Baby → Mother → Hospital → Postpartum → Gift (fixed order),
+    // Other Items last; display_order preserved (caller passes items pre-sorted).
     const SECTIONS = [
       { key: "baby", label: "Baby Items" },
       { key: "mother", label: "Mother Items" },
       { key: "hospital", label: "Hospital Items" },
+      { key: "postpartum", label: "Postpartum Items" },
+      { key: "gift", label: "Gift Items" },
     ];
     const groups = [
       ...SECTIONS.map((s) => ({ label: s.label, items: quote.items.filter((it) => it.section === s.key) })),

@@ -87,6 +87,8 @@ const QUOTE_SECTIONS = [
   { key: "baby", label: "Baby Items" },
   { key: "mother", label: "Mother Items" },
   { key: "hospital", label: "Hospital Items" },
+  { key: "postpartum", label: "Postpartum Items" },
+  { key: "gift", label: "Gift Items" },
 ] as const;
 const SECTION_OTHER_LABEL = "Other Items";
 
@@ -1145,7 +1147,7 @@ function QuoteEditor({
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
   const [productSearch, setProductSearch] = useState("");
-  // Active section for newly-added items ('baby'|'mother'|'hospital'|null). Items
+  // Active section for newly-added items (a QUOTE_SECTIONS key or null). Items
   // added fall under this until it's changed; null = ungrouped ("Other Items").
   const [activeSection, setActiveSection] = useState<string | null>(null);
   // The product being added — opens the per-item add dialog (size if any +
@@ -1652,7 +1654,7 @@ function QuoteEditor({
         quantity: qty,
         unit_price: item.price,
         display_order: items.length,
-        section: activeSection || null, // 'baby'|'mother'|'hospital'|null — never any other value
+        section: activeSection || null, // one of QUOTE_SECTIONS keys or null — never any other value
       });
       if (error) throw error;
     },
