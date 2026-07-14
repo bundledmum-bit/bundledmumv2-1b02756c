@@ -16,9 +16,10 @@ import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock } from "lucide-react";
+import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
+import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { getBrandImage } from "@/lib/brandImage";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges } from "@/lib/diaperBrand";
@@ -1452,6 +1453,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               productName={product.name}
               isSubscribable={raw?.is_subscribable === true}
               selectedBrand={selectedBrand}
+              quantity={cartItem?.qty ?? 1}
             />
 
             {/* Trust badges */}
@@ -1672,20 +1674,48 @@ function ProductPageSkeleton() {
 // no longer builds a per-product recurring draft. It states the real terms up
 // front and funnels the shopper into the box builder with this brand pre-loaded
 // into Box 1 (/subscriptions?brand_id=<uuid>).
-function SubscribeInline({ productName, isSubscribable, selectedBrand }: {
+function SubscribeInline({ productName, isSubscribable, selectedBrand, quantity }: {
   productName: string;
   isSubscribable: boolean;
   selectedBrand: Brand | undefined;
+  quantity: number;
 }) {
   const { data: settings } = useSubscriptionSettings();
+  const { user } = useCustomerAuth();
   const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
 
   // Default-hidden until the programme is confirmed on.
   if (!isSubscribable || settings?.subscription_enabled !== true) return null;
 
-  const goToBuilder = () => {
-    if (!selectedBrand) return;
-    navigate(`/subscriptions?brand_id=${encodeURIComponent(selectedBrand.id)}`);
+  const qty = Math.max(1, quantity || 1);
+
+  // For a signed-in shopper we create the 2-month draft with this item already
+  // in Box 1 via subscribe_to_product, then land her in the builder at STEP 2
+  // (?sid=). Logged-out shoppers pass the intent through (?brand_id=&qty=) and
+  // the builder collects an email at STEP 1 before calling subscribe_to_product.
+  const goToBuilder = async () => {
+    if (!selectedBrand || starting) return;
+    const email = user?.email;
+    if (!email) {
+      navigate(`/subscriptions?brand_id=${encodeURIComponent(selectedBrand.id)}&qty=${qty}`);
+      return;
+    }
+    setStarting(true);
+    try {
+      const { data, error } = await (supabase as any).rpc("subscribe_to_product", {
+        p_customer_email: email, p_brand_id: selectedBrand.id, p_quantity: qty,
+      });
+      if (error || !data?.success || !data?.subscription_id) {
+        toast.error(error?.message || data?.error || "Couldn't start your subscription. Please try again.");
+        return;
+      }
+      navigate(`/subscriptions?sid=${encodeURIComponent(data.subscription_id)}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't start your subscription. Please try again.");
+    } finally {
+      setStarting(false);
+    }
   };
 
   return (
@@ -1707,10 +1737,10 @@ function SubscribeInline({ productName, isSubscribable, selectedBrand }: {
       <button
         type="button"
         onClick={goToBuilder}
-        disabled={!selectedBrand}
+        disabled={!selectedBrand || starting}
         className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <Repeat className="w-4 h-4" /> Add {productName} to a monthly box
+        {starting ? <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</> : <><Repeat className="w-4 h-4" /> Add {productName} to a monthly box</>}
       </button>
       {!selectedBrand && (
         <p className="text-[11px] text-text-light text-center">Pick a brand above to continue</p>
