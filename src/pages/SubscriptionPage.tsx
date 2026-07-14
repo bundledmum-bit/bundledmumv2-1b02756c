@@ -35,16 +35,23 @@ const MS_DAY = 86_400_000;
 interface StartedBox { box_id: string; box_number: number; scheduled_date: string }
 interface Started { subscription_id: string; months: number; email: string; boxes: StartedBox[] }
 
+// Every id we send to the box RPCs must be a real UUID. A stale/corrupt blob in
+// sessionStorage with a fragment box_id (e.g. "fb1") would otherwise be passed
+// as p_box_id and blow up with `invalid input syntax for type uuid`.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+
 // A stored subscription is only usable if start_subscription actually returned a
-// subscription_id, a month count (>= 2) AND a non-empty boxes array. Anything
-// less (a partial/legacy sessionStorage blob, or a half-failed start) must NOT
-// land the user on STEP 2 — it renders the empty "0 boxes" screen. Guard on it.
+// UUID subscription_id, a month count (>= 2) AND a non-empty boxes array whose
+// box_ids are all UUIDs. Anything less (a partial/legacy blob, a half-failed
+// start, or leftover test state) must NOT land the user on STEP 2 — it renders
+// the empty "0 boxes" screen or sends a truncated id to the RPC.
 function isValidStarted(s: any): s is Started {
   return !!s
-    && typeof s.subscription_id === "string" && s.subscription_id.length > 0
+    && isUuid(s.subscription_id)
     && typeof s.months === "number" && s.months >= 2
     && Array.isArray(s.boxes) && s.boxes.length > 0
-    && s.boxes.every((b: any) => b && typeof b.box_id === "string");
+    && s.boxes.every((b: any) => b && isUuid(b.box_id));
 }
 
 interface BoxItem { id: string; brand_id: string; product_name: string | null; brand_name: string | null; quantity: number; unit_price: number; line_total: number }
@@ -72,7 +79,13 @@ export default function SubscriptionPage() {
   const preloadQty = Math.max(1, parseInt(searchParams.get("qty") || "1", 10) || 1);
 
   const [started, setStarted] = useState<Started | null>(() => {
-    try { const raw = sessionStorage.getItem(ACTIVE_KEY); const parsed = raw ? JSON.parse(raw) : null; return isValidStarted(parsed) ? parsed : null; } catch { return null; }
+    try {
+      const raw = sessionStorage.getItem(ACTIVE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (isValidStarted(parsed)) return parsed;
+      if (raw) sessionStorage.removeItem(ACTIVE_KEY); // drop stale/corrupt state
+      return null;
+    } catch { return null; }
   });
   const [step, setStep] = useState<Step>(started ? "build" : "months");
   const [firstDate, setFirstDate] = useState<string>("");
@@ -172,6 +185,7 @@ export default function SubscriptionPage() {
         {step === "months" ? (
           <MonthsStep
             defaultEmail={user?.email || ""}
+            emailLocked={!!user?.email}
             preloadBrandId={preloadBrandId}
             preloadQty={preloadQty}
             existing={started}
@@ -243,18 +257,22 @@ function StepTrail({ step }: { step: Step }) {
 // STEP 1 — months (creates the subscription + boxes)
 // -------------------------------------------------------------------------
 function MonthsStep({
-  defaultEmail, preloadBrandId, preloadQty, existing, onStarted,
+  defaultEmail, emailLocked, preloadBrandId, preloadQty, existing, onStarted,
 }: {
   defaultEmail: string;
+  emailLocked: boolean;
   preloadBrandId: string | null;
   preloadQty: number;
   existing: Started | null;
   onStarted: (s: Started) => void;
 }) {
   const [months, setMonths] = useState(existing?.months ?? 2);
-  const [email, setEmail] = useState(existing?.email || defaultEmail);
+  // When signed in, the subscription MUST be created under the account email —
+  // the box-read RLS only returns rows to the authenticated owner, so a
+  // different email would leave STEP 2 unable to see its own boxes.
+  const [email, setEmail] = useState(emailLocked ? defaultEmail : (existing?.email || defaultEmail));
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (defaultEmail && !email) setEmail(defaultEmail); }, [defaultEmail]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (emailLocked && defaultEmail) setEmail(defaultEmail); else if (defaultEmail && !email) setEmail(defaultEmail); }, [defaultEmail, emailLocked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
@@ -350,10 +368,12 @@ function MonthsStep({
       <section className="bg-card border border-border rounded-card p-4 md:p-5">
         <label className="block">
           <span className="text-xs font-semibold text-text-med uppercase tracking-wide">Email</span>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com"
-            className="mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none min-h-[44px]" />
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" readOnly={emailLocked}
+            className={`mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm font-body outline-none min-h-[44px] ${emailLocked ? "bg-muted/50 text-text-med" : "bg-card focus:border-forest"}`} />
         </label>
-        <p className="text-[11px] text-text-light mt-1.5">We'll email your confirmation here. You'll add your delivery date and address after building your boxes.</p>
+        <p className="text-[11px] text-text-light mt-1.5">
+          {emailLocked ? "Your boxes are saved to your account so you can manage them anytime." : "We'll email your confirmation here."} You'll add your delivery date and address after building your boxes.
+        </p>
       </section>
 
       <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/5 border border-forest/20 rounded-lg px-3 py-2">
@@ -486,9 +506,13 @@ function BuildStep({
               </div>
               <div className="flex items-center justify-between mt-1.5 text-[12px] flex-wrap gap-x-3">
                 <span className="text-text-med">Subtotal <span className="font-semibold text-foreground tabular-nums">{fmtN(subtotal)}</span></span>
-                {Number(box.discount_amount) > 0 && <span className="text-forest font-semibold">−{fmtN(box.discount_amount)} (5% off)</span>}
-                <span className="text-forest font-semibold">Free delivery</span>
+                <span className="text-text-med">Box total <span className="font-semibold text-foreground tabular-nums">{fmtN(box.total)}</span></span>
               </div>
+              {/* Value line — reads discount_amount from subscription_boxes (never
+                  computed here). Shown on every box; names the saving when set. */}
+              <p className="mt-1.5 text-[12px] text-forest font-semibold inline-flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Free delivery and 5% off this box{Number(box.discount_amount) > 0 ? ` — you save ${fmtN(box.discount_amount)}` : ""}.
+              </p>
               {!clears && <p className="text-[12px] text-amber-700 mt-1 font-medium">Add {fmtN(shortBy)} more to this box.</p>}
 
               <div className="flex flex-wrap gap-2 mt-3">
@@ -862,6 +886,8 @@ function AddProductsModal({ box, onClose, onAdded }: { box: BoxRow; onClose: () 
 
   const add = async (o: CatalogBrand) => {
     if (addingId) return;
+    // Never send a non-UUID id to the RPC (guards against stale/corrupt state).
+    if (!isUuid(box.id) || !isUuid(o.brand_id)) { toast.error("This subscription is out of date. Please start again."); return; }
     setAddingId(o.brand_id);
     try {
       const { error } = await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: box.id, p_brand_id: o.brand_id, p_quantity: 1 });
