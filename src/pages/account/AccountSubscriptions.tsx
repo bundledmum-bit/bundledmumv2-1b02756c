@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Repeat, Plus, Calendar, CheckCircle2, CreditCard, XCircle, CalendarDays, Save, X, Minus, Pencil } from "lucide-react";
+import { Repeat, Plus, Calendar, CheckCircle2, CreditCard, XCircle, CalendarDays, Save, X, Minus, Pencil, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import {
@@ -111,7 +111,10 @@ export default function AccountSubscriptions() {
     },
   });
 
-  const latest = subs[0];
+  // The legacy per-product recurring subscriptions (old model) always carry
+  // subscription_items; new monthly-BOX subscriptions don't (their contents live
+  // in subscription_boxes) and are rendered by MonthlyBoxesSection instead.
+  const legacySubs = useMemo(() => subs.filter(s => (s.subscription_items?.length || 0) > 0), [subs]);
   const empty = useMemo(() => !isLoading && subs.length === 0, [isLoading, subs]);
 
   return (
@@ -130,15 +133,18 @@ export default function AccountSubscriptions() {
           </Link>
         </header>
 
-        {showSuccess && latest && (
+        {showSuccess && (
           <section className="bg-emerald-50 border-2 border-emerald-600 rounded-card p-4 space-y-1 text-sm">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5 text-emerald-700" />
               <h2 className="pf text-lg font-bold text-emerald-800">Your subscription is active!</h2>
             </div>
-            <p className="text-xs text-emerald-900/80">Your next delivery is {formatDate(latest.next_charge_date)}, then the same date each month.</p>
+            <p className="text-xs text-emerald-900/80">Your boxes are booked. You can edit each one until 24 hours before its delivery.</p>
           </section>
         )}
+
+        {/* Monthly BOX subscriptions (the current model). */}
+        <MonthlyBoxesSection email={user?.email || null} />
 
         {isLoading && (
           <p className="text-sm text-text-light text-center py-8">Loading your subscriptions…</p>
@@ -160,11 +166,130 @@ export default function AccountSubscriptions() {
           </section>
         )}
 
-        {!isLoading && subs.length > 0 && (
+        {!isLoading && legacySubs.length > 0 && (
           <div className="space-y-3">
-            {subs.map(s => <SubscriptionCard key={s.id} row={s} />)}
+            {legacySubs.map(s => <SubscriptionCard key={s.id} row={s} />)}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Monthly-BOX subscriptions (current model)
+// -------------------------------------------------------------------------
+
+interface AccountBoxItem { id: string; product_name: string | null; brand_name: string | null; quantity: number; line_total: number }
+interface AccountBox {
+  id: string; subscription_id: string; box_number: number; scheduled_date: string; status: string;
+  subtotal: number; discount_amount: number; total: number;
+  subscription_box_items: AccountBoxItem[];
+}
+interface AccountBoxSub {
+  id: string; status: string; delivery_day: string | null; created_at: string;
+  subscription_boxes: AccountBox[];
+}
+
+function MonthlyBoxesSection({ email }: { email: string | null }) {
+  const { data: subs = [] } = useQuery({
+    queryKey: ["my-box-subscriptions", email],
+    enabled: !!email,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("subscriptions")
+        .select(`
+          id, status, delivery_day, created_at,
+          subscription_boxes(
+            id, subscription_id, box_number, scheduled_date, status, subtotal, discount_amount, total,
+            subscription_box_items(id, product_name, brand_name, quantity, line_total)
+          )
+        `)
+        .eq("customer_email", email)
+        .neq("status", "draft")
+        .order("created_at", { ascending: false });
+      if (error) { return []; }
+      // Only subscriptions that actually have boxes (the monthly-box model).
+      return ((data || []) as AccountBoxSub[]).filter(s => (s.subscription_boxes?.length || 0) > 0);
+    },
+  });
+
+  if (subs.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      {subs.map(sub => {
+        const boxes = [...(sub.subscription_boxes || [])].sort((a, b) => a.box_number - b.box_number);
+        const grand = boxes.reduce((s, b) => s + Number(b.total || 0), 0);
+        return (
+          <section key={sub.id} className="bg-card border border-border rounded-card p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h2 className="pf text-lg font-bold">{boxes.length} monthly boxes</h2>
+                <p className="text-xs text-text-med">
+                  {sub.delivery_day ? `Delivered on ${sub.delivery_day[0].toUpperCase()}${sub.delivery_day.slice(1)}` : "Monthly delivery"} · paid up front
+                </p>
+              </div>
+              <span className="text-sm font-bold tabular-nums">{fmtN(grand)}</span>
+            </div>
+            <div className="space-y-2.5">
+              {boxes.map(box => <AccountBoxCard key={box.id} box={box} />)}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function AccountBoxCard({ box }: { box: AccountBox }) {
+  // Editability + countdown come straight from the DB (24h-before-delivery rule).
+  const { data: edit } = useQuery({
+    queryKey: ["box-editable", box.id],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("subscription_box_is_editable", { p_box_id: box.id });
+      if (error) throw error;
+      return ((data && data[0]) || null) as { editable: boolean; reason: string; hours_left: number } | null;
+    },
+  });
+
+  const editable = edit?.editable === true;
+  const hoursLeft = Number(edit?.hours_left ?? 0);
+  const countdown = editable
+    ? (hoursLeft >= 48
+        ? `You can change this box for another ${Math.floor(hoursLeft / 24)} days`
+        : hoursLeft >= 1
+        ? `You can change this box for another ${Math.floor(hoursLeft)} hours`
+        : "Closing soon — under an hour left to change this box")
+    : (edit?.reason || "Locked — inside the 24-hour delivery window");
+
+  return (
+    <div className={`rounded-lg border p-3 ${editable ? "border-border" : "border-border bg-muted/40"}`}>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div>
+          <h3 className="font-bold text-sm">Box {box.box_number}</h3>
+          <p className="text-[11px] text-text-med inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> {formatDate(box.scheduled_date)}</p>
+        </div>
+        <span className={`text-[11px] font-semibold inline-flex items-center gap-1 ${editable ? "text-forest" : "text-text-med"}`}>
+          {editable ? <><CalendarDays className="w-3.5 h-3.5" /> Editable</> : <><Lock className="w-3.5 h-3.5" /> Locked</>}
+        </span>
+      </div>
+      {(box.subscription_box_items?.length || 0) > 0 ? (
+        <ul className="divide-y divide-border/60">
+          {box.subscription_box_items.map(it => (
+            <li key={it.id} className="flex items-center justify-between py-1 text-[12px]">
+              <span className="min-w-0 truncate">{it.quantity}× {it.product_name || "Item"} <span className="text-text-light">· {it.brand_name}</span></span>
+              <span className="font-semibold tabular-nums">{fmtN(it.line_total)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[12px] text-text-light py-1">No items.</p>
+      )}
+      <div className="flex items-center justify-between mt-1.5 text-[12px]">
+        <span className={editable ? "text-forest font-medium" : "text-text-med"}>{countdown}</span>
+        <span className="font-semibold tabular-nums">{fmtN(box.total)}</span>
       </div>
     </div>
   );

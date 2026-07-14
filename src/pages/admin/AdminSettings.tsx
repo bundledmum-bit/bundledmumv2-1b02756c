@@ -1248,7 +1248,7 @@ function SettingRow({
       {isBadge && (
         <div className="mt-2">
           <span className="inline-flex items-center gap-1.5 bg-forest/10 text-forest border border-forest/30 rounded-pill px-3 py-1 text-xs font-semibold">
-            🔄 {local || "Subscribe & Save"}
+            🔄 {local || "Get this every month"}
           </span>
         </div>
       )}

@@ -16,10 +16,9 @@ import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus } from "lucide-react";
+import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSubscriptionSettings, writeDraft, addToDraft, removeFromDraft, useSubscriptionDraft, WEEKDAYS, FREQUENCY_LABEL, type Frequency, type SubscriptionDraftItem } from "@/hooks/useSubscription";
-import SubscriptionBasketBar from "@/components/SubscriptionBasketBar";
+import { useSubscriptionSettings } from "@/hooks/useSubscription";
 import { getBrandImage } from "@/lib/brandImage";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges } from "@/lib/diaperBrand";
@@ -1450,11 +1449,9 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             )}
 
             <SubscribeInline
-              productId={product.id}
               productName={product.name}
               isSubscribable={raw?.is_subscribable === true}
               selectedBrand={selectedBrand}
-              quantity={cartItem?.qty ?? 1}
             />
 
             {/* Trust badges */}
@@ -1612,12 +1609,6 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         <OtherSubscribableProducts currentId={product.id} category={product.category ?? null} subcategory={product.subcategory ?? null} />
       )}
 
-      {/* Persistent subscription basket pill — only on subscribable pages.
-          Sits above the bottom nav (and the mobile sticky Add-to-Cart). */}
-      {raw?.is_subscribable === true && (
-        <SubscriptionBasketBar className="bottom-[calc(124px+env(safe-area-inset-bottom))] md:bottom-6" />
-      )}
-
       {/* Sticky mobile CTA — hidden for bundles (BundleCustomiser owns its own)
           and on the group page (each brand card has its own add button). */}
       {!raw?.is_gift_box && !isGroupView && (
@@ -1676,150 +1667,57 @@ function ProductPageSkeleton() {
 // proceeds straight to /subscriptions/checkout (SubscriptionCheckout reads the
 // draft). Subscriptions are a separate flow from the cart.
 // ---------------------------------------------------------------------------
-function SubscribeInline({ productId, productName, isSubscribable, selectedBrand, quantity }: {
-  productId?: string;
+// Product-page entry into the monthly-BOX subscription. A single product can no
+// longer BE a subscription (a subscription is 2+ boxes of ₦50,000 each), so this
+// no longer builds a per-product recurring draft. It states the real terms up
+// front and funnels the shopper into the box builder with this brand pre-loaded
+// into Box 1 (/subscriptions?brand_id=<uuid>).
+function SubscribeInline({ productName, isSubscribable, selectedBrand }: {
   productName: string;
   isSubscribable: boolean;
   selectedBrand: Brand | undefined;
-  quantity: number;
 }) {
   const { data: settings } = useSubscriptionSettings();
   const navigate = useNavigate();
-  // Offered frequencies are driven by the *_enabled settings only.
-  const enabledFreqs: Frequency[] = useMemo(() => {
-    const list: Frequency[] = [];
-    if (settings?.weekly_enabled) list.push("weekly");
-    if (settings?.biweekly_enabled) list.push("biweekly");
-    if (settings?.monthly_enabled) list.push("monthly");
-    return list;
-  }, [settings?.weekly_enabled, settings?.biweekly_enabled, settings?.monthly_enabled]);
-  const onlyFreq = enabledFreqs.length === 1 ? enabledFreqs[0] : null;
-  // Always start empty — the shopper actively chooses cadence + day for each
-  // product, never inherited/pre-filled from an existing draft.
-  const [frequency, setFrequency] = useState<Frequency | "">("");
-  // Single enabled frequency → preselect it (no picker shown).
-  useEffect(() => {
-    if (onlyFreq && !frequency) setFrequency(onlyFreq);
-  }, [onlyFreq, frequency]);
-  const draft = useSubscriptionDraft();
 
   // Default-hidden until the programme is confirmed on.
   if (!isSubscribable || settings?.subscription_enabled !== true) return null;
 
-  const draftExists = !!draft && draft.items.length > 0;
-  const existingLine = (selectedBrand && productId && draft)
-    ? draft.items.find(i => i.product_id === productId && i.brand_id === selectedBrand.id)
-    : undefined;
-  const lineQty = existingLine?.quantity ?? 0;
-
-  const buildItem = (qty: number, freq: Frequency): SubscriptionDraftItem => ({
-    product_id: productId || "",
-    brand_id: selectedBrand!.id,
-    quantity: qty,
-    frequency: freq,
-    unit_price: selectedBrand!.price, // NAIRA — no conversion
-    product_name: productName,
-    brand_name: selectedBrand!.label,
-    image_url: selectedBrand!.imageUrl ?? null,
-    size_variant: selectedBrand!.sizeVariant ?? null,
-  });
-
-  const missing: string[] = [];
-  if (!selectedBrand) missing.push("a brand");
-  if (!frequency) missing.push("frequency");
-  const canSubscribe = missing.length === 0;
-
-  // Add this product to the subscription. First product of the session creates
-  // the draft (owns the top-level frequency) and goes to checkout, where the
-  // customer picks their first delivery date; later products append per-item.
-  const handleSubscribe = () => {
-    if (!selectedBrand || !frequency) return;
-    const item = buildItem(quantity, frequency);
-    if (draftExists) {
-      addToDraft(item);
-      toast.success(`Added ${productName} to your subscription`);
-      setFrequency("");
-    } else {
-      const subtotal = selectedBrand.price * quantity;
-      writeDraft({
-        items: [item],
-        frequency,
-        delivery_day: "",
-        subtotal_per_delivery: subtotal,
-        discount_pct: settings.discount_pct,
-        total_per_delivery: Math.round(subtotal * (1 - settings.discount_pct / 100)),
-      });
-      navigate("/subscriptions/checkout");
-    }
-  };
-
-  // Stepper +/- operate on the existing line; keep its own cadence.
-  const lineFreq: Frequency = (existingLine?.frequency as Frequency) || "monthly";
-  const inc = () => { if (selectedBrand) addToDraft(buildItem(1, lineFreq)); };
-  const dec = () => {
+  const goToBuilder = () => {
     if (!selectedBrand) return;
-    if (lineQty <= 1) removeFromDraft(productId || "", selectedBrand.id);
-    else addToDraft(buildItem(-1, lineFreq));
+    navigate(`/subscriptions?brand_id=${encodeURIComponent(selectedBrand.id)}`);
   };
 
   return (
     <div className="bg-forest/5 border border-forest/20 rounded-card p-4 mb-6 space-y-3">
       <div className="flex items-center gap-2">
         <Repeat className="w-5 h-5 text-forest flex-shrink-0" />
-        <h3 className="font-bold text-sm">Subscribe to this product</h3>
+        <h3 className="font-bold text-sm">Get this every month</h3>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        <span className="inline-flex items-center text-[11px] font-semibold text-forest bg-forest/10 rounded-pill px-2.5 py-1">{settings.discount_pct}% off every delivery</span>
-        <span className="inline-flex items-center text-[11px] font-semibold text-forest bg-forest/10 rounded-pill px-2.5 py-1">Free delivery</span>
-        <span className="inline-flex items-center text-[11px] font-semibold text-forest bg-forest/10 rounded-pill px-2.5 py-1">Min. {settings.min_deliveries} deliveries</span>
+      {/* The REAL terms, stated BEFORE she clicks — no surprise on the next page. */}
+      <p className="text-[13px] text-text-med">
+        Build a monthly box from <span className="font-semibold text-foreground">₦50,000</span>. {settings.discount_pct}% off, free delivery, and today's prices locked in. Minimum 2 months.
+      </p>
+      <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/10 rounded-lg px-2.5 py-2">
+        <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+        <span>The prices you see today are locked in for every box, even if prices rise later.</span>
       </div>
 
-      {lineQty > 0 ? (
-        /* Already in the subscription — quantity stepper */
-        <div className="space-y-2">
-          <div className="text-[11px] font-semibold text-forest">In your subscription</div>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={dec} aria-label="Decrease quantity" className="w-10 h-10 rounded-full border border-input inline-flex items-center justify-center"><Minus className="w-4 h-4" /></button>
-            <div className="text-xl font-bold tabular-nums w-10 text-center">{lineQty}</div>
-            <button type="button" onClick={inc} aria-label="Increase quantity" className="w-10 h-10 rounded-full border border-input inline-flex items-center justify-center"><Plus className="w-4 h-4" /></button>
-          </div>
-        </div>
-      ) : (
-        /* Pick cadence + delivery day (always fresh), then add to the draft */
-        <>
-          <div className="flex flex-col gap-2">
-            {onlyFreq ? (
-              <div className={`${subSelectCls} flex items-center`} aria-label="Delivery frequency">{SUB_FREQ_OPT[onlyFreq]}</div>
-            ) : (
-              <select className={subSelectCls} value={frequency} onChange={e => setFrequency(e.target.value as Frequency)} aria-label="Choose Frequency">
-                <option value="">Choose Frequency</option>
-                {enabledFreqs.map(f => <option key={f} value={f}>{SUB_FREQ_OPT[f]}</option>)}
-              </select>
-            )}
-            <p className="text-[11px] text-text-light">You'll pick your first delivery date at checkout.</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSubscribe}
-            disabled={!canSubscribe}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {draftExists ? <><Plus className="w-4 h-4" /> Add to subscription</> : <><Repeat className="w-4 h-4" /> Subscribe</>}
-          </button>
-          {!canSubscribe && (
-            <p className="text-[11px] text-text-light text-center">Please choose {missing.join(", ")} to continue</p>
-          )}
-        </>
+      <button
+        type="button"
+        onClick={goToBuilder}
+        disabled={!selectedBrand}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Repeat className="w-4 h-4" /> Add {productName} to a monthly box
+      </button>
+      {!selectedBrand && (
+        <p className="text-[11px] text-text-light text-center">Pick a brand above to continue</p>
       )}
     </div>
   );
 }
-
-// Native-select styling matched to the CheckoutPage address form (44px min tap).
-const subSelectCls = "w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none transition-colors min-h-[44px]";
-const SUB_FREQ_OPT: Record<Frequency, string> = { weekly: "Every week", biweekly: "Every 2 weeks", monthly: "Every month" };
 
 
 // "Other products you can subscribe to" — compact horizontal scroll row at the
@@ -1830,18 +1728,6 @@ const SUB_FREQ_OPT: Record<Frequency, string> = { weekly: "Every week", biweekly
 function OtherSubscribableProducts({ currentId, category, subcategory }: { currentId: string; category: string | null; subcategory: string | null }) {
   const { data: settings } = useSubscriptionSettings();
   const navigate = useNavigate();
-  const draft = useSubscriptionDraft();
-  const [sheetProduct, setSheetProduct] = useState<any | null>(null);
-  const [sheetFreq, setSheetFreq] = useState<Frequency>("monthly");
-
-  const enabledFreqs: Frequency[] = useMemo(() => {
-    const list: Frequency[] = [];
-    if (settings?.weekly_enabled) list.push("weekly");
-    if (settings?.biweekly_enabled) list.push("biweekly");
-    if (settings?.monthly_enabled) list.push("monthly");
-    return list;
-  }, [settings?.weekly_enabled, settings?.biweekly_enabled, settings?.monthly_enabled]);
-  const onlyFreq = enabledFreqs.length === 1 ? enabledFreqs[0] : null;
 
   // Related products: prefer the same subcategory; backfill from the same
   // category up to 8. `related` is true when at least one same-subcategory
@@ -1887,46 +1773,19 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
     return [...list].sort((a: any, b: any) => (a.price || 0) - (b.price || 0))[0] || null;
   };
 
-  const itemFor = (p: any, b: any, freq: Frequency): SubscriptionDraftItem => ({
-    product_id: p.id, brand_id: b.id, quantity: 1, frequency: freq,
-    unit_price: Number(b.price) || 0, product_name: p.name, brand_name: b.brand_name,
-    image_url: getBrandImage(b) || b.images?.[0] || null, size_variant: null,
-  });
-
-  const compactSubscribe = (p: any) => {
+  // Funnel the shopper into the box builder with this product's cheapest brand
+  // pre-loaded into Box 1 — a single product is no longer a subscription on its
+  // own, so we never build a per-product draft here.
+  const addToBox = (p: any) => {
     const b = cheapest(p);
     if (!b) return;
-    if (draft && draft.items.length > 0) {
-      addToDraft(itemFor(p, b, draft.frequency));
-      toast.success(`Added ${p.name} to your subscription`);
-    } else {
-      setSheetFreq("monthly"); setSheetProduct(p);
-    }
+    navigate(`/subscriptions?brand_id=${encodeURIComponent(b.id)}`);
   };
-
-  const confirmSheet = () => {
-    if (!sheetProduct) return;
-    const b = cheapest(sheetProduct);
-    if (!b) return;
-    const item = itemFor(sheetProduct, b, sheetFreq);
-    writeDraft({
-      items: [item],
-      frequency: sheetFreq,
-      // First delivery date is chosen at checkout.
-      delivery_day: "",
-      subtotal_per_delivery: item.unit_price,
-      discount_pct: settings.discount_pct,
-      total_per_delivery: Math.round(item.unit_price * (1 - settings.discount_pct / 100)),
-    });
-    navigate("/subscriptions/checkout");
-  };
-
-  const pillSel = "bg-forest text-primary-foreground border-forest";
-  const pillIdle = "bg-background text-text-med border-input hover:border-forest/60";
 
   return (
     <section className="max-w-[1200px] mx-auto px-4 md:px-10 py-8">
-      <h2 className="pf text-xl font-bold mb-4">{result?.related ? "Related products to subscribe to" : "More products to subscribe to"}</h2>
+      <h2 className="pf text-xl font-bold mb-1">{result?.related ? "Related products for a monthly box" : "More products for a monthly box"}</h2>
+      <p className="text-[12px] text-text-med mb-4">Add any of these to a box. Each box is filled your way and clears ₦50,000 on its own.</p>
       <div className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1">
         {products.map((p: any) => {
           const b = cheapest(p);
@@ -1942,36 +1801,14 @@ function OtherSubscribableProducts({ currentId, category, subcategory }: { curre
               </Link>
               {b?.price != null && <div className="text-sm text-forest font-bold mt-1">From <span className="font-mono-price">{fmt(Number(b.price))}</span></div>}
               {cadence && <div className="text-[10px] text-text-light">{cadence}</div>}
-              <button type="button" onClick={() => compactSubscribe(p)} disabled={!b}
+              <button type="button" onClick={() => addToBox(p)} disabled={!b}
                 className="mt-2 w-full inline-flex items-center justify-center gap-1 rounded-pill border border-forest text-forest min-h-9 text-xs font-semibold hover:bg-forest/10 disabled:opacity-50">
-                <Plus className="w-3.5 h-3.5" /> Subscribe
+                <Plus className="w-3.5 h-3.5" /> Add to a box
               </button>
             </div>
           );
         })}
       </div>
-
-      {sheetProduct && (
-        <div className="fixed inset-0 z-[120] bg-foreground/50 flex items-end md:items-center justify-center" onClick={() => setSheetProduct(null)}>
-          <div className="bg-card w-full max-w-md rounded-t-2xl md:rounded-2xl p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-sm">Subscribe to {sheetProduct.name}</h3>
-            <div>
-              <div className="text-[11px] uppercase tracking-wide font-semibold text-text-med mb-1.5">Frequency</div>
-              {onlyFreq ? (
-                <div className="text-sm font-semibold text-text-dark">{FREQUENCY_LABEL[onlyFreq]}</div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {enabledFreqs.map(f => <button key={f} type="button" onClick={() => setSheetFreq(f)} className={`px-3 min-h-9 rounded-pill text-xs font-semibold border ${sheetFreq === f ? pillSel : pillIdle}`}>{FREQUENCY_LABEL[f]}</button>)}
-                </div>
-              )}
-            </div>
-            <p className="text-[11px] text-text-light">You'll pick your first delivery date at checkout.</p>
-            <button type="button" onClick={confirmSheet} className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50">
-              Subscribe &amp; go to checkout
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

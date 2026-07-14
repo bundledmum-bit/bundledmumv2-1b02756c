@@ -44,6 +44,31 @@ export const WEEKDAY_LABEL: Record<string, string> = Object.fromEntries(
   WEEKDAYS.map(d => [d.v, d.long])
 );
 
+// --- Monthly-box subscription model -------------------------------------
+// start_subscription's p_delivery_weekday is 0=Sunday .. 6=Saturday. This list
+// is display-ordered Mon..Sun, each carrying the int the RPC expects.
+export const BOX_WEEKDAYS: Array<{ int: number; long: string; short: string }> = [
+  { int: 1, long: "Monday", short: "Mon" },
+  { int: 2, long: "Tuesday", short: "Tue" },
+  { int: 3, long: "Wednesday", short: "Wed" },
+  { int: 4, long: "Thursday", short: "Thu" },
+  { int: 5, long: "Friday", short: "Fri" },
+  { int: 6, long: "Saturday", short: "Sat" },
+  { int: 0, long: "Sunday", short: "Sun" },
+];
+
+// Format a plain ISO date ("YYYY-MM-DD") for display without UTC drift.
+export function formatBoxDate(iso: string | null | undefined, withWeekday = true): string {
+  if (!iso) return "—";
+  const [y, m, d] = String(iso).split("-").map(Number);
+  if (!y) return String(iso);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  return dt.toLocaleDateString("en-NG", {
+    ...(withWeekday ? { weekday: "short" as const } : {}),
+    day: "numeric", month: "long", year: "numeric",
+  });
+}
+
 /**
  * Subscription settings come from the `subscription_settings` table as
  * string values ({setting_key, setting_value, value_type, ...}). The
@@ -76,7 +101,7 @@ function parseSettings(raw: any): SubscriptionSettings {
     monthly_enabled:       b("monthly_enabled", true),
     subscription_page_heading: str("subscription_page_heading", "Never run out of the essentials."),
     subscription_page_subtext: str("subscription_page_subtext", "Subscribe to the products you use every week and we'll deliver them on a schedule that works for you."),
-    subscription_badge_label: str("subscription_badge_label", "Subscribe & Save"),
+    subscription_badge_label: str("subscription_badge_label", "Get this every month"),
     min_order_value_naira:  num("min_order_value_naira", 0),
     edit_window_days:       num("edit_window_days", 2),
     min_deliveries:         num("min_deliveries", 3),
