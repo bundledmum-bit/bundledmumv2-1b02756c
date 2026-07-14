@@ -35,6 +35,18 @@ const MS_DAY = 86_400_000;
 interface StartedBox { box_id: string; box_number: number; scheduled_date: string }
 interface Started { subscription_id: string; months: number; email: string; boxes: StartedBox[] }
 
+// A stored subscription is only usable if start_subscription actually returned a
+// subscription_id, a month count (>= 2) AND a non-empty boxes array. Anything
+// less (a partial/legacy sessionStorage blob, or a half-failed start) must NOT
+// land the user on STEP 2 — it renders the empty "0 boxes" screen. Guard on it.
+function isValidStarted(s: any): s is Started {
+  return !!s
+    && typeof s.subscription_id === "string" && s.subscription_id.length > 0
+    && typeof s.months === "number" && s.months >= 2
+    && Array.isArray(s.boxes) && s.boxes.length > 0
+    && s.boxes.every((b: any) => b && typeof b.box_id === "string");
+}
+
 interface BoxItem { id: string; brand_id: string; product_name: string | null; brand_name: string | null; quantity: number; unit_price: number; line_total: number }
 interface BoxRow {
   id: string; box_number: number; scheduled_date: string; status: string;
@@ -60,7 +72,7 @@ export default function SubscriptionPage() {
   const preloadQty = Math.max(1, parseInt(searchParams.get("qty") || "1", 10) || 1);
 
   const [started, setStarted] = useState<Started | null>(() => {
-    try { const raw = sessionStorage.getItem(ACTIVE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+    try { const raw = sessionStorage.getItem(ACTIVE_KEY); const parsed = raw ? JSON.parse(raw) : null; return isValidStarted(parsed) ? parsed : null; } catch { return null; }
   });
   const [step, setStep] = useState<Step>(started ? "build" : "months");
   const [firstDate, setFirstDate] = useState<string>("");
@@ -120,6 +132,15 @@ export default function SubscriptionPage() {
   });
 
   const refresh = () => { refetchBoxes(); refetchReady(); };
+
+  // Never sit on a post-STEP-1 screen without a real subscription (refresh with
+  // cleared state, a bad product-page entry, a half-failed start). Send her back
+  // to STEP 1 instead of rendering an empty "0 boxes" screen. Skipped while a
+  // ?sid= resume is still in flight (that effect persists then sets the step).
+  useEffect(() => {
+    if (step === "months" || sidParam) return;
+    if (!isValidStarted(started)) setStep("months");
+  }, [step, started, sidParam]);
 
   if (!settings) return <div className="min-h-screen flex items-center justify-center text-sm text-text-light">Loading…</div>;
   if (!settings.subscription_enabled) {
@@ -295,7 +316,13 @@ function MonthsStep({
           if (dropped > 0) toast.message(`Fewer months — the last ${dropped} box${dropped === 1 ? "" : "es"} of items were dropped.`);
         }
       }
-      onStarted({ subscription_id: subId, months: realMonths, email: email.trim(), boxes });
+      // Never advance to STEP 2 on a malformed success (no id, or no boxes) —
+      // that is exactly what produced the empty "0 boxes" screen.
+      if (!subId || !Array.isArray(boxes) || boxes.length === 0) {
+        toast.error("We couldn't set up your boxes. Please try again.");
+        return;
+      }
+      onStarted({ subscription_id: subId, months: realMonths || boxes.length, email: email.trim(), boxes });
     } catch (e: any) {
       toast.error(`Could not start your subscription: ${e?.message || "unexpected error"}`);
     } finally {
@@ -362,7 +389,24 @@ function BuildStep({
 
   const minBoxValue = ready?.min_box_value ?? 50000;
   const failingByNumber = new Map((ready?.failing_boxes || []).map(f => [f.box_number, f]));
-  const box1 = boxes.find(b => b.box_number === 1) || null;
+
+  // Source of truth for WHICH boxes exist = started.boxes (returned by
+  // start_subscription). Live item/total data is merged in from the
+  // subscription_boxes query by box_id when it has loaded; until then (or if the
+  // read is empty) each box still renders with its date + an empty picker, so
+  // STEP 2 is never a blank "0 boxes" screen.
+  const displayBoxes: BoxRow[] = useMemo(() => {
+    const live = new Map(boxes.map(b => [b.id, b]));
+    return [...started.boxes]
+      .sort((a, b) => a.box_number - b.box_number)
+      .map(sb => live.get(sb.box_id) ?? {
+        id: sb.box_id, box_number: sb.box_number, scheduled_date: sb.scheduled_date,
+        status: "draft", subtotal: 0, discount_amount: 0, total: 0, subscription_box_items: [],
+      });
+  }, [started.boxes, boxes]);
+
+  const boxCount = started.months || displayBoxes.length;
+  const box1 = displayBoxes.find(b => b.box_number === 1) || null;
 
   // Copy Box 1 into every other box.
   const duplicateBox1 = async () => {
@@ -371,7 +415,7 @@ function BuildStep({
     setDupBusy(true);
     try {
       let count = 0;
-      for (const box of boxes) {
+      for (const box of displayBoxes) {
         if (box.id === box1.id) continue;
         for (const it of box1.subscription_box_items) {
           const { error } = await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: box.id, p_brand_id: it.brand_id, p_quantity: it.quantity });
@@ -379,7 +423,7 @@ function BuildStep({
           count += 1;
         }
       }
-      toast.success(`Copied Box 1 into ${boxes.length - 1} other box${boxes.length - 1 === 1 ? "" : "es"}. Add any unique items next.`);
+      toast.success(`Copied Box 1 into ${displayBoxes.length - 1} other box${displayBoxes.length - 1 === 1 ? "" : "es"}. Add any unique items next.`);
       onRefresh();
     } finally {
       setDupBusy(false);
@@ -390,7 +434,7 @@ function BuildStep({
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="pf text-xl font-bold">Fill your {boxes.length} boxes</h2>
+          <h2 className="pf text-xl font-bold">Fill your {boxCount} boxes</h2>
           <p className="text-sm text-text-med">Each box is filled its own way and must reach {fmtN(minBoxValue)}.</p>
         </div>
         <button type="button" onClick={onBackToMonths} className="text-xs text-text-med hover:underline inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Change months</button>
@@ -400,7 +444,7 @@ function BuildStep({
         <Lock className="w-4 h-4 flex-shrink-0 mt-px" /><span>{PRICE_LOCK_LINE}</span>
       </div>
 
-      {box1 && (box1.subscription_box_items?.length || 0) > 0 && boxes.length > 1 && (
+      {box1 && (box1.subscription_box_items?.length || 0) > 0 && displayBoxes.length > 1 && (
         <button type="button" onClick={duplicateBox1} disabled={dupBusy}
           className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-forest bg-forest/5 text-forest px-4 py-2.5 text-sm font-semibold hover:bg-forest/10 disabled:opacity-50">
           {dupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CopyPlus className="w-4 h-4" />} Copy Box 1 into every other box
@@ -408,13 +452,13 @@ function BuildStep({
       )}
 
       <div className="space-y-4">
-        {boxes.map(box => {
+        {displayBoxes.map(box => {
           const fail = failingByNumber.get(box.box_number);
           const subtotal = Number(box.subtotal || 0);
           const shortBy = fail ? Number(fail.short_by) : Math.max(0, minBoxValue - subtotal);
           const clears = shortBy <= 0 && (box.subscription_box_items?.length || 0) > 0;
           const pct = Math.min(100, minBoxValue > 0 ? Math.round((subtotal / minBoxValue) * 100) : 0);
-          const otherFilled = boxes.filter(b => b.id !== box.id && (b.subscription_box_items?.length || 0) > 0);
+          const otherFilled = displayBoxes.filter(b => b.id !== box.id && (b.subscription_box_items?.length || 0) > 0);
           return (
             <section key={box.id} className={`bg-card border rounded-card p-4 ${clears ? "border-forest/40" : "border-border"}`}>
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -472,7 +516,7 @@ function BuildStep({
       </section>
 
       {addTarget && <AddProductsModal box={addTarget} onClose={() => setAddTarget(null)} onAdded={onRefresh} />}
-      {copyTarget && <CopyBoxModal target={copyTarget} sources={boxes.filter(b => b.id !== copyTarget.id && (b.subscription_box_items?.length || 0) > 0)} onClose={() => setCopyTarget(null)} onCopied={onRefresh} />}
+      {copyTarget && <CopyBoxModal target={copyTarget} sources={displayBoxes.filter(b => b.id !== copyTarget.id && (b.subscription_box_items?.length || 0) > 0)} onClose={() => setCopyTarget(null)} onCopied={onRefresh} />}
     </div>
   );
 }
