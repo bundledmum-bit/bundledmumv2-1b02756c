@@ -30,7 +30,7 @@ import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { MessageCircle, Copy as CopyIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
 
 // Row shape from get_cart_recommendations / get_popular_products. price is
@@ -603,6 +603,51 @@ export default function CartPage() {
               // BOGO/discount line_total comes from the RPC, never computed here.
               const ep = item.type === "bundle" ? null : lineEffective(item.selectedBrand?.id, item.qty);
               const lineTotal = ep ? ep.lineTotal : item.price * item.qty;
+
+              // A bundle is ONE cart line for pricing (commit 2b646e8), but it is
+              // DISPLAYED as its individual items — each rendered as its own
+              // independent card, visually identical to a normal line item (name,
+              // brand, qty, its per-item price). No bundle name, no header, no
+              // shared price block. The whole bundle is a single unit, so remove/
+              // save act on the bundle line.
+              if (item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length) {
+                return (
+                  <Fragment key={item._key}>
+                    {item.bundleItems.map((bi: any, bi_i: number) => {
+                      const biLine = (Number(bi.price) || 0) * (Number(bi.quantity) || 1);
+                      return (
+                        <div key={`${item._key}-${bi_i}`} className="bg-card rounded-card shadow-card p-3 sm:p-4">
+                          <div className="flex items-start gap-3">
+                            <ProductImage imageUrl={null} emoji="📦" alt={bi.productName || "Item"} className="w-16 h-16 sm:w-20 sm:h-20 rounded-md bg-warm-cream border border-border" emojiClassName="text-2xl sm:text-3xl" />
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-body font-semibold text-[13px] sm:text-sm leading-tight line-clamp-2">{bi.productName || "Item"}</h3>
+                              <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                                {bi.brandName && <span className="font-body text-[11px] text-forest">{bi.brandName}</span>}
+                                {bi.size && <span className="font-body text-[11px] text-text-light">Size / Age: {bi.size}</span>}
+                                {bi.color && <span className="font-body text-[11px] text-text-light">Colour: {formatColor(bi.color)}</span>}
+                              </div>
+                              <p className="font-body font-bold text-coral text-sm mt-1">{fmt(biLine)}</p>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button onClick={() => saveForLater(item._key)} className="text-text-light hover:text-forest interactive h-9 w-9 flex items-center justify-center" title="Save for later">
+                                <Bookmark className="h-4 w-4" />
+                              </button>
+                              <button onClick={() => removeItem(item._key)} className="text-text-light hover:text-destructive interactive h-9 w-9 flex items-center justify-center" title="Remove">
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
+                            <span className="font-body text-sm">Qty {Number(bi.quantity) || 1}</span>
+                            <p className="font-body font-bold text-sm">{fmt(biLine)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </Fragment>
+                );
+              }
+
               return (
               <div key={item._key} className={`bg-card rounded-card shadow-card p-3 sm:p-4 ${!stillShoppable ? "opacity-60" : ""}`}>
                 {!stillShoppable && (

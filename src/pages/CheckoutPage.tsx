@@ -1709,35 +1709,32 @@ export default function CheckoutPage() {
           </button>
           {mobileOrderOpen && (
             <div className="bg-card rounded-b-card shadow-card p-4 -mt-1 animate-fade-in space-y-2">
-              {cart.map(item => {
-                const flagged = cartItemHasIssue(item, stockIssues);
-                return (
-                  <div key={item._key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs ${flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      {(() => {
-                        const url = cartItemImage(item);
-                        if (url !== "/placeholder.svg") {
-                          return <img src={url} alt={item.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />;
-                        }
-                        return (item.img && item.img.startsWith("http"))
-                          ? <img src={item.img} alt={item.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" />
-                          : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{item.img || "📦"}</span>;
-                      })()}
-                      {item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length ? (
-                        <span className="min-w-0">
-                          {item.bundleItems.map((bi: any, bi_i: number) => (
-                            <span key={bi_i} className="block truncate">{bi.productName || bi.name || "Item"} ×{bi.quantity || 1}</span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="truncate">{item.name} ×{item.qty}</span>
-                      )}
-                      {flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
-                    </div>
-                    <span className="font-bold flex-shrink-0">{fmt(item.price * item.qty)}</span>
+              {/* Bundle lines are flattened into independent rows — each bundle
+                  item is its own line, visually identical to a normal item
+                  (name × qty + its per-item price). No bundle name/header. */}
+              {cart.flatMap((item: any) => {
+                if (item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length) {
+                  return item.bundleItems.map((bi: any, i: number) => ({
+                    key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
+                    qty: Number(bi.quantity) || 1, lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1),
+                    img: null as string | null, flagged: false,
+                  }));
+                }
+                const url = cartItemImage(item);
+                const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : (item.img || null));
+                return [{ key: item._key, name: item.name, qty: item.qty, lineTotal: item.price * item.qty, img, flagged: cartItemHasIssue(item, stockIssues) }];
+              }).map((row: any) => (
+                <div key={row.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs ${row.flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {row.img && String(row.img).startsWith("http")
+                      ? <img src={row.img} alt={row.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
+                      : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{row.img || "📦"}</span>}
+                    <span className="truncate">{row.name} ×{row.qty}</span>
+                    {row.flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                   </div>
-                );
-              })}
+                  <span className="font-bold flex-shrink-0">{fmt(row.lineTotal)}</span>
+                </div>
+              ))}
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
                 {isExpressOrder ? (
@@ -2287,32 +2284,32 @@ export default function CheckoutPage() {
             <div className="bg-card rounded-card shadow-card p-6 sticky top-24">
               <h2 className="pf text-lg mb-4">Order Summary</h2>
               <div className="max-h-[260px] overflow-y-auto mb-4 space-y-3">
-                {cart.map(item => (
-                  <div key={item._key} className="flex items-center gap-3 pb-3 border-b border-border/50">
+                {/* Bundle lines flattened into independent rows — each bundle
+                    item is its own line (name · Qty + its per-item price),
+                    identical to a normal item. No bundle name/header. */}
+                {cart.flatMap((item: any) => {
+                  if (item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length) {
+                    return item.bundleItems.map((bi: any, i: number) => ({
+                      key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
+                      brand: bi.brandName || null, qty: Number(bi.quantity) || 1,
+                      lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1), img: null as string | null,
+                    }));
+                  }
+                  const url = cartItemImage(item);
+                  const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : (item.img || null));
+                  return [{ key: item._key, name: item.name, brand: item.selectedBrand?.label || null, qty: item.qty, lineTotal: item.price * item.qty, img }];
+                }).map((row: any) => (
+                  <div key={row.key} className="flex items-center gap-3 pb-3 border-b border-border/50">
                     <div className="w-12 h-12 bg-warm-cream rounded-md flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border border-border">
-                      {(() => {
-                        const url = cartItemImage(item);
-                        if (url !== "/placeholder.svg") {
-                          return <img src={url} alt={item.name} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />;
-                        }
-                        return (item.img && item.img.startsWith("http"))
-                          ? <img src={item.img} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
-                          : (item.img || "📦");
-                      })()}
+                      {row.img && String(row.img).startsWith("http")
+                        ? <img src={row.img} alt={row.name} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
+                        : (row.img || "📦")}
                     </div>
                     <div className="flex-1 min-w-0">
-                      {item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length ? (
-                        item.bundleItems.map((bi: any, bi_i: number) => (
-                          <div key={bi_i} className="text-xs font-semibold leading-tight truncate">{bi.productName || bi.name || "Item"} <span className="font-normal text-forest">×{bi.quantity || 1}</span></div>
-                        ))
-                      ) : (
-                        <>
-                          <div className="text-xs font-semibold leading-tight truncate">{item.name}</div>
-                          {item.selectedBrand && <div className="text-forest text-[10px] mt-0.5">{item.selectedBrand.label} · Qty {item.qty}</div>}
-                        </>
-                      )}
+                      <div className="text-xs font-semibold leading-tight truncate">{row.name}</div>
+                      <div className="text-forest text-[10px] mt-0.5">{row.brand ? `${row.brand} · ` : ""}Qty {row.qty}</div>
                     </div>
-                    <div className="font-bold text-[13px] flex-shrink-0">{fmt(item.price * item.qty)}</div>
+                    <div className="font-bold text-[13px] flex-shrink-0">{fmt(row.lineTotal)}</div>
                   </div>
                 ))}
                 {/* Auto-added gift lines — derived, priced by the RPC (free = ₦0). */}
