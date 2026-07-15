@@ -34,6 +34,7 @@ export interface Draft {
   subscription_id: string;
   months: number;
   boxes: DraftBox[];
+  customer_email?: string;
 }
 
 export interface StartResult {
@@ -70,7 +71,7 @@ export async function getDraft(subscriptionId: string, guestToken: string | null
       subtotal: n(b.subtotal), discount_amount: n(b.discount_amount), total: n(b.total),
       items: (b.items || []).map((i: any) => ({ item_id: i.item_id, brand_id: i.brand_id, product_name: i.product_name, brand_name: i.brand_name, quantity: n(i.quantity), unit_price: n(i.unit_price), line_total: n(i.line_total) })),
     }));
-    return { subscription_id: data.subscription_id ?? subscriptionId, months: data.months ?? boxes.length, boxes };
+    return { subscription_id: data.subscription_id ?? subscriptionId, months: data.months ?? boxes.length, boxes, customer_email: data.customer_email || "" };
   }
   const { data, error } = await (supabase as any)
     .from("subscription_boxes")
@@ -146,6 +147,22 @@ export async function finalise(g: GuestCtx, subscriptionId: string, p: FinaliseP
   });
   if (error || !data?.success) throw new Error(error?.message || data?.error || "Couldn't save your delivery details.");
   return data;
+}
+
+// --- tokenised box top-up (48h edit window email) -------------------------
+export interface BoxEditable { editable: boolean; reason: string | null; hours_left: number }
+export async function boxEditable(boxId: string): Promise<BoxEditable> {
+  const { data, error } = await rpc("subscription_box_is_editable", { p_box_id: boxId });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) || null;
+  return { editable: !!row?.editable, reason: row?.reason ?? null, hours_left: n(row?.hours_left) };
+}
+
+// Prepare a pay-per-add top-up. Writes nothing; returns the amount to charge.
+export async function prepareTopup(guestToken: string, boxId: string, brandId: string, qty = 1): Promise<{ charge_amount: number; raw: any }> {
+  const { data, error } = await rpc("prepare_box_topup", { p_guest_token: guestToken, p_box_id: boxId, p_brand_id: brandId, p_quantity: qty });
+  if (error || data?.success === false) throw new Error(error?.message || data?.error || "Couldn't price that top-up.");
+  return { charge_amount: n(data?.charge_amount), raw: data };
 }
 
 // --- readiness (from backend-provided totals; only sums + compares) --------

@@ -31,6 +31,7 @@ import HomePage from "@/pages/HomePage";
 import SubscribeLanding from "@/pages/SubscribeLanding";
 import PaymentReceivedPage from "@/pages/PaymentReceivedPage";
 import SubscriptionPage from "@/pages/SubscriptionPage";
+import BoxTopUpPage from "@/pages/BoxTopUpPage";
 import SubscriptionCheckout from "@/pages/SubscriptionCheckout";
 import SubscriptionThankYou from "@/pages/SubscriptionThankYou";
 import NewSubscription from "@/pages/account/NewSubscription";
@@ -318,6 +319,8 @@ function StorefrontShell() {
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/subscribe" element={<SubscribeLanding />} />
           <Route path="/subscriptions" element={<SubscriptionPage />} />
+          {/* Tokenised single-box top-up (48h edit-window email; token is the key) */}
+          <Route path="/subscription/box/:boxId" element={<BoxTopUpPage />} />
           <Route path="/subscriptions/checkout" element={<SubscriptionCheckout />} />
           <Route path="/subscriptions/thank-you" element={<SubscriptionThankYou />} />
           <Route path="/quiz" element={<QuizPage />} />
