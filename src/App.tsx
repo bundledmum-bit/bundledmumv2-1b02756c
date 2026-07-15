@@ -292,10 +292,14 @@ function StorefrontShell() {
   return (
     <>
       <SkipNav />
+      {/* The announcements engine runs on every storefront route, including the
+          bare /quote/ surface (its popups are fixed overlays and don't disturb
+          the quote's own layout). The site chrome (legacy bar, nav) stays
+          suppressed on bare routes to avoid overlapping the quote's header. */}
+      <AnnouncementEngine topOffset={isBareRoute ? 0 : legacyBarHeight} />
       {!isBareRoute && (
         <>
           <AnnouncementBar dismissed={dismissed} onDismiss={() => setDismissed(true)} />
-          <AnnouncementEngine topOffset={legacyBarHeight} />
           <Navbar topOffset={totalBarHeight} />
         </>
       )}
