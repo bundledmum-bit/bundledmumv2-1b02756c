@@ -160,7 +160,7 @@ function ErrorCard({ title, body }: { title: string; body: string }) {
 // Shop-style picker for the top-up. "Add & pay" = pay-per-add (prepare →
 // Paystack → topup-box, no amount). Zoom lightbox like /deals, no PDP link.
 // -------------------------------------------------------------------------
-interface CatalogBrand { brand_id: string; product_name: string; brand_name: string; price: number; image: string | null; description: string | null; size_variant: string | null }
+interface CatalogBrand { brand_id: string; product_name: string; brand_name: string; price: number; image: string | null; description: string | null; size_variant: string | null; is_subscribable: boolean }
 
 function TopUpPickerModal({ token, boxId, boxNumber, payerEmail, onClose, onAdded, onFatal }: {
   token: string; boxId: string; boxNumber: number; payerEmail: string;
@@ -176,7 +176,7 @@ function TopUpPickerModal({ token, boxId, boxNumber, payerEmail, onClose, onAdde
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant, description)")
+        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant, description, is_subscribable)")
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
@@ -184,9 +184,11 @@ function TopUpPickerModal({ token, boxId, boxNumber, payerEmail, onClose, onAdde
       for (const p of (data || []) as any[]) {
         for (const b of (p.brands || [])) {
           if (b.in_stock === false) continue;
-          flat.push({ brand_id: b.id, product_name: p.name, brand_name: b.brand_name, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null, description: b.description || null, size_variant: b.size_variant || null });
+          flat.push({ brand_id: b.id, product_name: p.name, brand_name: b.brand_name, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null, description: b.description || null, size_variant: b.size_variant || null, is_subscribable: b.is_subscribable === true });
         }
       }
+      // Subscribable products first (stable), then the rest. Nothing is hidden.
+      flat.sort((a, b) => (b.is_subscribable ? 1 : 0) - (a.is_subscribable ? 1 : 0));
       return flat;
     },
   });
@@ -262,6 +264,7 @@ function TopUpPickerModal({ token, boxId, boxNumber, payerEmail, onClose, onAdde
                 <div key={o.brand_id} className="rounded-[14px] border border-border bg-card overflow-hidden flex flex-col">
                   <button type="button" onClick={() => setZoom(o)} aria-label="Zoom product" className="aspect-square bg-warm-cream relative overflow-hidden w-full group">
                     {o.image ? <img src={o.image} alt={o.product_name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">📦</div>}
+                    {o.is_subscribable && <span className="absolute top-2 left-2 rounded-pill bg-forest text-white text-[9px] font-bold px-1.5 py-0.5">Subscription favourite</span>}
                     <span className="absolute bottom-2 right-2 bg-white/85 backdrop-blur-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="w-3 h-3 text-foreground" /></span>
                   </button>
                   <div className="p-2.5 flex flex-col gap-1 flex-1">

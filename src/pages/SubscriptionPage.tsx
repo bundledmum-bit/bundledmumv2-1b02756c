@@ -66,7 +66,10 @@ export default function SubscriptionPage() {
       return null;
     } catch { return null; }
   });
-  const [step, setStep] = useState<Step>(started ? "build" : "months");
+  // Always begin at STEP 1 (choose months). A fresh CTA entry must never skip to
+  // "build" — even if a draft is left in sessionStorage from a prior session.
+  // MonthsStep offers to Continue an in-progress draft (see onResume).
+  const [step, setStep] = useState<Step>("months");
   const [firstDate, setFirstDate] = useState("");
   const [details, setDetails] = useState<DeliveryDetails | null>(null);
 
@@ -127,6 +130,7 @@ export default function SubscriptionPage() {
             preloadQty={preloadQty}
             existing={started}
             onStarted={(s) => { persist(s); setStep("build"); }}
+            onResume={() => setStep("build")}
           />
         ) : !started || !draft ? (
           <p className="text-sm text-text-light text-center py-12">Loading your boxes…</p>
@@ -180,16 +184,24 @@ function StepTrail({ step }: { step: Step }) {
 // STEP 1 — months (creates the draft; guest or signed-in)
 // -------------------------------------------------------------------------
 function MonthsStep({
-  defaultEmail, isGuest, preloadBrandId, preloadQty, existing, onStarted,
+  defaultEmail, isGuest, preloadBrandId, preloadQty, existing, onStarted, onResume,
 }: {
   defaultEmail: string; isGuest: boolean;
   preloadBrandId: string | null; preloadQty: number;
-  existing: Started | null; onStarted: (s: Started) => void;
+  existing: Started | null; onStarted: (s: Started) => void; onResume: () => void;
 }) {
   const [months, setMonths] = useState(existing?.months ?? 2);
   const [email, setEmail] = useState(!isGuest ? defaultEmail : (existing?.email || ""));
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (!isGuest && defaultEmail) setEmail(defaultEmail); }, [defaultEmail, isGuest]);
+
+  // An in-progress draft can be resumed (not when arriving to add a product —
+  // that always starts a fresh draft that pre-loads Box 1). Continuing at the
+  // same month count jumps to Build without recreating the boxes; changing the
+  // count starts over.
+  const canResume = isValidStarted(existing) && !preloadBrandId;
+  const isResume = canResume && months === existing?.months;
+  const onPrimary = () => { if (isResume) onResume(); else start(); };
 
   // Guests don't need an email yet (captured at delivery details). Signed-in
   // users are pinned to their account email so their reads/writes are theirs.
@@ -241,14 +253,21 @@ function MonthsStep({
         </section>
       )}
 
+      {canResume && (
+        <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/10 border border-forest/30 rounded-lg px-3 py-2">
+          <Check className="w-4 h-4 flex-shrink-0 mt-px" />
+          <span>You have {existing?.months} boxes in progress. Continue where you left off, or change the number of months to start over.</span>
+        </div>
+      )}
+
       <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/5 border border-forest/20 rounded-lg px-3 py-2">
         <Lock className="w-4 h-4 flex-shrink-0 mt-px" />
         <span>{PRICE_LOCK_LINE} Each box gets 5% off and free delivery, and must reach at least {fmtN(MIN_BOX_VALUE)} before you can pay.{isGuest ? " No account needed — we'll set one up after payment." : ""}</span>
       </div>
 
-      <button type="button" onClick={start} disabled={busy || months < 2 || !emailOk}
+      <button type="button" onClick={onPrimary} disabled={busy || months < 2 || !emailOk}
         className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Setting up your boxes…</> : <>Build my {months} boxes <ArrowRight className="w-4 h-4" /></>}
+        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Setting up your boxes…</> : isResume ? <>Continue building your {months} boxes <ArrowRight className="w-4 h-4" /></> : <>Build my {months} boxes <ArrowRight className="w-4 h-4" /></>}
       </button>
     </div>
   );
@@ -456,7 +475,7 @@ function ItemRow({ guest, item, onRefresh }: { guest: GuestCtx; item: DraftBox["
 // -------------------------------------------------------------------------
 // Shop-style picker (like /shop) with deals-page zoom. No route to the PDP.
 // -------------------------------------------------------------------------
-interface CatalogBrand { brand_id: string; product_name: string; brand_name: string; price: number; image: string | null; description: string | null; size_variant: string | null }
+interface CatalogBrand { brand_id: string; product_name: string; brand_name: string; price: number; image: string | null; description: string | null; size_variant: string | null; is_subscribable: boolean }
 
 function ShopPickerModal({ guest, box, onClose, onRefresh }: { guest: GuestCtx; box: DraftBox; onClose: () => void; onRefresh: () => void }) {
   const [q, setQ] = useState("");
@@ -468,7 +487,7 @@ function ShopPickerModal({ guest, box, onClose, onRefresh }: { guest: GuestCtx; 
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant, description)")
+        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant, description, is_subscribable)")
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
@@ -476,9 +495,12 @@ function ShopPickerModal({ guest, box, onClose, onRefresh }: { guest: GuestCtx; 
       for (const p of (data || []) as any[]) {
         for (const b of (p.brands || [])) {
           if (b.in_stock === false) continue;
-          flat.push({ brand_id: b.id, product_name: p.name, brand_name: b.brand_name, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null, description: b.description || null, size_variant: b.size_variant || null });
+          flat.push({ brand_id: b.id, product_name: p.name, brand_name: b.brand_name, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null, description: b.description || null, size_variant: b.size_variant || null, is_subscribable: b.is_subscribable === true });
         }
       }
+      // Subscribable products first (stable — keeps the name/brand order within
+      // each group), then the rest. Nothing is hidden.
+      flat.sort((a, b) => (b.is_subscribable ? 1 : 0) - (a.is_subscribable ? 1 : 0));
       return flat;
     },
   });
@@ -536,6 +558,7 @@ function PickerCard({ guest, boxId, option, existing, onZoom, onRefresh }: {
     <div className="rounded-[14px] border border-border bg-card overflow-hidden flex flex-col">
       <button type="button" onClick={onZoom} aria-label="Zoom product" className="aspect-square bg-warm-cream relative overflow-hidden w-full group">
         {option.image ? <img src={option.image} alt={option.product_name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">📦</div>}
+        {option.is_subscribable && <span className="absolute top-2 left-2 rounded-pill bg-forest text-white text-[9px] font-bold px-1.5 py-0.5">Subscription favourite</span>}
         <span className="absolute bottom-2 right-2 bg-white/85 backdrop-blur-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="w-3 h-3 text-foreground" /></span>
       </button>
       <div className="p-2.5 flex flex-col gap-1 flex-1">
