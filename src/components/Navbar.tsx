@@ -366,10 +366,10 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
 
             {/* Direct links */}
             <Link
-              to="/hospital-list"
+              to="/pay-later"
               className="rounded-pill px-3 py-2 text-[13px] font-semibold text-white bg-forest hover:bg-forest-deep transition-colors"
             >
-              Hospital Lists
+              Buy Now Pay Later
             </Link>
 
             <Link
@@ -557,7 +557,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
           {/* Flat links row */}
           <div className="mt-1">
             {[
-              { to: "/hospital-list", label: "Hospital Lists", variant: "highlight" },
+              { to: "/pay-later", label: "Buy Now Pay Later", variant: "highlight" },
               { to: "/deals", label: "Flash Deals", variant: "accent" },
               { to: "/push-gifts", label: "Push Gifts", variant: "default" },
               ...(showSubscribe ? [{ to: "/subscribe", label: "Subscribe", variant: "default" as const }] : []),
