@@ -16,10 +16,9 @@ import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock, Loader2 } from "lucide-react";
+import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
-import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { getBrandImage } from "@/lib/brandImage";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 import { diaperBadges } from "@/lib/diaperBrand";
@@ -1681,41 +1680,19 @@ function SubscribeInline({ productName, isSubscribable, selectedBrand, quantity 
   quantity: number;
 }) {
   const { data: settings } = useSubscriptionSettings();
-  const { user } = useCustomerAuth();
   const navigate = useNavigate();
-  const [starting, setStarting] = useState(false);
 
   // Default-hidden until the programme is confirmed on.
   if (!isSubscribable || settings?.subscription_enabled !== true) return null;
 
   const qty = Math.max(1, quantity || 1);
 
-  // For a signed-in shopper we create the 2-month draft with this item already
-  // in Box 1 via subscribe_to_product, then land her in the builder at STEP 2
-  // (?sid=). Logged-out shoppers pass the intent through (?brand_id=&qty=) and
-  // the builder collects an email at STEP 1 before calling subscribe_to_product.
-  const goToBuilder = async () => {
-    if (!selectedBrand || starting) return;
-    const email = user?.email;
-    if (!email) {
-      navigate(`/subscriptions?brand_id=${encodeURIComponent(selectedBrand.id)}&qty=${qty}`);
-      return;
-    }
-    setStarting(true);
-    try {
-      const { data, error } = await (supabase as any).rpc("subscribe_to_product", {
-        p_customer_email: email, p_brand_id: selectedBrand.id, p_quantity: qty,
-      });
-      if (error || !data?.success || !data?.subscription_id) {
-        toast.error(error?.message || data?.error || "Couldn't start your subscription. Please try again.");
-        return;
-      }
-      navigate(`/subscriptions?sid=${encodeURIComponent(data.subscription_id)}`);
-    } catch (e: any) {
-      toast.error(e?.message || "Couldn't start your subscription. Please try again.");
-    } finally {
-      setStarting(false);
-    }
+  // Funnel everyone (guest or signed-in) into the builder with this brand and
+  // quantity pre-loaded into Box 1. The builder creates the draft (guest token
+  // or owner) and adds the item — no account needed to start.
+  const goToBuilder = () => {
+    if (!selectedBrand) return;
+    navigate(`/subscriptions?brand_id=${encodeURIComponent(selectedBrand.id)}&qty=${qty}`);
   };
 
   return (
@@ -1737,10 +1714,10 @@ function SubscribeInline({ productName, isSubscribable, selectedBrand, quantity 
       <button
         type="button"
         onClick={goToBuilder}
-        disabled={!selectedBrand || starting}
+        disabled={!selectedBrand}
         className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 text-sm font-bold min-h-[48px] hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        {starting ? <><Loader2 className="w-4 h-4 animate-spin" /> Starting…</> : <><Repeat className="w-4 h-4" /> Add {productName} to a monthly box</>}
+        <Repeat className="w-4 h-4" /> Add {productName} to a monthly box
       </button>
       {!selectedBrand && (
         <p className="text-[11px] text-text-light text-center">Pick a brand above to continue</p>

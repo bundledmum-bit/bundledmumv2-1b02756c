@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Plus, Minus, X, Search, Check, Copy, CopyPlus, Loader2, Lock,
-  AlertTriangle, CalendarDays, ArrowLeft, ArrowRight, Trash2,
+  Plus, Minus, X, Search, Check, CopyPlus, Loader2, Lock,
+  AlertTriangle, CalendarDays, ArrowLeft, ArrowRight, ZoomIn, Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,70 +11,41 @@ import { getBrandImage } from "@/lib/brandImage";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useSubscriptionSettings, fmtN, formatBoxDate } from "@/hooks/useSubscription";
 import DeliveryDetailsForm, { type DeliveryDetails } from "@/components/checkout/DeliveryDetailsForm";
+import {
+  startSubscription, getDraft, addItem, setItemQty, duplicateBox, finalise, readiness,
+  MIN_BOX_VALUE, type Draft, type DraftBox, type GuestCtx,
+} from "@/lib/boxSubscription";
 import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
+// Visual box artwork. TODO: swap for the dedicated BundledMum subscription-box
+// PNG when supplied (drop it in src/assets and point BOX_IMAGE at it).
+import BOX_IMAGE from "@/assets/bundle-hero.jpg";
 
 // ===========================================================================
-// Monthly-BOX subscription builder.  Flow order (exact):
-//   STEP 1 MONTHS  → start_subscription(email, months)  [or subscribe_to_product
-//                    when arriving from a product page — box 1 pre-filled]
-//   STEP 2 BUILD   → fill each box (add/remove/qty, copy-box) until every box
-//                    clears the DB minimum
-//   STEP 3 DATE    → pick the first delivery date (min today+2); schedule is
-//                    first + 28*(n-1)
-//   STEP 4 ADDRESS → the shared checkout DeliveryDetailsForm →
-//                    finalise_subscription_schedule(date + details)
-//   PAY            → Paystack grand_total once → activate-subscription (no amount)
-//
-// All money (5% off, totals, the 50k floor, grand total) is owned by the DB —
-// this page only READS subtotal/discount/total from subscription_boxes.
+// Monthly-BOX builder. Works for GUESTS (no account) via token RPCs and for
+// signed-in customers via the owner RPCs — the src/lib/boxSubscription layer
+// hides the difference. Flow: months → build (visual boxes + shop picker) →
+// date → delivery details → review → pay → activate-subscription (no amount).
 // ===========================================================================
 
 const ACTIVE_KEY = "bm_active_box_subscription";
 const MS_DAY = 86_400_000;
-
-interface StartedBox { box_id: string; box_number: number; scheduled_date: string }
-interface Started { subscription_id: string; months: number; email: string; boxes: StartedBox[] }
-
-// Every id we send to the box RPCs must be a real UUID. A stale/corrupt blob in
-// sessionStorage with a fragment box_id (e.g. "fb1") would otherwise be passed
-// as p_box_id and blow up with `invalid input syntax for type uuid`.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+const PRICE_LOCK_LINE = "The prices you see today are locked in for every box, even if prices rise later.";
 
-// A stored subscription is only usable if start_subscription actually returned a
-// UUID subscription_id, a month count (>= 2) AND a non-empty boxes array whose
-// box_ids are all UUIDs. Anything less (a partial/legacy blob, a half-failed
-// start, or leftover test state) must NOT land the user on STEP 2 — it renders
-// the empty "0 boxes" screen or sends a truncated id to the RPC.
+interface Started { subscription_id: string; months: number; guest_token: string | null; email: string }
 function isValidStarted(s: any): s is Started {
-  return !!s
-    && isUuid(s.subscription_id)
-    && typeof s.months === "number" && s.months >= 2
-    && Array.isArray(s.boxes) && s.boxes.length > 0
-    && s.boxes.every((b: any) => b && isUuid(b.box_id));
-}
-
-interface BoxItem { id: string; brand_id: string; product_name: string | null; brand_name: string | null; quantity: number; unit_price: number; line_total: number }
-interface BoxRow {
-  id: string; box_number: number; scheduled_date: string; status: string;
-  subtotal: number; discount_amount: number; total: number;
-  subscription_box_items: BoxItem[];
-}
-interface ReadyRow {
-  ready: boolean; box_count: number; min_boxes: number; min_box_value: number;
-  grand_total: number; failing_boxes: Array<{ box_number: number; subtotal: number; short_by: number }>;
-  message: string;
+  return !!s && isUuid(s.subscription_id) && typeof s.months === "number" && s.months >= 2
+    && (s.guest_token === null || isUuid(s.guest_token));
 }
 
 type Step = "months" | "build" | "date" | "address" | "review";
-const PRICE_LOCK_LINE = "The prices you see today are locked in for every box, even if prices rise later.";
 
 export default function SubscriptionPage() {
   const { data: settings } = useSubscriptionSettings();
   const { user } = useCustomerAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const sidParam = searchParams.get("sid");
   const preloadBrandId = searchParams.get("brand_id");
   const preloadQty = Math.max(1, parseInt(searchParams.get("qty") || "1", 10) || 1);
 
@@ -83,13 +54,12 @@ export default function SubscriptionPage() {
       const raw = sessionStorage.getItem(ACTIVE_KEY);
       const parsed = raw ? JSON.parse(raw) : null;
       if (isValidStarted(parsed)) return parsed;
-      if (raw) sessionStorage.removeItem(ACTIVE_KEY); // drop stale/corrupt state
+      if (raw) sessionStorage.removeItem(ACTIVE_KEY);
       return null;
     } catch { return null; }
   });
   const [step, setStep] = useState<Step>(started ? "build" : "months");
-  const [firstDate, setFirstDate] = useState<string>("");
-  // Delivery details she entered in STEP 4, shown back on the review screen.
+  const [firstDate, setFirstDate] = useState("");
   const [details, setDetails] = useState<DeliveryDetails | null>(null);
 
   const persist = (s: Started | null) => {
@@ -97,63 +67,22 @@ export default function SubscriptionPage() {
     try { s ? sessionStorage.setItem(ACTIVE_KEY, JSON.stringify(s)) : sessionStorage.removeItem(ACTIVE_KEY); } catch { /* ignore */ }
   };
 
-  // Resume an existing subscription passed by ?sid= (product-page entry for a
-  // logged-in shopper). Load its boxes and land at STEP 2.
-  useEffect(() => {
-    if (!sidParam || (started && started.subscription_id === sidParam)) return;
-    (async () => {
-      const { data, error } = await (supabase as any)
-        .from("subscription_boxes")
-        .select("id, box_number, scheduled_date")
-        .eq("subscription_id", sidParam)
-        .order("box_number", { ascending: true });
-      if (error || !data?.length) { toast.error("Couldn't load that subscription. Start a new one below."); return; }
-      persist({
-        subscription_id: sidParam,
-        months: data.length,
-        email: user?.email || "",
-        boxes: data.map((b: any) => ({ box_id: b.id, box_number: b.box_number, scheduled_date: b.scheduled_date })),
-      });
-      setStep("build");
-    })();
-  }, [sidParam]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  const guest: GuestCtx = { guestToken: started?.guest_token ?? null };
   const subscriptionId = started?.subscription_id || null;
 
-  const { data: boxes = [], refetch: refetchBoxes, isFetching: boxesFetching } = useQuery({
-    queryKey: ["sub-boxes", subscriptionId],
+  const { data: draft, refetch: refetchDraft, isFetching } = useQuery({
+    queryKey: ["box-draft", subscriptionId, started?.guest_token],
     enabled: !!subscriptionId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("subscription_boxes")
-        .select("id, box_number, scheduled_date, status, subtotal, discount_amount, total, subscription_box_items(id, brand_id, product_name, brand_name, quantity, unit_price, line_total)")
-        .eq("subscription_id", subscriptionId)
-        .order("box_number", { ascending: true });
-      if (error) throw error;
-      return (data || []) as BoxRow[];
-    },
+    queryFn: () => getDraft(subscriptionId as string, started?.guest_token ?? null),
   });
 
-  const { data: ready, refetch: refetchReady } = useQuery({
-    queryKey: ["sub-ready", subscriptionId],
-    enabled: !!subscriptionId,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("subscription_ready_to_pay", { p_subscription_id: subscriptionId });
-      if (error) throw error;
-      return ((data && data[0]) || null) as ReadyRow | null;
-    },
-  });
+  const ready = useMemo(() => readiness(draft?.boxes || []), [draft]);
+  const refresh = () => { refetchDraft(); };
 
-  const refresh = () => { refetchBoxes(); refetchReady(); };
-
-  // Never sit on a post-STEP-1 screen without a real subscription (refresh with
-  // cleared state, a bad product-page entry, a half-failed start). Send her back
-  // to STEP 1 instead of rendering an empty "0 boxes" screen. Skipped while a
-  // ?sid= resume is still in flight (that effect persists then sets the step).
   useEffect(() => {
-    if (step === "months" || sidParam) return;
+    if (step === "months") return;
     if (!isValidStarted(started)) setStep("months");
-  }, [step, started, sidParam]);
+  }, [step, started]);
 
   if (!settings) return <div className="min-h-screen flex items-center justify-center text-sm text-text-light">Loading…</div>;
   if (!settings.subscription_enabled) {
@@ -170,61 +99,47 @@ export default function SubscriptionPage() {
   return (
     <div className="min-h-screen bg-[#FFF8F4] pb-24 pt-20 md:pt-24">
       <header className="relative px-4 md:px-8 py-8 text-primary-foreground" style={{ background: "linear-gradient(135deg, #2D6A4F 0%, #1E5C44 100%)" }}>
-        <div className="max-w-[820px] mx-auto text-center space-y-2.5">
+        <div className="max-w-[860px] mx-auto text-center space-y-2.5">
           <img src={bmLogoCoral} alt="BundledMum" className="h-8 mx-auto" />
           <h1 className="pf text-2xl md:text-3xl font-bold leading-tight">Build your monthly boxes</h1>
-          <p className="text-sm text-primary-foreground/85 max-w-xl mx-auto">One box a month, filled your way. Pay once up front — 5% off and free delivery on every box.</p>
+          <p className="text-sm text-primary-foreground/85 max-w-xl mx-auto">One box a month, filled your way. Pay once up front — 5% off and free delivery on every box. No account needed.</p>
           <div className="inline-flex items-start gap-1.5 bg-white/15 rounded-lg px-3 py-2 text-[12px] text-left max-w-md">
             <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" /><span>{PRICE_LOCK_LINE}</span>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[820px] mx-auto px-4 md:px-8 py-6">
+      <main className="max-w-[860px] mx-auto px-4 md:px-8 py-6">
         <StepTrail step={step} />
         {step === "months" ? (
           <MonthsStep
             defaultEmail={user?.email || ""}
-            emailLocked={!!user?.email}
+            isGuest={!user}
             preloadBrandId={preloadBrandId}
             preloadQty={preloadQty}
             existing={started}
             onStarted={(s) => { persist(s); setStep("build"); }}
           />
-        ) : !started ? (
+        ) : !started || !draft ? (
           <p className="text-sm text-text-light text-center py-12">Loading your boxes…</p>
         ) : step === "build" ? (
           <BuildStep
-            started={started}
-            boxes={boxes}
-            ready={ready}
-            boxesFetching={boxesFetching}
+            guest={guest} draft={draft} ready={ready} isFetching={isFetching}
             onRefresh={refresh}
             onBackToMonths={() => setStep("months")}
             onContinue={() => setStep("date")}
           />
         ) : step === "date" ? (
-          <DateStep
-            months={started.months}
-            firstDate={firstDate}
-            setFirstDate={setFirstDate}
-            onBack={() => setStep("build")}
-            onContinue={() => setStep("address")}
-          />
+          <DateStep months={draft.months} firstDate={firstDate} setFirstDate={setFirstDate} onBack={() => setStep("build")} onContinue={() => setStep("address")} />
         ) : step === "address" ? (
           <AddressStep
-            started={started}
-            firstDate={firstDate}
+            guest={guest} started={started} firstDate={firstDate}
             onBack={() => setStep("date")}
             onFinalised={(d) => { setDetails(d); refresh(); setStep("review"); }}
           />
         ) : (
           <ReviewStep
-            started={started}
-            boxes={boxes}
-            ready={ready}
-            details={details}
-            grandTotal={ready?.grand_total ?? boxes.reduce((s, b) => s + Number(b.total || 0), 0)}
+            started={started} draft={draft} ready={ready} details={details}
             onBack={() => setStep("address")}
             onDone={() => { persist(null); navigate("/account/subscriptions?new=true"); }}
           />
@@ -254,95 +169,40 @@ function StepTrail({ step }: { step: Step }) {
 }
 
 // -------------------------------------------------------------------------
-// STEP 1 — months (creates the subscription + boxes)
+// STEP 1 — months (creates the draft; guest or signed-in)
 // -------------------------------------------------------------------------
 function MonthsStep({
-  defaultEmail, emailLocked, preloadBrandId, preloadQty, existing, onStarted,
+  defaultEmail, isGuest, preloadBrandId, preloadQty, existing, onStarted,
 }: {
-  defaultEmail: string;
-  emailLocked: boolean;
-  preloadBrandId: string | null;
-  preloadQty: number;
-  existing: Started | null;
-  onStarted: (s: Started) => void;
+  defaultEmail: string; isGuest: boolean;
+  preloadBrandId: string | null; preloadQty: number;
+  existing: Started | null; onStarted: (s: Started) => void;
 }) {
   const [months, setMonths] = useState(existing?.months ?? 2);
-  // When signed in, the subscription MUST be created under the account email —
-  // the box-read RLS only returns rows to the authenticated owner, so a
-  // different email would leave STEP 2 unable to see its own boxes.
-  const [email, setEmail] = useState(emailLocked ? defaultEmail : (existing?.email || defaultEmail));
+  const [email, setEmail] = useState(!isGuest ? defaultEmail : (existing?.email || ""));
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (emailLocked && defaultEmail) setEmail(defaultEmail); else if (defaultEmail && !email) setEmail(defaultEmail); }, [defaultEmail, emailLocked]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!isGuest && defaultEmail) setEmail(defaultEmail); }, [defaultEmail, isGuest]);
 
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-
-  // Read the items currently in each box so a month change can replay them into
-  // the fresh box set (by box_number) rather than losing them.
-  const captureExistingItems = async (subId: string): Promise<Map<number, Array<{ brand_id: string; quantity: number }>>> => {
-    const map = new Map<number, Array<{ brand_id: string; quantity: number }>>();
-    const { data } = await (supabase as any)
-      .from("subscription_boxes")
-      .select("box_number, subscription_box_items(brand_id, quantity)")
-      .eq("subscription_id", subId);
-    for (const b of (data || []) as any[]) {
-      map.set(b.box_number, (b.subscription_box_items || []).map((i: any) => ({ brand_id: i.brand_id, quantity: i.quantity })));
-    }
-    return map;
-  };
+  // Guests don't need an email yet (captured at delivery details). Signed-in
+  // users are pinned to their account email so their reads/writes are theirs.
+  const emailOk = isGuest || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   const start = async () => {
     if (months < 2) { toast.error("A subscription is at least 2 months (2 boxes)."); return; }
-    if (!emailOk) { toast.error("Enter a valid email so we can send your confirmation."); return; }
+    if (!emailOk) { toast.error("Enter a valid email."); return; }
     setBusy(true);
     try {
-      // Changing months on an already-started subscription: re-create the box
-      // set and replay existing items by box number.
-      const prevItems = existing ? await captureExistingItems(existing.subscription_id) : null;
-
-      let subId: string; let boxes: StartedBox[]; let realMonths = months;
-      if (preloadBrandId && !existing) {
-        // Product-page entry (logged-out path): create a 2-month draft with the
-        // item already in box 1, then honour the chosen month count if > 2.
-        const { data, error } = await (supabase as any).rpc("subscribe_to_product", {
-          p_customer_email: email.trim(), p_brand_id: preloadBrandId, p_quantity: preloadQty,
-        });
-        if (error || !data?.success) { toast.error(error?.message || data?.error || "Could not start your subscription."); return; }
-        subId = data.subscription_id;
-        boxes = (data.boxes || []) as StartedBox[];
-        realMonths = data.months ?? 2;
-        if (months > realMonths) {
-          // Grow to the chosen count via start_subscription, replaying box 1's item.
-          const grown = await (supabase as any).rpc("start_subscription", { p_customer_email: email.trim(), p_months: months });
-          if (!grown.error && grown.data?.success) {
-            const item = (data.boxes?.[0]) ? { brand_id: preloadBrandId, quantity: preloadQty } : null;
-            subId = grown.data.subscription_id; boxes = grown.data.boxes; realMonths = grown.data.months ?? months;
-            if (item && boxes[0]) await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: boxes[0].box_id, p_brand_id: item.brand_id, p_quantity: item.quantity });
-          }
-        }
-      } else {
-        const { data, error } = await (supabase as any).rpc("start_subscription", { p_customer_email: email.trim(), p_months: months });
-        if (error || !data?.success) { toast.error(error?.message || data?.error || "Could not start your subscription."); return; }
-        subId = data.subscription_id; boxes = (data.boxes || []) as StartedBox[]; realMonths = data.months ?? months;
-        // Replay items from the previous (superseded) draft.
-        if (prevItems) {
-          for (const box of boxes) {
-            for (const it of (prevItems.get(box.box_number) || [])) {
-              await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: box.box_id, p_brand_id: it.brand_id, p_quantity: it.quantity });
-            }
-          }
-          const dropped = Array.from(prevItems.keys()).filter(n => n > realMonths).length;
-          if (dropped > 0) toast.message(`Fewer months — the last ${dropped} box${dropped === 1 ? "" : "es"} of items were dropped.`);
-        }
+      const res = await startSubscription({ guest: isGuest, email: email.trim(), months });
+      if (!isUuid(res.subscription_id) || res.boxes.length === 0) { toast.error("We couldn't set up your boxes. Please try again."); return; }
+      const g: GuestCtx = { guestToken: res.guest_token };
+      // Pre-load a product into Box 1 when arriving from a product page.
+      if (preloadBrandId && isUuid(preloadBrandId) && res.boxes[0]) {
+        try { await addItem(g, res.boxes[0].box_id, preloadBrandId, preloadQty); toast.success("Added your item to Box 1."); }
+        catch (e: any) { toast.error(`Couldn't pre-fill Box 1: ${e?.message || "add it manually"}`); }
       }
-      // Never advance to STEP 2 on a malformed success (no id, or no boxes) —
-      // that is exactly what produced the empty "0 boxes" screen.
-      if (!subId || !Array.isArray(boxes) || boxes.length === 0) {
-        toast.error("We couldn't set up your boxes. Please try again.");
-        return;
-      }
-      onStarted({ subscription_id: subId, months: realMonths || boxes.length, email: email.trim(), boxes });
+      onStarted({ subscription_id: res.subscription_id, months: res.months || res.boxes.length, guest_token: res.guest_token, email: email.trim() });
     } catch (e: any) {
-      toast.error(`Could not start your subscription: ${e?.message || "unexpected error"}`);
+      toast.error(e?.message || "Could not start your subscription.");
     } finally {
       setBusy(false);
     }
@@ -358,104 +218,55 @@ function MonthsStep({
           <div className="text-3xl font-bold tabular-nums w-12 text-center">{months}</div>
           <button type="button" onClick={() => setMonths(m => Math.min(12, m + 1))} disabled={months >= 12} aria-label="More months" className="w-11 h-11 rounded-full border border-input inline-flex items-center justify-center disabled:opacity-40"><Plus className="w-4 h-4" /></button>
           <div className="flex flex-wrap gap-1.5 ml-1">
-            {[2, 3, 6, 12].map(m => (
-              <button key={m} type="button" onClick={() => setMonths(m)} className={`rounded-pill px-3 py-1.5 text-xs font-semibold border ${months === m ? "border-forest bg-forest/10 text-forest" : "border-border text-text-med"}`}>{m} mo</button>
-            ))}
+            {[2, 3, 6, 12].map(m => <button key={m} type="button" onClick={() => setMonths(m)} className={`rounded-pill px-3 py-1.5 text-xs font-semibold border ${months === m ? "border-forest bg-forest/10 text-forest" : "border-border text-text-med"}`}>{m} mo</button>)}
           </div>
         </div>
       </section>
 
-      <section className="bg-card border border-border rounded-card p-4 md:p-5">
-        <label className="block">
-          <span className="text-xs font-semibold text-text-med uppercase tracking-wide">Email</span>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com" readOnly={emailLocked}
-            className={`mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm font-body outline-none min-h-[44px] ${emailLocked ? "bg-muted/50 text-text-med" : "bg-card focus:border-forest"}`} />
-        </label>
-        <p className="text-[11px] text-text-light mt-1.5">
-          {emailLocked ? "Your boxes are saved to your account so you can manage them anytime." : "We'll email your confirmation here."} You'll add your delivery date and address after building your boxes.
-        </p>
-      </section>
+      {!isGuest && (
+        <section className="bg-card border border-border rounded-card p-4 md:p-5">
+          <label className="block">
+            <span className="text-xs font-semibold text-text-med uppercase tracking-wide">Email</span>
+            <input type="email" value={email} readOnly className="mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-muted/50 text-text-med font-body outline-none min-h-[44px]" />
+          </label>
+          <p className="text-[11px] text-text-light mt-1.5">Your boxes are saved to your account. You'll add the delivery date and address after building.</p>
+        </section>
+      )}
 
       <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/5 border border-forest/20 rounded-lg px-3 py-2">
         <Lock className="w-4 h-4 flex-shrink-0 mt-px" />
-        <span>{PRICE_LOCK_LINE} Each box gets 5% off and free delivery, and must reach ₦50,000 before you can pay.</span>
+        <span>{PRICE_LOCK_LINE} Each box gets 5% off and free delivery, and must reach {fmtN(MIN_BOX_VALUE)} before you can pay.{isGuest ? " No account needed — we'll set one up after payment." : ""}</span>
       </div>
 
       <button type="button" onClick={start} disabled={busy || months < 2 || !emailOk}
         className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Setting up your boxes…</> : <>{existing ? "Update" : "Build"} my {months} boxes <ArrowRight className="w-4 h-4" /></>}
+        {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Setting up your boxes…</> : <>Build my {months} boxes <ArrowRight className="w-4 h-4" /></>}
       </button>
     </div>
   );
 }
 
 // -------------------------------------------------------------------------
-// STEP 2 — build the boxes
+// STEP 2 — visual boxes + shop-style picker
 // -------------------------------------------------------------------------
 function BuildStep({
-  started, boxes, ready, boxesFetching, onRefresh, onBackToMonths, onContinue,
+  guest, draft, ready, isFetching, onRefresh, onBackToMonths, onContinue,
 }: {
-  started: Started;
-  boxes: BoxRow[];
-  ready: ReadyRow | null;
-  boxesFetching: boolean;
-  onRefresh: () => void;
-  onBackToMonths: () => void;
-  onContinue: () => void;
+  guest: GuestCtx; draft: Draft; ready: ReturnType<typeof readiness>; isFetching: boolean;
+  onRefresh: () => void; onBackToMonths: () => void; onContinue: () => void;
 }) {
-  const [addTarget, setAddTarget] = useState<BoxRow | null>(null);
-  const [copyTarget, setCopyTarget] = useState<BoxRow | null>(null);
-  const [dupBusy, setDupBusy] = useState(false);
-
-  const minBoxValue = ready?.min_box_value ?? 50000;
-  const failingByNumber = new Map((ready?.failing_boxes || []).map(f => [f.box_number, f]));
-
-  // Source of truth for WHICH boxes exist = started.boxes (returned by
-  // start_subscription). Live item/total data is merged in from the
-  // subscription_boxes query by box_id when it has loaded; until then (or if the
-  // read is empty) each box still renders with its date + an empty picker, so
-  // STEP 2 is never a blank "0 boxes" screen.
-  const displayBoxes: BoxRow[] = useMemo(() => {
-    const live = new Map(boxes.map(b => [b.id, b]));
-    return [...started.boxes]
-      .sort((a, b) => a.box_number - b.box_number)
-      .map(sb => live.get(sb.box_id) ?? {
-        id: sb.box_id, box_number: sb.box_number, scheduled_date: sb.scheduled_date,
-        status: "draft", subtotal: 0, discount_amount: 0, total: 0, subscription_box_items: [],
-      });
-  }, [started.boxes, boxes]);
-
-  const boxCount = started.months || displayBoxes.length;
-  const box1 = displayBoxes.find(b => b.box_number === 1) || null;
-
-  // Copy Box 1 into every other box.
-  const duplicateBox1 = async () => {
-    if (!box1 || dupBusy) return;
-    if (!box1.subscription_box_items?.length) { toast.error("Add items to Box 1 first."); return; }
-    setDupBusy(true);
-    try {
-      let count = 0;
-      for (const box of displayBoxes) {
-        if (box.id === box1.id) continue;
-        for (const it of box1.subscription_box_items) {
-          const { error } = await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: box.id, p_brand_id: it.brand_id, p_quantity: it.quantity });
-          if (error) { toast.error(`Stopped: ${error.message || "an item couldn't be added"}`); setDupBusy(false); onRefresh(); return; }
-          count += 1;
-        }
-      }
-      toast.success(`Copied Box 1 into ${displayBoxes.length - 1} other box${displayBoxes.length - 1 === 1 ? "" : "es"}. Add any unique items next.`);
-      onRefresh();
-    } finally {
-      setDupBusy(false);
-    }
-  };
+  const [openBox, setOpenBox] = useState<DraftBox | null>(null);
+  const boxes = draft.boxes;
+  const failingByNumber = new Map(ready.failing.map(f => [f.box_number, f]));
+  // Keep the opened box in sync with refreshed draft data.
+  const liveOpenBox = openBox ? (boxes.find(b => b.box_id === openBox.box_id) || null) : null;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <h2 className="pf text-xl font-bold">Fill your {boxCount} boxes</h2>
-          <p className="text-sm text-text-med">Each box is filled its own way and must reach {fmtN(minBoxValue)}.</p>
+          <h2 className="pf text-xl font-bold">Fill your {draft.months} boxes</h2>
+          <p className="text-sm text-text-med">Tap a box to fill it. Each must reach {fmtN(MIN_BOX_VALUE)}.</p>
         </div>
         <button type="button" onClick={onBackToMonths} className="text-xs text-text-med hover:underline inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Change months</button>
       </div>
@@ -464,142 +275,309 @@ function BuildStep({
         <Lock className="w-4 h-4 flex-shrink-0 mt-px" /><span>{PRICE_LOCK_LINE}</span>
       </div>
 
-      {box1 && (box1.subscription_box_items?.length || 0) > 0 && displayBoxes.length > 1 && (
-        <button type="button" onClick={duplicateBox1} disabled={dupBusy}
-          className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-forest bg-forest/5 text-forest px-4 py-2.5 text-sm font-semibold hover:bg-forest/10 disabled:opacity-50">
-          {dupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CopyPlus className="w-4 h-4" />} Copy Box 1 into every other box
-        </button>
-      )}
-
-      <div className="space-y-4">
-        {displayBoxes.map(box => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {boxes.map(box => {
           const fail = failingByNumber.get(box.box_number);
-          const subtotal = Number(box.subtotal || 0);
-          const shortBy = fail ? Number(fail.short_by) : Math.max(0, minBoxValue - subtotal);
-          const clears = shortBy <= 0 && (box.subscription_box_items?.length || 0) > 0;
-          const pct = Math.min(100, minBoxValue > 0 ? Math.round((subtotal / minBoxValue) * 100) : 0);
-          const otherFilled = displayBoxes.filter(b => b.id !== box.id && (b.subscription_box_items?.length || 0) > 0);
+          const shortBy = fail ? fail.short_by : Math.max(0, MIN_BOX_VALUE - box.subtotal);
+          const clears = shortBy <= 0 && box.items.length > 0;
+          const pct = Math.min(100, Math.round((box.subtotal / MIN_BOX_VALUE) * 100));
+          const itemCount = box.items.reduce((s, i) => s + i.quantity, 0);
           return (
-            <section key={box.id} className={`bg-card border rounded-card p-4 ${clears ? "border-forest/40" : "border-border"}`}>
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div>
-                  <h3 className="font-bold text-sm">Box {box.box_number}</h3>
-                  <p className="text-[11px] text-text-med inline-flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {formatBoxDate(box.scheduled_date)} <span className="text-text-light">(provisional)</span></p>
+            <button key={box.box_id} type="button" onClick={() => setOpenBox(box)}
+              className={`text-left bg-card border rounded-card overflow-hidden hover:shadow-card transition-shadow ${clears ? "border-forest/50" : "border-border"}`}>
+              <div className="relative aspect-[16/10] bg-warm-cream">
+                <img src={BOX_IMAGE} alt={`Box ${box.box_number}`} className="w-full h-full object-cover" />
+                <span className="absolute top-2 left-2 rounded-pill bg-white/90 backdrop-blur-sm text-[11px] font-bold px-2 py-0.5">Box {box.box_number}</span>
+                <span className={`absolute top-2 right-2 rounded-pill text-[10px] font-bold px-2 py-0.5 ${clears ? "bg-forest text-white" : "bg-coral text-white"}`}>{clears ? "Ready ✓" : `${fmtN(shortBy)} to go`}</span>
+              </div>
+              <div className="p-3 space-y-1.5">
+                <p className="text-[11px] text-text-med inline-flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {formatBoxDate(box.scheduled_date)}</p>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div className={`h-full ${clears ? "bg-forest" : "bg-coral"}`} style={{ width: `${pct}%` }} />
                 </div>
-                <span className={`text-[11px] font-semibold inline-flex items-center gap-1 ${clears ? "text-forest" : "text-amber-700"}`}>
-                  {clears ? <><Check className="w-3.5 h-3.5" /> Clears {fmtN(minBoxValue)}</> : `${fmtN(shortBy)} to go`}
-                </span>
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-text-med">{itemCount} item{itemCount === 1 ? "" : "s"} · <span className="font-semibold text-foreground tabular-nums">{fmtN(box.subtotal)}</span></span>
+                  <span className="text-forest font-semibold">{clears ? "Open" : "Fill box"} →</span>
+                </div>
+                <p className="text-[11px] text-forest font-semibold inline-flex items-center gap-1"><Check className="w-3 h-3" /> Free delivery and 5% off this box{box.discount_amount > 0 ? ` — save ${fmtN(box.discount_amount)}` : ""}.</p>
               </div>
-
-              {(box.subscription_box_items?.length || 0) === 0 ? (
-                <p className="text-[13px] text-text-light py-2">Empty — add products to reach {fmtN(minBoxValue)}.</p>
-              ) : (
-                <ul className="divide-y divide-border/60 mb-2">
-                  {box.subscription_box_items.map(it => (
-                    <BoxItemRow key={it.id} item={it} onChanged={onRefresh} />
-                  ))}
-                </ul>
-              )}
-
-              <div className="h-2 rounded-full bg-muted overflow-hidden">
-                <div className={`h-full ${clears ? "bg-forest" : "bg-coral"}`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="flex items-center justify-between mt-1.5 text-[12px] flex-wrap gap-x-3">
-                <span className="text-text-med">Subtotal <span className="font-semibold text-foreground tabular-nums">{fmtN(subtotal)}</span></span>
-                <span className="text-text-med">Box total <span className="font-semibold text-foreground tabular-nums">{fmtN(box.total)}</span></span>
-              </div>
-              {/* Value line — reads discount_amount from subscription_boxes (never
-                  computed here). Shown on every box; names the saving when set. */}
-              <p className="mt-1.5 text-[12px] text-forest font-semibold inline-flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Free delivery and 5% off this box{Number(box.discount_amount) > 0 ? ` — you save ${fmtN(box.discount_amount)}` : ""}.
-              </p>
-              {!clears && <p className="text-[12px] text-amber-700 mt-1 font-medium">Add {fmtN(shortBy)} more to this box.</p>}
-
-              <div className="flex flex-wrap gap-2 mt-3">
-                <button type="button" onClick={() => setAddTarget(box)} className="inline-flex items-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-1.5 text-xs font-semibold hover:bg-forest-deep"><Plus className="w-3.5 h-3.5" /> Add products</button>
-                {otherFilled.length > 0 && (
-                  <button type="button" onClick={() => setCopyTarget(box)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><Copy className="w-3.5 h-3.5" /> Copy another box in</button>
-                )}
-              </div>
-            </section>
+            </button>
           );
         })}
       </div>
 
-      {/* Continue is gated on the DB: every box must clear the minimum. */}
       <section className="bg-card border border-border rounded-card p-4 space-y-3">
-        {!ready?.ready && ready?.message && (
+        {!ready.ready && (
           <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /><span>{ready.message}</span>
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" />
+            <span>Every box must reach {fmtN(MIN_BOX_VALUE)} before you can pay.{ready.failing.length ? ` Short: ${ready.failing.map(f => `Box ${f.box_number} (${fmtN(f.short_by)})`).join(", ")}.` : ""}</span>
           </div>
         )}
-        <button type="button" onClick={onContinue} disabled={!ready?.ready || boxesFetching}
+        <button type="button" onClick={onContinue} disabled={!ready.ready || isFetching}
           className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-          {ready?.ready ? <>Continue to delivery date <ArrowRight className="w-4 h-4" /></> : "Every box must reach the minimum first"}
+          {ready.ready ? <>Continue to delivery date <ArrowRight className="w-4 h-4" /></> : "Every box must reach the minimum first"}
         </button>
       </section>
 
-      {addTarget && <AddProductsModal box={addTarget} onClose={() => setAddTarget(null)} onAdded={onRefresh} />}
-      {copyTarget && <CopyBoxModal target={copyTarget} sources={displayBoxes.filter(b => b.id !== copyTarget.id && (b.subscription_box_items?.length || 0) > 0)} onClose={() => setCopyTarget(null)} onCopied={onRefresh} />}
+      {liveOpenBox && (
+        <BoxDetailModal guest={guest} draft={draft} box={liveOpenBox} onClose={() => setOpenBox(null)} onRefresh={onRefresh} />
+      )}
     </div>
   );
 }
 
-// Item row with editable qty + remove (direct subscription_box_items ops).
-function BoxItemRow({ item, onChanged }: { item: BoxItem; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
+// -------------------------------------------------------------------------
+// Box detail — items with steppers/remove, "Add products", duplicate
+// -------------------------------------------------------------------------
+function BoxDetailModal({ guest, draft, box, onClose, onRefresh }: {
+  guest: GuestCtx; draft: Draft; box: DraftBox; onClose: () => void; onRefresh: () => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [dupBusy, setDupBusy] = useState(false);
+  const shortBy = Math.max(0, MIN_BOX_VALUE - box.subtotal);
+  const clears = shortBy <= 0 && box.items.length > 0;
 
-  const setQty = async (next: number) => {
-    if (busy) return;
-    if (next < 1) { await remove(); return; }
-    setBusy(true);
-    try {
-      const { error } = await (supabase as any).from("subscription_box_items").update({ quantity: next }).eq("id", item.id);
-      if (error) { toast.error(error.message || "Couldn't update quantity."); return; }
-      onChanged();
-    } finally { setBusy(false); }
-  };
-  const remove = async () => {
-    setBusy(true);
-    try {
-      const { error } = await (supabase as any).from("subscription_box_items").delete().eq("id", item.id);
-      if (error) { toast.error(error.message || "Couldn't remove item."); return; }
-      onChanged();
-    } finally { setBusy(false); }
+  const duplicate = async () => {
+    if (dupBusy) return;
+    if (!box.items.length) { toast.error("Add items to this box first."); return; }
+    setDupBusy(true);
+    try { await duplicateBox(guest, draft, box.box_id); toast.success("Copied into every other box. You can still customise each one."); onRefresh(); }
+    catch (e: any) { toast.error(e?.message || "Couldn't copy the box."); }
+    finally { setDupBusy(false); }
   };
 
   return (
-    <li className="flex items-center gap-2 py-1.5 text-[13px]">
+    <div className="fixed inset-0 z-[200] bg-foreground/50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
+      <div className="bg-card w-full max-w-[560px] rounded-t-2xl md:rounded-xl max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div>
+            <h3 className="font-bold text-sm">Box {box.box_number}</h3>
+            <p className="text-[11px] text-text-med inline-flex items-center gap-1"><CalendarDays className="w-3 h-3" /> {formatBoxDate(box.scheduled_date)}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted inline-flex items-center justify-center"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-3 flex-1">
+          <div className={`rounded-lg px-3 py-2 text-[12px] font-semibold flex items-center justify-between ${clears ? "bg-forest/10 text-forest" : "bg-amber-50 text-amber-800"}`}>
+            <span>{clears ? "This box is ready ✓" : `Add ${fmtN(shortBy)} more`}</span>
+            <span className="tabular-nums">{fmtN(box.subtotal)} / {fmtN(MIN_BOX_VALUE)}</span>
+          </div>
+          <p className="text-[11px] text-forest font-semibold inline-flex items-center gap-1"><Check className="w-3 h-3" /> Free delivery and 5% off this box{box.discount_amount > 0 ? ` — you save ${fmtN(box.discount_amount)}` : ""}.</p>
+
+          {box.items.length === 0 ? (
+            <p className="text-[13px] text-text-light py-4 text-center">This box is empty. Add products to reach {fmtN(MIN_BOX_VALUE)}.</p>
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {box.items.map(it => <ItemRow key={it.item_id} guest={guest} item={it} onRefresh={onRefresh} />)}
+            </ul>
+          )}
+        </div>
+
+        <div className="p-3 border-t border-border space-y-2">
+          <button type="button" onClick={() => setPickerOpen(true)} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-forest-deep"><Plus className="w-4 h-4" /> Add products</button>
+          {box.items.length > 0 && draft.boxes.length > 1 && (
+            <button type="button" onClick={duplicate} disabled={dupBusy} className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-forest text-forest px-4 py-2.5 text-sm font-semibold hover:bg-forest/5 disabled:opacity-50">
+              {dupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CopyPlus className="w-4 h-4" />} Use this box for every month
+            </button>
+          )}
+          <button type="button" onClick={onClose} className="w-full rounded-lg border border-border py-2 text-sm font-semibold hover:bg-muted">Done</button>
+        </div>
+      </div>
+
+      {pickerOpen && <ShopPickerModal guest={guest} box={box} onClose={() => setPickerOpen(false)} onRefresh={onRefresh} />}
+    </div>
+  );
+}
+
+function ItemRow({ guest, item, onRefresh }: { guest: GuestCtx; item: DraftBox["items"][number]; onRefresh: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const change = async (qty: number) => {
+    if (busy) return;
+    setBusy(true);
+    try { await setItemQty(guest, item.item_id, qty); onRefresh(); }
+    catch (e: any) { toast.error(e?.message || "Couldn't update the item."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <li className="flex items-center gap-2 py-2 text-[13px]">
       <span className="min-w-0 flex-1 truncate">{item.product_name || "Item"} <span className="text-text-light">· {item.brand_name}</span><br /><span className="text-[11px] text-text-light">{fmtN(item.unit_price)} each · price locked</span></span>
       <div className="flex items-center gap-1 flex-shrink-0">
-        <button type="button" onClick={() => setQty(item.quantity - 1)} disabled={busy} aria-label="Decrease" className="w-7 h-7 rounded-full border border-input inline-flex items-center justify-center disabled:opacity-40"><Minus className="w-3 h-3" /></button>
+        <button type="button" onClick={() => change(item.quantity - 1)} disabled={busy} aria-label="Decrease" className="w-7 h-7 rounded-full border border-input inline-flex items-center justify-center disabled:opacity-40"><Minus className="w-3 h-3" /></button>
         <span className="w-6 text-center tabular-nums font-semibold">{item.quantity}</span>
-        <button type="button" onClick={() => setQty(item.quantity + 1)} disabled={busy} aria-label="Increase" className="w-7 h-7 rounded-full border border-input inline-flex items-center justify-center disabled:opacity-40"><Plus className="w-3 h-3" /></button>
+        <button type="button" onClick={() => change(item.quantity + 1)} disabled={busy} aria-label="Increase" className="w-7 h-7 rounded-full border border-input inline-flex items-center justify-center disabled:opacity-40"><Plus className="w-3 h-3" /></button>
       </div>
       <span className="w-20 text-right font-semibold tabular-nums flex-shrink-0">{fmtN(item.line_total)}</span>
-      <button type="button" onClick={remove} disabled={busy} aria-label="Remove item" className="w-7 h-7 rounded-full hover:bg-muted inline-flex items-center justify-center flex-shrink-0 text-text-light hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+      <button type="button" onClick={() => change(0)} disabled={busy} aria-label="Remove item" className="w-7 h-7 rounded-full hover:bg-muted inline-flex items-center justify-center flex-shrink-0 text-text-light hover:text-destructive"><X className="w-3.5 h-3.5" /></button>
     </li>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Shop-style picker (like /shop) with deals-page zoom. No route to the PDP.
+// -------------------------------------------------------------------------
+interface CatalogBrand { brand_id: string; product_name: string; brand_name: string; price: number; image: string | null; description: string | null; size_variant: string | null }
+
+function ShopPickerModal({ guest, box, onClose, onRefresh }: { guest: GuestCtx; box: DraftBox; onClose: () => void; onRefresh: () => void }) {
+  const [q, setQ] = useState("");
+  const [zoom, setZoom] = useState<CatalogBrand | null>(null);
+
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ["box-catalog"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant, description)")
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      const flat: CatalogBrand[] = [];
+      for (const p of (data || []) as any[]) {
+        for (const b of (p.brands || [])) {
+          if (b.in_stock === false) continue;
+          flat.push({ brand_id: b.id, product_name: p.name, brand_name: b.brand_name, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null, description: b.description || null, size_variant: b.size_variant || null });
+        }
+      }
+      return flat;
+    },
+  });
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return (s ? options.filter(o => `${o.product_name} ${o.brand_name}`.toLowerCase().includes(s)) : options).slice(0, 120);
+  }, [q, options]);
+
+  // Current quantity + item_id of each brand in THIS box (from the live draft).
+  const inBox = useMemo(() => new Map(box.items.map(i => [i.brand_id, i])), [box.items]);
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-foreground/50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
+      <div className="bg-card w-full max-w-[720px] rounded-t-2xl md:rounded-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="font-bold text-sm">Add products to Box {box.box_number}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted inline-flex items-center justify-center"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4 border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search products…" className="w-full pl-9 pr-3 py-2.5 border border-input rounded-lg text-sm bg-background" />
+          </div>
+        </div>
+        <div className="overflow-y-auto p-3">
+          {isLoading ? (
+            <p className="text-sm text-text-light text-center py-10">Loading products…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-text-light text-center py-10">No products match “{q}”.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {filtered.map(o => (
+                <PickerCard key={o.brand_id} guest={guest} boxId={box.box_id} option={o} existing={inBox.get(o.brand_id)} onZoom={() => setZoom(o)} onRefresh={onRefresh} />
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="p-3 border-t border-border">
+          <button type="button" onClick={onClose} className="w-full rounded-lg bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep">Done</button>
+        </div>
+      </div>
+
+      {zoom && <ZoomModal guest={guest} boxId={box.box_id} option={zoom} existing={inBox.get(zoom.brand_id)} onClose={() => setZoom(null)} onRefresh={onRefresh} />}
+    </div>
+  );
+}
+
+// A shop card. CTA is "Add to box"; after the first add it becomes a stepper
+// reflecting the quantity of that brand IN THIS BOX (from the live draft).
+function PickerCard({ guest, boxId, option, existing, onZoom, onRefresh }: {
+  guest: GuestCtx; boxId: string; option: CatalogBrand; existing?: DraftBox["items"][number]; onZoom: () => void; onRefresh: () => void;
+}) {
+  return (
+    <div className="rounded-[14px] border border-border bg-card overflow-hidden flex flex-col">
+      <button type="button" onClick={onZoom} aria-label="Zoom product" className="aspect-square bg-warm-cream relative overflow-hidden w-full group">
+        {option.image ? <img src={option.image} alt={option.product_name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl">📦</div>}
+        <span className="absolute bottom-2 right-2 bg-white/85 backdrop-blur-sm rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"><ZoomIn className="w-3 h-3 text-foreground" /></span>
+      </button>
+      <div className="p-2.5 flex flex-col gap-1 flex-1">
+        <p className="font-semibold text-xs text-foreground line-clamp-2 leading-snug">{option.product_name}</p>
+        <span className="text-coral text-[11px] font-semibold -mt-0.5 truncate">{option.brand_name}{option.size_variant ? ` · ${option.size_variant}` : ""}</span>
+        <span className="font-mono-price text-coral font-bold text-sm">{fmtN(option.price)}</span>
+        <div className="mt-auto pt-1">
+          <AddToBox guest={guest} boxId={boxId} brandId={option.brand_id} existing={existing} onRefresh={onRefresh} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// "Add to box" ↔ +/- stepper. Drives guest_add_item / guest_set_item_quantity
+// (or the signed-in equivalents) via the data layer. Reads its qty from the
+// live draft item so the state is always the backend's.
+function AddToBox({ guest, boxId, brandId, existing, onRefresh }: {
+  guest: GuestCtx; boxId: string; brandId: string; existing?: DraftBox["items"][number]; onRefresh: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const add = async () => {
+    if (busy) return; setBusy(true);
+    try { await addItem(guest, boxId, brandId, 1); onRefresh(); }
+    catch (e: any) { toast.error(e?.message || "Couldn't add that item."); }
+    finally { setBusy(false); }
+  };
+  const setQty = async (qty: number) => {
+    if (busy || !existing) return; setBusy(true);
+    try { await setItemQty(guest, existing.item_id, qty); onRefresh(); }
+    catch (e: any) { toast.error(e?.message || "Couldn't update the item."); }
+    finally { setBusy(false); }
+  };
+  if (!existing) {
+    return (
+      <button type="button" onClick={add} disabled={busy} className="w-full inline-flex items-center justify-center gap-1.5 rounded-pill bg-coral text-white text-xs font-semibold py-2 hover:bg-coral-dark min-h-[36px] disabled:opacity-50">
+        {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add to box
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between rounded-pill bg-forest/10 px-1 min-h-[36px]">
+      <button type="button" onClick={() => setQty(existing.quantity - 1)} disabled={busy} aria-label="Decrease" className="w-7 h-7 rounded-full bg-card border border-input inline-flex items-center justify-center disabled:opacity-40"><Minus className="w-3 h-3" /></button>
+      <span className="text-xs font-bold tabular-nums text-forest">{busy ? "…" : existing.quantity}</span>
+      <button type="button" onClick={() => setQty(existing.quantity + 1)} disabled={busy} aria-label="Increase" className="w-7 h-7 rounded-full bg-card border border-input inline-flex items-center justify-center disabled:opacity-40"><Plus className="w-3 h-3" /></button>
+    </div>
+  );
+}
+
+// Deals-page style zoom lightbox — bigger image + more info + Add-to-box.
+// Deliberately NO link to the product detail page.
+function ZoomModal({ guest, boxId, option, existing, onClose, onRefresh }: {
+  guest: GuestCtx; boxId: string; option: CatalogBrand; existing?: DraftBox["items"][number]; onClose: () => void; onRefresh: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-midnight/80 animate-fade-in" onClick={onClose}>
+      <div className="relative bg-card rounded-[20px] overflow-hidden shadow-2xl max-w-[400px] w-full" onClick={e => e.stopPropagation()}>
+        <button type="button" onClick={onClose} aria-label="Close" className="absolute top-3 right-3 z-10 bg-card/90 backdrop-blur-sm rounded-full w-8 h-8 flex items-center justify-center shadow"><X className="w-4 h-4 text-foreground" /></button>
+        <div className="aspect-square bg-warm-cream overflow-hidden">
+          {option.image ? <img src={option.image} alt={option.product_name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-7xl">📦</div>}
+        </div>
+        <div className="p-4">
+          <p className="font-semibold text-sm text-foreground leading-snug">{option.product_name}</p>
+          <p className="text-coral text-xs font-semibold mb-1">{option.brand_name}{option.size_variant ? ` · ${option.size_variant}` : ""}</p>
+          <div className="flex items-baseline gap-2 mb-2"><span className="font-mono-price text-coral font-bold text-lg">{fmtN(option.price)}</span></div>
+          {option.description && <p className="text-[12px] text-text-med mb-3 line-clamp-4">{option.description}</p>}
+          <AddToBox guest={guest} boxId={boxId} brandId={option.brand_id} existing={existing} onRefresh={onRefresh} />
+        </div>
+      </div>
+    </div>
   );
 }
 
 // -------------------------------------------------------------------------
 // STEP 3 — first delivery date
 // -------------------------------------------------------------------------
-function DateStep({
-  months, firstDate, setFirstDate, onBack, onContinue,
-}: {
-  months: number;
-  firstDate: string;
-  setFirstDate: (v: string) => void;
-  onBack: () => void;
-  onContinue: () => void;
+function DateStep({ months, firstDate, setFirstDate, onBack, onContinue }: {
+  months: number; firstDate: string; setFirstDate: (v: string) => void; onBack: () => void; onContinue: () => void;
 }) {
-  // Minimum selectable date = today + 2 days (matches the RPC's rule).
   const minDate = useMemo(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0); d.setTime(d.getTime() + 2 * MS_DAY);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
-
   const valid = !!firstDate && firstDate >= minDate;
   const schedule = useMemo(() => {
     if (!valid) return [];
@@ -617,8 +595,7 @@ function DateStep({
         <StepHead n={3} title="When should your first box arrive?" />
         <label className="block">
           <span className="text-xs font-semibold text-text-med uppercase tracking-wide">First delivery date</span>
-          <input type="date" value={firstDate} min={minDate} onChange={e => setFirstDate(e.target.value)}
-            className="mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none min-h-[44px]" />
+          <input type="date" value={firstDate} min={minDate} onChange={e => setFirstDate(e.target.value)} className="mt-1 w-full rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none min-h-[44px]" />
         </label>
         <p className="text-[12px] text-text-med">Earliest is {formatBoxDate(minDate)} — deliveries need at least 2 days' notice. Every other box follows every 4 weeks on the same weekday.</p>
       </section>
@@ -639,55 +616,34 @@ function DateStep({
 
       <div className="flex gap-2">
         <button type="button" onClick={onBack} className="rounded-pill border border-border px-4 min-h-[52px] text-sm font-semibold hover:bg-muted inline-flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> Back</button>
-        <button type="button" onClick={onContinue} disabled={!valid}
-          className="flex-1 inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
-          Continue to delivery details <ArrowRight className="w-4 h-4" />
-        </button>
+        <button type="button" onClick={onContinue} disabled={!valid} className="flex-1 inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">Continue to delivery details <ArrowRight className="w-4 h-4" /></button>
       </div>
     </div>
   );
 }
 
 // -------------------------------------------------------------------------
-// STEP 4 — delivery details (shared checkout form) → finalise
+// STEP 4 — delivery details → finalise (captures the real email for guests)
 // -------------------------------------------------------------------------
-function AddressStep({
-  started, firstDate, onBack, onFinalised,
-}: {
-  started: Started;
-  firstDate: string;
-  onBack: () => void;
-  onFinalised: (details: DeliveryDetails) => void;
+function AddressStep({ guest, started, firstDate, onBack, onFinalised }: {
+  guest: GuestCtx; started: Started; firstDate: string; onBack: () => void; onFinalised: (d: DeliveryDetails) => void;
 }) {
   const [busy, setBusy] = useState(false);
-
   const submit = async (d: DeliveryDetails) => {
     setBusy(true);
     try {
-      const { data, error } = await (supabase as any).rpc("finalise_subscription_schedule", {
-        p_subscription_id: started.subscription_id,
-        p_first_delivery_date: firstDate,
-        p_customer_name: `${d.firstName} ${d.lastName}`.trim(),
-        p_customer_phone: d.phone,
-        p_delivery_address: d.address,
-        p_delivery_city: d.city,
-        p_delivery_state: d.state || "Lagos",
-      });
-      if (error || !data?.success) { toast.error(error?.message || data?.error || "Couldn't save your delivery details. Check the date and address."); return; }
+      await finalise(guest, started.subscription_id, { date: firstDate, name: `${d.firstName} ${d.lastName}`.trim(), phone: d.phone, email: d.email, address: d.address, city: d.city, state: d.state || "Lagos" });
       toast.success("Delivery details saved.");
       onFinalised(d);
     } catch (e: any) {
-      toast.error(e?.message || "Couldn't save your delivery details.");
-    } finally {
-      setBusy(false);
-    }
+      toast.error(e?.message || "Couldn't save your delivery details. Check the date and address.");
+    } finally { setBusy(false); }
   };
-
   return (
     <div className="space-y-4">
       <section className="bg-card border border-border rounded-card p-4 md:p-5">
         <StepHead n={4} title="Where should the boxes go?" />
-        <DeliveryDetailsForm defaultEmail={started.email} submitting={busy} submitLabel="Save & continue to payment" onSubmit={submit} />
+        <DeliveryDetailsForm defaultEmail={started.email} submitting={busy} submitLabel="Save & review order" onSubmit={submit} />
       </section>
       <button type="button" onClick={onBack} className="text-xs text-text-med hover:underline inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Back to delivery date</button>
     </div>
@@ -696,27 +652,20 @@ function AddressStep({
 
 // -------------------------------------------------------------------------
 // STEP 5 — REVIEW & CONFIRM (the ONLY screen with the pay button)
-// She sees the full breakdown FIRST; Paystack does not open until she confirms.
 // -------------------------------------------------------------------------
-function ReviewStep({
-  started, boxes, ready, details, grandTotal, onBack, onDone,
-}: {
-  started: Started;
-  boxes: BoxRow[];
-  ready: ReadyRow | null;
-  details: DeliveryDetails | null;
-  grandTotal: number;
-  onBack: () => void;
-  onDone: () => void;
+function ReviewStep({ started, draft, ready, details, onBack, onDone }: {
+  started: Started; draft: Draft; ready: ReturnType<typeof readiness>; details: DeliveryDetails | null; onBack: () => void; onDone: () => void;
 }) {
   const [paying, setPaying] = useState(false);
   const [fatal, setFatal] = useState<{ reference: string; message: string } | null>(null);
+  const grandTotal = ready.grand_total;
+  const addressLine = details ? [details.address, details.city, details.state].filter(Boolean).join(", ") : "";
+  const payEmail = details?.email || started.email;
 
   const pay = async () => {
     if (paying) return;
-    if (!ready?.ready) { toast.error(ready?.message || "Every box must reach the minimum before you can pay."); return; }
-    setPaying(true);
-    setFatal(null);
+    if (!ready.ready) { toast.error("Every box must reach the minimum before you can pay."); return; }
+    setPaying(true); setFatal(null);
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
       const paystackKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
@@ -724,21 +673,14 @@ function ReviewStep({
       const popup = new PaystackPop();
       const reference = `subbox_${started.subscription_id.slice(0, 8)}_${Date.now()}`;
       popup.newTransaction({
-        key: paystackKey,
-        email: started.email || "",
-        amount: Math.max(0, grandTotal) * 100, // kobo; DB-owned grand total
-        currency: "NGN",
-        ref: reference,
+        key: paystackKey, email: payEmail || "", amount: Math.max(0, grandTotal) * 100, currency: "NGN", ref: reference,
         metadata: { type: "box_subscription", subscription_id: started.subscription_id } as any,
         onSuccess: async (tx: { reference: string }) => {
           try {
             // NO amount — activate-subscription asks Paystack what was paid.
-            const { data, error } = await supabase.functions.invoke("activate-subscription", {
-              body: { subscription_id: started.subscription_id, reference: tx.reference },
-            });
+            const { data, error } = await supabase.functions.invoke("activate-subscription", { body: { subscription_id: started.subscription_id, reference: tx.reference } });
             if (error) {
-              const ctx = (error as any)?.context;
-              let parsed: any = null;
+              const ctx = (error as any)?.context; let parsed: any = null;
               if (ctx && typeof ctx.clone === "function") { try { parsed = await ctx.clone().json(); } catch { /* ignore */ } }
               if (ctx?.status === 409 && parsed?.paid_but_not_activated) { setFatal({ reference: tx.reference, message: parsed?.error || "Your payment went through but the boxes could not be activated." }); setPaying(false); return; }
               toast.error(`Activation failed: ${parsed?.error || error.message || "unknown error"}. Reference: ${tx.reference}`); setPaying(false); return;
@@ -750,21 +692,12 @@ function ReviewStep({
             }
             toast.success("Subscription active — your boxes are booked.");
             onDone();
-          } catch (e: any) {
-            toast.error(`Activation failed: ${e?.message || "unexpected error"}. Reference: ${tx.reference}`); setPaying(false);
-          }
+          } catch (e: any) { toast.error(`Activation failed: ${e?.message || "unexpected error"}. Reference: ${tx.reference}`); setPaying(false); }
         },
         onCancel: () => setPaying(false),
       } as any);
-    } catch (e: any) {
-      setPaying(false);
-      toast.error(e?.message || "Couldn't open payment. Please try again.");
-    }
+    } catch (e: any) { setPaying(false); toast.error(e?.message || "Couldn't open payment. Please try again."); }
   };
-
-  const addressLine = details
-    ? [details.address, details.city, details.state].filter(Boolean).join(", ")
-    : "";
 
   return (
     <div className="space-y-4">
@@ -786,18 +719,16 @@ function ReviewStep({
         </div>
       )}
 
-      {/* Every box, in full: date, items (name/qty/unit price), subtotal, 5%
-          saving, box total. All figures read from the DB. */}
       <div className="space-y-3">
-        {boxes.map(box => (
-          <section key={box.id} className="bg-card border border-border rounded-card p-4">
+        {draft.boxes.map(box => (
+          <section key={box.box_id} className="bg-card border border-border rounded-card p-4">
             <div className="flex items-center justify-between gap-2 mb-2">
               <h3 className="font-bold text-sm">Box {box.box_number}</h3>
               <span className="text-[12px] text-text-med inline-flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5 text-forest" /> {formatBoxDate(box.scheduled_date)}</span>
             </div>
             <ul className="divide-y divide-border/60 mb-2">
-              {box.subscription_box_items.map(it => (
-                <li key={it.id} className="flex items-center justify-between gap-2 py-1.5 text-[13px]">
+              {box.items.map(it => (
+                <li key={it.item_id} className="flex items-center justify-between gap-2 py-1.5 text-[13px]">
                   <span className="min-w-0 flex-1 truncate">{it.quantity}× {it.product_name || "Item"} <span className="text-text-light">· {it.brand_name}</span><br /><span className="text-[11px] text-text-light">{fmtN(it.unit_price)} each</span></span>
                   <span className="font-semibold tabular-nums">{fmtN(it.line_total)}</span>
                 </li>
@@ -813,7 +744,6 @@ function ReviewStep({
         ))}
       </div>
 
-      {/* Delivery address she just entered. */}
       {details && (
         <section className="bg-card border border-border rounded-card p-4 text-[13px]">
           <h3 className="font-bold text-sm mb-1">Delivering to</h3>
@@ -824,7 +754,6 @@ function ReviewStep({
         </section>
       )}
 
-      {/* Grand total + the plain-language statement + the ONLY pay button. */}
       <section className="bg-card border-2 border-forest/40 rounded-card p-4 md:p-5 space-y-3">
         <div className="flex items-center justify-between">
           <span className="font-bold">Grand total</span>
@@ -832,153 +761,18 @@ function ReviewStep({
         </div>
         <div className="flex items-start gap-1.5 text-[13px] text-forest bg-forest/5 rounded-lg px-3 py-2">
           <Lock className="w-4 h-4 flex-shrink-0 mt-px" />
-          <span>You are paying once, today, for all {boxes.length} boxes. Delivery is free. These prices are locked in for every box.</span>
+          <span>You are paying once, today, for all {draft.boxes.length} boxes. Delivery is free. These prices are locked in for every box.</span>
         </div>
-        {!ready?.ready && ready?.message && (
-          <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /><span>{ready.message}</span></div>
+        {!ready.ready && (
+          <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /><span>Every box must reach {fmtN(MIN_BOX_VALUE)} first.</span></div>
         )}
-        <button type="button" onClick={pay} disabled={!ready?.ready || paying}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
+        <button type="button" onClick={pay} disabled={!ready.ready || paying} className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
           {paying ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening payment…</> : <>Pay {fmtN(grandTotal)} now</>}
         </button>
-        <p className="text-[11px] text-text-light text-center">No stored card, no renewals — one payment for all your boxes.</p>
+        <p className="text-[11px] text-text-light text-center inline-flex items-center gap-1 justify-center w-full"><Package className="w-3 h-3" /> No stored card, no renewals — one payment for all your boxes. We'll set up your account after payment.</p>
       </section>
 
       <button type="button" onClick={onBack} className="text-xs text-text-med hover:underline inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Back to delivery details</button>
-    </div>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Add-products modal
-// -------------------------------------------------------------------------
-interface CatalogBrand { brand_id: string; label: string; price: number; image: string | null }
-
-function AddProductsModal({ box, onClose, onAdded }: { box: BoxRow; onClose: () => void; onAdded: () => void }) {
-  const [q, setQ] = useState("");
-  const [addingId, setAddingId] = useState<string | null>(null);
-
-  const { data: options = [], isLoading } = useQuery({
-    queryKey: ["box-catalog"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("products")
-        .select("id, name, brands:brands_public!brands_product_id_fkey(id, brand_name, price, in_stock, image_url, stored_image_url, images, size_variant)")
-        .eq("is_active", true)
-        .order("name");
-      if (error) throw error;
-      const flat: CatalogBrand[] = [];
-      for (const p of (data || []) as any[]) {
-        for (const b of (p.brands || [])) {
-          if (b.in_stock === false) continue;
-          flat.push({ brand_id: b.id, label: `${p.name} · ${b.brand_name}${b.size_variant ? ` (${b.size_variant})` : ""}`, price: Number(b.price) || 0, image: getBrandImage(b) || b.images?.[0] || null });
-        }
-      }
-      return flat;
-    },
-  });
-
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return (s ? options.filter(o => o.label.toLowerCase().includes(s)) : options).slice(0, 60);
-  }, [q, options]);
-
-  const add = async (o: CatalogBrand) => {
-    if (addingId) return;
-    // Never send a non-UUID id to the RPC (guards against stale/corrupt state).
-    if (!isUuid(box.id) || !isUuid(o.brand_id)) { toast.error("This subscription is out of date. Please start again."); return; }
-    setAddingId(o.brand_id);
-    try {
-      const { error } = await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: box.id, p_brand_id: o.brand_id, p_quantity: 1 });
-      if (error) { toast.error(error.message || "Couldn't add that item."); return; }
-      toast.success(`Added to Box ${box.box_number}.`);
-      onAdded();
-    } catch (e: any) {
-      toast.error(e?.message || "Couldn't add that item.");
-    } finally { setAddingId(null); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-foreground/50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
-      <div className="bg-card w-full max-w-[560px] rounded-t-2xl md:rounded-xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h3 className="font-bold text-sm">Add products to Box {box.box_number}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted inline-flex items-center justify-center"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="p-4 border-b border-border">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-light" />
-            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search products…" className="w-full pl-9 pr-3 py-2.5 border border-input rounded-lg text-sm bg-background" />
-          </div>
-        </div>
-        <div className="overflow-y-auto p-2">
-          {isLoading ? (
-            <p className="text-sm text-text-light text-center py-8">Loading products…</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-text-light text-center py-8">No products match “{q}”.</p>
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {filtered.map(o => (
-                <li key={o.brand_id} className="flex items-center gap-3 py-2 px-2">
-                  <div className="w-10 h-10 rounded-lg bg-muted overflow-hidden flex-shrink-0">{o.image && <img src={o.image} alt="" className="w-full h-full object-cover" />}</div>
-                  <span className="flex-1 min-w-0 text-[13px] truncate">{o.label}</span>
-                  <span className="text-[13px] font-semibold tabular-nums">{fmtN(o.price)}</span>
-                  <button type="button" onClick={() => add(o)} disabled={addingId === o.brand_id} className="inline-flex items-center gap-1 rounded-lg bg-forest text-primary-foreground px-2.5 py-1.5 text-xs font-semibold hover:bg-forest-deep disabled:opacity-50">
-                    {addingId === o.brand_id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="p-3 border-t border-border">
-          <button type="button" onClick={onClose} className="w-full rounded-lg border border-border py-2.5 text-sm font-semibold hover:bg-muted">Done</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Per-pair copy: replicate a source box's contents into the target box.
-function CopyBoxModal({ target, sources, onClose, onCopied }: { target: BoxRow; sources: BoxRow[]; onClose: () => void; onCopied: () => void }) {
-  const [copyingId, setCopyingId] = useState<string | null>(null);
-
-  const copyFrom = async (src: BoxRow) => {
-    if (copyingId) return;
-    setCopyingId(src.id);
-    try {
-      let ok = 0;
-      for (const it of src.subscription_box_items) {
-        const { error } = await (supabase as any).rpc("add_item_to_subscription_box", { p_box_id: target.id, p_brand_id: it.brand_id, p_quantity: it.quantity });
-        if (error) { toast.error(`Stopped copying: ${error.message || "an item could not be added"}`); break; }
-        ok += 1;
-      }
-      if (ok > 0) { toast.success(`Copied ${ok} item${ok === 1 ? "" : "s"} into Box ${target.box_number}.`); onCopied(); onClose(); }
-    } finally { setCopyingId(null); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-foreground/50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
-      <div className="bg-card w-full max-w-[460px] rounded-t-2xl md:rounded-xl" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h3 className="font-bold text-sm">Copy a box into Box {target.box_number}</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full hover:bg-muted inline-flex items-center justify-center"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="p-3 space-y-2">
-          <p className="text-[12px] text-text-med px-1">Its items are added on top of anything already in Box {target.box_number}. Prices lock at today's prices.</p>
-          {sources.map(src => (
-            <button key={src.id} type="button" onClick={() => copyFrom(src)} disabled={!!copyingId} className="w-full text-left rounded-lg border border-border p-3 hover:bg-muted disabled:opacity-50">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-sm">Box {src.box_number}</span>
-                <span className="text-[12px] text-text-med">{src.subscription_box_items.length} item{src.subscription_box_items.length === 1 ? "" : "s"} · {fmtN(src.subtotal)}</span>
-              </div>
-              <p className="text-[12px] text-text-light truncate mt-0.5">{src.subscription_box_items.map(i => i.product_name).filter(Boolean).join(", ")}</p>
-              {copyingId === src.id && <p className="text-[11px] text-forest mt-1 inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Copying…</p>}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
