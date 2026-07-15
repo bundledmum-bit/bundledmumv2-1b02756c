@@ -43,7 +43,7 @@ export default function Footer() {
           </div>
           {[
             { title: "Shop", links: [{ label: "Baby Items", to: "/shop?tab=baby" }, { label: "Mum Items", to: "/shop?tab=mum" }, { label: "Bundles & Kits", to: "/bundles" }, { label: "Gift Ideas", to: "/bundles?hospital=gift" }] },
-            { title: "Help", links: [{ label: "FAQs", to: "/contact#faqs" }, { label: "Articles", to: "/articles" }, ...(whatsapp ? [{ label: "WhatsApp Us", to: `https://wa.me/${whatsapp}?text=Hi%20BundledMum!%20I%20have%20a%20question.`, external: true }] : []), { label: "Track Order", to: "/track-order" }, { label: "Returns", to: "/returns" }] },
+            { title: "Help", links: [{ label: "FAQs", to: "/contact#faqs" }, { label: "Articles", to: "/articles" }, ...(whatsapp ? [{ label: "WhatsApp Us", to: `https://wa.me/${whatsapp}?text=Hi%20BundledMum!%20I%20have%20a%20question.`, external: true }] : []), { label: "Track Order", to: "/track-order" }, { label: "Returns", to: "/returns" }, { label: "Pay Later", to: "/pay-later" }] },
             { title: "Company", links: [{ label: "Our Story", to: "/about" }, { label: "Contact", to: "/contact" }, { label: "Blog", to: "/blog" }] },
           ].map(col => (
             <div key={col.title}>
