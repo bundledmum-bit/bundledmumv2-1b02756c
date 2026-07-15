@@ -1106,17 +1106,33 @@ export default function CheckoutPage() {
         }
       }
 
-      const orderItemsPayload = sourceItems
-        .filter((item: any) => {
-          const productId = item?.id;
-          const brandId = item?.selectedBrand?.id;
-          if (!productId || !brandId) {
-            console.warn("[checkout] item missing productId/brandId, skipping:", item);
-            return false;
-          }
-          return true;
-        })
-        .map((item: any) => ({
+      const orderItemsPayload = sourceItems.flatMap((item: any) => {
+        // Bundle line: it has no selectedBrand of its own (its `id` is the
+        // bundle, not a product), so itemise it from its child composition.
+        // The ORDER TOTAL stays authoritative from orderData (= the bundle
+        // line's price on screen); these rows are the fulfilment itemisation.
+        if (item?.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length) {
+          return item.bundleItems
+            .filter((bi: any) => bi?.productId && bi?.brandId)
+            .map((bi: any) => ({
+              name: bi.productName || item.name,
+              brandName: bi.brandName || "Standard",
+              brandId: bi.brandId,
+              productId: bi.productId,
+              qty: Number(bi.quantity) || 1,
+              price: Number(bi.price) || 0,
+              size: bi.size || null,
+              color: bi.color || null,
+              bundleName: item.bundleName || item.name,
+            }));
+        }
+        const productId = item?.id;
+        const brandId = item?.selectedBrand?.id;
+        if (!productId || !brandId) {
+          console.warn("[checkout] item missing productId/brandId, skipping:", item);
+          return [];
+        }
+        return [{
           name: item.name,
           brandName: item.selectedBrand?.label || "Standard",
           brandId: item.selectedBrand?.id,
@@ -1126,7 +1142,8 @@ export default function CheckoutPage() {
           size: item.selectedSize || null,
           color: item.selectedColor || null,
           bundleName: item.bundleName || null,
-        }));
+        }];
+      });
 
       if (!orderItemsPayload.length) {
         console.error(

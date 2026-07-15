@@ -406,6 +406,11 @@ export default function CartPage() {
   // Only meaningful once the live product feed has loaded; while it's
   // still loading we never block (allProductsData is undefined → false).
   const hasUnshoppableCartItem = allProductsData != null && cart.some(item => {
+    // Bundle lines aren't gated by the products feed — their `id` is a bundle,
+    // not a product, and they're always shoppable (mirrors the per-row
+    // `stillShoppable` logic below). Without this a bundle line would falsely
+    // block checkout with "Remove unavailable items".
+    if ((item as any).type === "bundle") return false;
     const live = ALL_PRODUCTS.find(p => p.id === item.id);
     if (!live) return true;
     const brand = live.brands.find(b => b.id === item.selectedBrand?.id);

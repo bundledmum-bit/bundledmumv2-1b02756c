@@ -107,36 +107,51 @@ export default function BundleDetailPage() {
       : null);
 
   const handleAdd = () => {
-    // Add each individual product as a separate cart item. Bundle items that
-    // require a size/colour (product_sizes / product_colors rows) get the
-    // bundle's sensible pre-set default variant (is_default size / first
-    // colour) so they never enter the cart variant-less — otherwise the cart
-    // guard and server-side place-order would reject them at checkout.
-    let addedCount = 0;
-    allItems.forEach(item => {
-      const selectedSize = variantReq.requiresSize(item.productId) ? variantReq.defaultSize(item.productId) : undefined;
-      const selectedColor = variantReq.requiresColor(item.productId) ? variantReq.defaultColor(item.productId) : undefined;
-      const ok = addToCart({
-        id: item.productId || item.name,
-        name: item.name,
+    // MONEY-SAFE add: one single `type:"bundle"` cart line priced at the
+    // CUSTOMISED total shown on the page (displayPrice). The old approach added
+    // each child as its own line — the cart then re-priced every child from the
+    // live catalogue (priceLine by brand id), so the bundle's discount (and any
+    // customiser price) was dropped and the cart charged the raw item sum
+    // (separateTotal) instead of the price on screen. A bundle line stores
+    // `price` verbatim, so cart → checkout → order all charge displayPrice.
+    // bundleItems carries the chosen composition (with the bundle's pre-set
+    // default size/colour for variant-required children) so the order reflects
+    // exactly what she built. Mirrors BundleCustomiser / the maternity path.
+    const bundleItems = allItems.map(item => {
+      const size = variantReq.requiresSize(item.productId) ? variantReq.defaultSize(item.productId) : null;
+      const color = variantReq.requiresColor(item.productId) ? variantReq.defaultColor(item.productId) : null;
+      return {
+        productId: item.productId || null,
+        productName: item.name,
+        brandId: item.brandId || null,
+        brandName: item.brand || null,
+        sku: null,
         price: item.price,
-        img: item.imageUrl || item.emoji || "📦",
-        baseImg: item.imageUrl || item.emoji || "📦",
-        brands: [{ id: item.brandId || "default", label: item.brand, price: item.price, img: item.imageUrl || item.emoji || "📦", tier: 1 }],
-        selectedBrand: { id: item.brandId || "default", label: item.brand, price: item.price, img: item.imageUrl || item.emoji || "📦", tier: 1 },
-        selectedSize: selectedSize ?? undefined,
-        selectedColor: selectedColor ?? undefined,
-        bundleName: bundle.name,
-      });
-      if (ok) addedCount++;
+        quantity: 1,
+        lineTotal: item.price,
+        isDefault: true,
+        color: color ?? null,
+        size: size ?? null,
+      };
     });
-    if (addedCount === allItems.length) {
-      toast.success(`✓ ${bundle.name} (${allItems.length} items) added to cart!`, {
-        action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
-      });
-    } else {
-      toast.error(`Some items need a size or colour chosen — please open them individually to add.`);
-    }
+    addToCart({
+      type: "bundle",
+      id: bundle.id,
+      bundleId: bundle.id,
+      bundleName: bundle.name,
+      bundleLabel: bundle.tier || "",
+      bundleSku: bundle.slug || "",
+      // The DB owns the number — this is the exact total rendered on the page
+      // (customTotal when customised, else the discounted bundle.price).
+      bundlePrice: displayPrice,
+      price: displayPrice,
+      name: bundle.name,
+      img: (bundle as any).imageUrl || (bundle as any).image_url || "📦",
+      bundleItems,
+    } as any);
+    toast.success(`✓ ${bundle.name} (${allItems.length} items) added to cart — ${fmt(displayPrice)}`, {
+      action: { label: "View Cart →", onClick: () => (window.location.href = "/cart") },
+    });
   };
 
   const shareUrl = isCustomized
