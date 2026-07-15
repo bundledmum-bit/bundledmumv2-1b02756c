@@ -11,14 +11,12 @@ import { getBrandImage } from "@/lib/brandImage";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useSubscriptionSettings, fmtN, formatBoxDate } from "@/hooks/useSubscription";
 import DeliveryDetailsForm, { type DeliveryDetails } from "@/components/checkout/DeliveryDetailsForm";
+import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   startSubscription, getDraft, addItem, setItemQty, duplicateBox, finalise, readiness,
   MIN_BOX_VALUE, type Draft, type DraftBox, type GuestCtx,
 } from "@/lib/boxSubscription";
 import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
-// Visual box artwork. TODO: swap for the dedicated BundledMum subscription-box
-// PNG when supplied (drop it in src/assets and point BOX_IMAGE at it).
-import BOX_IMAGE from "@/assets/bundle-hero.jpg";
 
 // ===========================================================================
 // Monthly-BOX builder. Works for GUESTS (no account) via token RPCs and for
@@ -32,6 +30,16 @@ const MS_DAY = 86_400_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
 const PRICE_LOCK_LINE = "The prices you see today are locked in for every box, even if prices rise later.";
+
+// site_settings values are jsonb strings; tolerate a double-encoded value.
+const coerceSetting = (v: unknown): string => {
+  if (v == null) return "";
+  if (typeof v === "string") {
+    if (v.length > 1 && v.startsWith('"') && v.endsWith('"')) { try { return JSON.parse(v); } catch { return v; } }
+    return v;
+  }
+  return String(v);
+};
 
 interface Started { subscription_id: string; months: number; guest_token: string | null; email: string }
 function isValidStarted(s: any): s is Started {
@@ -255,11 +263,15 @@ function BuildStep({
   guest: GuestCtx; draft: Draft; ready: ReturnType<typeof readiness>; isFetching: boolean;
   onRefresh: () => void; onBackToMonths: () => void; onContinue: () => void;
 }) {
-  const [openBox, setOpenBox] = useState<DraftBox | null>(null);
+  const [openBoxId, setOpenBoxId] = useState<string | null>(null);
+  const [pickerBoxId, setPickerBoxId] = useState<string | null>(null);
+  const { data: siteSettings } = useSiteSettings();
+  const boxImageUrl = coerceSetting(siteSettings?.["subscription_box_image_url"]).trim();
   const boxes = draft.boxes;
   const failingByNumber = new Map(ready.failing.map(f => [f.box_number, f]));
-  // Keep the opened box in sync with refreshed draft data.
-  const liveOpenBox = openBox ? (boxes.find(b => b.box_id === openBox.box_id) || null) : null;
+  // Keep opened/picker box in sync with refreshed draft data.
+  const liveOpenBox = openBoxId ? (boxes.find(b => b.box_id === openBoxId) || null) : null;
+  const livePickerBox = pickerBoxId ? (boxes.find(b => b.box_id === pickerBoxId) || null) : null;
 
   return (
     <div className="space-y-5">
@@ -282,11 +294,36 @@ function BuildStep({
           const clears = shortBy <= 0 && box.items.length > 0;
           const pct = Math.min(100, Math.round((box.subtotal / MIN_BOX_VALUE) * 100));
           const itemCount = box.items.reduce((s, i) => s + i.quantity, 0);
+
+          // EMPTY box — no box image; invite her to fill it. The button opens the
+          // shop picker directly for this box.
+          if (box.items.length === 0) {
+            return (
+              <div key={box.box_id} className="bg-card border-2 border-dashed border-border rounded-card p-4 flex flex-col">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <h3 className="font-bold text-sm">Box {box.box_number}</h3>
+                  <span className="rounded-pill bg-muted text-text-med text-[10px] font-bold px-2 py-0.5">Empty</span>
+                </div>
+                <p className="text-[11px] text-text-med inline-flex items-center gap-1 mb-2"><CalendarDays className="w-3 h-3" /> {formatBoxDate(box.scheduled_date)}</p>
+                <p className="text-[13px] text-text-light flex-1">This box is empty. Add products to reach {fmtN(MIN_BOX_VALUE)}.</p>
+                <button type="button" onClick={() => setPickerBoxId(box.box_id)}
+                  className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-pill bg-forest text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-forest-deep">
+                  <Plus className="w-4 h-4" /> Add items to this box
+                </button>
+              </div>
+            );
+          }
+
+          // FILLED box — show the branded box image; tapping opens its contents.
           return (
-            <button key={box.box_id} type="button" onClick={() => setOpenBox(box)}
+            <button key={box.box_id} type="button" onClick={() => setOpenBoxId(box.box_id)}
               className={`text-left bg-card border rounded-card overflow-hidden hover:shadow-card transition-shadow ${clears ? "border-forest/50" : "border-border"}`}>
               <div className="relative aspect-[16/10] bg-warm-cream">
-                <img src={BOX_IMAGE} alt={`Box ${box.box_number}`} className="w-full h-full object-cover" />
+                {boxImageUrl ? (
+                  <img src={boxImageUrl} alt={`Box ${box.box_number}`} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-forest/10"><Package className="w-10 h-10 text-forest/50" /></div>
+                )}
                 <span className="absolute top-2 left-2 rounded-pill bg-white/90 backdrop-blur-sm text-[11px] font-bold px-2 py-0.5">Box {box.box_number}</span>
                 <span className={`absolute top-2 right-2 rounded-pill text-[10px] font-bold px-2 py-0.5 ${clears ? "bg-forest text-white" : "bg-coral text-white"}`}>{clears ? "Ready ✓" : `${fmtN(shortBy)} to go`}</span>
               </div>
@@ -297,7 +334,7 @@ function BuildStep({
                 </div>
                 <div className="flex items-center justify-between text-[12px]">
                   <span className="text-text-med">{itemCount} item{itemCount === 1 ? "" : "s"} · <span className="font-semibold text-foreground tabular-nums">{fmtN(box.subtotal)}</span></span>
-                  <span className="text-forest font-semibold">{clears ? "Open" : "Fill box"} →</span>
+                  <span className="text-forest font-semibold">Open →</span>
                 </div>
                 <p className="text-[11px] text-forest font-semibold inline-flex items-center gap-1"><Check className="w-3 h-3" /> Free delivery and 5% off this box{box.discount_amount > 0 ? ` — save ${fmtN(box.discount_amount)}` : ""}.</p>
               </div>
@@ -320,7 +357,11 @@ function BuildStep({
       </section>
 
       {liveOpenBox && (
-        <BoxDetailModal guest={guest} draft={draft} box={liveOpenBox} onClose={() => setOpenBox(null)} onRefresh={onRefresh} />
+        <BoxDetailModal guest={guest} draft={draft} box={liveOpenBox} onClose={() => setOpenBoxId(null)} onRefresh={onRefresh} />
+      )}
+      {/* Shop picker opened directly from an EMPTY box's "Add items" button. */}
+      {livePickerBox && (
+        <ShopPickerModal guest={guest} box={livePickerBox} onClose={() => setPickerBoxId(null)} onRefresh={onRefresh} />
       )}
     </div>
   );
