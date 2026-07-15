@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
+import { expandCartForDisplay } from "@/lib/bundleDisplay";
 import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
@@ -219,10 +220,13 @@ export default function CheckoutPage() {
         state: form.state || undefined,
         city: form.city || undefined,
       },
-      items: cart.map((it: any) => ({
-        name: it.name,
-        qty: it.qty,
-        price: Number(it.selectedBrand?.price ?? it.price ?? 0),
+      // Expand bundle lines into their individual items — a bundle is listed
+      // by its contents, never by its name (display only; the total below is
+      // the authoritative `grand`, unchanged).
+      items: expandCartForDisplay(cart).map((l) => ({
+        name: l.name,
+        qty: l.qty,
+        price: l.price,
       })),
       order: { total: grand },
     });
@@ -1719,7 +1723,15 @@ export default function CheckoutPage() {
                           ? <img src={item.img} alt={item.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" />
                           : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{item.img || "📦"}</span>;
                       })()}
-                      <span className="truncate">{item.bundleName ? `[${item.bundleName}] ` : ""}{item.name} ×{item.qty}</span>
+                      {item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length ? (
+                        <span className="min-w-0">
+                          {item.bundleItems.map((bi: any, bi_i: number) => (
+                            <span key={bi_i} className="block truncate">{bi.productName || bi.name || "Item"} ×{bi.quantity || 1}</span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="truncate">{item.name} ×{item.qty}</span>
+                      )}
                       {flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                     </div>
                     <span className="font-bold flex-shrink-0">{fmt(item.price * item.qty)}</span>
@@ -2289,9 +2301,16 @@ export default function CheckoutPage() {
                       })()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      {item.bundleName && <div className="text-[9px] font-bold text-coral mb-0.5 truncate">📦 {item.bundleName}</div>}
-                      <div className="text-xs font-semibold leading-tight truncate">{item.name}</div>
-                      {item.selectedBrand && <div className="text-forest text-[10px] mt-0.5">{item.selectedBrand.label} · Qty {item.qty}</div>}
+                      {item.type === "bundle" && Array.isArray(item.bundleItems) && item.bundleItems.length ? (
+                        item.bundleItems.map((bi: any, bi_i: number) => (
+                          <div key={bi_i} className="text-xs font-semibold leading-tight truncate">{bi.productName || bi.name || "Item"} <span className="font-normal text-forest">×{bi.quantity || 1}</span></div>
+                        ))
+                      ) : (
+                        <>
+                          <div className="text-xs font-semibold leading-tight truncate">{item.name}</div>
+                          {item.selectedBrand && <div className="text-forest text-[10px] mt-0.5">{item.selectedBrand.label} · Qty {item.qty}</div>}
+                        </>
+                      )}
                     </div>
                     <div className="font-bold text-[13px] flex-shrink-0">{fmt(item.price * item.qty)}</div>
                   </div>

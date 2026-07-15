@@ -27,16 +27,13 @@ export interface BuildBundleMessageArgs {
 }
 
 export function buildBundleWhatsAppMessage(args: BuildBundleMessageArgs): string {
-  const { title, tier, currentItems, currentTotalPrice } = args;
+  // The bundle is listed by its individual items — never its name. The total is
+  // the authoritative price passed in (not re-summed from the items).
+  const { currentItems, currentTotalPrice } = args;
   const lines: string[] = [];
-  lines.push("Hi BundledMum, I'd like to order this bundle:");
+  lines.push("Hi BundledMum, I'd like to order these items:");
   lines.push("");
-  lines.push(`*${title}*`);
-  if (tier && tier.trim()) {
-    lines.push(`${tier} tier — ₦${currentTotalPrice.toLocaleString()}`);
-  } else {
-    lines.push(`Total: ₦${currentTotalPrice.toLocaleString()}`);
-  }
+  lines.push(`Total: ₦${currentTotalPrice.toLocaleString()}`);
   lines.push("");
   lines.push(`Items (${currentItems.length}):`);
   currentItems.forEach((it) => {

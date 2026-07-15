@@ -23,6 +23,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { decodeCartFromUrl, buildWhatsappMessage } from "@/lib/cartShareUrl";
+import { expandCartForDisplay } from "@/lib/bundleDisplay";
 import { generateSharedCartUrl, fetchSharedCart, type SharedCartItem as RpcSharedCartItem } from "@/lib/sharedCart";
 import { getBrandImage } from "@/lib/brandImage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
@@ -1024,13 +1025,15 @@ export default function CartPage() {
               <button
                 onClick={() => {
                   const msg = buildWhatsappMessage(
-                    cart.map((it: any) => ({
-                      product_name: (it.name || "").replace(/\s*\([^)]*\)\s*$/, ""),
-                      brand_label: it.selectedBrand?.label || null,
-                      size: it.selectedSize || null,
-                      color: it.selectedColor ? formatColor(it.selectedColor) : null,
-                      quantity: it.qty || 1,
-                      unit_price: it.price || 0,
+                    // Bundle lines list their individual items, never the
+                    // bundle name (display only — no total is recomputed here).
+                    expandCartForDisplay(cart).map((l) => ({
+                      product_name: (l.name || "").replace(/\s*\([^)]*\)\s*$/, ""),
+                      brand_label: l.brand,
+                      size: l.size || null,
+                      color: l.color ? formatColor(l.color) : null,
+                      quantity: l.qty,
+                      unit_price: l.price,
                     })),
                     shareUrl,
                   );
