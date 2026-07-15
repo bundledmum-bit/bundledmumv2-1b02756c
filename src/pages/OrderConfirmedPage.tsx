@@ -3,6 +3,8 @@ import { fmt, formatColor } from "@/lib/cart";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getBrandImage } from "@/lib/brandImage";
+import LineItemThumb from "@/components/LineItemThumb";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import ReferralSection from "@/components/ReferralSection";
 import ShareModal from "@/components/ShareModal";
@@ -61,6 +63,26 @@ export default function OrderConfirmedPage() {
 
   const order = orderData?.order;
   const referralCode = orderData?.referral_code || null;
+
+  // order_items carry a brand_id but no image column; the confirmation edge fn
+  // returns order_items(*) only. Fetch each brand's product image (stored copy
+  // first) so the on-screen order lists real product thumbnails.
+  const orderBrandIds = Array.from(new Set(((order?.order_items || []) as any[]).map((i) => i.brand_id).filter(Boolean)));
+  const { data: brandImages = {} } = useQuery({
+    queryKey: ["order-confirmed-brand-images", orderBrandIds.slice().sort().join(",")],
+    enabled: orderBrandIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("brands_public")
+        .select("id, stored_image_url, image_url")
+        .in("id", orderBrandIds);
+      if (error) return {} as Record<string, string | null>;
+      const map: Record<string, string | null> = {};
+      (data || []).forEach((b: any) => { map[b.id] = getBrandImage(b); });
+      return map;
+    },
+    staleTime: 300_000,
+  });
 
   // A Klump order awaiting its webhook confirmation. Bank transfer keeps its own
   // "complete your payment" banner and card is already paid by the time it lands
@@ -360,7 +382,7 @@ export default function OrderConfirmedPage() {
               {items.map((item: any, i: number) => (
                 <div key={i} className="flex items-center justify-between gap-3 pb-2.5 border-b border-border/50 last:border-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-warm-cream rounded-lg flex items-center justify-center text-lg flex-shrink-0">📦</div>
+                    <LineItemThumb src={brandImages[item.brand_id]} alt={item.product_name} className="w-9 h-9" />
                     <div>
                       {item.bundle_name && <div className="text-[10px] font-bold text-coral">📦 {item.bundle_name}</div>}
                       <div className="text-sm font-semibold">{item.product_name}</div>

@@ -132,6 +132,7 @@ export default function BundleDetailPage() {
         isDefault: true,
         color: color ?? null,
         size: size ?? null,
+        imageUrl: item.imageUrl || null,
       };
     });
     addToCart({

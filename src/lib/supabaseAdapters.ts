@@ -366,7 +366,9 @@ export function adaptBundle(row: any): Bundle {
       forWhom: (prod?.category === "mum" ? "mum" : "baby") as "baby" | "mum",
       price: (brand?.price || 0) * (bi.quantity || 1),
       emoji: prod?.emoji || "📦",
-      imageUrl: brand?.image_url || prod?.image_url || null,
+      // Prefer the self-hosted brand copy (stored_image_url) over the external
+      // image_url, matching getBrandImage / the product grid + PDP.
+      imageUrl: getBrandImage(brand) || prod?.image_url || null,
       productId: bi.product_id || prod?.id || null,
       brandId: bi.brand_id || brand?.id || null,
       section: bi.section || undefined,

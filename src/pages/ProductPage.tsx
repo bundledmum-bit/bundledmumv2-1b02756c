@@ -710,6 +710,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               // size_variant) so older cart rows still parse.
               color: i.selected_color_name ?? i.selected_gender ?? null,
               size: i.selected_size_label ?? i.selected_brand.size_variant ?? null,
+              imageUrl: getBrandImage(i.selected_brand) || (i.selected_brand as any).image_url || null,
             })),
             removedDefaultCount: editApi.removedDefaultCount,
           } as any);

@@ -231,6 +231,7 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
         // captured without a size/colour.
         color: i.selected_color_name ?? i.selected_gender ?? (variantReq.requiresColor(i.product_id) ? variantReq.defaultColor(i.product_id) : null),
         size: i.selected_size_label ?? i.selected_brand.size_variant ?? (variantReq.requiresSize(i.product_id) ? variantReq.defaultSize(i.product_id) : null),
+        imageUrl: getBrandImage(i.selected_brand) || i.selected_brand.image_url || null,
       })),
       removedDefaultCount,
     } as any);

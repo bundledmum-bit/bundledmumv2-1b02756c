@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, Download, ChevronDown, ChevronUp, Printer, MessageSquare, Clock, Send, ExternalLink, ArrowLeft, Truck, CheckCircle2, Package, X as XIcon, RotateCcw, Plus, Loader2, Calendar as CalendarIcon, Copy, Link2, AlertTriangle, Mail, RefreshCw } from "lucide-react";
 import { copyToClipboard } from "@/lib/copyToClipboard";
+import { getBrandImage } from "@/lib/brandImage";
+import LineItemThumb from "@/components/LineItemThumb";
 import { startOfDay, endOfDay, startOfWeek, startOfMonth, endOfMonth, subDays, subMonths, startOfYear, format } from "date-fns";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import AdminOrderCard from "@/components/admin/AdminOrderCard";
@@ -418,7 +420,9 @@ export default function AdminOrders() {
     queryKey: ["admin-order-detail", detailOrder],
     queryFn: async () => {
       if (!detailOrder) return null;
-      const { data, error } = await supabase.from("orders").select("*, order_items(*)").eq("id", detailOrder).maybeSingle();
+      // Embed the brand image off each order_item (brand_id FK pinned by name)
+      // so the picker/packer sees the product photo, not just text.
+      const { data, error } = await supabase.from("orders").select("*, order_items(*, brand:brands!order_items_brand_id_fkey(stored_image_url, image_url))").eq("id", detailOrder).maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -1468,14 +1472,17 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
         <h3 className="text-sm font-bold mb-3">Order Summary</h3>
         <div className="space-y-1">
           {(o.order_items || []).map((item: any) => (
-            <div key={item.id} className="flex justify-between text-xs bg-muted/30 rounded p-2">
-              <div className="min-w-0">
+            <div key={item.id} className="flex justify-between gap-2 text-xs bg-muted/30 rounded p-2">
+              <div className="flex items-start gap-2 min-w-0">
+                <LineItemThumb src={getBrandImage(item.brand)} alt={item.product_name} className="w-10 h-10" />
+                <div className="min-w-0">
                 {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
                 <div className="font-semibold">{item.product_name} <span className="font-normal text-muted-foreground">× {item.quantity}</span></div>
                 <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
                   {item.brand_name && <span>Brand: {item.brand_name}</span>}
                   {item.size && <span>Size / Age: {item.size}</span>}
                   {item.color && <span>Colour: {formatColor(item.color)}</span>}
+                </div>
                 </div>
               </div>
               {showFinance && <span className="font-semibold flex-shrink-0 ml-2">{fmt(item.line_total || 0)}</span>}
@@ -3256,12 +3263,17 @@ function EditOrderCard({
               ) : items.map((item: any) => (
                 <tr key={item.id} className="border-t border-border">
                   <td className="px-2 py-2">
-                    {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
-                    <div className="font-semibold">{item.product_name}</div>
-                    <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
-                      {item.brand_name && <span>Brand: {item.brand_name}</span>}
-                      {item.size && <span>Size: {item.size}</span>}
-                      {item.color && <span>Colour: {formatColor(item.color)}</span>}
+                    <div className="flex items-start gap-2">
+                      <LineItemThumb src={getBrandImage(item.brand)} alt={item.product_name} className="w-10 h-10" />
+                      <div className="min-w-0">
+                        {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
+                        <div className="font-semibold">{item.product_name}</div>
+                        <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
+                          {item.brand_name && <span>Brand: {item.brand_name}</span>}
+                          {item.size && <span>Size: {item.size}</span>}
+                          {item.color && <span>Colour: {formatColor(item.color)}</span>}
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td className="px-2 py-2">

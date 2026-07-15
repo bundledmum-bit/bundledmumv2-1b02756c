@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { decodeCartFromUrl, buildWhatsappMessage } from "@/lib/cartShareUrl";
 import { expandCartForDisplay } from "@/lib/bundleDisplay";
+import LineItemThumb from "@/components/LineItemThumb";
 import { generateSharedCartUrl, fetchSharedCart, type SharedCartItem as RpcSharedCartItem } from "@/lib/sharedCart";
 import { getBrandImage } from "@/lib/brandImage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
@@ -618,7 +619,7 @@ export default function CartPage() {
                       return (
                         <div key={`${item._key}-${bi_i}`} className="bg-card rounded-card shadow-card p-3 sm:p-4">
                           <div className="flex items-start gap-3">
-                            <ProductImage imageUrl={null} emoji="📦" alt={bi.productName || "Item"} className="w-16 h-16 sm:w-20 sm:h-20 rounded-md bg-warm-cream border border-border" emojiClassName="text-2xl sm:text-3xl" />
+                            <LineItemThumb src={bi.imageUrl} alt={bi.productName || "Item"} className="w-16 h-16 sm:w-20 sm:h-20" />
                             <div className="flex-1 min-w-0">
                               <h3 className="font-body font-semibold text-[13px] sm:text-sm leading-tight line-clamp-2">{bi.productName || "Item"}</h3>
                               <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">

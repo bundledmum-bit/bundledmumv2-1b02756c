@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
 import { expandCartForDisplay } from "@/lib/bundleDisplay";
+import LineItemThumb from "@/components/LineItemThumb";
 import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
 import { supabase } from "@/integrations/supabase/client";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
@@ -1717,18 +1718,16 @@ export default function CheckoutPage() {
                   return item.bundleItems.map((bi: any, i: number) => ({
                     key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
                     qty: Number(bi.quantity) || 1, lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1),
-                    img: null as string | null, flagged: false,
+                    img: bi.imageUrl || null, flagged: false,
                   }));
                 }
                 const url = cartItemImage(item);
-                const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : (item.img || null));
+                const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : null);
                 return [{ key: item._key, name: item.name, qty: item.qty, lineTotal: item.price * item.qty, img, flagged: cartItemHasIssue(item, stockIssues) }];
               }).map((row: any) => (
                 <div key={row.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs ${row.flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {row.img && String(row.img).startsWith("http")
-                      ? <img src={row.img} alt={row.name} loading="lazy" className="w-12 h-12 rounded-md object-cover border border-border bg-warm-cream flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
-                      : <span className="text-2xl w-12 h-12 flex items-center justify-center rounded-md bg-warm-cream border border-border flex-shrink-0">{row.img || "📦"}</span>}
+                    <LineItemThumb src={row.img} alt={row.name} className="w-12 h-12" />
                     <span className="truncate">{row.name} ×{row.qty}</span>
                     {row.flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                   </div>
@@ -2292,19 +2291,15 @@ export default function CheckoutPage() {
                     return item.bundleItems.map((bi: any, i: number) => ({
                       key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
                       brand: bi.brandName || null, qty: Number(bi.quantity) || 1,
-                      lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1), img: null as string | null,
+                      lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1), img: bi.imageUrl || null,
                     }));
                   }
                   const url = cartItemImage(item);
-                  const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : (item.img || null));
+                  const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : null);
                   return [{ key: item._key, name: item.name, brand: item.selectedBrand?.label || null, qty: item.qty, lineTotal: item.price * item.qty, img }];
                 }).map((row: any) => (
                   <div key={row.key} className="flex items-center gap-3 pb-3 border-b border-border/50">
-                    <div className="w-12 h-12 bg-warm-cream rounded-md flex items-center justify-center text-xl flex-shrink-0 overflow-hidden border border-border">
-                      {row.img && String(row.img).startsWith("http")
-                        ? <img src={row.img} alt={row.name} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
-                        : (row.img || "📦")}
-                    </div>
+                    <LineItemThumb src={row.img} alt={row.name} className="w-12 h-12" />
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold leading-tight truncate">{row.name}</div>
                       <div className="text-forest text-[10px] mt-0.5">{row.brand ? `${row.brand} · ` : ""}Qty {row.qty}</div>
