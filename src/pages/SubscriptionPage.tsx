@@ -243,7 +243,7 @@ function MonthsStep({
 
       <div className="flex items-start gap-1.5 text-[12px] text-forest bg-forest/5 border border-forest/20 rounded-lg px-3 py-2">
         <Lock className="w-4 h-4 flex-shrink-0 mt-px" />
-        <span>{PRICE_LOCK_LINE} Each box gets 5% off and free delivery, and must reach {fmtN(MIN_BOX_VALUE)} before you can pay.{isGuest ? " No account needed — we'll set one up after payment." : ""}</span>
+        <span>{PRICE_LOCK_LINE} Each box gets 5% off and free delivery, and must reach at least {fmtN(MIN_BOX_VALUE)} before you can pay.{isGuest ? " No account needed — we'll set one up after payment." : ""}</span>
       </div>
 
       <button type="button" onClick={start} disabled={busy || months < 2 || !emailOk}
@@ -278,7 +278,7 @@ function BuildStep({
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h2 className="pf text-xl font-bold">Fill your {draft.months} boxes</h2>
-          <p className="text-sm text-text-med">Tap a box to fill it. Each must reach {fmtN(MIN_BOX_VALUE)}.</p>
+          <p className="text-sm text-text-med">Tap a box to fill it. Each must reach at least {fmtN(MIN_BOX_VALUE)}.</p>
         </div>
         <button type="button" onClick={onBackToMonths} className="text-xs text-text-med hover:underline inline-flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" /> Change months</button>
       </div>
@@ -305,7 +305,7 @@ function BuildStep({
                   <span className="rounded-pill bg-muted text-text-med text-[10px] font-bold px-2 py-0.5">Empty</span>
                 </div>
                 <p className="text-[11px] text-text-med inline-flex items-center gap-1 mb-2"><CalendarDays className="w-3 h-3" /> {formatBoxDate(box.scheduled_date)}</p>
-                <p className="text-[13px] text-text-light flex-1">This box is empty. Add products to reach {fmtN(MIN_BOX_VALUE)}.</p>
+                <p className="text-[13px] text-text-light flex-1">This box is empty. Add products to reach at least {fmtN(MIN_BOX_VALUE)}.</p>
                 <button type="button" onClick={() => setPickerBoxId(box.box_id)}
                   className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-pill bg-forest text-primary-foreground px-4 py-2.5 text-sm font-semibold hover:bg-forest-deep">
                   <Plus className="w-4 h-4" /> Add items to this box
@@ -347,7 +347,7 @@ function BuildStep({
         {!ready.ready && (
           <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" />
-            <span>Every box must reach {fmtN(MIN_BOX_VALUE)} before you can pay.{ready.failing.length ? ` Short: ${ready.failing.map(f => `Box ${f.box_number} (${fmtN(f.short_by)})`).join(", ")}.` : ""}</span>
+            <span>Every box must reach at least {fmtN(MIN_BOX_VALUE)} before you can pay.{ready.failing.length ? ` Short: ${ready.failing.map(f => `Box ${f.box_number} (${fmtN(f.short_by)})`).join(", ")}.` : ""}</span>
           </div>
         )}
         <button type="button" onClick={onContinue} disabled={!ready.ready || isFetching}
@@ -406,7 +406,7 @@ function BoxDetailModal({ guest, draft, box, onClose, onRefresh }: {
           <p className="text-[11px] text-forest font-semibold inline-flex items-center gap-1"><Check className="w-3 h-3" /> Free delivery and 5% off this box{box.discount_amount > 0 ? ` — you save ${fmtN(box.discount_amount)}` : ""}.</p>
 
           {box.items.length === 0 ? (
-            <p className="text-[13px] text-text-light py-4 text-center">This box is empty. Add products to reach {fmtN(MIN_BOX_VALUE)}.</p>
+            <p className="text-[13px] text-text-light py-4 text-center">This box is empty. Add products to reach at least {fmtN(MIN_BOX_VALUE)}.</p>
           ) : (
             <ul className="divide-y divide-border/60">
               {box.items.map(it => <ItemRow key={it.item_id} guest={guest} item={it} onRefresh={onRefresh} />)}
@@ -805,7 +805,7 @@ function ReviewStep({ started, draft, ready, details, onBack, onDone }: {
           <span>You are paying once, today, for all {draft.boxes.length} boxes. Delivery is free. These prices are locked in for every box.</span>
         </div>
         {!ready.ready && (
-          <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /><span>Every box must reach {fmtN(MIN_BOX_VALUE)} first.</span></div>
+          <div className="flex items-start gap-1.5 text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="w-4 h-4 flex-shrink-0 mt-px" /><span>Every box must reach at least {fmtN(MIN_BOX_VALUE)} first.</span></div>
         )}
         <button type="button" onClick={pay} disabled={!ready.ready || paying} className="w-full inline-flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground px-6 min-h-[52px] text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed">
           {paying ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening payment…</> : <>Pay {fmtN(grandTotal)} now</>}
