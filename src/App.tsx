@@ -29,6 +29,7 @@ import { usePageTracking } from "@/hooks/usePageTracking";
 
 import HomePage from "@/pages/HomePage";
 import SubscribeLanding from "@/pages/SubscribeLanding";
+import PayLaterPage from "@/pages/PayLaterPage";
 import PaymentReceivedPage from "@/pages/PaymentReceivedPage";
 import SubscriptionPage from "@/pages/SubscriptionPage";
 import BoxTopUpPage from "@/pages/BoxTopUpPage";
@@ -317,6 +318,8 @@ function StorefrontShell() {
           <Route path="/shop/mum/:category" element={<SubcategoryPage tab="mum" />} />
           <Route path="/shop/:slug" element={<LegacyShopRedirect><CategoryPage /></LegacyShopRedirect>} />
           <Route path="/deals" element={<DealsPage />} />
+          <Route path="/pay-later" element={<PayLaterPage />} />
+          <Route path="/buy-now-pay-later" element={<Navigate to="/pay-later" replace />} />
           <Route path="/subscribe" element={<SubscribeLanding />} />
           <Route path="/subscriptions" element={<SubscriptionPage />} />
           {/* Tokenised single-box top-up (48h edit-window email; token is the key) */}
