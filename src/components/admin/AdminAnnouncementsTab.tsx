@@ -29,6 +29,7 @@ interface AnnouncementRow {
   starts_at: string | null;
   ends_at: string | null;
   target_pages: string[] | null;
+  excluded_pages: string[] | null;
   target_audience: Audience | null;
   popup_delay_seconds: number | null;
   popup_frequency: Frequency | null;
@@ -54,6 +55,7 @@ const BLANK: Omit<AnnouncementRow, "id"> = {
   starts_at: null,
   ends_at: null,
   target_pages: [],
+  excluded_pages: [],
   target_audience: "all",
   popup_delay_seconds: 3,
   popup_frequency: "once_per_session",
@@ -120,10 +122,11 @@ function scheduleStatus(a: Pick<AnnouncementRow, "is_active" | "starts_at" | "en
   return { label: "Live now", cls: "bg-forest/10 text-forest" };
 }
 
-function targetSummary(pages: string[] | null): string {
+function targetSummary(pages: string[] | null, excluded?: string[] | null): string {
   const n = (pages || []).filter(Boolean).length;
-  if (n === 0) return "All pages";
-  return `${n} page${n === 1 ? "" : "s"}`;
+  const ex = (excluded || []).filter(Boolean).length;
+  const base = n === 0 ? "All pages" : `${n} page${n === 1 ? "" : "s"}`;
+  return ex > 0 ? `${base} except ${ex}` : base;
 }
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
@@ -314,6 +317,19 @@ function AnnouncementForm({
             placeholder="/cart, /checkout, /shop"
             className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
           />
+          {/* Excluded pages: identical control, directly beneath target pages */}
+          <label className="text-xs font-semibold text-text-med block mb-1 mt-3">
+            Excluded pages <span className="font-normal text-text-light">(optional)</span>
+          </label>
+          <input
+            value={pagesToString(form.excluded_pages)}
+            onChange={e => set("excluded_pages", pagesFromString(e.target.value))}
+            placeholder="/checkout, /cart"
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+          />
+          <p className="text-[11px] text-text-light mt-1 leading-relaxed">
+            Pages to hide this on, even if it would otherwise show. Leave empty for none.
+          </p>
         </div>
         <div>
           <label className="text-xs font-semibold text-text-med block mb-1">Target Audience</label>
@@ -329,6 +345,9 @@ function AnnouncementForm({
           </select>
         </div>
       </div>
+      <p className="text-[11px] text-text-light -mt-1 leading-relaxed">
+        Empty target pages means all pages. Excluded pages are removed from wherever it would otherwise show.
+      </p>
 
       {/* Popup-specific settings */}
       {isPopup && (
@@ -615,11 +634,17 @@ export default function AdminAnnouncementsTab() {
 
   const saveMutation = useMutation({
     mutationFn: async ({ id, data }: { id?: string; data: Omit<AnnouncementRow, "id"> }) => {
+      // Both page arrays are NOT NULL in the DB (default {}). Always send arrays.
+      const payload = {
+        ...data,
+        target_pages: data.target_pages || [],
+        excluded_pages: data.excluded_pages || [],
+      };
       if (id) {
-        const { error } = await (supabase as any).from("announcements").update(data).eq("id", id);
+        const { error } = await (supabase as any).from("announcements").update(payload).eq("id", id);
         if (error) throw error;
       } else {
-        const { error } = await (supabase as any).from("announcements").insert(data);
+        const { error } = await (supabase as any).from("announcements").insert(payload);
         if (error) throw error;
       }
     },
@@ -742,7 +767,7 @@ export default function AdminAnnouncementsTab() {
                     {a.emoji ? `${a.emoji} ` : ""}{a.title || a.message || "Untitled"}
                   </span>
                   <span className="text-xs text-text-light truncate block">
-                    {targetSummary(a.target_pages)}
+                    {targetSummary(a.target_pages, a.excluded_pages)}
                     {a.priority ? ` · priority ${a.priority}` : ""}
                     {a.title && a.message ? ` · ${a.message}` : ""}
                   </span>
@@ -817,6 +842,9 @@ export default function AdminAnnouncementsTab() {
                 <div className="px-4 pb-3 pt-0 grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 border-t border-border text-[11px] text-text-light bg-muted/20">
                   <div><span className="font-semibold text-text-med">Audience:</span> {a.target_audience || "all"}</div>
                   <div><span className="font-semibold text-text-med">Pages:</span> {(a.target_pages || []).join(", ") || "all"}</div>
+                  {(a.excluded_pages || []).filter(Boolean).length > 0 && (
+                    <div><span className="font-semibold text-text-med">Excluded:</span> {(a.excluded_pages || []).join(", ")}</div>
+                  )}
                   <div><span className="font-semibold text-text-med">Priority:</span> {a.priority ?? 0}</div>
                   <div><span className="font-semibold text-text-med">Order:</span> {a.display_order ?? 0}</div>
                   {a.display_type === "popup" && <>

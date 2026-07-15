@@ -42,6 +42,7 @@ export interface AnnouncementRow {
   starts_at: string | null;
   ends_at: string | null;
   target_pages: string[] | null;
+  excluded_pages: string[] | null;
   target_audience: "all" | "new_visitor" | "returning_visitor" | "returning" | "cart_not_empty" | string | null;
   popup_delay_seconds: number | null;
   popup_frequency: "every_visit" | "once_per_session" | "once_ever" | string | null;
@@ -97,16 +98,26 @@ function matchesAudience(a: AnnouncementRow): boolean {
   return true;
 }
 
-function matchesPage(a: AnnouncementRow, pathname: string): boolean {
-  const pages = a.target_pages || [];
-  if (!pages || pages.length === 0) return true; // empty = all pages
+// Shared path matcher: true if `pathname` matches any entry in `pages`
+// (exact match, or trailing-slash prefix like "/products/" matching
+// "/products/foo"). Empty list matches nothing.
+function pathInList(pages: string[] | null | undefined, pathname: string): boolean {
+  if (!pages || pages.length === 0) return false;
   return pages.some(p => {
     if (!p) return false;
     if (p === pathname) return true;
-    // Allow simple prefix match like "/products/" matching "/products/foo"
     if (p.endsWith("/") && pathname.startsWith(p)) return true;
     return false;
   });
+}
+
+function matchesPage(a: AnnouncementRow, pathname: string): boolean {
+  const target = a.target_pages || [];
+  // INCLUDE: empty target = all pages, otherwise the path must be listed.
+  const included = target.length === 0 || pathInList(target, pathname);
+  // EXCLUDE always wins: if the path is excluded, never show, even when included.
+  const excluded = pathInList(a.excluded_pages, pathname);
+  return included && !excluded;
 }
 
 function heightFor(a: AnnouncementRow): number {
