@@ -98,6 +98,7 @@ import AdminPushNotifications from "@/pages/admin/AdminPushNotifications";
 import AdminDeals from "@/pages/admin/AdminDeals";
 import AdminHomeContent from "@/pages/admin/AdminHomeContent";
 import AdminHospitalList from "@/pages/admin/AdminHospitalList";
+import AdminAnnouncements from "@/pages/admin/AdminAnnouncements";
 import AdminPermissions from "@/pages/admin/AdminPermissions";
 import AdminApprovals from "@/pages/admin/AdminApprovals";
 import AdminReferrals from "@/pages/admin/AdminReferrals";
@@ -403,6 +404,7 @@ const App = () => (
                 <Route path="settings/permissions" element={<AdminPermissions />} />
                 <Route path="push" element={<PermissionGate module="settings" action="view"><AdminPushNotifications /></PermissionGate>} />
                 <Route path="deals" element={<PermissionGate module="promotions" action="view"><AdminDeals /></PermissionGate>} />
+                <Route path="announcements" element={<PermissionGate module="promotions" action="view"><AdminAnnouncements /></PermissionGate>} />
                 <Route path="home-content" element={<PermissionGate module="content" action="edit_settings"><AdminHomeContent /></PermissionGate>} />
                 <Route path="approvals" element={<AdminApprovals />} />
                 <Route path="referrals" element={<PermissionGate module="customers" action="view"><AdminReferrals /></PermissionGate>} />

@@ -2,17 +2,23 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, ChevronDown, ChevronUp, Eye, EyeOff, ImageOff } from "lucide-react";
+import BrandImageUpload from "@/components/admin/BrandImageUpload";
 
 type DisplayType = "bar" | "popup" | "banner";
 type Audience = "all" | "new_visitor" | "returning_visitor" | "cart_not_empty";
 type Frequency = "every_visit" | "once_per_session" | "once_ever";
+type PopupPosition =
+  | "center" | "top" | "bottom"
+  | "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 interface AnnouncementRow {
   id: string;
   title: string | null;
   message: string | null;
   display_type: DisplayType;
+  image_url: string | null;
+  popup_position: PopupPosition;
   bg_color: string | null;
   text_color: string | null;
   emoji: string | null;
@@ -36,8 +42,10 @@ const BLANK: Omit<AnnouncementRow, "id"> = {
   title: "",
   message: "",
   display_type: "bar",
-  bg_color: "#1a2e1a",
-  text_color: "#ffffff",
+  image_url: null,
+  popup_position: "center",
+  bg_color: "#2D6A4F",
+  text_color: "#FFFFFF",
   emoji: "",
   link_url: "",
   link_text: "",
@@ -54,6 +62,20 @@ const BLANK: Omit<AnnouncementRow, "id"> = {
   linked_coupon_code: "",
   display_order: 0,
 };
+
+// 3x3 position grid: labels + the value each cell maps to. Center is the
+// middle cell; the 4 sides and 4 corners map to the 6 edge/corner values.
+const POSITION_GRID: Array<{ value: PopupPosition; label: string } | null> = [
+  { value: "top-left", label: "Top left" },
+  { value: "top", label: "Top" },
+  { value: "top-right", label: "Top right" },
+  null,
+  { value: "center", label: "Center" },
+  null,
+  { value: "bottom-left", label: "Bottom left" },
+  { value: "bottom", label: "Bottom" },
+  { value: "bottom-right", label: "Bottom right" },
+];
 
 const DISPLAY_TYPE_COLORS: Record<string, string> = {
   bar: "bg-forest/10 text-forest",
@@ -83,6 +105,25 @@ function localDate(iso: string | null): string {
 function isoFromLocal(s: string): string | null {
   if (!s) return null;
   return new Date(s).toISOString();
+}
+
+function scheduleStatus(a: Pick<AnnouncementRow, "is_active" | "starts_at" | "ends_at">): {
+  label: string;
+  cls: string;
+} {
+  if (!a.is_active) return { label: "Draft", cls: "bg-muted text-text-light" };
+  const now = Date.now();
+  const start = a.starts_at ? new Date(a.starts_at).getTime() : null;
+  const end = a.ends_at ? new Date(a.ends_at).getTime() : null;
+  if (end !== null && end < now) return { label: "Ended", cls: "bg-muted text-text-light" };
+  if (start !== null && start > now) return { label: "Scheduled", cls: "bg-amber-100 text-amber-700" };
+  return { label: "Live now", cls: "bg-forest/10 text-forest" };
+}
+
+function targetSummary(pages: string[] | null): string {
+  const n = (pages || []).filter(Boolean).length;
+  if (n === 0) return "All pages";
+  return `${n} page${n === 1 ? "" : "s"}`;
 }
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
@@ -293,6 +334,54 @@ function AnnouncementForm({
       {isPopup && (
         <div className="bg-muted/40 rounded-lg p-3 space-y-3 border border-border">
           <div className="text-xs font-bold text-text-light uppercase tracking-wider mb-1">Popup Settings</div>
+
+          {/* Optional image */}
+          <div>
+            <label className="text-xs font-semibold text-text-med block mb-1.5">
+              Image <span className="font-normal text-text-light">(optional)</span>
+            </label>
+            <div className="flex items-start gap-3">
+              <BrandImageUpload
+                label="Popup image"
+                currentUrl={form.image_url}
+                onUploaded={(url) => set("image_url", url)}
+                onRemove={() => set("image_url", null)}
+                bucket="product-images"
+                folder="announcements"
+              />
+              <p className="text-[11px] text-text-light leading-relaxed flex-1 pt-0.5">
+                Self-hosted upload. Most popups look best without one. If you skip it,
+                the popup still renders as a complete, premium text layout.
+              </p>
+            </div>
+          </div>
+
+          {/* Position picker (3x3 grid) */}
+          <div>
+            <label className="text-xs font-semibold text-text-med block mb-1.5">Position on screen</label>
+            <div className="grid grid-cols-3 gap-1.5 max-w-[220px]">
+              {POSITION_GRID.map((cell, i) =>
+                cell ? (
+                  <button
+                    key={cell.value}
+                    type="button"
+                    onClick={() => set("popup_position", cell.value)}
+                    title={cell.label}
+                    className={`h-11 rounded-lg border text-[10px] font-semibold transition-colors ${
+                      form.popup_position === cell.value
+                        ? "bg-forest text-primary-foreground border-forest"
+                        : "bg-background border-input text-text-light hover:border-forest"
+                    }`}
+                  >
+                    {cell.label}
+                  </button>
+                ) : (
+                  <div key={`sp-${i}`} className="h-11" />
+                )
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Delay (seconds)</label>
@@ -446,44 +535,58 @@ function AnnouncementPreview({ form }: { form: Omit<AnnouncementRow, "id"> }) {
     );
   }
 
-  // Popup: modal card
+  // Popup: modal card. Renders the same two states as the storefront:
+  // WITH image (image at the top) and WITHOUT (clean, balanced text-first card).
+  const hasImage = !!form.image_url;
   return (
-    <div
-      className="relative rounded-xl shadow-2xl max-w-[320px] w-full p-6 pt-8 text-center"
-      style={{ backgroundColor: bg, color: fg }}
-    >
-      <button
-        className="absolute top-3 right-3 p-1 rounded-full opacity-70"
-        aria-label="Close"
-        tabIndex={-1}
+    <div className="w-full flex flex-col items-center gap-2">
+      <div
+        className="relative rounded-2xl shadow-2xl max-w-[300px] w-full overflow-hidden text-center"
+        style={{ backgroundColor: bg, color: fg }}
       >
-        <X size={18} style={{ color: fg }} />
-      </button>
-      {form.emoji && <div className="text-4xl mb-3">{form.emoji}</div>}
-      {form.title && (
-        <h2 className="pf text-xl font-bold mb-2">{form.title}</h2>
-      )}
-      {form.message && (
-        <p className="text-sm leading-relaxed mb-4 opacity-90">{form.message}</p>
-      )}
-      {form.linked_coupon_code && (
-        <div className="mb-4 text-center">
-          <div
-            className="inline-block px-4 py-2 rounded-lg border-2 border-dashed font-mono font-bold text-sm tracking-wider"
-            style={{ borderColor: fg }}
-          >
-            {form.linked_coupon_code}
-          </div>
-        </div>
-      )}
-      {(form.link_url || form.link_text) && (
-        <div
-          className="block w-full text-center px-4 py-2.5 rounded-lg font-semibold text-sm"
-          style={{ backgroundColor: fg, color: bg }}
+        <button
+          className="absolute top-2.5 right-2.5 z-10 p-1 rounded-full bg-black/20"
+          aria-label="Close"
+          tabIndex={-1}
         >
-          {form.link_text || "Learn more"}
+          <X size={16} style={{ color: fg }} />
+        </button>
+
+        {hasImage && (
+          <img
+            src={form.image_url as string}
+            alt=""
+            className="w-full h-32 object-cover"
+          />
+        )}
+
+        <div className={hasImage ? "p-5" : "p-6 pt-8"}>
+          {form.emoji && <div className="text-4xl mb-3">{form.emoji}</div>}
+          {form.title && <h2 className="pf text-lg font-bold mb-2 leading-tight">{form.title}</h2>}
+          {form.message && <p className="text-[13px] leading-relaxed mb-4 opacity-90">{form.message}</p>}
+          {form.linked_coupon_code && (
+            <div className="mb-4">
+              <span
+                className="inline-block px-4 py-2 rounded-lg border-2 border-dashed font-mono font-bold text-sm tracking-wider"
+                style={{ borderColor: fg }}
+              >
+                {form.linked_coupon_code}
+              </span>
+            </div>
+          )}
+          {(form.link_url || form.link_text) && (
+            <div
+              className="block w-full text-center px-4 py-2.5 rounded-lg font-semibold text-sm"
+              style={{ backgroundColor: fg, color: bg }}
+            >
+              {form.link_text || "Learn more"}
+            </div>
+          )}
         </div>
-      )}
+      </div>
+      <p className="text-[10px] text-text-light italic">
+        {hasImage ? "With image" : "No image (text-first)"} · Position: {form.popup_position}
+      </p>
     </div>
   );
 }
@@ -611,11 +714,22 @@ export default function AdminAnnouncementsTab() {
             <div key={a.id} className="bg-card border border-border rounded-xl overflow-hidden">
               {/* Collapsed row */}
               <div className="flex items-center gap-3 px-4 py-3">
-                {/* Color swatch */}
-                <div
-                  className="w-3 h-3 rounded-full flex-shrink-0 border border-white/20"
-                  style={{ backgroundColor: a.bg_color || "#1a2e1a" }}
-                />
+                {/* Thumbnail (image if set, else a neutral no-image marker) */}
+                {a.image_url ? (
+                  <img
+                    src={a.image_url}
+                    alt=""
+                    className="w-9 h-9 rounded-lg object-cover flex-shrink-0 border border-border"
+                  />
+                ) : (
+                  <div
+                    className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center border border-border"
+                    style={{ backgroundColor: a.bg_color || "#2D6A4F" }}
+                    title="No image"
+                  >
+                    <ImageOff className="w-3.5 h-3.5" style={{ color: a.text_color || "#FFFFFF", opacity: 0.6 }} />
+                  </div>
+                )}
 
                 {/* Type badge */}
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${DISPLAY_TYPE_COLORS[a.display_type] || "bg-muted text-text-med"}`}>
@@ -627,19 +741,22 @@ export default function AdminAnnouncementsTab() {
                   <span className="text-sm font-semibold truncate block">
                     {a.emoji ? `${a.emoji} ` : ""}{a.title || a.message || "Untitled"}
                   </span>
-                  {a.title && a.message && (
-                    <span className="text-xs text-text-light truncate block">{a.message}</span>
-                  )}
+                  <span className="text-xs text-text-light truncate block">
+                    {targetSummary(a.target_pages)}
+                    {a.priority ? ` · priority ${a.priority}` : ""}
+                    {a.title && a.message ? ` · ${a.message}` : ""}
+                  </span>
                 </div>
 
-                {/* Date range */}
-                {(a.starts_at || a.ends_at) && (
-                  <span className="text-[10px] text-text-light hidden sm:block flex-shrink-0">
-                    {a.starts_at ? new Date(a.starts_at).toLocaleDateString() : "∞"}
-                    {" → "}
-                    {a.ends_at ? new Date(a.ends_at).toLocaleDateString() : "∞"}
-                  </span>
-                )}
+                {/* Schedule status */}
+                {(() => {
+                  const st = scheduleStatus(a);
+                  return (
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 hidden sm:block ${st.cls}`}>
+                      {st.label}
+                    </span>
+                  );
+                })()}
 
                 {/* Active toggle */}
                 <button
@@ -651,11 +768,6 @@ export default function AdminAnnouncementsTab() {
                     ? <ToggleRight className="w-5 h-5 text-forest" />
                     : <ToggleLeft className="w-5 h-5 text-text-light" />}
                 </button>
-
-                {/* Status badge */}
-                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold flex-shrink-0 ${a.is_active ? "bg-forest/10 text-forest" : "bg-muted text-text-light"}`}>
-                  {a.is_active ? "Live" : "Off"}
-                </span>
 
                 {/* Edit */}
                 <button
@@ -708,6 +820,8 @@ export default function AdminAnnouncementsTab() {
                   <div><span className="font-semibold text-text-med">Priority:</span> {a.priority ?? 0}</div>
                   <div><span className="font-semibold text-text-med">Order:</span> {a.display_order ?? 0}</div>
                   {a.display_type === "popup" && <>
+                    <div><span className="font-semibold text-text-med">Position:</span> {a.popup_position || "center"}</div>
+                    <div><span className="font-semibold text-text-med">Image:</span> {a.image_url ? "Yes" : "No"}</div>
                     <div><span className="font-semibold text-text-med">Delay:</span> {a.popup_delay_seconds ?? 0}s</div>
                     <div><span className="font-semibold text-text-med">Frequency:</span> {a.popup_frequency || "every_visit"}</div>
                     <div><span className="font-semibold text-text-med">Exit intent:</span> {a.show_on_exit_intent ? "Yes" : "No"}</div>
