@@ -1,15 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { MessageCircle, ShoppingBag, AlertCircle } from "lucide-react";
+import { MessageCircle, ShoppingBag, AlertCircle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { getBrandImage } from "@/lib/brandImage";
 import { setLandingOrigin } from "@/lib/landingOrigin";
-import QuoteItemsCard from "@/components/quote/QuoteItemsCard";
+import QuoteItemsCard, { QUOTE_ITEM_SECTIONS } from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
+
+// A local, editable copy of a package line. `key` is a browser-only id for React
+// keys and edits; it never touches the DB.
+interface WorkItem {
+  key: string;
+  product_id: string | null;
+  brand_id: string | null;
+  product_name: string;
+  brand_name: string | null;
+  size: string | null;
+  color: string | null;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  section: string | null;
+  display_order: number;
+}
+
+function newKey(): string {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* ignore */ }
+  return `k_${Math.random().toString(36).slice(2)}`;
+}
 
 interface LandingPageRow {
   id: string;
@@ -87,21 +111,57 @@ export default function PackagePage() {
   });
   const items: LandingItemRow[] = itemsQ.data || [];
 
-  // ── Resolve item images (brand image first, product image fallback) ─
-  // No PostgREST embeds here: we query brands/products by id directly, so
-  // the two products<->brands FKs can never make the embed ambiguous.
+  // ── Editable working copy ──────────────────────────────────────────
+  // The package is a template; the customer edits a per-visitor copy that lives
+  // only in the browser until it is added to cart. The landing_page rows are
+  // never modified here. Initialised once when the items load.
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+  const seededForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!page?.id || !itemsQ.data) return;
+    if (seededForRef.current === page.id) return;
+    seededForRef.current = page.id;
+    setWorkItems(
+      (itemsQ.data as LandingItemRow[]).map((it) => ({
+        key: newKey(),
+        product_id: it.product_id,
+        brand_id: it.brand_id,
+        product_name: it.product_name,
+        brand_name: it.brand_name,
+        size: it.size,
+        color: it.color,
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        unit_price: Number(it.unit_price) || 0,
+        line_total: (Number(it.unit_price) || 0) * Math.max(1, Number(it.quantity) || 1),
+        section: it.section,
+        display_order: it.display_order ?? 0,
+      })),
+    );
+  }, [page?.id, itemsQ.data]);
+
+  // Sections the page offers (canonical order), so an emptied section stays
+  // addable. Derived from the original template, not the mutable working copy.
+  const addSections = useMemo(() => {
+    const present = new Set((items.map((it) => it.section).filter(Boolean)) as string[]);
+    const known = QUOTE_ITEM_SECTIONS.filter((s) => present.has(s.key)).map((s) => ({ key: s.key as string | null, label: s.label }));
+    return known.length > 0 ? known : [{ key: null, label: "Items" }];
+  }, [items]);
+
+  // ── Resolve item images + available sizes for the working copy ─
+  // No PostgREST embeds: query brands/products/product_sizes by id directly, so
+  // the two products<->brands FKs can never make an embed ambiguous.
   const brandIds = useMemo(
-    () => [...new Set(items.map((it) => it.brand_id).filter(Boolean))] as string[],
-    [items],
+    () => [...new Set(workItems.map((it) => it.brand_id).filter(Boolean))] as string[],
+    [workItems],
   );
   const productIds = useMemo(
-    () => [...new Set(items.map((it) => it.product_id).filter(Boolean))] as string[],
-    [items],
+    () => [...new Set(workItems.map((it) => it.product_id).filter(Boolean))] as string[],
+    [workItems],
   );
 
   const imagesQ = useQuery({
     queryKey: ["landing-item-images", brandIds.slice().sort().join(","), productIds.slice().sort().join(",")],
-    enabled: items.length > 0,
+    enabled: brandIds.length + productIds.length > 0,
     queryFn: async () => {
       const [brandsRes, productsRes] = await Promise.all([
         brandIds.length
@@ -119,9 +179,30 @@ export default function PackagePage() {
     },
   });
 
-  const imageFor = (it: LandingItemRow): string | null => {
-    const brandImg = it.brand_id ? imagesQ.data?.brandMap.get(it.brand_id) : null;
-    const productImg = it.product_id ? imagesQ.data?.productMap.get(it.product_id) : null;
+  // Available sizes per product, for the editable size selector.
+  const sizesQ = useQuery({
+    queryKey: ["landing-item-sizes", productIds.slice().sort().join(",")],
+    enabled: productIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_sizes")
+        .select("product_id, size_label, in_stock")
+        .in("product_id", productIds)
+        .order("display_order", { ascending: true });
+      if (error) throw error;
+      const map = new Map<string, string[]>();
+      (data || []).forEach((s: any) => {
+        if (s.in_stock === false) return;
+        if (!map.has(s.product_id)) map.set(s.product_id, []);
+        map.get(s.product_id)!.push(s.size_label);
+      });
+      return map;
+    },
+  });
+
+  const imageForIds = (productId: string | null, brandId: string | null): string | null => {
+    const brandImg = brandId ? imagesQ.data?.brandMap.get(brandId) : null;
+    const productImg = productId ? imagesQ.data?.productMap.get(productId) : null;
     return brandImg || productImg || null;
   };
 
@@ -129,13 +210,101 @@ export default function PackagePage() {
     document.title = page?.title ? `${page.title} · BundledMum` : "Package · BundledMum";
   }, [page?.title]);
 
-  // ── Add to cart (mirrors the quote page) ───────────────────────────
+  const sizeOptionsFor = (productId: string | null): string[] =>
+    (productId && sizesQ.data?.get(productId)) || [];
+
+  // ── Editing handlers (mutate the browser-only working copy) ────────
+  const recalc = (it: WorkItem): WorkItem => ({ ...it, line_total: it.unit_price * it.quantity });
+
+  const changeQty = (key: string, qty: number) =>
+    setWorkItems((prev) => prev.map((it) => (it.key === key ? recalc({ ...it, quantity: Math.max(1, qty) }) : it)));
+  const changeSize = (key: string, size: string | null) =>
+    setWorkItems((prev) => prev.map((it) => (it.key === key ? { ...it, size } : it)));
+  const removeItem = (key: string) =>
+    setWorkItems((prev) => prev.filter((it) => it.key !== key));
+
+  // ── Per-section product picker ─────────────────────────────────────
+  const [pickerSection, setPickerSection] = useState<string | null | undefined>(undefined); // undefined = closed
+  const [pickerSearch, setPickerSearch] = useState("");
+  const pickerOpen = pickerSection !== undefined;
+
+  const openPicker = (sectionKey: string | null) => { setPickerSection(sectionKey); setPickerSearch(""); };
+  const closePicker = () => setPickerSection(undefined);
+
+  const trimmedPicker = pickerSearch.trim();
+  const { data: pickerResults = [], isFetching: pickerSearching } = useQuery({
+    queryKey: ["package-picker-search", trimmedPicker],
+    enabled: pickerOpen && trimmedPicker.length >= 2,
+    staleTime: 30_000,
+    queryFn: async () => {
+      // Same pinned-FK query the admin builder uses, plus image fields so the
+      // result cards can show a product image.
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, name, image_url, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock, image_url, stored_image_url)")
+        .eq("is_active", true)
+        .eq("brands.in_stock", true)
+        .gt("brands.price", 0)
+        .ilike("name", `%${trimmedPicker}%`)
+        .limit(20);
+      if (error) throw error;
+      const rows: Array<{ productId: string; productName: string; brandId: string; brandName: string; price: number; image: string | null }> = [];
+      (data || []).forEach((p: any) => {
+        (p.brands || []).forEach((b: any) => {
+          rows.push({
+            productId: p.id, productName: p.name,
+            brandId: b.id, brandName: b.brand_name, price: b.price,
+            image: getBrandImage(b) || p.image_url || null,
+          });
+        });
+      });
+      return rows;
+    },
+  });
+
+  // Add a searched product into the section the picker was opened from. Adding
+  // the same product+brand (same size, here always null on add) in that section
+  // increments its quantity instead of stacking a duplicate line.
+  const addProduct = (row: { productId: string; productName: string; brandId: string; brandName: string; price: number }) => {
+    const section = pickerSection ?? null;
+    setWorkItems((prev) => {
+      const idx = prev.findIndex(
+        (it) => it.product_id === row.productId && it.brand_id === row.brandId && (it.section ?? null) === section && !it.size,
+      );
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = recalc({ ...next[idx], quantity: next[idx].quantity + 1 });
+        return next;
+      }
+      const maxOrder = prev.reduce((m, it) => Math.max(m, it.display_order || 0), 0);
+      return [
+        ...prev,
+        recalc({
+          key: newKey(),
+          product_id: row.productId,
+          brand_id: row.brandId,
+          product_name: row.productName,
+          brand_name: row.brandName,
+          size: null,
+          color: null,
+          quantity: 1,
+          unit_price: Number(row.price) || 0,
+          line_total: 0,
+          section,
+          display_order: maxOrder + 1,
+        }),
+      ];
+    });
+    toast.success("Added to your package");
+  };
+
+  // ── Add to cart (mirrors the quote page, using the edited copy) ────
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [loadingCart, setLoadingCart] = useState(false);
   const [pendingPayKlump, setPendingPayKlump] = useState(false);
 
   const handleAddToCart = (payKlump = false) => {
-    if (!page || items.length === 0) return;
+    if (!page || workItems.length === 0) return;
     setPendingPayKlump(payKlump);
     setConfirmReplace(true);
   };
@@ -144,26 +313,30 @@ export default function PackagePage() {
     if (!page) return;
     setLoadingCart(true);
     try {
-      const next: CartItem[] = items
+      // Map the EDITED working copy (not the original template) to the cart.
+      const next: CartItem[] = workItems
         .filter((it) => it.product_id)
-        .map((it) => ({
-          id: String(it.product_id),
-          _key: cartItemKey(String(it.product_id), it.brand_id || undefined, it.size || undefined, it.color || undefined),
-          name: it.product_name,
-          price: Number(it.unit_price || 0),
-          qty: Math.max(1, Number(it.quantity || 1)),
-          imageUrl: imageFor(it) || undefined,
-          selectedBrand: it.brand_id
-            ? {
-                id: it.brand_id,
-                label: it.brand_name || undefined,
-                price: Number(it.unit_price || 0),
-                imageUrl: imageFor(it) || undefined,
-              }
-            : undefined,
-          selectedSize: it.size || undefined,
-          selectedColor: it.color || undefined,
-        }) as CartItem);
+        .map((it) => {
+          const img = imageForIds(it.product_id, it.brand_id) || undefined;
+          return {
+            id: String(it.product_id),
+            _key: cartItemKey(String(it.product_id), it.brand_id || undefined, it.size || undefined, it.color || undefined),
+            name: it.product_name,
+            price: Number(it.unit_price || 0),
+            qty: Math.max(1, Number(it.quantity || 1)),
+            imageUrl: img,
+            selectedBrand: it.brand_id
+              ? {
+                  id: it.brand_id,
+                  label: it.brand_name || undefined,
+                  price: Number(it.unit_price || 0),
+                  imageUrl: img,
+                }
+              : undefined,
+            selectedSize: it.size || undefined,
+            selectedColor: it.color || undefined,
+          } as CartItem;
+        });
       setCart(next);
       // Tag the cart's landing-page origin so checkout can create a funnel
       // quote once the visitor enters their details. Never creates a quote here.
@@ -228,8 +401,9 @@ export default function PackagePage() {
     );
   }
 
-  const viewItems = items.map((it) => ({
-    id: it.id,
+  const viewItems = workItems.map((it) => ({
+    id: it.key,
+    product_id: it.product_id,
     product_name: it.product_name,
     brand_name: it.brand_name,
     size: it.size,
@@ -239,8 +413,13 @@ export default function PackagePage() {
     line_total: it.line_total,
     section: it.section,
     display_order: it.display_order,
-    image_url: imageFor(it),
+    image_url: imageForIds(it.product_id, it.brand_id),
   }));
+
+  // Live totals from the edited working copy; service fee + delivery stay as the
+  // page's indicative values.
+  const liveSubtotal = workItems.reduce((s, it) => s + it.line_total, 0);
+  const liveTotal = Math.max(0, liveSubtotal + (page.service_fee || 0) + (page.estimated_delivery_fee || 0));
 
   return (
     <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
@@ -253,28 +432,40 @@ export default function PackagePage() {
               {page.intro_text}
             </p>
           )}
+          <p className="text-[12px] text-text-light mt-2">
+            Make it yours: change sizes and quantities, remove what you do not need, or add more with the buttons below.
+          </p>
         </div>
 
-        {/* Items */}
-        <QuoteItemsCard items={viewItems} />
+        {/* Items (editable working copy) */}
+        <QuoteItemsCard
+          items={viewItems}
+          editable
+          addSections={addSections}
+          sizeOptions={(it) => sizeOptionsFor(it.product_id ?? null)}
+          onQtyChange={changeQty}
+          onSizeChange={changeSize}
+          onRemove={removeItem}
+          onAddToSection={openPicker}
+        />
 
-        {/* Totals */}
+        {/* Totals — recompute live from the working copy */}
         <QuoteTotalsCard
-          subtotal={page.subtotal}
+          subtotal={liveSubtotal}
           serviceFee={page.service_fee}
           delivery={
-            <span className={page.estimated_delivery_fee === 0 ? "text-right" : "text-right"}>
+            <span className="text-right">
               {page.estimated_delivery_fee === 0 ? "FREE" : fmt(page.estimated_delivery_fee)}
             </span>
           }
-          total={page.total}
+          total={liveTotal}
         />
 
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <button
             onClick={() => handleAddToCart(false)}
-            disabled={loadingCart || items.length === 0}
+            disabled={loadingCart || workItems.length === 0}
             className="flex-1 inline-flex items-center justify-center gap-2 bg-coral text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
           >
             <ShoppingBag className="w-4 h-4" />
@@ -283,7 +474,7 @@ export default function PackagePage() {
           {klumpEnabled && (
             <button
               onClick={() => handleAddToCart(true)}
-              disabled={loadingCart || items.length === 0}
+              disabled={loadingCart || workItems.length === 0}
               className="flex-1 inline-flex items-center justify-center gap-2 bg-forest text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
             >
               🛍️ Buy Now, Pay Later with Klump
@@ -308,6 +499,81 @@ export default function PackagePage() {
           </div>
         )}
       </div>
+
+      {/* Per-section product picker */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 bg-foreground/60 z-[160] flex items-end sm:items-center justify-center sm:p-4"
+          onClick={closePicker}
+        >
+          <div
+            className="bg-card w-full sm:max-w-[520px] sm:rounded-2xl rounded-t-2xl max-h-[85vh] flex flex-col shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+              <h3 className="font-bold text-sm">
+                Add products
+                {pickerSection && (
+                  <span className="text-text-light font-normal"> to {QUOTE_ITEM_SECTIONS.find((s) => s.key === pickerSection)?.label || "this section"}</span>
+                )}
+              </h3>
+              <button onClick={closePicker} aria-label="Close" className="w-11 h-11 grid place-items-center rounded-full hover:bg-muted -mr-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-text-light absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  autoFocus
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  placeholder="Search all products by name"
+                  className="w-full border border-input rounded-lg pl-9 pr-3 min-h-[44px] text-sm bg-background"
+                />
+              </div>
+            </div>
+            <div className="px-4 pb-4 overflow-y-auto">
+              {trimmedPicker.length < 2 ? (
+                <p className="text-xs text-text-light text-center py-8">Type at least 2 characters to search.</p>
+              ) : pickerSearching ? (
+                <p className="text-xs text-text-light text-center py-8">Searching…</p>
+              ) : pickerResults.length === 0 ? (
+                <p className="text-xs text-text-light text-center py-8">No products found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {pickerResults.map((row, i) => (
+                    <div key={`${row.productId}-${row.brandId}-${i}`} className="flex items-center gap-3 border border-border rounded-xl p-2.5">
+                      <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
+                        {row.image ? (
+                          <img src={row.image} alt={row.productName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full grid place-items-center text-text-light"><ShoppingBag className="w-4 h-4" /></div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate">{row.productName}</p>
+                        <p className="text-[11px] text-text-med">{row.brandName} · {fmt(row.price)}</p>
+                      </div>
+                      <button
+                        onClick={() => addProduct(row)}
+                        className="shrink-0 inline-flex items-center justify-center gap-1 min-h-[44px] px-4 rounded-pill bg-coral text-white text-sm font-bold hover:bg-coral-dark"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-border shrink-0">
+              <button onClick={closePicker} className="w-full min-h-[44px] rounded-pill border border-border text-sm font-semibold hover:bg-muted">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation modal (mirrors the quote page) */}
       {confirmReplace && (
