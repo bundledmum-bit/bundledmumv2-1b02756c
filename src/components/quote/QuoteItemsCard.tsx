@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { ShoppingBag, Minus, Plus, X } from "lucide-react";
 import Zoom from "react-medium-image-zoom";
 import "react-medium-image-zoom/dist/styles.css";
+import ImageZoomModal from "@/components/ImageZoomModal";
 import { fmt } from "@/lib/cart";
 
 // Normalised item shape shared by the quote page and the landing (package) page,
@@ -86,6 +88,10 @@ function ReadOnlyRow({ it }: { it: QuoteViewItem }) {
 
 function EditableRow({ it, h }: { it: QuoteViewItem; h: EditHandlers }) {
   const sizes = h.sizeOptions?.(it) ?? [];
+  // Tap the thumbnail to enlarge it in the shared lightbox. Image-only trigger,
+  // so the qty/size/remove controls are never affected; the placeholder (no
+  // image) is not clickable, so it can never open an empty lightbox.
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   return (
     <div className="px-4 sm:px-5 py-3">
       <div className="flex items-start gap-3">
@@ -94,7 +100,14 @@ function EditableRow({ it, h }: { it: QuoteViewItem; h: EditHandlers }) {
             // Explicit fixed px size (not w-full/h-full): iOS Safari fails to
             // resolve an img's percentage height + object-fit inside a flex item,
             // collapsing it to 0. A definite size renders reliably on iOS.
-            <img src={it.image_url} alt={it.product_name} className="block w-14 h-14 object-cover" />
+            <button
+              type="button"
+              onClick={() => setZoomSrc(it.image_url || null)}
+              aria-label={`Enlarge ${it.product_name}`}
+              className="block w-14 h-14 cursor-zoom-in"
+            >
+              <img src={it.image_url} alt={it.product_name} className="block w-14 h-14 object-cover" />
+            </button>
           ) : (
             <div className="w-14 h-14 grid place-items-center text-text-light">
               <ShoppingBag className="w-5 h-5" />
@@ -159,6 +172,7 @@ function EditableRow({ it, h }: { it: QuoteViewItem; h: EditHandlers }) {
           </div>
         </div>
       </div>
+      <ImageZoomModal src={zoomSrc} alt={it.product_name} caption={it.product_name} onClose={() => setZoomSrc(null)} />
     </div>
   );
 }
