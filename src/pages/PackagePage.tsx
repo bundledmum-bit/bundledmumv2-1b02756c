@@ -10,6 +10,7 @@ import { getBrandImage } from "@/lib/brandImage";
 import { setLandingOrigin } from "@/lib/landingOrigin";
 import QuoteItemsCard, { QUOTE_ITEM_SECTIONS } from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
+import ShareRow from "@/components/ShareRow";
 
 // A local, editable copy of a package line. `key` is a browser-only id for React
 // keys and edits; it never touches the DB.
@@ -517,6 +518,12 @@ export default function PackagePage() {
             </a>
           )}
         </div>
+
+        {/* Share row */}
+        <ShareRow
+          message={`Check out this ${page.title} ${window.location.origin}/package/${slug}`}
+          url={`${window.location.origin}/package/${slug}`}
+        />
 
         {/* WhatsApp contact strip */}
         {whatsappNumber && (

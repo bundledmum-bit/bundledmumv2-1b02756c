@@ -16,6 +16,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { downloadQuotePdf } from "@/lib/quotePdf";
 import QuoteItemsCard from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
+import ShareRow from "@/components/ShareRow";
 // Coral logo — matches the local-import convention used on every other
 // public/customer-facing surface (PaymentReceivedPage, AccountLoginPage,
 // SubscribeLanding, NotFound, etc.). The hosted PNG referenced in the
@@ -414,6 +415,12 @@ export default function QuotePage() {
             <Download className="w-4 h-4" /> {downloadingPdf ? "Generating PDF…" : "Download PDF"}
           </button>
         </div>
+
+        {/* Share row */}
+        <ShareRow
+          message={`Check out this hospital list prices ${window.location.origin}/quote/${shareToken}`}
+          url={`${window.location.origin}/quote/${shareToken}`}
+        />
 
         {/* WhatsApp contact strip */}
         {whatsappNumber && (
