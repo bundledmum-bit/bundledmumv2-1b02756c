@@ -54,6 +54,7 @@ import GiftResultsPage from "@/pages/GiftResultsPage";
 import CartPage from "@/pages/CartPage";
 import CheckoutPage from "@/pages/CheckoutPage";
 import QuotePage from "@/pages/QuotePage";
+import PackagePage from "@/pages/PackagePage";
 import HospitalListPage from "@/pages/HospitalListPage";
 import OrderConfirmedPage from "@/pages/OrderConfirmedPage";
 import AboutPage from "@/pages/AboutPage";
@@ -99,6 +100,7 @@ import AdminDeals from "@/pages/admin/AdminDeals";
 import AdminHomeContent from "@/pages/admin/AdminHomeContent";
 import AdminHospitalList from "@/pages/admin/AdminHospitalList";
 import AdminAnnouncements from "@/pages/admin/AdminAnnouncements";
+import AdminLandingPages from "@/pages/admin/AdminLandingPages";
 import AdminPermissions from "@/pages/admin/AdminPermissions";
 import AdminApprovals from "@/pages/admin/AdminApprovals";
 import AdminReferrals from "@/pages/admin/AdminReferrals";
@@ -336,6 +338,7 @@ function StorefrontShell() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/quote/:shareToken" element={<QuotePage />} />
+          <Route path="/package/:slug" element={<PackagePage />} />
           <Route path="/hospital-list" element={<HospitalListPage />} />
           <Route path="/order-confirmed" element={<OrderConfirmedPage />} />
           <Route path="/payment-received" element={<PaymentReceivedPage />} />
@@ -409,6 +412,7 @@ const App = () => (
                 <Route path="push" element={<PermissionGate module="settings" action="view"><AdminPushNotifications /></PermissionGate>} />
                 <Route path="deals" element={<PermissionGate module="promotions" action="view"><AdminDeals /></PermissionGate>} />
                 <Route path="announcements" element={<PermissionGate module="promotions" action="view"><AdminAnnouncements /></PermissionGate>} />
+                <Route path="landing-pages" element={<PermissionGate module="promotions" action="view"><AdminLandingPages /></PermissionGate>} />
                 <Route path="home-content" element={<PermissionGate module="content" action="edit_settings"><AdminHomeContent /></PermissionGate>} />
                 <Route path="approvals" element={<AdminApprovals />} />
                 <Route path="referrals" element={<PermissionGate module="customers" action="view"><AdminReferrals /></PermissionGate>} />

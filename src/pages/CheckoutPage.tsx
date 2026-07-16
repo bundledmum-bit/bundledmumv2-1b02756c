@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
+import { isCartLandingSourced } from "@/lib/landingOrigin";
 import { expandCartForDisplay } from "@/lib/bundleDisplay";
 import LineItemThumb from "@/components/LineItemThumb";
 import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
@@ -984,6 +985,74 @@ export default function CheckoutPage() {
     }
   };
 
+  // ── Landing-page funnel quote (additive; runs alongside abandoned-cart) ──
+  // When the cart originated from a /package landing page and the visitor has
+  // entered enough contact detail, create/update a real quote in the funnel via
+  // the idempotent RPC (same session key updates the one quote, never a
+  // duplicate). Non-landing carts do nothing. This never blocks checkout: on any
+  // failure we log and continue.
+  const lastLandingSigRef = useRef<string>("");
+  const saveLandingQuote = async () => {
+    const origin = isCartLandingSourced(cart as any[]);
+    if (!origin) return;
+    const name = `${form.firstName || ""} ${form.lastName || ""}`.trim();
+    const phone = (form.phone || "").trim();
+    const email = (form.email || "").trim();
+    // Only once there is enough to identify the lead, and a real cart.
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const hasDetails = emailValid || (name.length > 0 && phone.length >= 7);
+    if (!hasDetails || cart.length === 0) return;
+
+    const p_items = (cart as any[]).map((i, idx) => {
+      const qty = Math.max(1, Number(i.qty) || 1);
+      const unit = Number(i.price) || 0; // integer naira, never /100
+      return {
+        product_id: i.id != null ? String(i.id) : null,
+        brand_id: i.selectedBrand?.id || null,
+        product_name: i.name,
+        brand_name: i.selectedBrand?.label || null,
+        size: i.selectedSize || null,
+        color: i.selectedColor || null,
+        quantity: qty,
+        unit_price: unit,
+        line_total: unit * qty,
+        display_order: idx,
+        section: null,
+      };
+    });
+
+    // Skip redundant calls when nothing relevant changed since the last upsert.
+    const sig = JSON.stringify({ name, phone, email, items: p_items, lp: origin.landingPageId });
+    if (sig === lastLandingSigRef.current) return;
+    lastLandingSigRef.current = sig;
+
+    try {
+      const { error } = await (supabase as any).rpc("upsert_landing_page_quote", {
+        p_session_key: origin.sessionKey,
+        p_landing_page_id: origin.landingPageId,
+        p_customer_name: name || null,
+        p_customer_phone: phone || null,
+        p_customer_email: email || null,
+        p_items,
+      });
+      if (error) {
+        console.warn("[landing-quote] upsert failed", error);
+        lastLandingSigRef.current = ""; // allow a retry on the next change
+      }
+    } catch (e) {
+      console.warn("[landing-quote] upsert threw", e);
+      lastLandingSigRef.current = "";
+    }
+  };
+
+  // Fire the landing-quote upsert on detail/cart changes (debounced so we do not
+  // spam a call per keystroke). Idempotent on the session key. Background only.
+  useEffect(() => {
+    const t = setTimeout(() => { void saveLandingQuote(); }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, form.firstName, form.lastName, form.phone, form.email]);
+
   // Human-friendly labels used in the "please complete …" toast so the
   // customer knows exactly which fields are blocking checkout.
   const FIELD_LABELS: Record<keyof FormData, string> = {
@@ -1849,7 +1918,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex flex-col md:flex-row gap-3">
                   <InputField name="phone" label="Phone Number" value={form.phone} onChange={v => update("phone", v)} onBlur={() => handleBlur("phone")} error={errors.phone} type="tel" placeholder="08012345678" />
-                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); }} error={errors.email} type="email" placeholder="you@example.com" />
+                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); void saveLandingQuote(); }} error={errors.email} type="email" placeholder="you@example.com" />
                 </div>
                 <InputField name="address" label="Street Address" value={form.address} onChange={v => update("address", v)} onBlur={() => handleBlur("address")} error={errors.address} />
 
