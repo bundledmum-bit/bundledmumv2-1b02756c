@@ -96,6 +96,19 @@ export default function PackagePage() {
   });
   const page = pageQ.data;
 
+  // Service fee: read the same default the quote uses, from the anon-callable
+  // RPC (integer naira). Never hardcoded; may legitimately be 0.
+  const serviceFeeQ = useQuery({
+    queryKey: ["default-service-fee"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("get_default_service_fee");
+      if (error) throw error;
+      return Number(data) || 0;
+    },
+  });
+  const serviceFee = serviceFeeQ.data ?? 0;
+
   const itemsQ = useQuery({
     queryKey: ["landing-page-items", page?.id],
     enabled: !!page?.id,
@@ -416,10 +429,13 @@ export default function PackagePage() {
     image_url: imageForIds(it.product_id, it.brand_id),
   }));
 
-  // Live totals from the edited working copy; service fee + delivery stay as the
-  // page's indicative values.
+  // Live totals from the edited working copy. Service fee comes from the RPC
+  // (same as the quote). Delivery is quoted later, so it shows a message and
+  // contributes 0 to the total unless a real fee (> 0) was set by the admin.
   const liveSubtotal = workItems.reduce((s, it) => s + it.line_total, 0);
-  const liveTotal = Math.max(0, liveSubtotal + (page.service_fee || 0) + (page.estimated_delivery_fee || 0));
+  const deliveryFee = page.estimated_delivery_fee;
+  const hasDeliveryFee = deliveryFee != null && deliveryFee > 0;
+  const liveTotal = Math.max(0, liveSubtotal + serviceFee + (hasDeliveryFee ? deliveryFee : 0));
 
   return (
     <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
@@ -452,11 +468,13 @@ export default function PackagePage() {
         {/* Totals — recompute live from the working copy */}
         <QuoteTotalsCard
           subtotal={liveSubtotal}
-          serviceFee={page.service_fee}
+          serviceFee={serviceFee}
           delivery={
-            <span className="text-right">
-              {page.estimated_delivery_fee === 0 ? "FREE" : fmt(page.estimated_delivery_fee)}
-            </span>
+            hasDeliveryFee ? (
+              <span className="text-right">{fmt(deliveryFee)}</span>
+            ) : (
+              <span className="text-right text-xs text-text-med">Will be communicated</span>
+            )
           }
           total={liveTotal}
         />
