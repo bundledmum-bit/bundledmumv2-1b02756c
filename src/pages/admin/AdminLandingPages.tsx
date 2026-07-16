@@ -79,6 +79,10 @@ function LandingPageForm({
   const { data: existingItems } = useQuery({
     queryKey: ["landing-page-items-admin", initial?.id],
     enabled: !!initial?.id,
+    // The global default staleTime is 5 min; without these, reopening the editor
+    // after a save serves the cached (pre-edit) items. Always fetch fresh on open.
+    staleTime: 0,
+    refetchOnMount: "always",
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("landing_page_items")
@@ -226,8 +230,11 @@ function LandingPageForm({
       }
       return pageId;
     },
-    onSuccess: () => {
+    onSuccess: (pageId: string) => {
       queryClient.invalidateQueries({ queryKey: ["admin-landing-pages"] });
+      // Invalidate this page's items cache so a reopen shows the saved products,
+      // not the stale pre-edit list.
+      queryClient.invalidateQueries({ queryKey: ["landing-page-items-admin", pageId] });
       toast.success(initial ? "Landing page updated" : "Landing page created");
       onClose();
     },
@@ -404,7 +411,12 @@ export default function AdminLandingPages() {
       if (error) throw error;
       return data as string; // new landing page id
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-landing-pages"] }); toast.success("Landing page duplicated"); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-landing-pages"] });
+      // Clear any cached items so the new copy opens fresh.
+      queryClient.invalidateQueries({ queryKey: ["landing-page-items-admin"] });
+      toast.success("Landing page duplicated");
+    },
     onError: (e: any) => toast.error(e?.message || "Could not duplicate"),
   });
 
