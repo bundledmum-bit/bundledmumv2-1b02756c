@@ -129,7 +129,8 @@ export default function PackagePage() {
       return Number(data) || 0;
     },
   });
-  const serviceFee = serviceFeeQ.data ?? 0;
+  // Global default fee (fallback). The per-page fee, when set, wins below.
+  const globalServiceFee = serviceFeeQ.data ?? 0;
 
   const itemsQ = useQuery({
     queryKey: ["landing-page-items", page?.id],
@@ -490,13 +491,15 @@ export default function PackagePage() {
     image_url: it.image_url ?? imageForIds(it.product_id, it.brand_id),
   }));
 
-  // Live totals from the edited working copy. Service fee comes from the RPC
-  // (same as the quote). Delivery is quoted later, so it shows a message and
-  // contributes 0 to the total unless a real fee (> 0) was set by the admin.
+  // Live totals from the edited working copy. Service fee: use the per-page fee
+  // when the admin set one (> 0), otherwise fall back to the global default.
+  // Delivery is quoted later, so it shows a message and contributes 0 to the
+  // total unless a real fee (> 0) was set by the admin.
+  const effectiveServiceFee = (page.service_fee && page.service_fee > 0) ? page.service_fee : globalServiceFee;
   const liveSubtotal = workItems.reduce((s, it) => s + it.line_total, 0);
   const deliveryFee = page.estimated_delivery_fee;
   const hasDeliveryFee = deliveryFee != null && deliveryFee > 0;
-  const liveTotal = Math.max(0, liveSubtotal + serviceFee + (hasDeliveryFee ? deliveryFee : 0));
+  const liveTotal = Math.max(0, liveSubtotal + effectiveServiceFee + (hasDeliveryFee ? deliveryFee : 0));
 
   return (
     <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
@@ -548,7 +551,7 @@ export default function PackagePage() {
         {/* Totals — recompute live from the working copy */}
         <QuoteTotalsCard
           subtotal={liveSubtotal}
-          serviceFee={serviceFee}
+          serviceFee={effectiveServiceFee}
           delivery={
             hasDeliveryFee ? (
               <span className="text-right">{fmt(deliveryFee)}</span>
