@@ -992,6 +992,10 @@ export default function CheckoutPage() {
   // duplicate). Non-landing carts do nothing. This never blocks checkout: on any
   // failure we log and continue.
   const lastLandingSigRef = useRef<string>("");
+  // The funnel quote id returned by upsert_landing_page_quote, kept so we can flip
+  // the quote to 'converted' via link_order_to_landing_quote once the order is
+  // placed. Updated on each (idempotent) upsert; only ever set for landing carts.
+  const landingQuoteIdRef = useRef<string | null>(null);
   const saveLandingQuote = async () => {
     const origin = isCartLandingSourced(cart as any[]);
     if (!origin) return;
@@ -1032,7 +1036,7 @@ export default function CheckoutPage() {
     lastLandingSigRef.current = sig;
 
     try {
-      const { error } = await (supabase as any).rpc("upsert_landing_page_quote", {
+      const { data, error } = await (supabase as any).rpc("upsert_landing_page_quote", {
         p_session_key: origin.sessionKey,
         p_landing_page_id: origin.landingPageId,
         p_customer_name: name || null,
@@ -1046,6 +1050,9 @@ export default function CheckoutPage() {
       if (error) {
         console.warn("[landing-quote] upsert failed", error);
         lastLandingSigRef.current = ""; // allow a retry on the next change
+      } else if (data) {
+        // The RPC returns the funnel quote id; keep it to convert on order placed.
+        landingQuoteIdRef.current = String(data);
       }
     } catch (e) {
       console.warn("[landing-quote] upsert threw", e);
@@ -1501,6 +1508,8 @@ export default function CheckoutPage() {
     savedOrder: SavedOrderResult,
     orderData: ReturnType<typeof buildOrderData>,
   ) => {
+    // Detect landing-sourced BEFORE clearCart empties the cart.
+    const landingSourced = !!isCartLandingSourced(cart as any[]);
     clearCart();
     void syncOrderToSheets({
       orderId: savedOrder.id,
@@ -1508,7 +1517,27 @@ export default function CheckoutPage() {
       fallbackData: orderData,
     });
     void linkQuoteIfPending(savedOrder.id);
+    // Landing funnel quote: flip it to 'converted' by linking the placed order.
+    // Landing-sourced only, non-blocking, never gates the confirmation.
+    if (landingSourced && landingQuoteIdRef.current) {
+      void linkLandingQuote(landingQuoteIdRef.current, savedOrder.id);
+    }
     navigateToConfirmation(savedOrder);
+  };
+
+  // Best-effort: convert the landing funnel quote once its order is placed. The
+  // RPC is landing-only and a no-op when already converted/paid; the 'paid' step
+  // is handled automatically by the DB trigger after linking.
+  const linkLandingQuote = async (quoteId: string, orderId: string) => {
+    try {
+      const { error } = await (supabase as any).rpc("link_order_to_landing_quote", {
+        p_quote_id: quoteId,
+        p_order_id: orderId,
+      });
+      if (error) console.warn("[landing-quote] link_order_to_landing_quote failed (non-fatal):", error);
+    } catch (e) {
+      console.warn("[landing-quote] link_order_to_landing_quote threw (non-fatal):", e);
+    }
   };
 
   const placeOrder = async () => {
