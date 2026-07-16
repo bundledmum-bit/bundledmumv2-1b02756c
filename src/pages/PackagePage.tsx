@@ -190,7 +190,7 @@ export default function PackagePage() {
   // ── Loading / not found ────────────────────────────────────────────
   if (pageQ.isLoading) {
     return (
-      <div className="min-h-screen bg-background py-10 px-4">
+      <div className="min-h-screen bg-background pt-[84px] pb-10 px-4">
         <div className="max-w-[820px] mx-auto">
           <div className="h-8 w-56 bg-muted rounded animate-pulse mb-3" />
           <div className="h-4 w-72 bg-muted rounded animate-pulse mb-10" />
@@ -243,7 +243,7 @@ export default function PackagePage() {
   }));
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
+    <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
       <div className="max-w-[820px] mx-auto">
         {/* Heading: page title + intro, no customer block */}
         <div className="mb-6">
