@@ -258,25 +258,43 @@ export default function PackagePage() {
     enabled: pickerOpen && trimmedPicker.length >= 2,
     staleTime: 30_000,
     queryFn: async () => {
-      // Same pinned-FK query the admin builder uses, plus image fields so the
-      // result cards can show a product image.
-      const { data, error } = await (supabase as any)
+      // Public page = anonymous role. The raw `brands` table is admin-read-only,
+      // so an FK embed through it returns [] for anon. Read brand price/image
+      // from the anon-readable `brands_public` view instead (the same public
+      // path the storefront grid/PDP use), via products + brands_public by
+      // product_id (no view embed, no !inner) so it always resolves for anon.
+      const { data: prods, error: pErr } = await (supabase as any)
         .from("products")
-        .select("id, name, image_url, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock, image_url, stored_image_url)")
+        .select("id, name, image_url")
         .eq("is_active", true)
-        .eq("brands.in_stock", true)
-        .gt("brands.price", 0)
         .ilike("name", `%${trimmedPicker}%`)
         .limit(20);
-      if (error) throw error;
+      if (pErr) throw pErr;
+      const products = (prods || []) as Array<{ id: string; name: string; image_url: string | null }>;
+      if (products.length === 0) return [];
+
+      const productIds = products.map((p) => p.id);
+      const { data: brandRows, error: bErr } = await (supabase as any)
+        .from("brands_public")
+        .select("id, product_id, brand_name, price, in_stock, image_url, stored_image_url")
+        .in("product_id", productIds)
+        .eq("in_stock", true)
+        .gt("price", 0)
+        .order("brand_name", { ascending: true });
+      if (bErr) throw bErr;
+
+      const pMap = new Map(products.map((p) => [p.id, p]));
       const rows: Array<{ productId: string; productName: string; brandId: string; brandName: string; price: number; image: string | null }> = [];
-      (data || []).forEach((p: any) => {
-        (p.brands || []).forEach((b: any) => {
-          rows.push({
-            productId: p.id, productName: p.name,
-            brandId: b.id, brandName: b.brand_name, price: b.price,
-            image: getBrandImage(b) || p.image_url || null,
-          });
+      (brandRows || []).forEach((b: any) => {
+        const p = pMap.get(b.product_id);
+        if (!p) return;
+        rows.push({
+          productId: b.product_id,
+          productName: p.name,
+          brandId: b.id,
+          brandName: b.brand_name,
+          price: b.price, // integer naira
+          image: getBrandImage(b) || p.image_url || null, // stored_image_url -> image_url -> product image -> placeholder
         });
       });
       return rows;
