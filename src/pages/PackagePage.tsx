@@ -540,7 +540,7 @@ export default function PackagePage() {
           onClick={closePicker}
         >
           <div
-            className="bg-card w-full sm:max-w-[520px] sm:rounded-2xl rounded-t-2xl max-h-[85dvh] flex flex-col shadow-xl"
+            className="bg-card w-full sm:max-w-[520px] sm:rounded-2xl rounded-t-2xl max-h-[85dvh] flex flex-col overflow-hidden shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
@@ -566,7 +566,10 @@ export default function PackagePage() {
                 />
               </div>
             </div>
-            <div className="flex-1 min-h-0 px-4 pb-4 overflow-y-auto overscroll-contain">
+            {/* Mobile/iOS: a direct, resolvable max-height (auto content height,
+                not flex:1 which iOS collapses to 0 in a max-height-only column).
+                Desktop keeps flex:1 to fill the sheet. */}
+            <div className="min-h-0 max-h-[60vh] sm:max-h-none sm:flex-1 px-4 pb-4 overflow-y-auto overscroll-contain">
               {trimmedPicker.length < 2 ? (
                 <p className="text-xs text-text-light text-center py-8">Type at least 2 characters to search.</p>
               ) : pickerSearching ? (
@@ -579,9 +582,11 @@ export default function PackagePage() {
                     <div key={`${row.productId}-${row.brandId}-${i}`} className="flex items-center gap-3 border border-border rounded-xl p-2.5">
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
                         {row.image ? (
-                          <img src={row.image} alt={row.productName} className="w-full h-full object-cover" />
+                          // Explicit px size (not w-full/h-full) so iOS Safari
+                          // renders it (see the item-row thumbnail note).
+                          <img src={row.image} alt={row.productName} className="block w-12 h-12 object-cover" />
                         ) : (
-                          <div className="w-full h-full grid place-items-center text-text-light"><ShoppingBag className="w-4 h-4" /></div>
+                          <div className="w-12 h-12 grid place-items-center text-text-light"><ShoppingBag className="w-4 h-4" /></div>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">

@@ -91,9 +91,12 @@ function EditableRow({ it, h }: { it: QuoteViewItem; h: EditHandlers }) {
       <div className="flex items-start gap-3">
         <div className="w-14 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
           {it.image_url ? (
-            <img src={it.image_url} alt={it.product_name} className="w-full h-full object-cover" />
+            // Explicit fixed px size (not w-full/h-full): iOS Safari fails to
+            // resolve an img's percentage height + object-fit inside a flex item,
+            // collapsing it to 0. A definite size renders reliably on iOS.
+            <img src={it.image_url} alt={it.product_name} className="block w-14 h-14 object-cover" />
           ) : (
-            <div className="w-full h-full grid place-items-center text-text-light">
+            <div className="w-14 h-14 grid place-items-center text-text-light">
               <ShoppingBag className="w-5 h-5" />
             </div>
           )}
