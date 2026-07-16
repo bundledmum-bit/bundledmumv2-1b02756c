@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { MessageCircle, ShoppingBag, AlertCircle, Search, X } from "lucide-react";
+import { MessageCircle, ShoppingBag, AlertCircle, Search, X, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
@@ -184,8 +184,12 @@ export default function PackagePage() {
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const [brandsRes, productsRes] = await Promise.all([
+        // Public page = anon: read brand images from the anon-readable
+        // brands_public view (stored_image_url -> image_url via getBrandImage),
+        // never the raw brands table (admin-only) which returns [] for anon and
+        // left brand-only-image items with no picture.
         brandIds.length
-          ? (supabase as any).from("brands").select("id, image_url, stored_image_url").in("id", brandIds)
+          ? (supabase as any).from("brands_public").select("id, image_url, stored_image_url").in("id", brandIds)
           : Promise.resolve({ data: [] }),
         productIds.length
           ? (supabase as any).from("products").select("id, image_url").in("id", productIds)
@@ -336,6 +340,18 @@ export default function PackagePage() {
       ];
     });
     toast.success("Added to your package");
+  };
+
+  // The working-copy line a picker result maps to (same key addProduct dedups on:
+  // product + brand + this section + no size). Used to show a qty stepper on
+  // results already in the package instead of a static Add.
+  const pickerItemFor = (row: { productId: string; brandId: string }): WorkItem | null => {
+    const section = pickerSection ?? null;
+    return (
+      workItems.find(
+        (it) => it.product_id === row.productId && it.brand_id === row.brandId && (it.section ?? null) === section && !it.size,
+      ) || null
+    );
   };
 
   // ── Add to cart (mirrors the quote page, using the edited copy) ────
@@ -596,8 +612,12 @@ export default function PackagePage() {
                 <p className="text-xs text-text-light text-center py-8">No products found.</p>
               ) : (
                 <div className="space-y-2">
-                  {pickerResults.map((row, i) => (
-                    <div key={`${row.productId}-${row.brandId}-${i}`} className="flex items-center gap-3 border border-border rounded-xl p-2.5">
+                  {pickerResults.map((row, i) => {
+                    // Reactive: reflects the working copy so an already-added
+                    // result shows a live qty stepper instead of Add.
+                    const existing = pickerItemFor(row);
+                    return (
+                    <div key={`${row.productId}-${row.brandId}-${i}`} className="flex items-center gap-2 border border-border rounded-xl p-2.5 min-w-0">
                       <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 border border-border">
                         {row.image ? (
                           // Explicit px size (not w-full/h-full) so iOS Safari
@@ -609,16 +629,41 @@ export default function PackagePage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold truncate">{row.productName}</p>
-                        <p className="text-[11px] text-text-med">{row.brandName} · {fmt(row.price)}</p>
+                        <p className="text-[11px] text-text-med truncate">{row.brandName} · {fmt(row.price)}</p>
                       </div>
-                      <button
-                        onClick={() => addProduct(row)}
-                        className="shrink-0 inline-flex items-center justify-center gap-1 min-h-[44px] px-4 rounded-pill bg-coral text-white text-sm font-bold hover:bg-coral-dark"
-                      >
-                        Add
-                      </button>
+                      {/* Action pinned right, fixed and never clipped on mobile. */}
+                      {existing ? (
+                        <div className="shrink-0 flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Decrease ${row.productName}`}
+                            onClick={() => (existing.quantity <= 1 ? removeItem(existing.key) : changeQty(existing.key, existing.quantity - 1))}
+                            className="w-11 h-11 rounded-lg border border-border grid place-items-center hover:bg-muted"
+                          >
+                            <Minus className="w-4 h-4" />
+                          </button>
+                          <span className="w-6 text-center text-sm font-bold tabular-nums">{existing.quantity}</span>
+                          <button
+                            type="button"
+                            aria-label={`Increase ${row.productName}`}
+                            onClick={() => changeQty(existing.key, existing.quantity + 1)}
+                            className="w-11 h-11 rounded-lg border border-border grid place-items-center hover:bg-muted"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => addProduct(row)}
+                          className="shrink-0 inline-flex items-center justify-center min-h-[44px] px-5 rounded-pill bg-coral text-white text-sm font-bold hover:bg-coral-dark"
+                        >
+                          Add
+                        </button>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
