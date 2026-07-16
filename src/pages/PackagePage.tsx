@@ -605,6 +605,28 @@ export default function PackagePage() {
             Questions? <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className="text-forest font-semibold hover:underline">Chat with us on WhatsApp</a>
           </div>
         )}
+
+        {/* Spacer so the last content is never hidden behind the fixed buy bar. */}
+        <div className="h-24" aria-hidden="true" />
+      </div>
+
+      {/* Floating buy bar: reuses the SAME liveTotal + handleAddToCart as the
+          in-page buttons. Sits above the mobile bottom nav (h-14) on mobile and
+          at the viewport bottom on desktop. Below the picker/confirm modals. */}
+      <div className="fixed left-0 right-0 z-[80] bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 md:pb-[env(safe-area-inset-bottom)] bg-card border-t border-border shadow-[0_-4px_20px_-6px_rgba(32,37,26,0.18)]">
+        <div className="max-w-[820px] mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] text-text-med leading-none">Total</p>
+            <p className="pf text-lg font-bold text-forest leading-tight">{fmt(liveTotal)}</p>
+          </div>
+          <button
+            onClick={() => handleAddToCart(false)}
+            disabled={loadingCart || workItems.length === 0}
+            className="shrink-0 inline-flex items-center justify-center gap-2 bg-coral text-white px-5 rounded-pill text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+          >
+            <ShoppingBag className="w-4 h-4" /> Buy this Package
+          </button>
+        </div>
       </div>
 
       {/* Per-section product picker */}
