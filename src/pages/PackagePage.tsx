@@ -491,9 +491,28 @@ export default function PackagePage() {
               {page.intro_text}
             </p>
           )}
-          <p className="text-[12px] text-text-light mt-2">
-            Make it yours: change sizes and quantities, remove what you do not need, or add more with the buttons below.
-          </p>
+        </div>
+
+        {/* Top CTA row: a second entry point using the SAME handlers as the
+            bottom buttons, on the same edited working copy. */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <button
+            onClick={() => handleAddToCart(false)}
+            disabled={loadingCart || workItems.length === 0}
+            className="flex-1 inline-flex items-center justify-center gap-2 bg-coral text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-coral-dark disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Buy this Package
+          </button>
+          {klumpEnabled && (
+            <button
+              onClick={() => handleAddToCart(true)}
+              disabled={loadingCart || workItems.length === 0}
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-forest text-primary-foreground px-6 py-3 rounded-pill text-sm font-bold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
+            >
+              🛍️ Buy Now, Pay Later
+            </button>
+          )}
         </div>
 
         {/* Items (editable working copy) */}
