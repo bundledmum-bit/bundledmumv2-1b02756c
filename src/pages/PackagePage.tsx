@@ -100,6 +100,24 @@ export default function PackagePage() {
   });
   const page = pageQ.data;
 
+  // Count one real page view per public load. Guarded by a ref keyed on slug so
+  // StrictMode double-invokes / re-renders never double-count; only fires once
+  // the active page is found, and only from this public /package route (never the
+  // admin builder). Fire-and-forget so it never affects render.
+  const viewCountedSlugRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!page || !slug) return;
+    if (viewCountedSlugRef.current === slug) return;
+    viewCountedSlugRef.current = slug;
+    void (async () => {
+      try {
+        await (supabase as any).rpc("increment_landing_page_view", { p_slug: slug });
+      } catch (e) {
+        console.warn("[package] view increment failed (non-fatal):", e);
+      }
+    })();
+  }, [page, slug]);
+
   // Service fee: read the same default the quote uses, from the anon-callable
   // RPC (integer naira). Never hardcoded; may legitimately be 0.
   const serviceFeeQ = useQuery({

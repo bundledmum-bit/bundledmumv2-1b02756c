@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Trash2, X, Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Plus, Trash2, X, Copy, CopyPlus, ExternalLink, Loader2 } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { fmt } from "@/lib/cart";
@@ -398,6 +398,16 @@ export default function AdminLandingPages() {
     onError: (e: any) => toast.error(e?.message || "Could not delete"),
   });
 
+  const duplicate = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (supabase as any).rpc("duplicate_landing_page", { p_source_id: id });
+      if (error) throw error;
+      return data as string; // new landing page id
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["admin-landing-pages"] }); toast.success("Landing page duplicated"); },
+    onError: (e: any) => toast.error(e?.message || "Could not duplicate"),
+  });
+
   const copyLink = async (slug: string) => {
     const ok = await copyToClipboard(`${PUBLIC_ORIGIN}/package/${slug}`);
     if (ok) toast.success("Link copied");
@@ -461,6 +471,15 @@ export default function AdminLandingPages() {
                   Active
                 </label>
                 <button onClick={() => setEditing(p)} className="px-3 py-1.5 border border-border rounded-lg text-xs font-semibold hover:bg-muted">Edit</button>
+                <button
+                  onClick={() => duplicate.mutate(p.id)}
+                  disabled={duplicate.isPending}
+                  aria-label="Duplicate"
+                  title="Duplicate"
+                  className="w-8 h-8 grid place-items-center rounded-lg border border-border text-text-light hover:text-forest hover:border-forest/40 disabled:opacity-50"
+                >
+                  <CopyPlus size={15} />
+                </button>
                 <button onClick={() => setConfirmDelete(p)} aria-label="Delete" className="w-8 h-8 grid place-items-center rounded-lg border border-border text-text-light hover:text-red-600 hover:border-red-300"><Trash2 size={15} /></button>
               </div>
             </div>
