@@ -1021,8 +1021,13 @@ export default function CheckoutPage() {
       };
     });
 
+    // Delivery address the customer is entering (same fields the order uses).
+    const address = (form.address || "").trim();
+    const city = (form.city || "").trim();
+    const state = (form.state || "").trim();
+
     // Skip redundant calls when nothing relevant changed since the last upsert.
-    const sig = JSON.stringify({ name, phone, email, items: p_items, lp: origin.landingPageId });
+    const sig = JSON.stringify({ name, phone, email, address, city, state, items: p_items, lp: origin.landingPageId });
     if (sig === lastLandingSigRef.current) return;
     lastLandingSigRef.current = sig;
 
@@ -1034,6 +1039,9 @@ export default function CheckoutPage() {
         p_customer_phone: phone || null,
         p_customer_email: email || null,
         p_items,
+        p_delivery_address: address || null,
+        p_delivery_city: city || null,
+        p_delivery_state: state || null,
       });
       if (error) {
         console.warn("[landing-quote] upsert failed", error);
@@ -1051,7 +1059,7 @@ export default function CheckoutPage() {
     const t = setTimeout(() => { void saveLandingQuote(); }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, form.firstName, form.lastName, form.phone, form.email]);
+  }, [cart, form.firstName, form.lastName, form.phone, form.email, form.address, form.city, form.state]);
 
   // Human-friendly labels used in the "please complete …" toast so the
   // customer knows exactly which fields are blocking checkout.
