@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { MessageCircle, ShoppingBag, AlertCircle, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,6 +26,9 @@ interface WorkItem {
   line_total: number;
   section: string | null;
   display_order: number;
+  // Image known at add-time (from the picker result); falls back to the batch
+  // image query when absent (e.g. items seeded from the template).
+  image_url?: string | null;
 }
 
 function newKey(): string {
@@ -175,6 +178,9 @@ export default function PackagePage() {
   const imagesQ = useQuery({
     queryKey: ["landing-item-images", brandIds.slice().sort().join(","), productIds.slice().sort().join(",")],
     enabled: brandIds.length + productIds.length > 0,
+    // Keep the previous image map while refetching after an add/remove so item
+    // images never blank out (noticeable on slow mobile networks).
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const [brandsRes, productsRes] = await Promise.all([
         brandIds.length
@@ -196,6 +202,7 @@ export default function PackagePage() {
   const sizesQ = useQuery({
     queryKey: ["landing-item-sizes", productIds.slice().sort().join(",")],
     enabled: productIds.length > 0,
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("product_sizes")
@@ -278,7 +285,7 @@ export default function PackagePage() {
   // Add a searched product into the section the picker was opened from. Adding
   // the same product+brand (same size, here always null on add) in that section
   // increments its quantity instead of stacking a duplicate line.
-  const addProduct = (row: { productId: string; productName: string; brandId: string; brandName: string; price: number }) => {
+  const addProduct = (row: { productId: string; productName: string; brandId: string; brandName: string; price: number; image?: string | null }) => {
     const section = pickerSection ?? null;
     setWorkItems((prev) => {
       const idx = prev.findIndex(
@@ -305,6 +312,7 @@ export default function PackagePage() {
           line_total: 0,
           section,
           display_order: maxOrder + 1,
+          image_url: row.image ?? null, // known from the picker; instant + stable
         }),
       ];
     });
@@ -426,7 +434,7 @@ export default function PackagePage() {
     line_total: it.line_total,
     section: it.section,
     display_order: it.display_order,
-    image_url: imageForIds(it.product_id, it.brand_id),
+    image_url: it.image_url ?? imageForIds(it.product_id, it.brand_id),
   }));
 
   // Live totals from the edited working copy. Service fee comes from the RPC
@@ -525,7 +533,7 @@ export default function PackagePage() {
           onClick={closePicker}
         >
           <div
-            className="bg-card w-full sm:max-w-[520px] sm:rounded-2xl rounded-t-2xl max-h-[85vh] flex flex-col shadow-xl"
+            className="bg-card w-full sm:max-w-[520px] sm:rounded-2xl rounded-t-2xl max-h-[85dvh] flex flex-col shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
@@ -551,7 +559,7 @@ export default function PackagePage() {
                 />
               </div>
             </div>
-            <div className="px-4 pb-4 overflow-y-auto">
+            <div className="flex-1 min-h-0 px-4 pb-4 overflow-y-auto overscroll-contain">
               {trimmedPicker.length < 2 ? (
                 <p className="text-xs text-text-light text-center py-8">Type at least 2 characters to search.</p>
               ) : pickerSearching ? (
