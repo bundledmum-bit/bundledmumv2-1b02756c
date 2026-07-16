@@ -8,13 +8,12 @@ import { recordQuoteDownload } from "@/hooks/useQuoteShare";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
-  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Lock, Package, Loader2,
+  Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Loader2,
   Files, Workflow, Link2, AlertTriangle, Mail, RefreshCw,
 } from "lucide-react";
-import ImageZoomModal from "@/components/admin/ImageZoomModal";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
+import PackageItemsBuilder, { fmtN } from "@/components/admin/PackageItemsBuilder";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getBrandImage } from "@/lib/brandImage";
 import StateZoneLgaCityCascade from "@/components/address/StateZoneLgaCityCascade";
 import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmModal";
 import { computeAutoFees, AUTO_FEES_FALLBACK, type AutoFeesResult } from "@/lib/computeAutoFees";
@@ -77,20 +76,10 @@ const shareUrlFor = (token: string | null | undefined): string => {
   return `${origin}/quote/${token}`;
 };
 
-// Exported so the mobile AdminQuoteCard formats totals identically.
-export const fmtN = (n: number | null | undefined) =>
-  typeof n === "number" && isFinite(n) ? `₦${Math.round(n).toLocaleString()}` : "₦0";
-
-// Optional quote sectioning. DB CHECK allows only these keys (or NULL). Fixed
-// order; NULL ("Other Items") always rendered last.
-const QUOTE_SECTIONS = [
-  { key: "baby", label: "Baby Items" },
-  { key: "mother", label: "Mother Items" },
-  { key: "hospital", label: "Hospital Items" },
-  { key: "postpartum", label: "Postpartum Items" },
-  { key: "gift", label: "Gift Items" },
-] as const;
-const SECTION_OTHER_LABEL = "Other Items";
+// Money formatting + the shared items builder now live in PackageItemsBuilder so
+// the quote and landing admins stay identical. fmtN is re-exported here so
+// existing importers (e.g. the mobile AdminQuoteCard) keep working unchanged.
+export { fmtN };
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleString("en-NG", {
@@ -1209,21 +1198,9 @@ function QuoteEditor({
   const { adminUser } = usePermissions();
   const [form, setForm] = useState<QuoteForm>(BLANK_FORM);
   const [currentId, setCurrentId] = useState<string | null>(quoteId);
-  const [productSearch, setProductSearch] = useState("");
-  // Active section for newly-added items (a QUOTE_SECTIONS key or null). Items
-  // added fall under this until it's changed; null = ungrouped ("Other Items").
-  const [activeSection, setActiveSection] = useState<string | null>(null);
-  // The product being added — opens the per-item add dialog (size if any +
-  // quantity) before insertion. Quantity is prompted here, defaulting to 1.
-  const [pendingProduct, setPendingProduct] = useState<any | null>(null);
-  const [itemSearchRaw, setItemSearchRaw] = useState("");
-  const [itemSearch, setItemSearch] = useState("");
-  // The item search is collapsed by default (just a small icon). It expands on
-  // click, or stays open whenever a query is active so the list is never
-  // silently filtered behind a hidden search bar.
-  const [searchOpen, setSearchOpen] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  // The product search, item search, add dialog, section picker and zoom all
+  // live inside the shared <PackageItemsBuilder>; the editor only supplies items
+  // and add/update/remove handlers.
   // Covers the full save + image-preload + PDF render window so the
   // button stays disabled while thumbnails are being fetched.
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -1388,24 +1365,6 @@ function QuoteEditor({
     return () => clearTimeout(t);
   }, [custSig]);
 
-  // Debounce the item-search input (~150 ms) — purely client-side filter.
-  useEffect(() => {
-    const t = setTimeout(() => setItemSearch(itemSearchRaw), 150);
-    return () => clearTimeout(t);
-  }, [itemSearchRaw]);
-
-  // Autofocus the search input the moment it expands so the admin can type.
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
-
-  // Closing the search MUST clear the query and restore the full item list —
-  // never leave the list filtered by a query the admin can no longer see.
-  const closeItemSearch = () => { setSearchOpen(false); setItemSearchRaw(""); setItemSearch(""); };
-  // Show the input (not the collapsed icon) while open OR while a query is
-  // active, so a filtered list is always visibly a search result.
-  const itemSearchExpanded = searchOpen || itemSearchRaw.trim().length > 0;
-
   // ── Batch variant data for all items currently in the quote ─────
   const productIds = useMemo(
     () => [...new Set((items as any[]).map((it: any) => it.product_id).filter(Boolean))] as string[],
@@ -1429,36 +1388,10 @@ function QuoteEditor({
     },
   });
 
-  const { data: variantSizes = [] } = useQuery({
-    queryKey: ["quote-variant-sizes", variantQueryKey],
-    enabled: productIds.length > 0,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("product_sizes")
-        .select("id, product_id, size_label, in_stock")
-        .in("product_id", productIds)
-        .order("display_order");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const { data: variantColors = [] } = useQuery({
-    queryKey: ["quote-variant-colors", variantQueryKey],
-    enabled: productIds.length > 0,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("product_colors")
-        .select("id, product_id, color_name, color_hex, in_stock")
-        .in("product_id", productIds)
-        .order("display_order");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
+  // brandsByProduct is still needed here for the quote-only delivery weight
+  // calc below. The item cards' brand/size/color variant data is fetched
+  // independently inside <PackageItemsBuilder> (same query keys, so react-query
+  // dedupes the network requests).
   const brandsByProduct = useMemo(() => {
     const map = new Map<string, any[]>();
     (variantBrands as any[]).forEach((b: any) => {
@@ -1467,38 +1400,6 @@ function QuoteEditor({
     });
     return map;
   }, [variantBrands]);
-
-  const sizesByProduct = useMemo(() => {
-    const map = new Map<string, any[]>();
-    (variantSizes as any[]).forEach((s: any) => {
-      if (!map.has(s.product_id)) map.set(s.product_id, []);
-      map.get(s.product_id)!.push(s);
-    });
-    return map;
-  }, [variantSizes]);
-
-  const colorsByProduct = useMemo(() => {
-    const map = new Map<string, any[]>();
-    (variantColors as any[]).forEach((c: any) => {
-      if (!map.has(c.product_id)) map.set(c.product_id, []);
-      map.get(c.product_id)!.push(c);
-    });
-    return map;
-  }, [variantColors]);
-
-  const filteredItems = useMemo(() => {
-    if (!itemSearch.trim()) return items;
-    const q = itemSearch.trim().toLowerCase();
-    return (items as any[]).filter((it: any) => {
-      if (it.product_name?.toLowerCase().includes(q)) return true;
-      if (it.brand_name?.toLowerCase().includes(q)) return true;
-      if (it.size?.toLowerCase().includes(q)) return true;
-      if (it.color?.toLowerCase().includes(q)) return true;
-      const currentBrand = (brandsByProduct.get(it.product_id) || []).find((b: any) => b.id === it.brand_id);
-      if (currentBrand?.sku?.toLowerCase().includes(q)) return true;
-      return false;
-    });
-  }, [items, itemSearch, brandsByProduct]);
 
   // ── Delivery: auto-calculated fee ──────────────────────────────────
   // State options now live inside the StateZoneLgaCityCascade component.
@@ -1636,35 +1537,7 @@ function QuoteEditor({
 
   const [confirmSkipGiftWrap, setConfirmSkipGiftWrap] = useState(false);
 
-  // ── Product search ─────────────────────────────────────────────
-  const trimmedSearch = productSearch.trim();
-  const { data: searchResults = [] } = useQuery({
-    queryKey: ["admin-quotes-product-search", trimmedSearch],
-    enabled: trimmedSearch.length >= 2,
-    staleTime: 30_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("products")
-        .select("id, name, subcategory, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock)")
-        .eq("is_active", true)
-        .eq("brands.in_stock", true)
-        .gt("brands.price", 0)
-        .ilike("name", `%${trimmedSearch}%`)
-        .limit(15);
-      if (error) throw error;
-      // Flatten product × brand → one row per brand variant.
-      const rows: Array<{ productId: string; productName: string; subcategory: string | null; brandId: string; brandName: string; price: number }> = [];
-      (data || []).forEach((p: any) => {
-        (p.brands || []).forEach((b: any) => {
-          rows.push({
-            productId: p.id, productName: p.name, subcategory: p.subcategory,
-            brandId: b.id, brandName: b.brand_name, price: b.price,
-          });
-        });
-      });
-      return rows;
-    },
-  });
+  // Product search now lives inside <PackageItemsBuilder>.
 
   // ── Mutations ──────────────────────────────────────────────────
   const upsertQuote = useMutation({
@@ -1718,7 +1591,7 @@ function QuoteEditor({
   const addItem = useMutation({
     mutationFn: async (item: {
       productId: string; productName: string; brandId: string; brandName: string;
-      price: number; size?: string | null; quantity?: number;
+      price: number; size?: string | null; quantity?: number; section?: string | null;
     }) => {
       if (!currentId) throw new Error("Save the quote first");
       // line_total is recomputed by a DB trigger from quantity * unit_price, so
@@ -1734,7 +1607,7 @@ function QuoteEditor({
         quantity: qty,
         unit_price: item.price,
         display_order: items.length,
-        section: activeSection || null, // one of QUOTE_SECTIONS keys or null — never any other value
+        section: item.section || null, // one of QUOTE_SECTIONS keys or null — never any other value
       });
       if (error) throw error;
     },
@@ -1798,44 +1671,6 @@ function QuoteEditor({
     },
     onError: (e: any) => toast.error(e?.message || "Could not duplicate quote"),
   });
-
-  const handleSelectProduct = async (row: any) => {
-    if (!currentId) {
-      toast.error("Save the quote first, then add items.");
-      return;
-    }
-    // Check if the product has sizes — if so, open the size picker before adding.
-    const { data, error } = await (supabase as any)
-      .from("product_sizes")
-      .select("size_label, size_code, in_stock")
-      .eq("product_id", row.productId)
-      .order("display_order");
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    const sizes = (data || []) as Array<{ size_label: string; in_stock: boolean }>;
-    // Always open the per-item add dialog to prompt quantity (and size, when
-    // the product has sizes). Closing the search dropdown keeps focus clean.
-    setPendingProduct({ ...row, sizes });
-    setProductSearch("");
-  };
-
-  // Confirm from the add dialog: insert with the chosen size (if any) and
-  // quantity. line_total is recomputed by the DB trigger — pass quantity only.
-  const handleConfirmAdd = (size: string | null, quantity: number) => {
-    if (!pendingProduct) return;
-    addItem.mutate({
-      productId: pendingProduct.productId,
-      productName: pendingProduct.productName,
-      brandId: pendingProduct.brandId,
-      brandName: pendingProduct.brandName,
-      price: pendingProduct.price,
-      size: size || undefined,
-      quantity,
-    });
-    setPendingProduct(null);
-  };
 
   const update = (patch: Partial<QuoteForm>) => setForm((p) => ({ ...p, ...patch }));
 
@@ -1999,163 +1834,17 @@ function QuoteEditor({
             </div>
           </section>
 
-          {/* Section B — Items */}
-          <section className="bg-card border border-border rounded-xl p-4">
-            <h2 className="text-sm font-bold mb-3">Line Items</h2>
-            {!currentId && (
-              <p className="text-xs text-muted-foreground mb-2 italic">
-                Save the quote first to start adding products.
-              </p>
-            )}
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Search products by name…"
-                className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background"
-                disabled={!canEdit || !currentId}
-              />
-              {trimmedSearch.length >= 2 && searchResults.length > 0 && (
-                <div className="absolute z-10 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                  {searchResults.map((r: any) => (
-                    <button
-                      key={`${r.productId}-${r.brandId}`}
-                      onClick={() => handleSelectProduct(r)}
-                      className="w-full text-left px-3 py-2 hover:bg-muted/50 text-sm border-b border-border last:border-0"
-                    >
-                      <span className="font-semibold">{r.productName}</span>
-                      <span className="text-muted-foreground"> — {r.brandName}</span>
-                      <span className="float-right font-semibold text-forest">{fmtN(r.price)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Active section — newly-added items are filed under this. */}
-            {currentId && canEdit && (
-              <div className="mt-3">
-                <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Add to section</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {([{ key: null, label: "None" }, ...QUOTE_SECTIONS] as Array<{ key: string | null; label: string }>).map((opt) => {
-                    const active = (activeSection || null) === opt.key;
-                    return (
-                      <button
-                        key={opt.key ?? "none"}
-                        type="button"
-                        onClick={() => setActiveSection(opt.key)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${active ? "bg-forest text-primary-foreground border-forest" : "bg-card text-text-med border-border hover:bg-muted"}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[10px] text-text-light mt-1">New items are filed here until you change it. Optional.</p>
-              </div>
-            )}
-
-            {/* Search/filter within existing items — collapsed by default. */}
-            {items.length > 0 && (
-              <div className="mt-3">
-                {!itemSearchExpanded ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearchOpen(true)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5"
-                    aria-label="Search items in this quote"
-                  >
-                    <Search className="w-3.5 h-3.5" /> Search items
-                  </button>
-                ) : (
-                  <>
-                    <div className="relative">
-                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                      <input
-                        ref={searchInputRef}
-                        value={itemSearchRaw}
-                        onChange={(e) => setItemSearchRaw(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); closeItemSearch(); } }}
-                        placeholder="Search items in this quote…"
-                        className="w-full border border-input rounded-lg pl-9 pr-8 py-2 text-sm bg-background"
-                      />
-                      <button
-                        type="button"
-                        onClick={closeItemSearch}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        aria-label="Close search"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    {itemSearchRaw && (
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Showing {filteredItems.length} of {items.length} items
-                      </p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {items.length === 0 ? (
-              <p className="text-center py-6 text-xs text-muted-foreground">No items yet.</p>
-            ) : filteredItems.length === 0 ? (
-              <div className="mt-4 py-6 text-center text-xs text-muted-foreground">
-                No items match &ldquo;{itemSearchRaw}&rdquo;.{" "}
-                <button
-                  type="button"
-                  onClick={closeItemSearch}
-                  className="text-forest underline hover:no-underline"
-                >
-                  Clear search
-                </button>
-              </div>
-            ) : (() => {
-              const card = (it: any) => (
-                <QuoteLineItemCard
-                  key={it.id}
-                  it={it}
-                  canEdit={canEdit}
-                  brands={brandsByProduct.get(it.product_id) || []}
-                  sizes={sizesByProduct.get(it.product_id) || []}
-                  colors={colorsByProduct.get(it.product_id) || []}
-                  isPending={updateItem.isPending || removeItem.isPending}
-                  onUpdate={(patch) => updateItem.mutate({ id: it.id, patch })}
-                  onRemove={() => removeItem.mutate(it.id)}
-                  onZoom={setZoomSrc}
-                />
-              );
-              // Flat list when no item is sectioned (unchanged behaviour).
-              if (!filteredItems.some((it: any) => !!it.section)) {
-                return <div className="mt-4 space-y-3">{filteredItems.map(card)}</div>;
-              }
-              // Otherwise group: fixed sections first (in order), Other Items last.
-              const groups = [
-                ...QUOTE_SECTIONS.map((s) => ({ label: s.label, rows: filteredItems.filter((it: any) => it.section === s.key) })),
-                { label: SECTION_OTHER_LABEL, rows: filteredItems.filter((it: any) => !it.section) },
-              ].filter((g) => g.rows.length > 0);
-              return (
-                <div className="mt-4 space-y-4">
-                  {groups.map((g) => (
-                    <div key={g.label} className="space-y-2">
-                      <h3 className="text-[11px] uppercase tracking-widest font-bold text-text-med">{g.label}</h3>
-                      <div className="space-y-3">{g.rows.map(card)}</div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* Subtotal always reflects ALL items, not the filtered set */}
-            {items.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-border flex justify-end gap-4 text-sm">
-                <span className="text-text-med font-semibold">Subtotal</span>
-                <span className="font-bold">{fmtN(liveSubtotal)}</span>
-              </div>
-            )}
-          </section>
+          {/* Section B — Items (shared with the landing-pages admin) */}
+          <PackageItemsBuilder
+            items={items}
+            canEdit={canEdit}
+            disabled={!currentId}
+            disabledHint="Save the quote first to start adding products."
+            isMutating={updateItem.isPending || removeItem.isPending}
+            onAddItem={(payload) => addItem.mutate(payload)}
+            onUpdateItem={(id, patch) => updateItem.mutate({ id, patch })}
+            onRemoveItem={(id) => removeItem.mutate(id)}
+          />
 
           {/* Section D — Notes */}
           <section className="bg-card border border-border rounded-xl p-4">
@@ -2563,9 +2252,6 @@ function QuoteEditor({
         </div>
       </div>
 
-      {/* Image zoom modal */}
-      <ImageZoomModal src={zoomSrc} onClose={() => setZoomSrc(null)} />
-
       {/* Skip-gift-wrap confirmation — same component as customer
           checkout, with identical copy. Opens only when unchecking
           would override the auto-rule. */}
@@ -2576,15 +2262,6 @@ function QuoteEditor({
             setGiftWrap.mutate(false);
             setConfirmSkipGiftWrap(false);
           }}
-        />
-      )}
-
-      {/* Size picker modal */}
-      {pendingProduct && (
-        <AddItemDialog
-          product={pendingProduct}
-          onCancel={() => setPendingProduct(null)}
-          onConfirm={handleConfirmAdd}
         />
       )}
 
@@ -2614,310 +2291,6 @@ function QuoteEditor({
             queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
           }}
         />
-      )}
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────────
-// Per-item card with inline brand/size/color editing
-// ───────────────────────────────────────────────────────────────────
-interface LineItemCardProps {
-  it: any;
-  canEdit: boolean;
-  brands: any[];
-  sizes: any[];
-  colors: any[];
-  isPending: boolean;
-  onUpdate: (patch: Record<string, any>) => void;
-  onRemove: () => void;
-  onZoom: (src: string) => void;
-}
-
-// Per-item add dialog: prompts size (when the product has sizes) + quantity in
-// one step. Quantity is focused and defaults to 1, so Enter adds qty 1 in one
-// action; the size (if required) must be chosen before Add enables.
-function AddItemDialog({ product, onCancel, onConfirm }: {
-  product: { productName: string; brandName: string; sizes: Array<{ size_label: string; in_stock: boolean }> };
-  onCancel: () => void;
-  onConfirm: (size: string | null, quantity: number) => void;
-}) {
-  const sizes = product.sizes || [];
-  const hasSizes = sizes.length > 0;
-  const [size, setSize] = useState<string | null>(null);
-  const [qty, setQty] = useState(1);
-  const qtyRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { qtyRef.current?.focus(); qtyRef.current?.select(); }, []);
-
-  const canAdd = !hasSizes || !!size;
-  const submit = () => {
-    if (!canAdd) return;
-    onConfirm(size, Math.max(1, Math.floor(qty || 1)));
-  };
-
-  return (
-    <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onCancel}>
-      <div className="bg-card border border-border rounded-xl max-w-md w-full p-4 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-bold text-sm">Add to quote</h3>
-          <button onClick={onCancel} aria-label="Cancel"><X className="w-4 h-4" /></button>
-        </div>
-        <p className="text-xs text-text-med mb-3">{product.productName} · {product.brandName}</p>
-
-        {hasSizes && (
-          <div className="mb-4">
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Size</p>
-            <div className="flex flex-wrap gap-2">
-              {sizes.map((s) => (
-                <button
-                  key={s.size_label}
-                  type="button"
-                  onClick={() => setSize(s.size_label)}
-                  disabled={s.in_stock === false}
-                  className={`min-h-[40px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] ${
-                    s.in_stock === false ? "opacity-40 cursor-not-allowed line-through" :
-                    size === s.size_label ? "border-forest bg-forest text-primary-foreground" :
-                    "border-border bg-card hover:border-forest"
-                  }`}
-                  title={s.in_stock === false ? "Out of stock" : ""}
-                >
-                  {s.size_label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mb-4">
-          <p className="text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1.5">Quantity</p>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setQty((q) => Math.max(1, (q || 1) - 1))} disabled={qty <= 1}
-              aria-label="Decrease quantity"
-              className="w-9 h-9 rounded-lg border border-border flex items-center justify-center text-lg font-bold disabled:opacity-40 hover:bg-muted">−</button>
-            <input
-              ref={qtyRef}
-              type="number"
-              min={1}
-              step={1}
-              value={qty}
-              onChange={(e) => {
-                const n = Math.floor(Number(e.target.value));
-                setQty(e.target.value === "" || !Number.isFinite(n) || n < 1 ? 1 : n);
-              }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
-              aria-label="Quantity"
-              className="w-16 border border-input rounded-lg px-2 py-2 text-sm bg-background text-center"
-            />
-            <button type="button" onClick={() => setQty((q) => (q || 1) + 1)}
-              aria-label="Increase quantity"
-              className="w-9 h-9 rounded-lg border border-border flex items-center justify-center text-lg font-bold hover:bg-muted">+</button>
-          </div>
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <button type="button" onClick={onCancel} className="px-3 py-2 text-xs font-semibold rounded-lg border border-border hover:bg-muted">Cancel</button>
-          <button type="button" onClick={submit} disabled={!canAdd}
-            className="px-4 py-2 text-xs font-semibold rounded-lg bg-forest text-primary-foreground hover:bg-forest-deep disabled:opacity-40">
-            {hasSizes && !size ? "Select a size" : "Add"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
-  const currentBrand = brands.find((b: any) => b.id === it.brand_id) ?? null;
-  const imgSrc: string | null =
-    getBrandImage(currentBrand) ||
-    (Array.isArray(currentBrand?.images) && currentBrand.images.length > 0 ? currentBrand.images[0] : null) ||
-    null;
-  const isOos = currentBrand != null && currentBrand.in_stock === false;
-
-  return (
-    <div className={`border border-border rounded-lg p-3 relative transition-opacity ${isPending ? "opacity-60 pointer-events-none" : ""}`}>
-      <div className="flex gap-3">
-        {/* Thumbnail — click to zoom */}
-        <div className="shrink-0">
-          {imgSrc ? (
-            <button
-              type="button"
-              onClick={() => onZoom(imgSrc)}
-              className="w-24 h-24 rounded-lg overflow-hidden border border-border block hover:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-forest"
-              title="Click to zoom"
-            >
-              <img src={imgSrc} alt={it.product_name} className="w-full h-full object-cover" />
-            </button>
-          ) : (
-            <div className="w-24 h-24 rounded-lg bg-muted/40 border border-border flex items-center justify-center text-muted-foreground">
-              <Package className="w-8 h-8 opacity-30" />
-            </div>
-          )}
-        </div>
-
-        {/* Right side */}
-        <div className="flex-1 min-w-0 space-y-2">
-          {/* Product name + SKU */}
-          <div>
-            <div className="font-semibold text-sm leading-tight">{it.product_name}</div>
-            {currentBrand?.sku && (
-              <div className="text-[11px] text-muted-foreground mt-0.5">SKU: {currentBrand.sku}</div>
-            )}
-          </div>
-
-          {/* Brand selector */}
-          {it.product_id && brands.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Brand</span>
-              {brands.length === 1 ? (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-muted border border-border">
-                  {it.brand_name || brands[0]?.brand_name}
-                  <span className="text-muted-foreground ml-1">(only option)</span>
-                </span>
-              ) : (
-                <select
-                  disabled={!canEdit}
-                  value={it.brand_id || ""}
-                  onChange={(e) => {
-                    const nb = brands.find((b: any) => b.id === e.target.value);
-                    if (!nb) return;
-                    onUpdate({ brand_id: nb.id, brand_name: nb.brand_name, unit_price: nb.price });
-                  }}
-                  className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[140px] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {brands.map((b: any) => (
-                    <option key={b.id} value={b.id}>
-                      {b.brand_name} · {fmtN(b.price)}{b.in_stock === false ? " (Out of stock)" : ""}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          )}
-
-          {/* Size selector */}
-          {sizes.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Size</span>
-              <select
-                disabled={!canEdit}
-                value={it.size || ""}
-                onChange={(e) => onUpdate({ size: e.target.value || null })}
-                className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">— No size —</option>
-                {sizes.map((s: any) => (
-                  <option key={s.id} value={s.size_label}>
-                    {s.size_label}{s.in_stock === false ? " (OOS)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Color selector */}
-          {colors.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Color</span>
-              <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
-                {it.color && colors.find((c: any) => c.color_name === it.color)?.color_hex && (
-                  <span
-                    className="w-3.5 h-3.5 rounded-full border border-border shrink-0"
-                    style={{ backgroundColor: colors.find((c: any) => c.color_name === it.color)?.color_hex }}
-                  />
-                )}
-                <select
-                  disabled={!canEdit}
-                  value={it.color || ""}
-                  onChange={(e) => onUpdate({ color: e.target.value || null })}
-                  className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">— No color —</option>
-                  {colors.map((c: any) => (
-                    <option key={c.id} value={c.color_name}>
-                      {c.color_name}{c.in_stock === false ? " (OOS)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Section — re-file a mis-grouped item (None/Baby/Mother/Hospital) */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] text-text-med font-semibold w-10 shrink-0">Section</span>
-            <select
-              disabled={!canEdit}
-              value={it.section || ""}
-              onChange={(e) => onUpdate({ section: e.target.value || null })}
-              className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="">— None (Other Items) —</option>
-              {QUOTE_SECTIONS.map((s) => (
-                <option key={s.key} value={s.key}>{s.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Qty +/- · unit price · line total */}
-          <div className="flex items-center gap-3 flex-wrap pt-1">
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                disabled={!canEdit || it.quantity <= 1}
-                onClick={() => onUpdate({ quantity: Math.max(1, it.quantity - 1) })}
-                className="w-7 h-7 rounded border border-border flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-              >−</button>
-              <span className="w-8 text-center text-sm font-semibold">{it.quantity}</span>
-              <button
-                type="button"
-                disabled={!canEdit}
-                onClick={() => onUpdate({ quantity: it.quantity + 1 })}
-                className="w-7 h-7 rounded border border-border flex items-center justify-center text-base font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
-              >+</button>
-            </div>
-            <div className="text-xs text-text-med">
-              Unit:{" "}
-              {it.product_id ? (
-                <span className="font-semibold text-foreground inline-flex items-center gap-1">
-                  <Lock className="w-2.5 h-2.5 opacity-50" />
-                  {fmtN(it.unit_price)}
-                </span>
-              ) : (
-                <span className="font-semibold text-foreground">{fmtN(it.unit_price)}</span>
-              )}
-            </div>
-            <div className="ml-auto text-sm font-bold text-forest">{fmtN(it.line_total)}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Out-of-stock warning */}
-      {isOos && (
-        <div className="mt-2 flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-          <span aria-hidden="true">⚠️</span>
-          <span>This brand is currently out of stock. Confirm availability before sending the quote.</span>
-        </div>
-      )}
-
-      {/* Remove */}
-      {canEdit && (
-        <div className="mt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-xs text-destructive hover:underline"
-          >
-            Remove
-          </button>
-        </div>
-      )}
-
-      {/* Pending spinner */}
-      {isPending && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/30">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </div>
       )}
     </div>
   );

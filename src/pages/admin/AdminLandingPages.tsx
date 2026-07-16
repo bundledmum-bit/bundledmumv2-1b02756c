@@ -2,28 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, Trash2, X, Copy, ExternalLink, Search, Loader2 } from "lucide-react";
+import { Plus, Trash2, X, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { fmt } from "@/lib/cart";
+import PackageItemsBuilder, { type AddItemPayload } from "@/components/admin/PackageItemsBuilder";
 
 // Public origin for the copyable /package/<slug> link. Matches the canonical
 // storefront domain used elsewhere in admin share links.
 const PUBLIC_ORIGIN = "https://bundledmum.com";
 
-// Optional sectioning, identical to the quote builder (DB CHECK allows these or
-// null).
-const SECTIONS: Array<{ key: string; label: string }> = [
-  { key: "baby", label: "Baby" },
-  { key: "mother", label: "Mother" },
-  { key: "hospital", label: "Hospital" },
-  { key: "postpartum", label: "Postpartum" },
-  { key: "gift", label: "Gift" },
-];
-
 interface LandingItem {
-  // Local row id (uuid) for React keys; not persisted.
-  _key: string;
+  // Local row id (uuid) for React keys + shared-builder update/remove; not
+  // persisted (the DB assigns its own on save).
+  id: string;
   product_id: string;
   brand_id: string | null;
   product_name: string;
@@ -32,6 +24,7 @@ interface LandingItem {
   color: string | null;
   quantity: number;
   unit_price: number;
+  line_total: number;
   section: string | null;
 }
 
@@ -57,33 +50,6 @@ function localKey(): string {
   return `k_${Math.random().toString(36).slice(2)}`;
 }
 
-// ─── Product search (reuses the quote builder's pinned-FK query) ───────────────
-function useProductSearch(term: string) {
-  const trimmed = term.trim();
-  return useQuery({
-    queryKey: ["landing-product-search", trimmed],
-    enabled: trimmed.length >= 2,
-    staleTime: 30_000,
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("products")
-        .select("id, name, subcategory, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock)")
-        .eq("is_active", true)
-        .eq("brands.in_stock", true)
-        .gt("brands.price", 0)
-        .ilike("name", `%${trimmed}%`)
-        .limit(15);
-      if (error) throw error;
-      const rows: Array<{ productId: string; productName: string; brandId: string; brandName: string; price: number }> = [];
-      (data || []).forEach((p: any) => {
-        (p.brands || []).forEach((b: any) => {
-          rows.push({ productId: p.id, productName: p.name, brandId: b.id, brandName: b.brand_name, price: b.price });
-        });
-      });
-      return rows;
-    },
-  });
-}
 
 // ─── Form ──────────────────────────────────────────────────────────────────────
 function LandingPageForm({
@@ -105,8 +71,6 @@ function LandingPageForm({
   const [deliveryFee, setDeliveryFee] = useState(String(initial?.estimated_delivery_fee ?? 0));
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
   const [items, setItems] = useState<LandingItem[]>([]);
-  const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [productSearch, setProductSearch] = useState("");
   // Tracks whether the admin has edited the URL text away from what produced the
   // current slug, so an edit only regenerates the slug when intended.
   const slugSourceRef = useRef<string>(initial?.title || "");
@@ -130,7 +94,7 @@ function LandingPageForm({
     if (!existingItems) return;
     setItems(
       (existingItems as any[]).map((it) => ({
-        _key: localKey(),
+        id: localKey(),
         product_id: it.product_id,
         brand_id: it.brand_id,
         product_name: it.product_name,
@@ -139,12 +103,11 @@ function LandingPageForm({
         color: it.color,
         quantity: it.quantity,
         unit_price: it.unit_price,
+        line_total: (it.unit_price || 0) * (it.quantity || 0),
         section: it.section,
       })),
     );
   }, [existingItems]);
-
-  const { data: searchRows = [], isFetching: searching } = useProductSearch(productSearch);
 
   // Slug generation via the DB RPC. Called on URL-text blur (preview) and before
   // save. Keeps the existing slug on edit unless the URL text changed.
@@ -176,27 +139,38 @@ function LandingPageForm({
   const deliveryFeeNum = parseInt(deliveryFee, 10) || 0;
   const total = Math.max(0, subtotal + serviceFeeNum + deliveryFeeNum);
 
-  const addProduct = (row: { productId: string; productName: string; brandId: string; brandName: string; price: number }) => {
+  // Handlers wired to the shared <PackageItemsBuilder> (same signatures the quote
+  // editor uses; here they mutate local state instead of DB rows).
+  const handleAddItem = (payload: AddItemPayload) => {
+    const qty = Math.max(1, Math.floor(payload.quantity) || 1);
     setItems((prev) => [
       ...prev,
       {
-        _key: localKey(),
-        product_id: row.productId,
-        brand_id: row.brandId,
-        product_name: row.productName,
-        brand_name: row.brandName,
-        size: null,
+        id: localKey(),
+        product_id: payload.productId,
+        brand_id: payload.brandId,
+        product_name: payload.productName,
+        brand_name: payload.brandName,
+        size: payload.size || null,
         color: null,
-        quantity: 1,
-        unit_price: row.price,
-        section: activeSection,
+        quantity: qty,
+        unit_price: payload.price,
+        line_total: payload.price * qty,
+        section: payload.section,
       },
     ]);
   };
 
-  const patchItem = (key: string, patch: Partial<LandingItem>) =>
-    setItems((prev) => prev.map((it) => (it._key === key ? { ...it, ...patch } : it)));
-  const removeItem = (key: string) => setItems((prev) => prev.filter((it) => it._key !== key));
+  const handleUpdateItem = (id: string, patch: Record<string, any>) =>
+    setItems((prev) => prev.map((it) => {
+      if (it.id !== id) return it;
+      const next = { ...it, ...patch };
+      // Keep line_total consistent whenever qty or unit price changes.
+      next.line_total = (next.unit_price || 0) * (next.quantity || 0);
+      return next;
+    }));
+
+  const handleRemoveItem = (id: string) => setItems((prev) => prev.filter((it) => it.id !== id));
 
   const save = useMutation({
     mutationFn: async () => {
@@ -326,114 +300,14 @@ function LandingPageForm({
             />
           </div>
 
-          {/* Items builder */}
-          <div className="border border-border rounded-xl p-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-text-light">Items</span>
-              <div className="flex items-center gap-1 flex-wrap justify-end">
-                <span className="text-[11px] text-text-light mr-1">Add to:</span>
-                <button
-                  onClick={() => setActiveSection(null)}
-                  className={`text-[11px] px-2 py-1 rounded-full border ${activeSection === null ? "bg-forest text-white border-forest" : "border-border text-text-med"}`}
-                >
-                  None
-                </button>
-                {SECTIONS.map((s) => (
-                  <button
-                    key={s.key}
-                    onClick={() => setActiveSection(s.key)}
-                    className={`text-[11px] px-2 py-1 rounded-full border ${activeSection === s.key ? "bg-forest text-white border-forest" : "border-border text-text-med"}`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Product search */}
-            <div className="relative mb-2">
-              <Search className="w-4 h-4 text-text-light absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Search products to add (min 2 characters)"
-                className="w-full border border-input rounded-lg pl-9 pr-3 py-2 text-sm bg-background"
-              />
-              {productSearch.trim().length >= 2 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto z-20">
-                  {searching && <div className="px-3 py-2 text-xs text-text-light">Searching…</div>}
-                  {!searching && searchRows.length === 0 && <div className="px-3 py-2 text-xs text-text-light">No products found.</div>}
-                  {searchRows.map((row, i) => (
-                    <button
-                      key={`${row.productId}-${row.brandId}-${i}`}
-                      onClick={() => { addProduct(row); setProductSearch(""); }}
-                      className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
-                    >
-                      <span className="min-w-0">
-                        <span className="text-sm font-medium truncate block">{row.productName}</span>
-                        <span className="text-[11px] text-text-light">{row.brandName}</span>
-                      </span>
-                      <span className="text-xs font-semibold shrink-0">{fmt(row.price)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Item rows */}
-            {items.length === 0 ? (
-              <p className="text-xs text-text-light py-3 text-center">No items yet. Search above to add products.</p>
-            ) : (
-              <div className="space-y-2">
-                {items.map((it) => (
-                  <div key={it._key} className="border border-border rounded-lg p-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate">{it.product_name}</p>
-                        <p className="text-[11px] text-text-light">{it.brand_name} · {fmt(it.unit_price)}</p>
-                      </div>
-                      <button onClick={() => removeItem(it._key)} aria-label="Remove item" className="text-text-light hover:text-red-600 shrink-0">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
-                      <div>
-                        <label className="text-[10px] text-text-light block mb-0.5">Qty</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={it.quantity}
-                          onChange={(e) => patchItem(it._key, { quantity: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                          className="w-full border border-input rounded-md px-2 py-1 text-sm bg-background"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-text-light block mb-0.5">Size</label>
-                        <input
-                          value={it.size || ""}
-                          onChange={(e) => patchItem(it._key, { size: e.target.value || null })}
-                          placeholder="optional"
-                          className="w-full border border-input rounded-md px-2 py-1 text-sm bg-background"
-                        />
-                      </div>
-                      <div className="col-span-2 sm:col-span-1">
-                        <label className="text-[10px] text-text-light block mb-0.5">Section</label>
-                        <select
-                          value={it.section || ""}
-                          onChange={(e) => patchItem(it._key, { section: e.target.value || null })}
-                          className="w-full border border-input rounded-md px-2 py-1 text-sm bg-background"
-                        >
-                          <option value="">None</option>
-                          {SECTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <p className="text-right text-xs font-semibold mt-1.5">Line: {fmt(it.unit_price * it.quantity)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Items builder — the SAME shared component the quote admin uses, so
+              the two stay identical when it is edited. */}
+          <PackageItemsBuilder
+            items={items}
+            onAddItem={handleAddItem}
+            onUpdateItem={handleUpdateItem}
+            onRemoveItem={handleRemoveItem}
+          />
 
           {/* Fees + totals */}
           <div className="grid grid-cols-2 gap-3">
