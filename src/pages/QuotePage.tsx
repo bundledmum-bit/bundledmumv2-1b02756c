@@ -11,6 +11,7 @@ import {
   type QuoteShareItem,
 } from "@/hooks/useQuoteShare";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
+import { trackCartItemsAdded } from "@/lib/trackAddToCart";
 import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { downloadQuotePdf } from "@/lib/quotePdf";
@@ -174,6 +175,10 @@ export default function QuotePage() {
           selectedColor: it.color || undefined,
         }) as CartItem);
       setCart(next);
+      // AddToCart tracking: this flow replaces the cart via setCart (bypassing the
+      // central addToCart), so fire the pixel + GA add-to-cart here, once per add,
+      // reflecting exactly what enters the cart. Non-blocking.
+      trackCartItemsAdded(next);
       sessionStorage.setItem(PENDING_QUOTE_TOKEN_KEY, shareToken);
       setConfirmReplace(false);
       setLoadingCart(false);

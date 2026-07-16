@@ -275,15 +275,47 @@ export default function CheckoutPage() {
   // count.
   useEffect(() => {
     if (totalItems === 0) return;
+    // Pixel InitiateCheckout, once per checkout session.
     try {
       const k = "bm_meta_initiate_checkout_fired";
-      if (sessionStorage.getItem(k)) return;
-      sessionStorage.setItem(k, "1");
-    } catch { /* ignore */ }
-    pixelTrack("InitiateCheckout", pixelMoney(subtotal, {
-      num_items: totalItems,
-      content_ids: cart.map((c: any) => c.id),
-    }));
+      if (!sessionStorage.getItem(k)) {
+        sessionStorage.setItem(k, "1");
+        pixelTrack("InitiateCheckout", pixelMoney(subtotal, {
+          num_items: totalItems,
+          content_ids: cart.map((c: any) => c.id),
+        }));
+      }
+    } catch {
+      // sessionStorage blocked: fire without the guard so the event still counts.
+      pixelTrack("InitiateCheckout", pixelMoney(subtotal, { num_items: totalItems, content_ids: cart.map((c: any) => c.id) }));
+    }
+
+    // GA begin_checkout on checkout mount, once per checkout session. Fired here
+    // (not on the /cart Proceed button) so ALL entry paths count exactly once:
+    // /cart, quote, package, and direct /checkout.
+    try {
+      const gk = "bm_ga_begin_checkout_fired";
+      if (sessionStorage.getItem(gk)) return;
+      sessionStorage.setItem(gk, "1");
+    } catch { /* ignore, still fire below */ }
+    trackEcommerce("begin_checkout", {
+      currency: "NGN",
+      value: subtotal,
+      items: cart.map((item: any) => {
+        const brand = item.selectedBrand;
+        const unitPrice = Number(brand?.price ?? item.price ?? 0);
+        return {
+          item_id: String(item.id),
+          item_name: item.name,
+          item_brand: brand?.label ?? "",
+          item_variant: brand?.sku ?? item.selectedSize ?? "",
+          item_category: item.category ?? "",
+          item_category2: item.subcategory ?? "",
+          price: unitPrice,
+          quantity: Number(item.qty ?? 1),
+        };
+      }),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalItems > 0]);
 

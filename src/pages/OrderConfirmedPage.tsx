@@ -121,13 +121,15 @@ export default function OrderConfirmedPage() {
   useEffect(() => {
     if (order) {
       try { localStorage.setItem("bm-has-ordered", "1"); } catch { /* ignore */ }
-      // Meta Pixel Purchase — once per order number (via sessionStorage).
+      // Meta Pixel Purchase — once per order number, persistent (localStorage) so
+      // reopening the confirmation page in a new session cannot re-fire it. Matches
+      // the GA purchase localStorage dedup below.
       const items = (order.order_items as any[]) || [];
       pixelTrackOnce(`purchase_${order.order_number || order.id}`, "Purchase", pixelMoney(Number(order.total) || 0, {
         content_ids: items.map(i => i.product_id).filter(Boolean),
         num_items: items.reduce((s, i) => s + (Number(i.quantity) || 0), 0),
         contents: items.map(i => ({ id: i.product_id, quantity: Number(i.quantity) || 0 })),
-      }));
+      }), { persistent: true });
 
       // GA4 purchase — fire once per order_number, dedup via localStorage so a
       // page refresh on the confirmation page never re-fires the event.

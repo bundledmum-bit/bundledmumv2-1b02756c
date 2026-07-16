@@ -8,6 +8,7 @@ import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { getBrandImage } from "@/lib/brandImage";
 import { setLandingOrigin } from "@/lib/landingOrigin";
+import { trackCartItemsAdded } from "@/lib/trackAddToCart";
 import QuoteItemsCard, { QUOTE_ITEM_SECTIONS } from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
 import ShareRow from "@/components/ShareRow";
@@ -413,6 +414,10 @@ export default function PackagePage() {
           } as CartItem;
         });
       setCart(next);
+      // AddToCart tracking: this flow replaces the cart via setCart (bypassing the
+      // central addToCart), so fire the pixel + GA add-to-cart here, once per add,
+      // reflecting the EDITED working copy that actually enters the cart. Non-blocking.
+      trackCartItemsAdded(next);
       // Tag the cart's landing-page origin so checkout can create a funnel
       // quote once the visitor enters their details. Never creates a quote here.
       setLandingOrigin(page.id, next.map((i) => String(i.id)));

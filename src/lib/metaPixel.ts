@@ -48,21 +48,26 @@ export function trackCustom(name: string, params?: Record<string, unknown>): voi
 }
 
 /**
- * Fire an event only once per browser session for a given key. Guards
- * against double-counting moments-of-truth (Purchase, Subscribe,
- * CompleteRegistration) when the user refreshes or back-navigates.
+ * Fire an event only once for a given key. Guards against double-counting
+ * moments-of-truth (Purchase, Subscribe, CompleteRegistration) when the user
+ * refreshes or back-navigates. By default the guard is per browser session
+ * (sessionStorage). Pass `{ persistent: true }` to dedup across sessions
+ * (localStorage), so a moment like Purchase fires at most once per key EVER
+ * (e.g. reopening the confirmation page in a new session cannot re-fire it).
  */
 const FIRE_ONCE_NAMESPACE = "bm_meta_pixel_fired_";
 export function trackOnce(
   storageKey: string,
   event: StandardEvent,
   params?: Record<string, unknown>,
+  opts?: { persistent?: boolean },
 ): void {
   try {
     if (typeof window === "undefined") return;
+    const store = opts?.persistent ? window.localStorage : window.sessionStorage;
     const k = FIRE_ONCE_NAMESPACE + storageKey;
-    if (window.sessionStorage.getItem(k)) return;
-    window.sessionStorage.setItem(k, "1");
+    if (store.getItem(k)) return;
+    store.setItem(k, "1");
   } catch {
     /* private-browsing or quota — still fire, just without idempotency */
   }

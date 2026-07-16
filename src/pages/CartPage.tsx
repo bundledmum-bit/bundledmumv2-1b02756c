@@ -368,34 +368,9 @@ export default function CartPage() {
   // event fires with the item's full details before the row is dropped.
   const removeItem = (key: string) => removeFromCart(key);
 
-  // GA4 begin_checkout — fires on the "Proceed to Checkout" click.
-  // Wrapped in try/catch; never blocks navigation.
-  const fireBeginCheckout = () => {
-    if (!cart || cart.length === 0) return;
-    try {
-      trackEcommerce("begin_checkout", {
-        currency: "NGN",
-        value: subtotal,
-        coupon: "",
-        items: cart.map((item: any) => {
-          const brand = item.selectedBrand;
-          const unitPrice = Number(brand?.price ?? item.price ?? 0);
-          return {
-            item_id: String(item.id),
-            item_name: item.name,
-            item_brand: brand?.label ?? "",
-            item_variant: brand?.sku ?? "",
-            item_category: item.category ?? "",
-            item_category2: item.subcategory ?? "",
-            price: unitPrice,
-            quantity: Number(item.qty ?? 1),
-          };
-        }),
-      });
-    } catch (e) {
-      console.warn("[ga] begin_checkout failed:", e);
-    }
-  };
+  // GA4 begin_checkout now fires once on CheckoutPage mount (covering ALL entry
+  // paths: cart, quote, package, direct). It was removed from here to avoid a
+  // duplicate begin_checkout for the /cart -> Proceed path.
 
   const { data: allProductsData } = useAllProducts();
   const ALL_PRODUCTS = allProductsData || [];
@@ -888,7 +863,7 @@ export default function CartPage() {
                   Remove unavailable items to continue
                 </button>
               ) : (
-                <Link to="/checkout" onClick={fireBeginCheckout} className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
+                <Link to="/checkout" className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
                   Proceed to Checkout 🔒
                 </Link>
               )}
@@ -1022,7 +997,6 @@ export default function CartPage() {
             ) : (
               <Link
                 to="/checkout"
-                onClick={fireBeginCheckout}
                 className="flex-1 inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep"
               >
                 Proceed to Checkout →
