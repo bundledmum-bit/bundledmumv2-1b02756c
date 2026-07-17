@@ -349,6 +349,11 @@ export default function PackagePage() {
   });
   const promo = promoQ.data && promoQ.data.active ? promoQ.data : null;
   const promoDiscount = promo ? Math.max(0, Math.round(Number(promo.discount) || 0)) : 0; // integer naira, live from RPC
+  // Raw RPC payload (kept even when inactive) so the "add more to qualify" nudge can
+  // render below the minimum order, where active is false and no discount applies.
+  const promoRaw = promoQ.data || null;
+  const promoBelowMin = !!(promoRaw && promoRaw.below_min && promoRaw.ends_at && Number(promoRaw.discount_value) > 0);
+  const promoAmountNeeded = promoBelowMin ? Math.max(0, Math.round(Number(promoRaw.amount_needed) || 0)) : 0; // integer naira
 
   useEffect(() => {
     document.title = page?.title ? `${page.title} · BundledMum` : "Package · BundledMum";
@@ -622,17 +627,30 @@ export default function PackagePage() {
           )}
         </div>
 
-        {/* Timed promo box + live countdown (only while the server says active) */}
-        {promo && promoDiscount > 0 && promo.ends_at && (
+        {/* Timed promo box + live countdown. Shows when the deal qualifies (discount
+            applies) OR when the cart is below the minimum order (discount withheld,
+            "add more" nudge). Both keep the urgency line + countdown. */}
+        {((promo && promoDiscount > 0 && promo.ends_at) || promoBelowMin) && (
           <div className="promo-blink mb-6 rounded-xl bg-[#D62828] text-white p-4 shadow-card text-center">
-            <p className="text-2xl font-extrabold leading-tight">
-              {promo.discount_type === "percentage"
-                ? `${promo.discount_value}% Off`
-                : `₦${Number(promo.discount_value).toLocaleString()} Off`}
+            {promoBelowMin ? (
+              <p className="text-lg sm:text-xl font-extrabold leading-tight break-words">
+                Add ₦{promoAmountNeeded.toLocaleString()} more to get{" "}
+                {promoRaw.discount_type === "percentage"
+                  ? `${promoRaw.discount_value}% Off`
+                  : `₦${Number(promoRaw.discount_value).toLocaleString()} Off`}
+              </p>
+            ) : (
+              <p className="text-2xl font-extrabold leading-tight">
+                {promo.discount_type === "percentage"
+                  ? `${promo.discount_value}% Off`
+                  : `₦${Number(promo.discount_value).toLocaleString()} Off`}
+              </p>
+            )}
+            <p className="text-[13px] font-semibold mt-1">
+              {(promoBelowMin ? promoRaw.urgency_text : promo.urgency_text) || "Offer ends soon!"}
             </p>
-            <p className="text-[13px] font-semibold mt-1">{promo.urgency_text || "Offer ends soon!"}</p>
             <div className="mt-3 flex justify-center">
-              <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
+              <PromoCountdown endsAt={promoBelowMin ? promoRaw.ends_at : promo.ends_at} onExpire={() => promoQ.refetch()} />
             </div>
           </div>
         )}

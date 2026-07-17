@@ -48,6 +48,7 @@ interface LandingPageRow {
   promo_discount_value?: number | null;
   promo_starts_at?: string | null;
   promo_ends_at?: string | null;
+  promo_min_order?: number | null;
   landing_page_items?: Array<{ count: number }>;
 }
 
@@ -87,6 +88,7 @@ function LandingPageForm({
   const [promoValue, setPromoValue] = useState(initial?.promo_discount_value != null ? String(initial.promo_discount_value) : "");
   const [promoStartsAt, setPromoStartsAt] = useState(initial?.promo_starts_at ? initial.promo_starts_at.slice(0, 16) : "");
   const [promoEndsAt, setPromoEndsAt] = useState(initial?.promo_ends_at ? initial.promo_ends_at.slice(0, 16) : "");
+  const [promoMinOrder, setPromoMinOrder] = useState(initial?.promo_min_order != null ? String(initial.promo_min_order) : "");
   // Tracks whether the admin has edited the URL text away from what produced the
   // current slug, so an edit only regenerates the slug when intended.
   const slugSourceRef = useRef<string>(initial?.title || "");
@@ -226,6 +228,7 @@ function LandingPageForm({
         promo_discount_value: promoEnabled ? promoValueNum : (Number.isFinite(promoValueNum) ? promoValueNum : null),
         promo_starts_at: promoStartsAt ? new Date(promoStartsAt).toISOString() : null,
         promo_ends_at: promoEndsAt ? new Date(promoEndsAt).toISOString() : null,
+        promo_min_order: (() => { const n = parseInt(promoMinOrder, 10); return Number.isFinite(n) && n > 0 ? n : null; })(),
       };
 
       let pageId = initial?.id;
@@ -410,6 +413,11 @@ function LandingPageForm({
                     <input type="datetime-local" value={promoEndsAt} onChange={(e) => setPromoEndsAt(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
                     <p className="text-[10px] text-text-light mt-1">Required. The countdown ends here.</p>
                   </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text-med block mb-1">Minimum order for promo (₦)</label>
+                  <input type="number" min="0" value={promoMinOrder} onChange={(e) => setPromoMinOrder(e.target.value)} placeholder="e.g. 100000" className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                  <p className="text-[10px] text-text-light mt-1">Cart must reach this subtotal to qualify. Leave empty for no minimum.</p>
                 </div>
                 {(() => {
                   const v = parseInt(promoValue, 10) || 0;
