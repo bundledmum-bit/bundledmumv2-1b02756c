@@ -622,17 +622,18 @@ export default function PackagePage() {
           )}
         </div>
 
-        {/* Timed promo banner + live countdown (only while the server says active) */}
-        {promo && promoDiscount > 0 && (
-          <div className="mb-6 rounded-xl bg-forest text-primary-foreground p-4 shadow-card">
-            <p className="text-sm font-bold">{promo.label || "Limited time offer"}</p>
-            <p className="text-[12px] opacity-90">Save {fmt(promoDiscount)} before it ends</p>
-            {promo.ends_at && (
-              <div className="promo-blink mt-3 rounded-lg bg-[#D62828] text-white px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap">
-                <span className="text-[13px] font-bold">{promo.urgency_text || "Offer ends soon!"}</span>
-                <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
-              </div>
-            )}
+        {/* Timed promo box + live countdown (only while the server says active) */}
+        {promo && promoDiscount > 0 && promo.ends_at && (
+          <div className="promo-blink mb-6 rounded-xl bg-[#D62828] text-white p-4 shadow-card text-center">
+            <p className="text-2xl font-extrabold leading-tight">
+              {promo.discount_type === "percentage"
+                ? `${promo.discount_value}% Off`
+                : `₦${Number(promo.discount_value).toLocaleString()} Off`}
+            </p>
+            <p className="text-[13px] font-semibold mt-1">{promo.urgency_text || "Offer ends soon!"}</p>
+            <div className="mt-3 flex justify-center">
+              <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
+            </div>
           </div>
         )}
 
@@ -674,7 +675,7 @@ export default function PackagePage() {
         <QuoteTotalsCard
           subtotal={liveSubtotal}
           serviceFee={effectiveServiceFee}
-          discount={promoDiscount > 0 ? { amount: promoDiscount, reason: promo?.label || "Promo" } : null}
+          discount={promoDiscount > 0 ? { amount: promoDiscount, reason: "Promo" } : null}
           delivery={
             hasDeliveryFee ? (
               <span className="text-right">{fmt(deliveryFee)}</span>
