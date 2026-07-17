@@ -624,13 +624,14 @@ export default function PackagePage() {
 
         {/* Timed promo banner + live countdown (only while the server says active) */}
         {promo && promoDiscount > 0 && (
-          <div className="mb-6 rounded-xl bg-forest text-primary-foreground px-4 py-3 flex items-center justify-between gap-3 flex-wrap shadow-card">
-            <div className="min-w-0">
-              <p className="text-sm font-bold truncate">{promo.label || "Limited time offer"}</p>
-              <p className="text-[12px] opacity-90">Save {fmt(promoDiscount)} before it ends</p>
-            </div>
+          <div className="mb-6 rounded-xl bg-forest text-primary-foreground p-4 shadow-card">
+            <p className="text-sm font-bold">{promo.label || "Limited time offer"}</p>
+            <p className="text-[12px] opacity-90">Save {fmt(promoDiscount)} before it ends</p>
             {promo.ends_at && (
-              <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
+              <div className="promo-blink mt-3 rounded-lg bg-[#D62828] text-white px-3 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-[13px] font-bold">{promo.urgency_text || "Offer ends soon!"}</span>
+                <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
+              </div>
             )}
           </div>
         )}

@@ -43,6 +43,7 @@ interface LandingPageRow {
   // Per-page timed promotion (server-enforced via landing_promo_discount).
   promo_enabled?: boolean | null;
   promo_label?: string | null;
+  promo_urgency_text?: string | null;
   promo_discount_type?: "percentage" | "fixed" | null;
   promo_discount_value?: number | null;
   promo_starts_at?: string | null;
@@ -81,6 +82,7 @@ function LandingPageForm({
   // Promotion state. datetime-local strings for the pickers (sliced from ISO).
   const [promoEnabled, setPromoEnabled] = useState(initial?.promo_enabled ?? false);
   const [promoLabel, setPromoLabel] = useState(initial?.promo_label || "");
+  const [promoUrgencyText, setPromoUrgencyText] = useState(initial?.promo_urgency_text || "");
   const [promoType, setPromoType] = useState<"percentage" | "fixed">(initial?.promo_discount_type || "percentage");
   const [promoValue, setPromoValue] = useState(initial?.promo_discount_value != null ? String(initial.promo_discount_value) : "");
   const [promoStartsAt, setPromoStartsAt] = useState(initial?.promo_starts_at ? initial.promo_starts_at.slice(0, 16) : "");
@@ -219,6 +221,7 @@ function LandingPageForm({
         // Promotion (integer naira for fixed; percent for percentage).
         promo_enabled: promoEnabled,
         promo_label: promoLabel.trim() || null,
+        promo_urgency_text: promoUrgencyText.trim() || null,
         promo_discount_type: promoEnabled ? promoType : (promoType || null),
         promo_discount_value: promoEnabled ? promoValueNum : (Number.isFinite(promoValueNum) ? promoValueNum : null),
         promo_starts_at: promoStartsAt ? new Date(promoStartsAt).toISOString() : null,
@@ -377,6 +380,11 @@ function LandingPageForm({
                 <div>
                   <label className="text-xs font-semibold text-text-med block mb-1">Promo label</label>
                   <input value={promoLabel} onChange={(e) => setPromoLabel(e.target.value)} placeholder="Launch Week Deal" className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text-med block mb-1">Urgency text</label>
+                  <input value={promoUrgencyText} onChange={(e) => setPromoUrgencyText(e.target.value)} maxLength={80} placeholder="Hurry, this deal ends soon!" className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                  <p className="text-[10px] text-text-light mt-1">Shown by the countdown timer. Leave empty to use the default.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>

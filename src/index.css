@@ -144,6 +144,16 @@ body.theme-bundled {
   from { opacity: 0; transform: translateY(100%); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Promo urgency timer: smooth pulse between full and half opacity so it stays
+   noticeable but readable. Disabled for reduced-motion users. */
+@keyframes promo-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.promo-blink { animation: promo-blink 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .promo-blink { animation: none; }
+}
 
 .animate-fade-up { animation: fadeUp 0.55s ease forwards; }
 .animate-fade-up-2 { animation: fadeUp 0.55s 0.12s ease forwards; opacity: 0; }
