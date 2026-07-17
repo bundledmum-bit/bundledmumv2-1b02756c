@@ -753,8 +753,48 @@ export default function CheckoutPage() {
   // Referral discount
   const referralDiscount = appliedReferral?.discount_amount || 0;
 
+  // Landing-page timed promo (server-authoritative). Only for landing-sourced
+  // carts. The RPC re-validates the time window and returns 0 when expired.
+  const landingOrigin = useMemo(() => isCartLandingSourced(cart as any[]), [cart]);
+  const landingPageId = landingOrigin?.landingPageId || null;
+  const promoQ = useQuery({
+    queryKey: ["checkout-landing-promo", landingPageId, subtotal],
+    enabled: !!landingPageId && subtotal > 0,
+    staleTime: 10_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("checkout_landing_promo_discount", {
+        p_landing_page_id: landingPageId,
+        p_subtotal: subtotal,
+      });
+      if (error) throw error;
+      return (typeof data === "string" ? JSON.parse(data) : data) || null;
+    },
+  });
+  const promoActive = !!promoQ.data?.active;
+  const promoDiscount = promoActive ? Math.max(0, Math.round(Number(promoQ.data.discount) || 0)) : 0; // integer naira
+  const promoLabel = promoActive ? (promoQ.data.label || "Promo") : null;
+
+  // Re-validate the promo fresh right before charging, so an expired-during-
+  // checkout promo drops to 0 at order time. Returns 0 on failure (charge full,
+  // never guess an unvalidated discount).
+  const revalidateCheckoutPromo = async (): Promise<number> => {
+    if (!landingPageId) return 0;
+    try {
+      const { data, error } = await (supabase as any).rpc("checkout_landing_promo_discount", {
+        p_landing_page_id: landingPageId,
+        p_subtotal: subtotal,
+      });
+      if (error) return 0;
+      const r = typeof data === "string" ? JSON.parse(data) : data;
+      return r?.active ? Math.max(0, Math.round(Number(r.discount) || 0)) : 0;
+    } catch {
+      return 0;
+    }
+  };
+
   const giftWrapFee = effectiveGiftWrap ? giftWrapPrice : 0;
-  const grand = Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount);
+  const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo);
+  const grand = grandWith(promoDiscount);
 
   // ── GA4 funnel instrumentation ───────────────────────────────────────
   // Cart-shaped item list reused by add_shipping_info / add_payment_info.
@@ -1186,7 +1226,9 @@ export default function CheckoutPage() {
     return Math.min(base, 2000);
   };
 
-  const buildOrderData = (cartItems: typeof cart, paystackRef?: string, paystackStatus?: string) => ({
+  const buildOrderData = (cartItems: typeof cart, paystackRef?: string, paystackStatus?: string, promoOverride?: number) => {
+    const promoApplied = promoOverride ?? promoDiscount;
+    return {
     timestamp: new Date().toISOString(),
     customerName: `${form.firstName} ${form.lastName}`,
     email: form.email, phone: form.phone, address: form.address, city: form.city, state: form.state,
@@ -1194,13 +1236,17 @@ export default function CheckoutPage() {
     items: cartItems,
     itemsSummary: cartItems.map(i => `${i.name} x${i.qty}`).join(", "),
     subtotal, deliveryFee: delivery, serviceFee, giftWrapFee,
-    total: grand,
+    // Landing promo applied at charge time (fresh-revalidated for order placement).
+    promoDiscount: promoApplied,
+    promoLabel,
+    total: grandWith(promoApplied),
     paymentMethod: payment,
     paymentStatus: payment === "transfer" ? "PENDING_TRANSFER" : payment === "klump" ? "PENDING_KLUMP" : "PAID",
     paystackRef: paystackRef || null,
     paystackStatus: paystackStatus || null,
     giftWrap: effectiveGiftWrap, notes: "",
-  });
+    };
+  };
 
   const saveOrderToDb = async (orderData: ReturnType<typeof buildOrderData>, cartItems: typeof cart): Promise<SavedOrderResult | null> => {
     try {
@@ -1330,7 +1376,9 @@ export default function CheckoutPage() {
             service_fee: orderData.serviceFee,
             total: orderData.total,
             discount: 0,
-            discount_amount: couponDiscount > 0 ? couponDiscount : 0,
+            // discount_amount carries coupon + landing promo (both reduce the total
+            // the same way). Referral and spend are stored in their own fields.
+            discount_amount: (couponDiscount + (orderData.promoDiscount || 0)) > 0 ? (couponDiscount + (orderData.promoDiscount || 0)) : 0,
             coupon_id: appliedCoupon?.id || null,
             referral_code_used: appliedReferral?.code || null,
             spend_discount_amount: spendDiscount > 0 ? spendDiscount : 0,
@@ -1624,8 +1672,12 @@ export default function CheckoutPage() {
     setStockIssues([]);
     setProcessing(true);
 
+    // Re-validate the landing promo fresh at placement so an expired-during-checkout
+    // promo drops to 0 and the customer is charged full price (0 on failure too).
+    const freshPromo = await revalidateCheckoutPromo();
+
     if (payment === "transfer") {
-      const orderData = buildOrderData(cartSnapshot);
+      const orderData = buildOrderData(cartSnapshot, undefined, undefined, freshPromo);
       const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
       if (!savedOrder) {
         setProcessing(false);
@@ -1657,7 +1709,7 @@ export default function CheckoutPage() {
       // klump-webhook edge function verifies it server-side and marks the order
       // paid (matched via meta_data.order_id). The frontend never flips
       // payment_status itself.
-      const orderData = buildOrderData(cartSnapshot);
+      const orderData = buildOrderData(cartSnapshot, undefined, undefined, freshPromo);
       const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
       if (!savedOrder) {
         setProcessing(false);
@@ -1767,14 +1819,16 @@ export default function CheckoutPage() {
     try {
       const PaystackPop = (await import("@paystack/inline-js")).default;
       const popup = new PaystackPop();
-      pixelTrack("AddPaymentInfo", pixelMoney(grand));
+      // Charge the fresh-revalidated total (includes the landing promo when active).
+      const chargeTotal = grandWith(freshPromo);
+      pixelTrack("AddPaymentInfo", pixelMoney(chargeTotal));
       popup.newTransaction({
         key: paystackKey,
-        email: form.email, amount: grand * 100, currency: "NGN",
+        email: form.email, amount: chargeTotal * 100, currency: "NGN",
         ref: `BM-${Date.now()}`, firstname: form.firstName, lastname: form.lastName,
         channels: payment === "ussd" ? ["ussd"] : ["card", "bank_transfer", "ussd", "qr", "mobile_money", "bank"],
         onSuccess: async (transaction: { reference: string; status: string }) => {
-          const orderData = buildOrderData(cartSnapshot, transaction.reference, "pending");
+          const orderData = buildOrderData(cartSnapshot, transaction.reference, "pending", freshPromo);
           const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
           if (!savedOrder) {
             setProcessing(false);
@@ -1806,7 +1860,7 @@ export default function CheckoutPage() {
       // the legacy "DEMO-" auto-complete path which was a dev shortcut
       // that silently created phantom paid orders.
       if (import.meta.env.DEV) {
-        const orderData = buildOrderData(cartSnapshot, "DEMO-" + Date.now(), "success");
+        const orderData = buildOrderData(cartSnapshot, "DEMO-" + Date.now(), "success", freshPromo);
         const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
         if (!savedOrder) {
           setProcessing(false);
@@ -1960,6 +2014,7 @@ export default function CheckoutPage() {
                 )}
                 {serviceFee > 0 && <div className="flex justify-between"><span className="text-text-med">{serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>}
                 {effectiveGiftWrap && <div className="flex justify-between"><span className="text-text-med">Gift Wrapping</span><span>{fmt(giftWrapPrice)}</span></div>}
+                {promoDiscount > 0 && <div className="flex justify-between text-forest"><span>🎉 Promo ({promoLabel})</span><span>-{fmt(promoDiscount)}</span></div>}
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span>🏷️ Coupon ({appliedCoupon?.code})</span><span>-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span>🎁 Referral ({appliedReferral?.code})</span><span>-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span>🎉 Spend Discount</span><span>-{fmt(spendDiscount)}</span></div>}
@@ -2548,6 +2603,7 @@ export default function CheckoutPage() {
                 )}
                 {serviceFee > 0 && <div className="flex justify-between"><span className="text-text-med flex items-center gap-1">📦 {serviceFeeLabel}</span><span>{fmt(serviceFee)}</span></div>}
                 {effectiveGiftWrap && <div className="flex justify-between"><span className="text-text-med">🎀 Gift Wrapping</span><span className="text-[#7B5E00]">{fmt(giftWrapPrice)}</span></div>}
+                {promoDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎉 Promo ({promoLabel})</span><span className="font-bold">-{fmt(promoDiscount)}</span></div>}
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🏷️ Coupon ({appliedCoupon?.code})</span><span className="font-bold">-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎁 Referral ({appliedReferral?.code})</span><span className="font-bold">-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎉 Spend Discount ({spendPrompt?.currentDiscount?.discount_percent}%)</span><span className="font-bold">-{fmt(spendDiscount)}</span></div>}
