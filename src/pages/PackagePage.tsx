@@ -675,7 +675,7 @@ export default function PackagePage() {
         <QuoteTotalsCard
           subtotal={liveSubtotal}
           serviceFee={effectiveServiceFee}
-          discount={promoDiscount > 0 ? { amount: promoDiscount, reason: "Promo" } : null}
+          discount={promoDiscount > 0 ? { amount: promoDiscount, reason: promo?.label && promo.label.trim() ? `Promo (${promo.label.trim()})` : "Promo" } : null}
           delivery={
             hasDeliveryFee ? (
               <span className="text-right">{fmt(deliveryFee)}</span>
