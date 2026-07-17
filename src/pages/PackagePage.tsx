@@ -204,22 +204,27 @@ export default function PackagePage() {
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const [brandsRes, productsRes] = await Promise.all([
-        // Public page = anon: read brand images from the anon-readable
-        // brands_public view (stored_image_url -> image_url via getBrandImage),
-        // never the raw brands table (admin-only) which returns [] for anon and
-        // left brand-only-image items with no picture.
+        // Public page = anon: read brand images AND live price from the
+        // anon-readable brands_public view (stored_image_url -> image_url via
+        // getBrandImage), never the raw brands table (admin-only) which returns []
+        // for anon and left brand-only-image items with no picture.
         brandIds.length
-          ? (supabase as any).from("brands_public").select("id, image_url, stored_image_url").in("id", brandIds)
+          ? (supabase as any).from("brands_public").select("id, image_url, stored_image_url, price").in("id", brandIds)
           : Promise.resolve({ data: [] }),
         productIds.length
           ? (supabase as any).from("products").select("id, image_url").in("id", productIds)
           : Promise.resolve({ data: [] }),
       ]);
       const brandMap = new Map<string, string | null>();
-      (brandsRes.data || []).forEach((b: any) => brandMap.set(b.id, getBrandImage(b) || null));
+      const priceMap = new Map<string, number>();
+      (brandsRes.data || []).forEach((b: any) => {
+        brandMap.set(b.id, getBrandImage(b) || null);
+        const p = Number(b.price);
+        if (Number.isFinite(p) && p > 0) priceMap.set(b.id, p); // integer naira, live
+      });
       const productMap = new Map<string, string | null>();
       (productsRes.data || []).forEach((p: any) => productMap.set(p.id, p.image_url || null));
-      return { brandMap, productMap };
+      return { brandMap, productMap, priceMap };
     },
   });
 
@@ -250,6 +255,35 @@ export default function PackagePage() {
     const productImg = productId ? imagesQ.data?.productMap.get(productId) : null;
     return brandImg || productImg || null;
   };
+
+  // Live brand price (integer naira) for a brand id, or null when the brand has
+  // no live price (custom / no-brand line falls back to the stored snapshot).
+  const livePriceFor = (brandId: string | null): number | null => {
+    if (!brandId) return null;
+    const p = imagesQ.data?.priceMap.get(brandId);
+    return typeof p === "number" && p > 0 ? p : null;
+  };
+
+  // Reconcile the working copy to LIVE brand prices once they load, so the page
+  // (item prices, line totals, subtotal, total) never shows the stored snapshot
+  // when a brand's price has changed. Items with a live price get it; items
+  // without a brand price keep their stored unit_price. qty/size edits are
+  // preserved. The `changed` guard makes this a no-op once reconciled (no loop).
+  useEffect(() => {
+    const priceMap = imagesQ.data?.priceMap;
+    if (!priceMap || priceMap.size === 0) return;
+    setWorkItems((prev) => {
+      let changed = false;
+      const next = prev.map((it) => {
+        if (!it.brand_id) return it;
+        const live = priceMap.get(it.brand_id);
+        if (typeof live !== "number" || live <= 0 || live === it.unit_price) return it;
+        changed = true;
+        return { ...it, unit_price: live, line_total: live * it.quantity };
+      });
+      return changed ? next : prev;
+    });
+  }, [imagesQ.data]);
 
   useEffect(() => {
     document.title = page?.title ? `${page.title} · BundledMum` : "Package · BundledMum";
@@ -394,18 +428,21 @@ export default function PackagePage() {
         .filter((it) => it.product_id)
         .map((it) => {
           const img = imageForIds(it.product_id, it.brand_id) || undefined;
+          // Live price wins so cart, checkout, and the funnel quote all agree,
+          // even in the brief window before the working copy is reconciled.
+          const unit = livePriceFor(it.brand_id) ?? Number(it.unit_price || 0);
           return {
             id: String(it.product_id),
             _key: cartItemKey(String(it.product_id), it.brand_id || undefined, it.size || undefined, it.color || undefined),
             name: it.product_name,
-            price: Number(it.unit_price || 0),
+            price: unit,
             qty: Math.max(1, Number(it.quantity || 1)),
             imageUrl: img,
             selectedBrand: it.brand_id
               ? {
                   id: it.brand_id,
                   label: it.brand_name || undefined,
-                  price: Number(it.unit_price || 0),
+                  price: unit,
                   imageUrl: img,
                 }
               : undefined,
