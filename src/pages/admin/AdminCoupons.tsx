@@ -36,7 +36,9 @@ export default function AdminCoupons() {
         discount_type: coupon.discount_type, discount_value: parseFloat(coupon.discount_value) || 0,
         minimum_order_amount: parseInt(coupon.minimum_order_amount) || null,
         maximum_discount_amount: parseInt(coupon.maximum_discount_amount) || null,
-        usage_limit: parseInt(coupon.usage_limit) || null, usage_limit_per_customer: parseInt(coupon.usage_limit_per_customer) || 1,
+        usage_limit: parseInt(coupon.usage_limit) || null,
+        // Empty = unlimited per customer (null), not a forced 1.
+        usage_limit_per_customer: parseInt(coupon.usage_limit_per_customer) || null,
         start_date: coupon.start_date || null, end_date: coupon.end_date || null, is_active: coupon.is_active ?? true,
       };
       if (coupon.id) {
@@ -95,7 +97,7 @@ export default function AdminCoupons() {
     !search || c.code.toLowerCase().includes(search.toLowerCase()) || (c.description || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const blankCoupon = { code: "", description: "", discount_type: "percentage", discount_value: "", minimum_order_amount: "", maximum_discount_amount: "", usage_limit: "", usage_limit_per_customer: "1", start_date: "", end_date: "", is_active: true };
+  const blankCoupon = { code: "", description: "", discount_type: "percentage", discount_value: "", minimum_order_amount: "", maximum_discount_amount: "", usage_limit: "", usage_limit_per_customer: "", start_date: "", end_date: "", is_active: true };
   const isExpired = (c: any) => c.end_date && new Date(c.end_date) < new Date();
   const isExhausted = (c: any) => c.usage_limit && c.usage_count >= c.usage_limit;
 
@@ -190,6 +192,22 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
   const [form, setForm] = useState(coupon);
   const set = (k: string, v: any) => setForm((p: any) => ({ ...p, [k]: v }));
 
+  const handleSave = () => {
+    // Value is required for percentage + fixed amount; free delivery needs none.
+    if (form.discount_type !== "free_delivery") {
+      const val = parseFloat(form.discount_value);
+      if (form.discount_value === "" || form.discount_value == null || Number.isNaN(val) || val <= 0) {
+        toast.error("Enter a discount value");
+        return;
+      }
+      if (form.discount_type === "percentage" && (val < 1 || val > 100)) {
+        toast.error("Percentage must be between 1 and 100");
+        return;
+      }
+    }
+    onSave(form);
+  };
+
   return (
     <div className="fixed inset-0 bg-foreground/50 z-[100] flex items-center justify-center max-md:items-end max-md:p-0" onClick={onClose}>
       <div className="bg-card border border-border rounded-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
@@ -214,28 +232,35 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-text-med block mb-1">Value</label>
-              <input type="number" value={form.discount_value} onChange={e => set("discount_value", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+              <label className="text-xs font-semibold text-text-med block mb-1">Value *</label>
+              <input type="number" value={form.discount_value} onChange={e => set("discount_value", e.target.value)} disabled={form.discount_type === "free_delivery"} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background disabled:opacity-50" />
+              <p className="text-[10px] text-text-light mt-1">
+                {form.discount_type === "percentage" ? "Percent off (1 to 100)" : form.discount_type === "free_delivery" ? "Not needed for free delivery" : "Amount off in naira"}
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Min Order (₦)</label>
               <input type="number" value={form.minimum_order_amount || ""} onChange={e => set("minimum_order_amount", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+              <p className="text-[10px] text-text-light mt-1">Leave empty for no minimum</p>
             </div>
             <div>
               <label className="text-xs font-semibold text-text-med block mb-1">Max Discount (₦)</label>
               <input type="number" value={form.maximum_discount_amount || ""} onChange={e => set("maximum_discount_amount", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+              <p className="text-[10px] text-text-light mt-1">Cap the discount (for percentage coupons). Empty for no cap.</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-text-med block mb-1">Usage Limit</label>
+              <label className="text-xs font-semibold text-text-med block mb-1">Total Usage Limit</label>
               <input type="number" value={form.usage_limit || ""} onChange={e => set("usage_limit", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+              <p className="text-[10px] text-text-light mt-1">Total redemptions allowed. Empty for unlimited.</p>
             </div>
             <div>
-              <label className="text-xs font-semibold text-text-med block mb-1">Per Customer</label>
-              <input type="number" value={form.usage_limit_per_customer} onChange={e => set("usage_limit_per_customer", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+              <label className="text-xs font-semibold text-text-med block mb-1">Max uses per customer</label>
+              <input type="number" value={form.usage_limit_per_customer ?? ""} onChange={e => set("usage_limit_per_customer", e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" placeholder="e.g. 1" />
+              <p className="text-[10px] text-text-light mt-1">e.g. 1 for one per person. Leave empty for unlimited.</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -254,7 +279,7 @@ function CouponForm({ coupon, onSave, onClose, saving }: { coupon: any; onSave: 
         </div>
         <div className="flex gap-2 p-4 border-t border-border">
           <button onClick={onClose} className="flex-1 px-4 py-2 border border-border rounded-lg text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button onClick={() => onSave(form)} disabled={saving || !form.code}
+          <button onClick={handleSave} disabled={saving || !form.code}
             className="flex-1 px-4 py-2 bg-forest text-primary-foreground rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-50">
             {saving ? "Saving..." : "Save Coupon"}
           </button>

@@ -838,6 +838,10 @@ export default function CheckoutPage() {
       const { data, error } = await supabase.rpc("validate_coupon", {
         coupon_code: code,
         order_amount: subtotal,
+        // Lets the preview enforce the per-customer limit so the customer sees an
+        // accurate "already used" message before paying. Null when not entered yet;
+        // the order trigger enforces it authoritatively regardless.
+        p_customer_email: form.email?.trim() || null,
       });
       if (error) throw error;
       const result = typeof data === "string" ? JSON.parse(data) : data;
@@ -882,6 +886,32 @@ export default function CheckoutPage() {
       setCouponLoading(false);
     }
   };
+
+  // Re-validate an already-applied coupon once the customer enters their email,
+  // so the per-customer "already used" message shows before paying instead of a
+  // failure at order placement. Debounced and non-blocking.
+  useEffect(() => {
+    if (!appliedCoupon) return;
+    const email = form.email?.trim() || "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.rpc("validate_coupon", {
+          coupon_code: appliedCoupon.code,
+          order_amount: subtotal,
+          p_customer_email: email,
+        });
+        if (error) return; // non-blocking
+        const result = typeof data === "string" ? JSON.parse(data) : data;
+        if (result && !result.valid) {
+          setAppliedCoupon(null);
+          toast.error(result.message || `Coupon "${appliedCoupon.code}" is no longer valid for this email`);
+        }
+      } catch { /* non-blocking */ }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.email, appliedCoupon?.code]);
 
   const applyReferral = async () => {
     const code = referralCode.trim().toUpperCase();
