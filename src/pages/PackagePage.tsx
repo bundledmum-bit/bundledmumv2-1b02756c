@@ -40,6 +40,50 @@ function newKey(): string {
   return `k_${Math.random().toString(36).slice(2)}`;
 }
 
+// Live countdown to a promo end time. Cosmetic urgency only: the real discount is
+// the RPC value. On reaching zero it calls onExpire once so the page re-checks the
+// server (which then returns active=false and the discount is removed).
+function PromoCountdown({ endsAt, onExpire }: { endsAt: string; onExpire: () => void }) {
+  const end = new Date(endsAt).getTime();
+  const [remaining, setRemaining] = useState(() => Math.max(0, end - Date.now()));
+  const firedRef = useRef(false);
+  useEffect(() => {
+    firedRef.current = false;
+    const tick = () => {
+      const ms = Math.max(0, end - Date.now());
+      setRemaining(ms);
+      if (ms <= 0 && !firedRef.current) {
+        firedRef.current = true;
+        onExpire();
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endsAt]);
+
+  const s = Math.floor(remaining / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const Cell = ({ n, label }: { n: number; label: string }) => (
+    <div className="flex flex-col items-center">
+      <span className="tabular-nums font-bold text-base leading-none">{String(n).padStart(2, "0")}</span>
+      <span className="text-[9px] uppercase tracking-wide opacity-80">{label}</span>
+    </div>
+  );
+  return (
+    <div className="flex items-center gap-2" aria-label="Time left on this deal">
+      {d > 0 && <><Cell n={d} label="days" /><span className="font-bold">:</span></>}
+      <Cell n={h} label="hrs" /><span className="font-bold">:</span>
+      <Cell n={m} label="min" /><span className="font-bold">:</span>
+      <Cell n={sec} label="sec" />
+    </div>
+  );
+}
+
 interface LandingPageRow {
   id: string;
   slug: string;
@@ -284,6 +328,27 @@ export default function PackagePage() {
       return changed ? next : prev;
     });
   }, [imagesQ.data]);
+
+  // ── Timed promotion (server-authoritative) ─────────────────────────
+  // The RPC enforces the time window and returns the exact discount (integer
+  // naira) for the current subtotal. Recomputed whenever the subtotal changes.
+  const promoSubtotal = useMemo(() => workItems.reduce((s, it) => s + it.line_total, 0), [workItems]);
+  const promoQ = useQuery({
+    queryKey: ["landing-promo", page?.id, promoSubtotal],
+    enabled: !!page?.id,
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("landing_promo_discount", {
+        p_landing_page_id: page!.id,
+        p_subtotal: promoSubtotal,
+      });
+      if (error) throw error;
+      return (typeof data === "string" ? JSON.parse(data) : data) || null;
+    },
+  });
+  const promo = promoQ.data && promoQ.data.active ? promoQ.data : null;
+  const promoDiscount = promo ? Math.max(0, Math.round(Number(promo.discount) || 0)) : 0; // integer naira, live from RPC
 
   useEffect(() => {
     document.title = page?.title ? `${page.title} · BundledMum` : "Package · BundledMum";
@@ -541,7 +606,8 @@ export default function PackagePage() {
   const liveSubtotal = workItems.reduce((s, it) => s + it.line_total, 0);
   const deliveryFee = page.estimated_delivery_fee;
   const hasDeliveryFee = deliveryFee != null && deliveryFee > 0;
-  const liveTotal = Math.max(0, liveSubtotal + effectiveServiceFee + (hasDeliveryFee ? deliveryFee : 0));
+  // Total = subtotal - promo discount + service fee + (delivery when a real fee is set).
+  const liveTotal = Math.max(0, liveSubtotal - promoDiscount + effectiveServiceFee + (hasDeliveryFee ? deliveryFee : 0));
 
   return (
     <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
@@ -555,6 +621,19 @@ export default function PackagePage() {
             </p>
           )}
         </div>
+
+        {/* Timed promo banner + live countdown (only while the server says active) */}
+        {promo && promoDiscount > 0 && (
+          <div className="mb-6 rounded-xl bg-forest text-primary-foreground px-4 py-3 flex items-center justify-between gap-3 flex-wrap shadow-card">
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">{promo.label || "Limited time offer"}</p>
+              <p className="text-[12px] opacity-90">Save {fmt(promoDiscount)} before it ends</p>
+            </div>
+            {promo.ends_at && (
+              <PromoCountdown endsAt={promo.ends_at} onExpire={() => promoQ.refetch()} />
+            )}
+          </div>
+        )}
 
         {/* Top CTA row: a second entry point using the SAME handlers as the
             bottom buttons, on the same edited working copy. */}
@@ -594,6 +673,7 @@ export default function PackagePage() {
         <QuoteTotalsCard
           subtotal={liveSubtotal}
           serviceFee={effectiveServiceFee}
+          discount={promoDiscount > 0 ? { amount: promoDiscount, reason: promo?.label || "Promo" } : null}
           delivery={
             hasDeliveryFee ? (
               <span className="text-right">{fmt(deliveryFee)}</span>

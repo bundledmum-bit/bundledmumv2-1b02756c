@@ -40,6 +40,13 @@ interface LandingPageRow {
   is_active: boolean;
   view_count: number;
   created_at: string;
+  // Per-page timed promotion (server-enforced via landing_promo_discount).
+  promo_enabled?: boolean | null;
+  promo_label?: string | null;
+  promo_discount_type?: "percentage" | "fixed" | null;
+  promo_discount_value?: number | null;
+  promo_starts_at?: string | null;
+  promo_ends_at?: string | null;
   landing_page_items?: Array<{ count: number }>;
 }
 
@@ -71,6 +78,13 @@ function LandingPageForm({
   const [deliveryFee, setDeliveryFee] = useState(String(initial?.estimated_delivery_fee ?? 0));
   const [isActive, setIsActive] = useState(initial?.is_active ?? true);
   const [items, setItems] = useState<LandingItem[]>([]);
+  // Promotion state. datetime-local strings for the pickers (sliced from ISO).
+  const [promoEnabled, setPromoEnabled] = useState(initial?.promo_enabled ?? false);
+  const [promoLabel, setPromoLabel] = useState(initial?.promo_label || "");
+  const [promoType, setPromoType] = useState<"percentage" | "fixed">(initial?.promo_discount_type || "percentage");
+  const [promoValue, setPromoValue] = useState(initial?.promo_discount_value != null ? String(initial.promo_discount_value) : "");
+  const [promoStartsAt, setPromoStartsAt] = useState(initial?.promo_starts_at ? initial.promo_starts_at.slice(0, 16) : "");
+  const [promoEndsAt, setPromoEndsAt] = useState(initial?.promo_ends_at ? initial.promo_ends_at.slice(0, 16) : "");
   // Tracks whether the admin has edited the URL text away from what produced the
   // current slug, so an edit only regenerates the slug when intended.
   const slugSourceRef = useRef<string>(initial?.title || "");
@@ -179,6 +193,17 @@ function LandingPageForm({
   const save = useMutation({
     mutationFn: async () => {
       if (!title.trim()) throw new Error("Title is required");
+
+      // Promotion validation: when enabled, type + value + end date are required.
+      const promoValueNum = parseInt(promoValue, 10);
+      if (promoEnabled) {
+        if (!(promoValueNum > 0)) throw new Error("Enter a promo discount value");
+        if (promoType === "percentage" && (promoValueNum < 1 || promoValueNum > 100)) {
+          throw new Error("Promo percentage must be between 1 and 100");
+        }
+        if (!promoEndsAt) throw new Error("A promo needs an end date (for the countdown)");
+      }
+
       const finalSlug = await computeSlug();
       if (!finalSlug) throw new Error("Could not generate a URL slug");
 
@@ -191,6 +216,13 @@ function LandingPageForm({
         estimated_delivery_fee: deliveryFeeNum,
         total,
         is_active: isActive,
+        // Promotion (integer naira for fixed; percent for percentage).
+        promo_enabled: promoEnabled,
+        promo_label: promoLabel.trim() || null,
+        promo_discount_type: promoEnabled ? promoType : (promoType || null),
+        promo_discount_value: promoEnabled ? promoValueNum : (Number.isFinite(promoValueNum) ? promoValueNum : null),
+        promo_starts_at: promoStartsAt ? new Date(promoStartsAt).toISOString() : null,
+        promo_ends_at: promoEndsAt ? new Date(promoEndsAt).toISOString() : null,
       };
 
       let pageId = initial?.id;
@@ -332,6 +364,58 @@ function LandingPageForm({
             <div className="flex justify-between"><span className="text-text-med">Service fee</span><span>{serviceFeeNum === 0 ? "FREE" : fmt(serviceFeeNum)}</span></div>
             <div className="flex justify-between"><span className="text-text-med">Delivery</span><span>{deliveryFeeNum === 0 ? "FREE" : fmt(deliveryFeeNum)}</span></div>
             <div className="flex justify-between font-bold border-t border-border pt-1 mt-1"><span>Total</span><span className="text-forest">{fmt(total)}</span></div>
+          </div>
+
+          {/* Promotion */}
+          <div className="border border-border rounded-xl p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={promoEnabled} onChange={(e) => setPromoEnabled(e.target.checked)} className="w-4 h-4 accent-forest" />
+              <span className="font-semibold text-text-med">Enable timed promotion</span>
+            </label>
+            {promoEnabled && (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-text-med block mb-1">Promo label</label>
+                  <input value={promoLabel} onChange={(e) => setPromoLabel(e.target.value)} placeholder="Launch Week Deal" className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-text-med block mb-1">Discount type</label>
+                    <select value={promoType} onChange={(e) => setPromoType(e.target.value as "percentage" | "fixed")} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background">
+                      <option value="percentage">Percentage</option>
+                      <option value="fixed">Fixed amount</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-text-med block mb-1">Value {promoType === "percentage" ? "(%)" : "(₦)"}</label>
+                    <input type="number" value={promoValue} onChange={(e) => setPromoValue(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-text-med block mb-1">Starts at <span className="font-normal text-text-light">(optional)</span></label>
+                    <input type="datetime-local" value={promoStartsAt} onChange={(e) => setPromoStartsAt(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                    <p className="text-[10px] text-text-light mt-1">Empty = active immediately.</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-text-med block mb-1">Ends at *</label>
+                    <input type="datetime-local" value={promoEndsAt} onChange={(e) => setPromoEndsAt(e.target.value)} className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background" />
+                    <p className="text-[10px] text-text-light mt-1">Required. The countdown ends here.</p>
+                  </div>
+                </div>
+                {(() => {
+                  const v = parseInt(promoValue, 10) || 0;
+                  const disc = promoType === "percentage" ? Math.floor(subtotal * v / 100) : Math.min(v, subtotal);
+                  return (
+                    <div className="bg-forest/5 border border-forest/20 rounded-lg p-2.5 text-sm">
+                      <div className="flex justify-between"><span className="text-text-med">Promo discount</span><span className="text-forest font-semibold">- {fmt(disc)}</span></div>
+                      <div className="flex justify-between font-bold"><span>Discounted total</span><span className="text-forest">{fmt(Math.max(0, total - disc))}</span></div>
+                      <p className="text-[10px] text-text-light mt-1">Preview only. The server enforces the time window and the exact discount.</p>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
 
           {/* Active */}
