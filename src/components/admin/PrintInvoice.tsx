@@ -185,6 +185,9 @@ html, body { font-family: 'Lato', sans-serif; background: #e2ddd8; color: var(--
 function fmt(n){if(!n&&n!==0)return'₦0';return'₦'+Number(n).toLocaleString('en-NG');}
 function fmtDate(d){if(!d)return'';return new Date(d).toLocaleDateString('en-NG',{day:'numeric',month:'long',year:'numeric'});}
 function cap(s){return(s||'').replace(/_/g,' ').replace(/\\b\\w/g,l=>l.toUpperCase());}
+// HTML-escape any customer/vendor free text before it goes into innerHTML.
+// Ampersand first, then the rest, so existing entities are not double-escaped wrong.
+function esc(s){return String(s==null?'':s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
 function populate(data){
   if(!data)return;
   // Override the popup's document.title so the browser's "Save as PDF"
@@ -197,10 +200,10 @@ function populate(data){
   document.getElementById('orderDate').textContent=fmtDate(data.invoice_date||new Date());
   document.getElementById('custName').textContent=data.customer_name||'';
   var addrParts=[data.delivery_address,[data.delivery_city,data.delivery_state].filter(Boolean).join(', '),data.customer_phone].filter(Boolean);
-  document.getElementById('custAddress').innerHTML=addrParts.join('<br>');
+  document.getElementById('custAddress').innerHTML=addrParts.map(esc).join('<br>');
   var items=data.line_items||[];
   document.getElementById('lineItemsBody').innerHTML=items.map(function(item){
-    return '<tr><td class="item-thumb-cell">'+(item.image_data_url?'<img class="item-thumb" src="'+item.image_data_url+'" alt="" />':'')+'</td><td><div class="prod-name">'+((item.product_name||''))+'</div><div class="prod-brand">'+((item.brand_name||''))+'</div></td><td class="cell-right">×'+(item.qty||1)+'</td><td class="cell-amount">'+fmt(item.line_total||(item.unit_price*(item.qty||1)))+'</td></tr>';
+    return '<tr><td class="item-thumb-cell">'+(item.image_data_url?'<img class="item-thumb" src="'+esc(item.image_data_url)+'" alt="" />':'')+'</td><td><div class="prod-name">'+esc(item.product_name||'')+'</div><div class="prod-brand">'+esc(item.brand_name||'')+'</div></td><td class="cell-right">×'+(item.qty||1)+'</td><td class="cell-amount">'+fmt(item.line_total||(item.unit_price*(item.qty||1)))+'</td></tr>';
   }).join('');
   document.getElementById('subtotalVal').textContent=fmt(data.subtotal);
   document.getElementById('deliveryVal').textContent=fmt(data.delivery_fee);
