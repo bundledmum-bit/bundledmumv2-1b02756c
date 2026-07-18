@@ -202,7 +202,8 @@ export default function SubscribeLanding() {
                       <img
                         src={p.img}
                         alt={p.name}
-                        loading="lazy"
+                        loading="eager"
+                        decoding="async"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                       />
