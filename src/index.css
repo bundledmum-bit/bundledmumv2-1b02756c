@@ -155,6 +155,41 @@ body.theme-bundled {
   .promo-blink { animation: none; }
 }
 
+/* Product marquee (subscribe "peek inside" strip). Seamless infinite scroll:
+   the track holds the set TWICE and translates -50%, so the clone slides into
+   place with no visible jump. GPU-friendly (transform only). Pauses on hover.
+   Reduced-motion falls back to a static wrapped grid (clones hidden). */
+@keyframes bm-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.bm-marquee-row {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 6%, #000 94%, transparent);
+}
+.bm-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: bm-marquee 45s linear infinite;
+  will-change: transform;
+}
+.bm-marquee-row:hover .bm-marquee-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .bm-marquee-row {
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .bm-marquee-track {
+    animation: none;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .bm-marquee-clone { display: none; }
+}
+
 .animate-fade-up { animation: fadeUp 0.55s ease forwards; }
 .animate-fade-up-2 { animation: fadeUp 0.55s 0.12s ease forwards; opacity: 0; }
 .animate-fade-up-3 { animation: fadeUp 0.55s 0.24s ease forwards; opacity: 0; }

@@ -41,26 +41,29 @@ export default function SubscribeLanding() {
   // Real product images for the "peek inside a box" strip — pulled from
   // brands_public at runtime so the URLs are always real and current (never
   // invented). getBrandImage prefers the Supabase-stored image.
-  const { data: peekImages = [] } = useQuery({
-    queryKey: ["subscribe-peek-images"],
+  const { data: peekProducts = [] } = useQuery({
+    queryKey: ["subscribe-peek-products"],
     staleTime: 300_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, brands:brands_public!brands_product_id_fkey(id, in_stock, image_url, stored_image_url, images)")
+        .select("id, name, slug, brands:brands_public!brands_product_id_fkey(id, in_stock, image_url, stored_image_url, images)")
         .eq("is_active", true)
         .eq("is_subscribable", true)
-        .limit(40);
-      if (error) return [] as string[];
-      const urls: string[] = [];
+        .limit(60);
+      if (error) return [] as { img: string; name: string; slug: string | null }[];
+      const out: { img: string; name: string; slug: string | null }[] = [];
+      const seen = new Set<string>();
       for (const p of (data || []) as any[]) {
-        for (const b of (p.brands || [])) {
-          if (b.in_stock === false) continue;
-          const img = getBrandImage(b) || b.images?.[0] || null;
-          if (img && !urls.includes(img)) urls.push(img);
-        }
+        // One image per product: prefer the first in-stock brand, else any brand.
+        const brands = (p.brands || []) as any[];
+        const brand = brands.find((b) => b.in_stock !== false) || brands[0];
+        const img = brand ? (getBrandImage(brand) || brand.images?.[0] || null) : null;
+        if (!img || seen.has(img)) continue; // never render a broken/duplicate image
+        seen.add(img);
+        out.push({ img, name: p.name || "", slug: p.slug || null });
       }
-      return urls.slice(0, 8);
+      return out;
     },
   });
 
@@ -187,13 +190,41 @@ export default function SubscribeLanding() {
             </p>
           </div>
 
-          {peekImages.length > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-8 gap-2.5 md:gap-3">
-              {peekImages.map((src, i) => (
-                <div key={i} className="aspect-square rounded-xl md:rounded-2xl overflow-hidden bg-warm-cream border border-black/5 shadow-sm">
-                  <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                </div>
-              ))}
+          {peekProducts.length > 0 && (
+            <div className="bm-marquee-row">
+              {/* Track holds the products TWICE (set + aria-hidden clone) so the
+                  translateX(-50%) loop is seamless. */}
+              <div className="bm-marquee-track">
+                {[...peekProducts, ...peekProducts].map((p, i) => {
+                  const isClone = i >= peekProducts.length;
+                  const card = (
+                    <div className="w-[112px] sm:w-[132px] md:w-[152px] aspect-square rounded-xl md:rounded-2xl overflow-hidden bg-warm-cream border border-black/5 shadow-sm">
+                      <img
+                        src={p.img}
+                        alt={p.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                      />
+                    </div>
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className={`shrink-0 mr-3 md:mr-4 ${isClone ? "bm-marquee-clone" : ""}`}
+                      aria-hidden={isClone ? true : undefined}
+                    >
+                      {p.slug ? (
+                        <Link to={`/products/${p.slug}`} className="block hover:opacity-90 transition-opacity" tabIndex={isClone ? -1 : undefined}>
+                          {card}
+                        </Link>
+                      ) : (
+                        card
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
