@@ -190,6 +190,23 @@ body.theme-bundled {
   .bm-marquee-clone { display: none; }
 }
 
+/* Subscribe "build a box" simulation: a product image dropping into the box,
+   and small pop-ins for chips/badges. GPU-friendly (transform/opacity only). */
+@keyframes bm-drop-in {
+  0% { opacity: 0; transform: translateY(-20px) scale(0.6); }
+  60% { opacity: 1; transform: translateY(2px) scale(1.06); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bm-drop-in { animation: bm-drop-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes bm-pop {
+  0% { opacity: 0; transform: scale(0.7); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.bm-pop { animation: bm-pop 0.34s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .bm-drop-in, .bm-pop { animation: none; }
+}
+
 .animate-fade-up { animation: fadeUp 0.55s ease forwards; }
 .animate-fade-up-2 { animation: fadeUp 0.55s 0.12s ease forwards; opacity: 0; }
 .animate-fade-up-3 { animation: fadeUp 0.55s 0.24s ease forwards; opacity: 0; }

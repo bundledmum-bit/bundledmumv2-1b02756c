@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -18,6 +18,9 @@ const GREEN_DARK = "#1E5C44";
 const CORAL = "#F4845F";
 const HERO_GRADIENT = `linear-gradient(135deg, ${GREEN} 0%, ${GREEN_DARK} 100%)`;
 
+type PeekProduct = { img: string; name: string; slug: string | null; price: number };
+const nairaShort = (n: number) => `₦${Math.round(n).toLocaleString()}`;
+
 // site_settings values are jsonb strings; tolerate a double-encoded value.
 const coerceSetting = (v: unknown): string => {
   if (v == null) return "";
@@ -32,6 +35,7 @@ export default function SubscribeLanding() {
 
   const enabled = subSettings?.subscription_enabled ?? false;
   const boxImage = coerceSetting(site?.["subscription_box_image_url"]).trim();
+  const [simStep, setSimStep] = useState(0); // which subscribe step the walkthrough is on
 
   const whatsapp = (site as any)?.whatsapp_number || "";
   const waUrl = whatsapp
@@ -47,12 +51,12 @@ export default function SubscribeLanding() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, slug, brands:brands_public!brands_product_id_fkey(id, in_stock, image_url, stored_image_url, images)")
+        .select("id, name, slug, brands:brands_public!brands_product_id_fkey(id, in_stock, price, image_url, stored_image_url, images)")
         .eq("is_active", true)
         .eq("is_subscribable", true)
         .limit(60);
-      if (error) return [] as { img: string; name: string; slug: string | null }[];
-      const out: { img: string; name: string; slug: string | null }[] = [];
+      if (error) return [] as PeekProduct[];
+      const out: PeekProduct[] = [];
       const seen = new Set<string>();
       for (const p of (data || []) as any[]) {
         // One image per product: prefer the first in-stock brand, else any brand.
@@ -61,7 +65,7 @@ export default function SubscribeLanding() {
         const img = brand ? (getBrandImage(brand) || brand.images?.[0] || null) : null;
         if (!img || seen.has(img)) continue; // never render a broken/duplicate image
         seen.add(img);
-        out.push({ img, name: p.name || "", slug: p.slug || null });
+        out.push({ img, name: p.name || "", slug: p.slug || null, price: Math.max(0, Math.round(Number(brand?.price) || 0)) });
       }
       return out;
     },
@@ -137,14 +141,23 @@ export default function SubscribeLanding() {
         <div className="max-w-[1080px] mx-auto text-center">
           <SectionKicker>How it works</SectionKicker>
           <h2 className="pf text-2xl md:text-4xl font-bold mb-3">Four simple steps</h2>
-          <p className="text-[15px] max-w-xl mx-auto mb-10 md:mb-14" style={{ color: "#7A7A7A" }}>
+          <p className="text-[15px] max-w-xl mx-auto mb-8 md:mb-12" style={{ color: "#7A7A7A" }}>
             You build it, we deliver it. No subscriptions to manage, no surprise charges.
           </p>
+
+          {/* Self-playing walkthrough of the four steps, using real products */}
+          {peekProducts.length >= 3 && (
+            <div className="mb-10 md:mb-14">
+              <SubscribeSimulation products={peekProducts} onStep={setSimStep} />
+              <p className="text-[12px] mt-4" style={{ color: "#7A7A7A" }}>A quick look — here's the whole process, start to finish.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-            <Step n={1} Icon={CalendarDays} title="Choose your months" body="Pick how many months you want — minimum 2. That's how many boxes you'll build." />
-            <Step n={2} Icon={PackageOpen} title="Build each box" body="Fill every box yourself with the products you want. The minimum value per box is ₦50,000." />
-            <Step n={3} Icon={CalendarCheck} title="Pick your delivery day" body="Choose your first delivery date. Every box lands on that weekday, four weeks apart." />
-            <Step n={4} Icon={Wallet} title="Pay once, up front" body="One payment covers every box. No card stored, no recurring charge — done." />
+            <Step n={1} Icon={CalendarDays} active={simStep === 0} title="Choose your months" body="Pick how many months you want — minimum 2. That's how many boxes you'll build." />
+            <Step n={2} Icon={PackageOpen} active={simStep === 1} title="Build each box" body="Fill every box yourself with the products you want. The minimum value per box is ₦50,000." />
+            <Step n={3} Icon={CalendarCheck} active={simStep === 2} title="Pick your delivery day" body="Choose your first delivery date. Every box lands on that weekday, four weeks apart." />
+            <Step n={4} Icon={Wallet} active={simStep === 3} title="Pay once, up front" body="One payment covers every box. No card stored, no recurring charge — done." />
           </div>
 
           {enabled && (
@@ -371,12 +384,194 @@ function Benefit({ Icon, title, body }: { Icon: any; title: string; body: string
   );
 }
 
-function Step({ n, Icon, title, body }: { n: number; Icon: any; title: string; body: string }) {
+// ---------------------------------------------------------------------------
+// Self-playing "build a box" simulation — walks through the four subscribe steps
+// (choose months -> build box with REAL products -> pick delivery day -> pay once)
+// on an animated phone. Frontend-only, GPU-friendly, reduced-motion aware.
+// ---------------------------------------------------------------------------
+const SIM_TITLES = ["Choose your months", "Build each box", "Pick your delivery day", "Pay once, up front"];
+const SIM_MONTHS = 3;
+const SIM_MIN_BOX = 50000;
+
+function SubscribeSimulation({ products, onStep }: { products: PeekProduct[]; onStep?: (step: number) => void }) {
+  const reduce = useMemo(
+    () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+    [],
+  );
+
+  // Fill the box with real products, accumulating until the ₦50,000 minimum is
+  // crossed (capped at 6 slots) so the "minimum reached" beat lands naturally.
+  const boxItems = useMemo(() => {
+    const withPrice = products.filter((p) => p.price > 0 && p.img);
+    const picked: PeekProduct[] = [];
+    let sum = 0;
+    for (const p of withPrice) {
+      picked.push(p);
+      sum += p.price;
+      if (sum >= SIM_MIN_BOX && picked.length >= 3) break;
+      if (picked.length >= 6) break;
+    }
+    return picked;
+  }, [products]);
+
+  // Timeline boundaries (ms), derived from how many items drop into the box.
+  const { P1, P2, P3, P4, LOOP, dropStart, dropGap } = useMemo(() => {
+    const dropStart = 700, dropGap = 900;
+    const P1 = 2600;
+    const P2 = P1 + dropStart + boxItems.length * dropGap + 1500;
+    const P3 = P2 + 2900;
+    const P4 = P3 + 3800;
+    return { P1, P2, P3, P4, LOOP: P4 + 1000, dropStart, dropGap };
+  }, [boxItems.length]);
+
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    if (reduce) { setT(P2 - 300); return; } // static frame: a freshly filled box
+    setT(0);
+    const id = setInterval(() => setT((prev) => (prev + 80) % LOOP), 80);
+    return () => clearInterval(id);
+  }, [reduce, LOOP, P2]);
+
+  const step = t < P1 ? 0 : t < P2 ? 1 : t < P3 ? 2 : 3;
+  useEffect(() => { onStep?.(step); }, [step, onStep]);
+
+  if (boxItems.length < 3) return null; // products still loading — skip gracefully
+
+  // Per-scene derived state.
+  const monthSelected = t > 1500;
+  const buildT = t - P1;
+  const itemsIn = boxItems.filter((_, i) => buildT >= dropStart + i * dropGap).length;
+  const boxTotal = boxItems.reduce((s, p) => s + p.price, 0);
+  const runningTotal = boxItems.slice(0, itemsIn).reduce((s, p) => s + p.price, 0);
+  const reached = runningTotal >= SIM_MIN_BOX;
+  const dayPicked = t > P2 + 1200;
+  const payT = t - P3;
+  const payPressed = payT > 1200;
+  const paySpin = payT > 1200 && payT < 2500;
+  const payDone = payT >= 2500;
+  const payTotal = Math.round(SIM_MONTHS * boxTotal * 0.95); // 5% off, integer naira
+
+  return (
+    <div className="mx-auto w-[250px] sm:w-[266px]">
+      {/* Phone frame */}
+      <div className="relative rounded-[2rem] p-2.5 shadow-xl shadow-black/10" style={{ backgroundColor: "#11201A" }}>
+        <div className="rounded-[1.6rem] bg-white overflow-hidden">
+          {/* status bar / notch */}
+          <div className="relative h-6 flex items-center justify-center" style={{ backgroundColor: "#FFF8F4" }}>
+            <span className="absolute left-3 text-[10px] font-semibold" style={{ color: "#7A7A7A" }}>9:41</span>
+            <span className="w-14 h-3 rounded-b-xl" style={{ backgroundColor: "#11201A" }} />
+          </div>
+
+          {/* step indicator */}
+          <div className="px-4 pt-3">
+            <div className="flex items-center gap-1.5">
+              {[0, 1, 2, 3].map((i) => (
+                <span key={i} className="h-1 flex-1 rounded-full transition-all" style={{ backgroundColor: i <= step ? CORAL : "rgba(0,0,0,0.10)" }} />
+              ))}
+            </div>
+            <p className="text-[11px] font-semibold mt-2" style={{ color: CORAL }}>Step {step + 1} of 4</p>
+            <p className="text-[15px] font-bold leading-tight">{SIM_TITLES[step]}</p>
+          </div>
+
+          {/* scene body (fixed height so scenes don't shift the layout) */}
+          <div className="px-4 py-3" style={{ minHeight: 194 }}>
+            {step === 0 && (
+              <div className="text-center pt-2">
+                <p className="text-[12px]" style={{ color: "#7A7A7A" }}>Pick how many boxes to build</p>
+                <div className="flex gap-1.5 justify-center mt-3">
+                  {[2, 3, 4, 5, 6].map((m) => {
+                    const on = m === SIM_MONTHS && monthSelected;
+                    return (
+                      <div key={m} className="w-9 h-9 rounded-full grid place-items-center text-sm font-bold border transition-all"
+                        style={on ? { backgroundColor: CORAL, borderColor: CORAL, color: "#fff", transform: "scale(1.12)" } : { backgroundColor: "#fff", borderColor: "rgba(0,0,0,0.12)", color: "#7A7A7A" }}>
+                        {m}
+                      </div>
+                    );
+                  })}
+                </div>
+                {monthSelected && (
+                  <p key="m1" className="bm-pop text-[12px] mt-4" style={{ color: GREEN }}><b>{SIM_MONTHS} monthly boxes</b> to build</p>
+                )}
+              </div>
+            )}
+
+            {step === 1 && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold" style={{ color: "#7A7A7A" }}>Box 1 of {SIM_MONTHS}</p>
+                  <p className="text-[13px] font-extrabold" style={{ color: reached ? GREEN : CORAL }}>{nairaShort(runningTotal)}</p>
+                </div>
+                <div className="mt-2 rounded-xl p-2 grid grid-cols-3 gap-1.5" style={{ backgroundColor: "#FFF3EC", border: "1px dashed rgba(0,0,0,0.14)" }}>
+                  {boxItems.map((it, i) => {
+                    const shown = i < itemsIn;
+                    return (
+                      <div key={i} className="aspect-square rounded-lg overflow-hidden border border-black/5" style={{ backgroundColor: "rgba(255,255,255,0.7)" }}>
+                        {shown && <img src={it.img} alt={it.name} className="bm-drop-in w-full h-full object-cover" />}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(0,0,0,0.10)" }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (runningTotal / SIM_MIN_BOX) * 100)}%`, backgroundColor: reached ? GREEN : CORAL }} />
+                </div>
+                <p className="text-[11px] mt-1.5 text-center" style={{ color: "#7A7A7A" }}>
+                  {reached ? <span className="bm-pop font-bold" style={{ color: GREEN }}>✓ ₦50,000 minimum reached</span> : <>Minimum <b>₦50,000</b> per box</>}
+                </p>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="text-center">
+                <p className="text-[12px]" style={{ color: "#7A7A7A" }}>Choose your first delivery date</p>
+                <div className="mt-3 grid grid-cols-7 gap-1">
+                  {[10, 11, 12, 13, 14, 15, 16].map((d, i) => {
+                    const on = i === 2 && dayPicked;
+                    return (
+                      <div key={d} className="aspect-square rounded-md grid place-items-center text-[11px] font-semibold transition-all"
+                        style={on ? { backgroundColor: GREEN, color: "#fff", transform: "scale(1.08)" } : { backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.06)", color: "#7A7A7A" }}>
+                        {d}
+                      </div>
+                    );
+                  })}
+                </div>
+                {dayPicked && (
+                  <p key="d1" className="bm-pop text-[12px] mt-4" style={{ color: GREEN }}>Then a box every <b>4 weeks</b>, free</p>
+                )}
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="text-center pt-1">
+                <p className="text-[12px]" style={{ color: "#7A7A7A" }}>{SIM_MONTHS} boxes &bull; 5% off applied</p>
+                <div className="text-[24px] font-extrabold mt-1" style={{ color: GREEN }}>{nairaShort(payTotal)}</div>
+                {!payDone ? (
+                  <div className="mt-4 mx-auto w-[160px] py-2.5 rounded-full text-white text-[13px] font-bold transition-transform"
+                    style={{ backgroundColor: CORAL, transform: payPressed ? "scale(0.94)" : "scale(1)" }}>
+                    {paySpin ? "Processing…" : "Pay once"}
+                  </div>
+                ) : (
+                  <div className="bm-pop mt-3">
+                    <div className="mx-auto w-11 h-11 rounded-full grid place-items-center text-white text-lg font-black" style={{ backgroundColor: GREEN }}>✓</div>
+                    <p className="text-[12px] mt-2 font-semibold">All set — Box 1 ships soon</p>
+                    <p className="text-[11px]" style={{ color: "#7A7A7A" }}>No card stored, no recurring charge</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Step({ n, Icon, title, body, active }: { n: number; Icon: any; title: string; body: string; active?: boolean }) {
   return (
     <div className="flex flex-col items-center text-center space-y-3.5">
-      <div className="w-16 h-16 rounded-3xl flex items-center justify-center text-white relative shadow-lg shadow-black/5" style={{ backgroundColor: GREEN }}>
+      <div className="w-16 h-16 rounded-3xl flex items-center justify-center text-white relative shadow-lg shadow-black/5 transition-all duration-300"
+        style={{ backgroundColor: active ? CORAL : GREEN, transform: active ? "scale(1.08)" : "scale(1)", boxShadow: active ? `0 0 0 4px ${CORAL}33` : undefined }}>
         <Icon className="w-7 h-7" />
-        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow" style={{ backgroundColor: CORAL }}>{n}</span>
+        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black text-white shadow" style={{ backgroundColor: active ? GREEN : CORAL }}>{n}</span>
       </div>
       <h3 className="font-bold text-base md:text-lg">{title}</h3>
       <p className="text-sm max-w-[260px] leading-relaxed" style={{ color: "#7A7A7A" }}>{body}</p>
