@@ -651,7 +651,9 @@ export type Database = {
           display_type: string
           emoji: string | null
           ends_at: string | null
+          excluded_pages: string[]
           id: string
+          image_url: string | null
           is_active: boolean | null
           link_text: string | null
           link_url: string | null
@@ -660,6 +662,7 @@ export type Database = {
           message: string
           popup_delay_seconds: number | null
           popup_frequency: string | null
+          popup_position: string
           priority: number | null
           show_on_exit_intent: boolean | null
           starts_at: string | null
@@ -676,7 +679,9 @@ export type Database = {
           display_type?: string
           emoji?: string | null
           ends_at?: string | null
+          excluded_pages?: string[]
           id?: string
+          image_url?: string | null
           is_active?: boolean | null
           link_text?: string | null
           link_url?: string | null
@@ -685,6 +690,7 @@ export type Database = {
           message: string
           popup_delay_seconds?: number | null
           popup_frequency?: string | null
+          popup_position?: string
           priority?: number | null
           show_on_exit_intent?: boolean | null
           starts_at?: string | null
@@ -701,7 +707,9 @@ export type Database = {
           display_type?: string
           emoji?: string | null
           ends_at?: string | null
+          excluded_pages?: string[]
           id?: string
+          image_url?: string | null
           is_active?: boolean | null
           link_text?: string | null
           link_url?: string | null
@@ -710,6 +718,7 @@ export type Database = {
           message?: string
           popup_delay_seconds?: number | null
           popup_frequency?: string | null
+          popup_position?: string
           priority?: number | null
           show_on_exit_intent?: boolean | null
           starts_at?: string | null
@@ -859,10 +868,16 @@ export type Database = {
           created_by: string | null
           discount_percent: number | null
           ends_at: string | null
+          follows_master_timer: boolean
+          gift_brand_id: string | null
+          gift_max_per_order: number | null
+          gift_percent_off: number | null
+          gift_qty: number | null
           id: string
           is_active: boolean
           promo_type: string
           starts_at: string
+          trigger_qty: number | null
         }
         Insert: {
           bogo_buy_qty?: number | null
@@ -872,10 +887,16 @@ export type Database = {
           created_by?: string | null
           discount_percent?: number | null
           ends_at?: string | null
+          follows_master_timer?: boolean
+          gift_brand_id?: string | null
+          gift_max_per_order?: number | null
+          gift_percent_off?: number | null
+          gift_qty?: number | null
           id?: string
           is_active?: boolean
           promo_type: string
           starts_at?: string
+          trigger_qty?: number | null
         }
         Update: {
           bogo_buy_qty?: number | null
@@ -885,10 +906,16 @@ export type Database = {
           created_by?: string | null
           discount_percent?: number | null
           ends_at?: string | null
+          follows_master_timer?: boolean
+          gift_brand_id?: string | null
+          gift_max_per_order?: number | null
+          gift_percent_off?: number | null
+          gift_qty?: number | null
           id?: string
           is_active?: boolean
           promo_type?: string
           starts_at?: string
+          trigger_qty?: number | null
         }
         Relationships: [
           {
@@ -918,6 +945,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_gift_brand_id_fkey"
+            columns: ["gift_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_gift_brand_id_fkey"
+            columns: ["gift_brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brand_promotions_gift_brand_id_fkey"
+            columns: ["gift_brand_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["brand_id"]
           },
         ]
       }
@@ -4318,6 +4366,104 @@ export type Database = {
           },
         ]
       }
+      klump_payment_pages: {
+        Row: {
+          amount: number
+          attempt_number: number
+          created_at: string
+          created_by: string | null
+          id: string
+          is_current: boolean
+          is_published: boolean
+          klump_page_id: string | null
+          klump_reference: string | null
+          order_id: string
+          order_number: string
+          page_url: string
+          superseded_at: string | null
+        }
+        Insert: {
+          amount: number
+          attempt_number?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          is_published?: boolean
+          klump_page_id?: string | null
+          klump_reference?: string | null
+          order_id: string
+          order_number: string
+          page_url: string
+          superseded_at?: string | null
+        }
+        Update: {
+          amount?: number
+          attempt_number?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_current?: boolean
+          is_published?: boolean
+          klump_page_id?: string | null
+          klump_reference?: string | null
+          order_id?: string
+          order_number?: string
+          page_url?: string
+          superseded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "klump_payment_pages_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "klump_payment_pages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "pending_refunds"
+            referencedColumns: ["order_id"]
+          },
+        ]
+      }
       klump_webhook_events: {
         Row: {
           created_at: string
@@ -4390,6 +4536,137 @@ export type Database = {
             referencedColumns: ["order_id"]
           },
         ]
+      }
+      landing_page_items: {
+        Row: {
+          brand_id: string | null
+          brand_name: string | null
+          color: string | null
+          created_at: string
+          display_order: number
+          id: string
+          landing_page_id: string
+          line_total: number
+          product_id: string | null
+          product_name: string
+          quantity: number
+          section: string | null
+          size: string | null
+          unit_price: number
+        }
+        Insert: {
+          brand_id?: string | null
+          brand_name?: string | null
+          color?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          landing_page_id: string
+          line_total?: number
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          section?: string | null
+          size?: string | null
+          unit_price?: number
+        }
+        Update: {
+          brand_id?: string | null
+          brand_name?: string | null
+          color?: string | null
+          created_at?: string
+          display_order?: number
+          id?: string
+          landing_page_id?: string
+          line_total?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          section?: string | null
+          size?: string | null
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "landing_page_items_landing_page_id_fkey"
+            columns: ["landing_page_id"]
+            isOneToOne: false
+            referencedRelation: "landing_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      landing_pages: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          estimated_delivery_fee: number
+          id: string
+          intro_text: string | null
+          is_active: boolean
+          promo_discount_type: string | null
+          promo_discount_value: number | null
+          promo_enabled: boolean
+          promo_ends_at: string | null
+          promo_label: string | null
+          promo_min_order: number | null
+          promo_starts_at: string | null
+          promo_urgency_text: string | null
+          service_fee: number
+          slug: string
+          subtotal: number
+          title: string
+          total: number
+          updated_at: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          estimated_delivery_fee?: number
+          id?: string
+          intro_text?: string | null
+          is_active?: boolean
+          promo_discount_type?: string | null
+          promo_discount_value?: number | null
+          promo_enabled?: boolean
+          promo_ends_at?: string | null
+          promo_label?: string | null
+          promo_min_order?: number | null
+          promo_starts_at?: string | null
+          promo_urgency_text?: string | null
+          service_fee?: number
+          slug: string
+          subtotal?: number
+          title: string
+          total?: number
+          updated_at?: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          estimated_delivery_fee?: number
+          id?: string
+          intro_text?: string | null
+          is_active?: boolean
+          promo_discount_type?: string | null
+          promo_discount_value?: number | null
+          promo_enabled?: boolean
+          promo_ends_at?: string | null
+          promo_label?: string | null
+          promo_min_order?: number | null
+          promo_starts_at?: string | null
+          promo_urgency_text?: string | null
+          service_fee?: number
+          slug?: string
+          subtotal?: number
+          title?: string
+          total?: number
+          updated_at?: string
+          view_count?: number
+        }
+        Relationships: []
       }
       logistics_companies: {
         Row: {
@@ -7708,6 +7985,9 @@ export type Database = {
           sent_at: string | null
           service_fee: number
           share_token: string | null
+          source: string
+          source_landing_page_id: string | null
+          source_session_key: string | null
           status: string
           subtotal: number
           total: number
@@ -7747,6 +8027,9 @@ export type Database = {
           sent_at?: string | null
           service_fee?: number
           share_token?: string | null
+          source?: string
+          source_landing_page_id?: string | null
+          source_session_key?: string | null
           status?: string
           subtotal?: number
           total?: number
@@ -7786,6 +8069,9 @@ export type Database = {
           sent_at?: string | null
           service_fee?: number
           share_token?: string | null
+          source?: string
+          source_landing_page_id?: string | null
+          source_session_key?: string | null
           status?: string
           subtotal?: number
           total?: number
@@ -7840,6 +8126,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_source_landing_page_id_fkey"
+            columns: ["source_landing_page_id"]
+            isOneToOne: false
+            referencedRelation: "landing_pages"
             referencedColumns: ["id"]
           },
         ]
@@ -8784,6 +9077,208 @@ export type Database = {
           },
         ]
       }
+      subscription_box_items: {
+        Row: {
+          box_id: string
+          brand_id: string | null
+          brand_name: string | null
+          cost_price_at_lock: number | null
+          created_at: string
+          id: string
+          line_total: number
+          product_id: string | null
+          product_name: string
+          quantity: number
+          subscription_id: string
+          unit_price: number
+        }
+        Insert: {
+          box_id: string
+          brand_id?: string | null
+          brand_name?: string | null
+          cost_price_at_lock?: number | null
+          created_at?: string
+          id?: string
+          line_total: number
+          product_id?: string | null
+          product_name: string
+          quantity?: number
+          subscription_id: string
+          unit_price: number
+        }
+        Update: {
+          box_id?: string
+          brand_id?: string | null
+          brand_name?: string | null
+          cost_price_at_lock?: number | null
+          created_at?: string
+          id?: string
+          line_total?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          subscription_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_box_items_box_id_fkey"
+            columns: ["box_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_boxes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["brand_id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "subscription_box_items_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscription_boxes: {
+        Row: {
+          amount_paid: number
+          box_number: number
+          created_at: string
+          delivered_at: string | null
+          discount_amount: number
+          id: string
+          locked_at: string | null
+          order_id: string | null
+          scheduled_date: string
+          skipped_reason: string | null
+          status: string
+          subscription_id: string
+          subtotal: number
+          topup_email_sent_at: string | null
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          amount_paid?: number
+          box_number: number
+          created_at?: string
+          delivered_at?: string | null
+          discount_amount?: number
+          id?: string
+          locked_at?: string | null
+          order_id?: string | null
+          scheduled_date: string
+          skipped_reason?: string | null
+          status?: string
+          subscription_id: string
+          subtotal?: number
+          topup_email_sent_at?: string | null
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          amount_paid?: number
+          box_number?: number
+          created_at?: string
+          delivered_at?: string | null
+          discount_amount?: number
+          id?: string
+          locked_at?: string | null
+          order_id?: string | null
+          scheduled_date?: string
+          skipped_reason?: string | null
+          status?: string
+          subscription_id?: string
+          subtotal?: number
+          topup_email_sent_at?: string | null
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "admin_order_profit_view"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_lines_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "order_profit_summary"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders_report"
+            referencedColumns: ["order_uuid"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "pending_refunds"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "subscription_boxes_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscription_delivery_reminders: {
         Row: {
           id: string
@@ -9067,6 +9562,7 @@ export type Database = {
           free_delivery: boolean
           frequency: string
           frequency_days: number
+          guest_token: string | null
           id: string
           last_fulfilled_at: string | null
           last_renewal_error: string | null
@@ -9116,6 +9612,7 @@ export type Database = {
           free_delivery?: boolean
           frequency: string
           frequency_days?: number
+          guest_token?: string | null
           id?: string
           last_fulfilled_at?: string | null
           last_renewal_error?: string | null
@@ -9165,6 +9662,7 @@ export type Database = {
           free_delivery?: boolean
           frequency?: string
           frequency_days?: number
+          guest_token?: string | null
           id?: string
           last_fulfilled_at?: string | null
           last_renewal_error?: string | null
@@ -9801,6 +10299,7 @@ export type Database = {
           images: string[] | null
           in_stock: boolean | null
           is_default_for_tier: boolean | null
+          is_subscribable: boolean | null
           logo_url: string | null
           pack_count: number | null
           price: number | null
@@ -9815,60 +10314,6 @@ export type Database = {
           updated_at: string | null
           variant_type: string | null
           weight_range_kg: string | null
-        }
-        Insert: {
-          brand_name?: string | null
-          compare_at_price?: number | null
-          created_at?: string | null
-          description?: string | null
-          diaper_type?: string | null
-          display_order?: number | null
-          id?: string | null
-          image_url?: string | null
-          images?: string[] | null
-          in_stock?: boolean | null
-          is_default_for_tier?: boolean | null
-          logo_url?: string | null
-          pack_count?: number | null
-          price?: number | null
-          product_id?: string | null
-          size_variant?: string | null
-          sku?: string | null
-          stock_quantity?: number | null
-          stored_image_url?: string | null
-          stored_images?: string[] | null
-          thumbnail_url?: string | null
-          tier?: string | null
-          updated_at?: string | null
-          variant_type?: string | null
-          weight_range_kg?: string | null
-        }
-        Update: {
-          brand_name?: string | null
-          compare_at_price?: number | null
-          created_at?: string | null
-          description?: string | null
-          diaper_type?: string | null
-          display_order?: number | null
-          id?: string | null
-          image_url?: string | null
-          images?: string[] | null
-          in_stock?: boolean | null
-          is_default_for_tier?: boolean | null
-          logo_url?: string | null
-          pack_count?: number | null
-          price?: number | null
-          product_id?: string | null
-          size_variant?: string | null
-          sku?: string | null
-          stock_quantity?: number | null
-          stored_image_url?: string | null
-          stored_images?: string[] | null
-          thumbnail_url?: string | null
-          tier?: string | null
-          updated_at?: string | null
-          variant_type?: string | null
-          weight_range_kg?: string | null
         }
         Relationships: [
           {
@@ -10730,12 +11175,24 @@ export type Database = {
     }
     Functions: {
       accept_order_for_picking: { Args: { p_order_id: string }; Returns: Json }
+      activate_subscription_after_payment: {
+        Args: {
+          p_amount_paid: number
+          p_paystack_reference: string
+          p_subscription_id: string
+        }
+        Returns: Json
+      }
       add_alias_from_miss: {
         Args: { p_normalised_query: string; p_product_id: string }
         Returns: string
       }
       add_calendar_months: {
         Args: { p_from_date: string; p_months: number }
+        Returns: string
+      }
+      add_item_to_subscription_box: {
+        Args: { p_box_id: string; p_brand_id: string; p_quantity?: number }
         Returns: string
       }
       admin_add_deal_brand: { Args: { p_brand_id: string }; Returns: boolean }
@@ -10756,8 +11213,15 @@ export type Database = {
           deal_id: string
           discount_percent: number
           display_order: number
+          effective_ends_at: string
           ends_at: string
           eval_qty: number
+          follows_master_timer: boolean
+          gift_brand_id: string
+          gift_brand_name: string
+          gift_max_per_order: number
+          gift_percent_off: number
+          gift_qty: number
           image_url: string
           in_stock: boolean
           is_active: boolean
@@ -10773,6 +11237,7 @@ export type Database = {
           sku: string
           starts_at: string
           subcategory: string
+          trigger_qty: number
           your_cost: number
           your_margin: number
         }[]
@@ -10835,11 +11300,17 @@ export type Database = {
           p_bogo_get_percent_off?: number
           p_brand_id: string
           p_discount_percent?: number
+          p_gift_brand_id?: string
+          p_gift_percent_off?: number
+          p_gift_qty?: number
           p_promo_type: string
+          p_trigger_qty?: number
         }
         Returns: {
           below_cost: boolean
           customer_pays: number
+          eval_qty: number
+          gift_cost: number
           list_price: number
           margin_pct: number
           promo_label: string
@@ -10891,6 +11362,20 @@ export type Database = {
           saved: boolean
         }[]
       }
+      admin_save_brand_price_v2: {
+        Args: {
+          p_below_floor_reason?: string
+          p_brand_id: string
+          p_confirm_below_floor?: boolean
+          p_cost_price: number
+          p_price: number
+        }
+        Returns: {
+          below_floor: boolean
+          message: string
+          saved: boolean
+        }[]
+      }
       admin_search_brands_for_deals: {
         Args: { p_limit?: number; p_query: string }
         Returns: {
@@ -10902,6 +11387,7 @@ export type Database = {
           in_stock: boolean
           on_deals: boolean
           price: number
+          product_brands_on_deals: number
           product_id: string
           product_name: string
           sku: string
@@ -10915,8 +11401,14 @@ export type Database = {
           p_brand_id: string
           p_discount_percent?: number
           p_ends_at?: string
+          p_follows_master_timer?: boolean
+          p_gift_brand_id?: string
+          p_gift_max_per_order?: number
+          p_gift_percent_off?: number
+          p_gift_qty?: number
           p_promo_type: string
           p_starts_at?: string
+          p_trigger_qty?: number
         }
         Returns: string
       }
@@ -10963,6 +11455,45 @@ export type Database = {
         }
         Returns: Json
       }
+      approval_new_brand_price: { Args: { p_cost: number }; Returns: number }
+      approval_price_impact: {
+        Args: { p_request_id: string }
+        Returns: {
+          brand_id: string
+          brand_name: string
+          breaches_floor: boolean
+          cost_direction: string
+          current_price: number
+          floor_percent: number
+          has_cost_change: boolean
+          keep_current_price: number
+          markup_after: number
+          markup_before: number
+          message: string
+          min_new_price: number
+          new_cost: number
+          old_cost: number
+          price_to_hold_margin: number
+          product_name: string
+          severity: string
+        }[]
+      }
+      approve_cost_change_with_price: {
+        Args: { p_new_price: number; p_note?: string; p_request_id: string }
+        Returns: Json
+      }
+      box_balance_due: { Args: { p_box_id: string }; Returns: number }
+      boxes_due_for_topup_email: {
+        Args: never
+        Returns: {
+          box_id: string
+          box_number: number
+          customer_email: string
+          customer_name: string
+          guest_token: string
+          scheduled_date: string
+        }[]
+      }
       calculate_employee_payroll: {
         Args: { p_bonus?: number; p_employee_id: string }
         Returns: Json
@@ -10979,28 +11510,88 @@ export type Database = {
         Args: { p_month?: number; p_year?: number }
         Returns: Json
       }
+      check_markup_floor: {
+        Args: { p_cost_price: number; p_price: number }
+        Returns: {
+          below_floor: boolean
+          current_markup_percent: number
+          floor_percent: number
+          message: string
+          min_price: number
+          shortfall: number
+          suggested_price: number
+        }[]
+      }
       check_realtime_access: {
         Args: { channel_name: string }
         Returns: boolean
       }
       check_stock_availability: { Args: { p_items: Json }; Returns: Json }
+      checkout_landing_promo_discount: {
+        Args: { p_landing_page_id: string; p_subtotal: number }
+        Returns: Json
+      }
       clean_campaign: { Args: { p_campaign: string }; Returns: string }
+      commit_box_topup: {
+        Args: {
+          p_amount_paid: number
+          p_box_id: string
+          p_brand_id: string
+          p_quantity: number
+        }
+        Returns: Json
+      }
       complete_order_picking: {
         Args: { p_session_id: string }
         Returns: undefined
       }
       compute_auto_fees: { Args: { p_items: Json }; Returns: Json }
+      convert_box_to_order: { Args: { p_box_id: string }; Returns: Json }
+      convert_due_boxes: { Args: never; Returns: Json }
+      convert_quote_to_pending_order: {
+        Args: { p_quote_id: string }
+        Returns: {
+          out_order_id: string
+          out_order_number: string
+          out_total: number
+        }[]
+      }
       count_working_days: {
         Args: { p_end_date: string; p_start_date: string }
         Returns: number
       }
       create_shared_cart: { Args: { p_items: Json }; Returns: string }
+      create_subscription_boxes: {
+        Args: {
+          p_first_delivery_date: string
+          p_months: number
+          p_subscription_id: string
+        }
+        Returns: {
+          out_box_id: string
+          out_box_number: number
+          out_scheduled_date: string
+        }[]
+      }
+      duplicate_landing_page: { Args: { p_source_id: string }; Returns: string }
       duplicate_quote: {
         Args: { p_source_quote_id: string }
         Returns: {
           new_quote_id: string
           new_quote_number: string
         }[]
+      }
+      finalise_subscription_schedule: {
+        Args: {
+          p_customer_name: string
+          p_customer_phone: string
+          p_delivery_address: string
+          p_delivery_city: string
+          p_delivery_state?: string
+          p_first_delivery_date: string
+          p_subscription_id: string
+        }
+        Returns: Json
       }
       finance_marketing_by_channel: {
         Args: { p_end: string; p_start: string }
@@ -11149,6 +11740,7 @@ export type Database = {
         Returns: Json
       }
       generate_invoice_number: { Args: never; Returns: string }
+      generate_landing_page_slug: { Args: { p_text: string }; Returns: string }
       generate_order_number: { Args: never; Returns: string }
       generate_quiz_story:
         | {
@@ -11215,6 +11807,34 @@ export type Database = {
           promo_label: string
           promo_type: string
           unit_price: number
+        }[]
+      }
+      get_brand_promo_display: {
+        Args: { p_brand_id: string }
+        Returns: {
+          bogo_add_qty: number
+          bogo_buy_qty: number
+          bogo_get_percent_off: number
+          brand_id: string
+          detail: string
+          discount_percent: number
+          gift_brand_id: string
+          gift_brand_name: string
+          gift_image_url: string
+          gift_in_stock: boolean
+          gift_list_price: number
+          gift_max_per_order: number
+          gift_percent_off: number
+          gift_product_name: string
+          gift_promo_price: number
+          gift_qty: number
+          gift_sku: string
+          headline: string
+          list_price: number
+          promo_ends_at: string
+          promo_price: number
+          promo_type: string
+          trigger_qty: number
         }[]
       }
       get_cart_recommendations: {
@@ -11286,16 +11906,38 @@ export type Database = {
           zone: string
         }[]
       }
+      get_earned_gifts: {
+        Args: { p_cart: Json }
+        Returns: {
+          gift_brand_id: string
+          gift_brand_name: string
+          gift_image_url: string
+          gift_line_cost: number
+          gift_line_total: number
+          gift_list_price: number
+          gift_product_id: string
+          gift_product_name: string
+          gift_qty: number
+          gift_sku: string
+          gift_unit_price: number
+          promo_ends_at: string
+          promo_label: string
+          trigger_brand_id: string
+          trigger_brand_name: string
+        }[]
+      }
       get_gift_box_price: { Args: { p_gift_box_id: string }; Returns: Json }
       get_gift_category_products: {
         Args: { p_budget_amount?: number; p_category: string }
         Returns: Json
       }
+      get_guest_subscription: { Args: { p_guest_token: string }; Returns: Json }
       get_hospital_list_config: { Args: never; Returns: Json }
       get_hospital_list_funnel: {
         Args: { p_end?: string; p_source?: string; p_start?: string }
         Returns: Json
       }
+      get_master_deals_end: { Args: never; Returns: string }
       get_merchandised_products: {
         Args: { p_scope: string; p_seed?: string }
         Returns: {
@@ -11317,6 +11959,7 @@ export type Database = {
           subcategory: string
         }[]
       }
+      get_order_payment_link: { Args: { p_order_id: string }; Returns: string }
       get_order_picking_items: {
         Args: { p_order_id: string }
         Returns: {
@@ -11415,6 +12058,40 @@ export type Database = {
         }
         Returns: Json
       }
+      guest_add_item: {
+        Args: {
+          p_box_id: string
+          p_brand_id: string
+          p_guest_token: string
+          p_quantity?: number
+        }
+        Returns: Json
+      }
+      guest_duplicate_box: {
+        Args: { p_guest_token: string; p_source_box_id: string }
+        Returns: Json
+      }
+      guest_finalise_schedule: {
+        Args: {
+          p_customer_email: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_delivery_address: string
+          p_delivery_city: string
+          p_delivery_state?: string
+          p_first_delivery_date: string
+          p_guest_token: string
+        }
+        Returns: Json
+      }
+      guest_owns_box: {
+        Args: { p_box_id: string; p_guest_token: string }
+        Returns: boolean
+      }
+      guest_set_item_quantity: {
+        Args: { p_guest_token: string; p_item_id: string; p_quantity: number }
+        Returns: Json
+      }
       has_admin_permission: {
         Args: { p_action?: string; p_section: string }
         Returns: boolean
@@ -11434,6 +12111,10 @@ export type Database = {
           slug: string
           subcategory: string
         }[]
+      }
+      increment_landing_page_view: {
+        Args: { p_slug: string }
+        Returns: undefined
       }
       increment_push_campaign_counter: {
         Args: { p_campaign_id: string; p_column: string }
@@ -11466,11 +12147,46 @@ export type Database = {
       is_sensitive_realtime_topic: { Args: { topic: string }; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_vendor_manager: { Args: never; Returns: boolean }
+      klump_order_references: {
+        Args: { p_order_id: string }
+        Returns: string[]
+      }
+      klump_orders_to_reconcile: {
+        Args: { p_older_than_minutes?: number }
+        Returns: {
+          all_references: string[]
+          created_at: string
+          customer_email: string
+          order_id: string
+          order_number: string
+          payment_reference: string
+          total: number
+        }[]
+      }
+      klump_page_eligibility: {
+        Args: { p_order_id: string }
+        Returns: {
+          eligible: boolean
+          out_amount: number
+          out_existing_page_url: string
+          out_order_number: string
+          reason: string
+        }[]
+      }
+      landing_promo_discount: {
+        Args: { p_landing_page_id: string; p_subtotal: number }
+        Returns: Json
+      }
       link_my_employee_account: { Args: never; Returns: Json }
+      link_order_to_landing_quote: {
+        Args: { p_order_id: string; p_quote_id: string }
+        Returns: Json
+      }
       link_order_to_quote: {
         Args: { p_order_id: string; p_share_token: string }
         Returns: Json
       }
+      mark_box_topup_emailed: { Args: { p_box_id: string }; Returns: undefined }
       mark_quiz_lead_purchased: {
         Args: {
           p_order_amount?: number
@@ -11506,6 +12222,15 @@ export type Database = {
         Returns: string
       }
       orders_paid_only_restricted: { Args: never; Returns: boolean }
+      prepare_box_topup: {
+        Args: {
+          p_box_id: string
+          p_brand_id: string
+          p_guest_token: string
+          p_quantity?: number
+        }
+        Returns: Json
+      }
       process_admin_approval: {
         Args: { p_approved: boolean; p_note?: string; p_request_id: string }
         Returns: Json
@@ -11515,8 +12240,32 @@ export type Database = {
         Returns: Json
       }
       process_recurring_expenses: { Args: never; Returns: Json }
+      promo_effective_end: {
+        Args: { p_ends_at: string; p_follows: boolean }
+        Returns: string
+      }
+      provision_customer_after_guest_payment: {
+        Args: { p_subscription_id: string }
+        Returns: Json
+      }
+      quote_ready_for_payment: {
+        Args: { p_quote_id: string }
+        Returns: {
+          out_existing_order_id: string
+          out_existing_order_number: string
+          out_missing_fields: string[]
+          out_quote_number: string
+          out_total: number
+          ready: boolean
+          reason: string
+        }[]
+      }
       recompute_order_gross_profit: {
         Args: { p_order_id: string }
+        Returns: undefined
+      }
+      recompute_subscription_box: {
+        Args: { p_box_id: string }
         Returns: undefined
       }
       record_quote_download: {
@@ -11644,6 +12393,10 @@ export type Database = {
         Args: { p_cost_price: number; p_item_id: string }
         Returns: Json
       }
+      set_order_klump_reference: {
+        Args: { p_order_id: string; p_reference: string }
+        Returns: boolean
+      }
       set_picker_item_cost: {
         Args: { p_item_id: string; p_new_unit_cost: number }
         Returns: Json
@@ -11660,9 +12413,59 @@ export type Database = {
         Args: { p_session_id: string }
         Returns: undefined
       }
+      start_guest_subscription: {
+        Args: { p_customer_email: string; p_months: number }
+        Returns: Json
+      }
+      start_subscription:
+        | {
+            Args: { p_customer_email: string; p_months: number }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_customer_email: string
+              p_customer_name?: string
+              p_customer_phone?: string
+              p_delivery_address?: string
+              p_delivery_city?: string
+              p_delivery_state?: string
+              p_delivery_weekday: number
+              p_months: number
+            }
+            Returns: Json
+          }
       stock_notification_rate_ok: {
         Args: { p_email: string }
         Returns: boolean
+      }
+      subscribe_to_product: {
+        Args: {
+          p_brand_id: string
+          p_customer_email: string
+          p_quantity?: number
+        }
+        Returns: Json
+      }
+      subscription_box_is_editable: {
+        Args: { p_box_id: string }
+        Returns: {
+          editable: boolean
+          hours_left: number
+          reason: string
+        }[]
+      }
+      subscription_ready_to_pay: {
+        Args: { p_subscription_id: string }
+        Returns: {
+          box_count: number
+          failing_boxes: Json
+          grand_total: number
+          message: string
+          min_box_value: number
+          min_boxes: number
+          ready: boolean
+        }[]
       }
       super_admin_permanent_delete: {
         Args: { p_record_id: string; p_target_table: string }
@@ -11673,6 +12476,20 @@ export type Database = {
         Returns: Json
       }
       update_hospital_list_config: { Args: { p_patch: Json }; Returns: Json }
+      upsert_landing_page_quote: {
+        Args: {
+          p_customer_email: string
+          p_customer_name: string
+          p_customer_phone: string
+          p_delivery_address?: string
+          p_delivery_city?: string
+          p_delivery_state?: string
+          p_items: Json
+          p_landing_page_id: string
+          p_session_key: string
+        }
+        Returns: string
+      }
       upsert_session: {
         Args: {
           p_browser?: string
@@ -11697,7 +12514,11 @@ export type Database = {
         Returns: undefined
       }
       validate_coupon: {
-        Args: { coupon_code: string; order_amount: number }
+        Args: {
+          coupon_code: string
+          order_amount: number
+          p_customer_email?: string
+        }
         Returns: Json
       }
       validate_first_delivery_date: {

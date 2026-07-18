@@ -139,7 +139,7 @@ export default function SubscribeLanding() {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
             <Step n={1} Icon={CalendarDays} title="Choose your months" body="Pick how many months you want — minimum 2. That's how many boxes you'll build." />
-            <Step n={2} Icon={PackageOpen} title="Build each box" body="Fill every box yourself with the products you want. Each box reaches ₦50,000 and can differ month to month." />
+            <Step n={2} Icon={PackageOpen} title="Build each box" body="Fill every box yourself with the products you want. The minimum value per box is ₦50,000." />
             <Step n={3} Icon={CalendarCheck} title="Pick your delivery day" body="Choose your first delivery date. Every box lands on that weekday, four weeks apart." />
             <Step n={4} Icon={Wallet} title="Pay once, up front" body="One payment covers every box. No card stored, no recurring charge — done." />
           </div>
