@@ -1430,7 +1430,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => { try { trackEvent("product_whatsapp_order", { product_id: product.id, source: "pdp" }); } catch { /* fire-and-forget */ } }}
-                className="md:hidden -mt-3 mb-6 w-full flex items-center justify-center gap-2 rounded-pill border h-[42px] text-sm font-semibold"
+                className="-mt-3 mb-6 w-full flex items-center justify-center gap-2 rounded-pill border h-[42px] text-sm font-semibold"
                 style={{ borderColor: "#25D366", color: "#0F6E56" }}
               >
                 <img src={whatsappLogo} alt="" className="h-5 w-5" /> Order via WhatsApp

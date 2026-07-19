@@ -405,7 +405,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
                 rel="noopener noreferrer"
                 aria-label="Order via WhatsApp"
                 onClick={() => { try { trackEvent("product_whatsapp_order", { product_id: product.id, source: "slider" }); } catch { /* fire-and-forget */ } }}
-                className="md:hidden shrink-0 w-11 h-11 block active:scale-95 transition-transform"
+                className="shrink-0 w-11 h-11 block active:scale-95 transition-transform"
               >
                 <img src={whatsappLogo} alt="" className="w-full h-full" />
               </a>
