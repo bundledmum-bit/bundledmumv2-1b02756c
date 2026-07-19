@@ -125,6 +125,7 @@ import AdminEmailLogs from "@/pages/admin/AdminEmailLogs";
 import AdminComingSoon from "@/pages/admin/AdminComingSoon";
 import AdminFinance from "@/pages/admin/AdminFinance";
 import AdminProfitPerOrder from "@/pages/admin/AdminProfitPerOrder";
+import AdminCartData from "@/pages/admin/AdminCartData";
 import AdminHomepage from "@/pages/admin/AdminHomepage";
 import AdminTestimonials from "@/pages/admin/AdminTestimonials";
 import AdminTrustSignals from "@/pages/admin/AdminTrustSignals";
@@ -417,6 +418,7 @@ const App = () => (
                 <Route path="approvals" element={<AdminApprovals />} />
                 <Route path="referrals" element={<PermissionGate module="customers" action="view"><AdminReferrals /></PermissionGate>} />
                 <Route path="analytics" element={<PermissionGate module="analytics" action="view"><AdminAnalytics /></PermissionGate>} />
+                <Route path="cart-data" element={<PermissionGate module="analytics" action="view"><AdminCartData /></PermissionGate>} />
                 <Route path="analytics/marketing" element={<PermissionGate module="analytics" action="view"><AdminMarketingAnalytics /></PermissionGate>} />
                 <Route path="users" element={<PermissionGate module="admin" action="view_users"><AdminUsers /></PermissionGate>} />
                 <Route path="media" element={<PermissionGate module="content" action="view"><AdminMedia /></PermissionGate>} />

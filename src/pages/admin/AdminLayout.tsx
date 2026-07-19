@@ -192,6 +192,13 @@ function AdminLayoutInner() {
       extras.push({ to: "/admin/home-content", label: "Homepage", icon: Layout, exact: false, navKey: "home_content", children: [] });
     }
 
+    // Cart Data (abandoned carts, checkout drop-offs, checkout errors).
+    const hasCartData = base.some((e) => e.to === "/admin/cart-data" || e.navKey === "cart_data");
+    const canSeeCartData = isSuperAdmin || can("analytics", "view");
+    if (!hasCartData && canSeeCartData) {
+      extras.push({ to: "/admin/cart-data", label: "Cart Data", icon: ShoppingBag, exact: false, navKey: "cart_data", children: [] });
+    }
+
     return extras.length ? [...base, ...extras] : base;
   }, [visibleNav, isSuperAdmin, can]);
 
