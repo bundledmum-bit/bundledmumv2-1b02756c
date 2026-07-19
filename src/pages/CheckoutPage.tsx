@@ -210,16 +210,62 @@ export default function CheckoutPage() {
   // Validation errors keep their inline toast UI and never trigger this.
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [recoveryContext, setRecoveryContext] = useState<RecoveryContext>({});
-  // Triggers the modal AND assembles the wa.me prefill from the
-  // current form + cart state. Always logs the raw error to console
-  // for dev visibility.
-  const triggerRecoveryModal = (tag: string, err: unknown, reason: "availability" | "technical" = "technical") => {
+  // error_id from the log_checkout_error call that opened the current modal, so a
+  // WhatsApp click can be attributed back to it. Best-effort; may stay null.
+  const [recoveryErrorId, setRecoveryErrorId] = useState<string | null>(null);
+
+  // Cart items shaped for the capture/error RPCs: {qty,name,price,size}, bundles
+  // expanded to their contents (display only, never a re-priced total).
+  const captureItems = () => expandCartForDisplay(cart).map((l) => ({
+    qty: l.qty, name: l.name, price: l.price, size: l.size || null,
+  }));
+
+  // Best-effort checkout-error log. Never awaited by the flow, never throws
+  // outward. Returns the new error_id (or null) so a WhatsApp click can mark it.
+  const logCheckoutError = async (
+    point: "cart" | "checkout" | "payment" | "place_order" | "verify_payment",
+    type: "unavailable_unpriced" | "payment_failed" | "technical" | "validation" | "other",
+    message: string,
+    whatsappModalTriggered: boolean,
+  ): Promise<string | null> => {
+    try {
+      const { data } = await (supabase as any).rpc("log_checkout_error", {
+        p_session_key: getSessionId(),
+        p_error_point: point,
+        p_error_message: String(message || "").slice(0, 1000),
+        p_error_type: type,
+        p_whatsapp_modal_triggered: whatsappModalTriggered,
+        p_email: form.email || null,
+        p_phone: form.phone || null,
+        p_customer_name: `${form.firstName || ""} ${form.lastName || ""}`.trim() || null,
+        p_cart_items: captureItems(),
+        p_cart_total: Math.round(grand),
+      });
+      return typeof data === "string" ? data : (data?.error_id ?? null);
+    } catch {
+      return null; // best-effort: logging must never break checkout
+    }
+  };
+
+  // Triggers the modal, assembles the wa.me prefill from the current form + cart
+  // (full name, email, phone, full address, items, total), and logs the error
+  // (whatsapp_modal_triggered = true), storing the error_id for the click mark.
+  const triggerRecoveryModal = (
+    tag: string,
+    err: unknown,
+    reason: "availability" | "technical" = "technical",
+    errorPoint: "payment" | "place_order" | "verify_payment" = "place_order",
+    errorType: "unavailable_unpriced" | "payment_failed" | "technical" | "other" = "technical",
+    message?: string,
+  ) => {
     console.error(`[checkout] ${reason} failure (${tag}):`, err);
     setRecoveryContext({
       reason,
       customer: {
         name: `${form.firstName || ""} ${form.lastName || ""}`.trim() || undefined,
+        email: form.email || undefined,
         phone: form.phone || undefined,
+        address: form.address || undefined,
         state: form.state || undefined,
         city: form.city || undefined,
       },
@@ -234,6 +280,10 @@ export default function CheckoutPage() {
       order: { total: grand },
     });
     setShowWhatsAppModal(true);
+    // Best-effort log; capture the id so a WhatsApp click can be attributed.
+    setRecoveryErrorId(null);
+    logCheckoutError(errorPoint, errorType, message || String((err as any)?.message || tag || ""), true)
+      .then((id) => setRecoveryErrorId(id));
   };
   const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
 
@@ -796,6 +846,34 @@ export default function CheckoutPage() {
   const giftWrapFee = effectiveGiftWrap ? giftWrapPrice : 0;
   const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo);
   const grand = grandWith(promoDiscount);
+
+  // ── Progressive cart capture (best-effort, non-blocking) ─────────────
+  // Once the visitor has entered an email OR phone on checkout, upsert a
+  // capture row (keyed to the shared session id) and keep enriching it as they
+  // fill more fields. Debounced ~1s so it never fires per keystroke. The RPC
+  // only creates a row once email/phone is present, updates non-empty fields
+  // only, and is wrapped so a failure never blocks or breaks checkout. The cart
+  // is never modified here.
+  useEffect(() => {
+    if (!form.email && !form.phone) return;
+    const t = setTimeout(() => {
+      try {
+        (supabase as any).rpc("upsert_cart_capture", {
+          p_session_key: getSessionId(),
+          p_email: form.email || null,
+          p_phone: form.phone || null,
+          p_customer_name: `${form.firstName || ""} ${form.lastName || ""}`.trim() || null,
+          p_delivery_address: form.address || null,
+          p_delivery_city: form.city || null,
+          p_delivery_state: form.state || null,
+          p_cart_items: captureItems(),
+          p_cart_total: Math.round(grand),
+          p_stage: "checkout",
+        }).then(() => {}, () => {});
+      } catch { /* best-effort: capture must never break checkout */ }
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [form.email, form.phone, form.firstName, form.lastName, form.address, form.city, form.state, cart, grand]);
 
   // ── GA4 funnel instrumentation ───────────────────────────────────────
   // Cart-shaped item list reused by add_shipping_info / add_payment_info.
@@ -1460,12 +1538,14 @@ export default function CheckoutPage() {
           if (payload?.code === "MISSING_SIZE" || payload?.code === "MISSING_COLOR") {
             toast.error(payload.error || "Please choose required options (size/colour) for items in your cart.");
             window.scrollTo({ top: 0, behavior: "smooth" });
+            logCheckoutError("place_order", "validation", String(payload?.error || payload?.code || "missing size/colour"), false);
             return null;
           }
           const issues: StockIssue[] = Array.isArray(payload?.stock_issues) ? payload.stock_issues : [];
           if (issues.length > 0) {
             setStockIssues(issues);
             toast.error("Please update your cart before continuing.");
+            logCheckoutError("place_order", "validation", "stock issues: update cart", false);
             return null;
           }
           // Availability rejection the customer CANNOT self-fix: an item's brand
@@ -1478,7 +1558,7 @@ export default function CheckoutPage() {
           // NOT cleared here, so the customer can still close the modal and edit it.
           const availabilityMsg = String(payload?.error || "").toLowerCase();
           if (/unavailable or unpriced|unavailable|out of stock|no longer available/.test(availabilityMsg)) {
-            triggerRecoveryModal("place-order-availability", payload || fnError || result, "availability");
+            triggerRecoveryModal("place-order-availability", payload || fnError || result, "availability", "place_order", "unavailable_unpriced", String(payload?.error || "unavailable or unpriced"));
             return null;
           }
         } catch (e) {
@@ -1495,10 +1575,13 @@ export default function CheckoutPage() {
           || ctxStatus >= 500
           || /internal server error|timeout|network|failed to fetch|service unavailable/i.test(errMsg);
         if (looksTechnical) {
-          triggerRecoveryModal("place-order", fnError || result);
+          triggerRecoveryModal("place-order", fnError || result, "technical", "place_order", "technical", errMsg);
           return null;
         }
+        // Remaining 400-class messages the customer can act on (empty cart,
+        // missing fields, invalid products). Inline toast, logged as validation.
         toast.error(`Order failed: ${errMsg || "Unknown error"}`);
+        logCheckoutError("place_order", /at least one item|required field|valid product|missing/i.test(errMsg) ? "validation" : "other", errMsg || "unknown place-order error", false);
         return null;
       }
 
@@ -1860,7 +1943,7 @@ export default function CheckoutPage() {
 
           if (verifyError || !verification?.verified) {
             setProcessing(false);
-            triggerRecoveryModal("verify-payment", verifyError || verification);
+            triggerRecoveryModal("verify-payment", verifyError || verification, "technical", "verify_payment", "payment_failed", String((verifyError as any)?.message || verification?.error || "payment verification failed"));
             return;
           }
 
@@ -1878,14 +1961,14 @@ export default function CheckoutPage() {
         const savedOrder = await saveOrderToDb(orderData, cartSnapshot);
         if (!savedOrder) {
           setProcessing(false);
-          triggerRecoveryModal("dev-demo-save", "DEMO save failed");
+          triggerRecoveryModal("dev-demo-save", "DEMO save failed", "technical", "payment", "technical", "dev demo save failed");
           return;
         }
         finalizeAndConfirm(savedOrder, orderData);
         return;
       }
       setProcessing(false);
-      triggerRecoveryModal("paystack-init", err);
+      triggerRecoveryModal("paystack-init", err, "technical", "payment", "technical", String((err as any)?.message || "paystack init failed"));
     }
   };
 
@@ -2690,6 +2773,12 @@ export default function CheckoutPage() {
         isOpen={showWhatsAppModal}
         onClose={() => setShowWhatsAppModal(false)}
         context={recoveryContext}
+        onWhatsAppClick={() => {
+          // Best-effort: attribute this WhatsApp handoff to the error that opened
+          // the modal. Never blocks opening the wa.me link.
+          if (!recoveryErrorId) return;
+          try { (supabase as any).rpc("mark_checkout_error_whatsapp_clicked", { p_error_id: recoveryErrorId }).then(() => {}, () => {}); } catch { /* ignore */ }
+        }}
       />
 
       {/* Skip-gift-wrap confirmation — opens only when the customer

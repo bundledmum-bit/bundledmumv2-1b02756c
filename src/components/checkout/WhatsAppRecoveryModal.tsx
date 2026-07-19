@@ -6,7 +6,9 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 export interface RecoveryContext {
   customer?: {
     name?: string;
+    email?: string;
     phone?: string;
+    address?: string;
     state?: string;
     city?: string;
   } | null;
@@ -33,10 +35,12 @@ export default function WhatsAppRecoveryModal({
   isOpen,
   onClose,
   context,
+  onWhatsAppClick,
 }: {
   isOpen: boolean;
   onClose: () => void;
   context?: RecoveryContext;
+  onWhatsAppClick?: () => void;
 }) {
   const { data: settings } = useSiteSettings();
   const rawWhatsapp = String(settings?.whatsapp_number ?? "").replace(/^"|"$/g, "");
@@ -50,13 +54,16 @@ export default function WhatsAppRecoveryModal({
     const itemLines = items.length
       ? items.map((i: any) => `- ${i.qty || 1}x ${i.name || "Item"} (₦${Number(i.price || 0).toLocaleString("en-NG")})`).join("\n")
       : "- (no cart items captured)";
-    const deliveryParts = [c?.state, c?.city].filter(Boolean).join(", ");
+    // Full delivery address: line + city + state, so the admin can fulfill the
+    // order straight from the message without asking for more details.
+    const fullAddress = [c?.address, c?.city, c?.state].filter(Boolean).join(", ");
     return [
       "Hi BundledMum! I was trying to place an order but got an error. Please help me complete it.",
       "",
       `Name: ${c?.name || "Not provided"}`,
+      `Email: ${c?.email || "Not provided"}`,
       `Phone: ${c?.phone || "Not provided"}`,
-      `Delivery: ${deliveryParts || "Not provided"}`,
+      `Delivery address: ${fullAddress || "Not provided"}`,
       "",
       `Cart total: ₦${total.toLocaleString("en-NG")}`,
       "",
@@ -92,6 +99,9 @@ export default function WhatsAppRecoveryModal({
             target={whatsappDigits ? "_blank" : undefined}
             rel="noopener noreferrer"
             onClick={() => {
+              // Best-effort: mark that this recovery error led to a WhatsApp
+              // handoff. Never allowed to block opening the link.
+              try { onWhatsAppClick?.(); } catch { /* ignore */ }
               // Close the modal once they've tapped through — keeps the
               // door open to retry if WhatsApp doesn't open for some
               // reason without trapping them behind the dialog.
