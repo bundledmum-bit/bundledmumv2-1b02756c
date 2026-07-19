@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
       const emailUrl = `${supabaseUrl}/functions/v1/send-transactional-email`;
       const emailHeaders = { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` };
       fetch(emailUrl, { method: "POST", headers: emailHeaders,
-        body: JSON.stringify({ order_id: orderData.id, email_type: "order_confirmation" }) })
+        body: JSON.stringify({ order_id: orderData.id, email_type: "order_received" }) })
         .catch((e) => console.error("Email trigger failed:", e));
       if ((sanitizedOrder.payment_method || "").toLowerCase() === "klump") {
         fetch(emailUrl, { method: "POST", headers: emailHeaders,

@@ -263,6 +263,41 @@ function buildTrackingBlock(
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E8E0D8;border-radius:12px;overflow:hidden;margin-bottom:24px;"><tr><td style="background:#D8EFE5;padding:12px 20px;font-size:14px;font-weight:800;color:#2D6A4F;">Tracking Information</td></tr><tr><td style="padding:16px 20px;"><div style="font-size:20px;font-weight:900;color:#1A1A1A;letter-spacing:1px;">${safeTracking}</div>${companyRow}<div style="font-size:12px;color:#7A7A7A;margin-top:4px;">Keep this number — you can use it to track your delivery.</div>${trackLinkHtml}</td></tr></table>`;
 }
 
+function buildPaymentInstructions(order: any, settingsMap: Record<string, string>): string {
+  const method = (order?.payment_method || "").toLowerCase();
+  const total = fmt(order?.total || 0);
+  if (method === "klump") {
+    const url = `${SITE_URL}/order-confirmed?order=${encodeURIComponent(order?.order_number || "")}&token=${encodeURIComponent(order?.share_token || "")}`;
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #A7D7C5;border-radius:12px;overflow:hidden;margin-bottom:24px;">
+      <tr><td style="background:#D8EFE5;padding:12px 20px;font-size:14px;font-weight:800;color:#2D6A4F;">Complete Your Klump Payment</td></tr>
+      <tr><td style="padding:16px 20px;">
+        <div style="font-size:13px;color:#1A1A1A;line-height:1.6;margin-bottom:14px;">Your order of <strong>${total}</strong> is reserved. Finish your Klump instalment plan to confirm it. It takes about a minute.</div>
+        <div style="text-align:center;"><a href="${esc(url)}" style="display:inline-block;background:#2D6A4F;color:#FFFFFF;font-size:15px;font-weight:800;text-decoration:none;padding:14px 36px;border-radius:100px;">Complete Klump Payment</a></div>
+      </td></tr>
+    </table>`;
+  }
+  if (method === "transfer") {
+    const bankName = esc(settingsMap.bank_name || "");
+    const acctName = esc(settingsMap.bank_account_name || "");
+    const acctNo   = esc(settingsMap.bank_account_number || "");
+    return `
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #A7D7C5;border-radius:12px;overflow:hidden;margin-bottom:24px;">
+      <tr><td style="background:#D8EFE5;padding:12px 20px;font-size:14px;font-weight:800;color:#2D6A4F;">Complete Your Bank Transfer</td></tr>
+      <tr><td style="padding:16px 20px;">
+        <div style="font-size:13px;color:#1A1A1A;line-height:1.6;margin-bottom:14px;">Please transfer <strong>${total}</strong> to the account below, then send your receipt on WhatsApp so we can confirm your order.</div>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FFF8F4;border-radius:10px;">
+          <tr><td style="padding:10px 16px;font-size:13px;color:#7A7A7A;">Bank</td><td style="padding:10px 16px;font-size:14px;font-weight:700;color:#1A1A1A;text-align:right;">${bankName}</td></tr>
+          <tr><td style="padding:10px 16px;font-size:13px;color:#7A7A7A;">Account Name</td><td style="padding:10px 16px;font-size:14px;font-weight:700;color:#1A1A1A;text-align:right;">${acctName}</td></tr>
+          <tr><td style="padding:10px 16px;font-size:13px;color:#7A7A7A;">Account Number</td><td style="padding:10px 16px;font-size:18px;font-weight:900;color:#2D6A4F;text-align:right;letter-spacing:1px;">${acctNo}</td></tr>
+          <tr><td style="padding:10px 16px;font-size:13px;color:#7A7A7A;border-top:1px solid #E8E0D8;">Amount</td><td style="padding:10px 16px;font-size:16px;font-weight:900;color:#1A1A1A;text-align:right;border-top:1px solid #E8E0D8;">${total}</td></tr>
+        </table>
+      </td></tr>
+    </table>`;
+  }
+  return "";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -420,6 +455,7 @@ Deno.serve(async (req) => {
       referral_code:         esc(referralByEmail?.code || "[Your code will appear here]"),
       items_table:           buildItemsTable(items),
       order_summary_block:   orderSummaryBlock,
+      payment_instructions:  (email_type === "order_received") ? buildPaymentInstructions(order, settingsMap) : "",
       reorder_items_html:    "",
       recommendations_html:  "",
       refund_note:           (email_type === "order_updated" && refund_pending === true) ? buildRefundNote() : "",
