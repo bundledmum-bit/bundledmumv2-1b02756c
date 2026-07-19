@@ -190,6 +190,25 @@ body.theme-bundled {
   .bm-marquee-clone { display: none; }
 }
 
+/* Klump "Buy Now, Pay Later" info popup fix for small screens.
+   The Klump advert is a cross-origin third-party embed: klump.js injects the
+   banner as an iframe inside #klump__ad, and its "learn more" popup as full
+   viewport iframes appended to the body (#klump_advert over #klump_background,
+   from asset.useklump.com). That popup is a fixed desktop-width card and is not
+   responsive: below about 1024px its heading, its rightmost step, and its close
+   button get clipped off the right edge (verified fine at 1024px and up, clipped
+   at 768px and 375px). We cannot restyle cross-origin iframe content, so below the
+   lg breakpoint we keep the informational banner visible but stop it opening the
+   broken popup: the banner iframe is made non-interactive (tap does nothing) and
+   the popup overlay is hidden if it is ever triggered. Desktop (lg and up) is
+   unaffected, and Klump remains a full payment option at checkout (unrelated to
+   this info banner). */
+@media (max-width: 1023px) {
+  #klump__ad iframe { pointer-events: none; }
+  #klump_advert,
+  #klump_background { display: none !important; }
+}
+
 /* Subscribe "build a box" simulation: a product image dropping into the box,
    and small pop-ins for chips/badges. GPU-friendly (transform/opacity only). */
 @keyframes bm-drop-in {
