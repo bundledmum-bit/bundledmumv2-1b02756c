@@ -213,9 +213,10 @@ export default function CheckoutPage() {
   // Triggers the modal AND assembles the wa.me prefill from the
   // current form + cart state. Always logs the raw error to console
   // for dev visibility.
-  const triggerRecoveryModal = (tag: string, err: unknown) => {
-    console.error(`[checkout] technical failure (${tag}):`, err);
+  const triggerRecoveryModal = (tag: string, err: unknown, reason: "availability" | "technical" = "technical") => {
+    console.error(`[checkout] ${reason} failure (${tag}):`, err);
     setRecoveryContext({
+      reason,
       customer: {
         name: `${form.firstName || ""} ${form.lastName || ""}`.trim() || undefined,
         phone: form.phone || undefined,
@@ -1465,6 +1466,19 @@ export default function CheckoutPage() {
           if (issues.length > 0) {
             setStockIssues(issues);
             toast.error("Please update your cart before continuing.");
+            return null;
+          }
+          // Availability rejection the customer CANNOT self-fix: an item's brand
+          // has no live price (out of stock, deactivated, or unpriced). place-order
+          // returns this as a 400, so it never matched the technical check below.
+          // Hand off to WhatsApp with the cart items instead of a dead-end toast.
+          // Matches on the server message text since the status is 400. The
+          // self-fixable 400s ("at least one item", "valid products", "missing
+          // required fields") do not match and keep their toast below. The cart is
+          // NOT cleared here, so the customer can still close the modal and edit it.
+          const availabilityMsg = String(payload?.error || "").toLowerCase();
+          if (/unavailable or unpriced|unavailable|out of stock|no longer available/.test(availabilityMsg)) {
+            triggerRecoveryModal("place-order-availability", payload || fnError || result, "availability");
             return null;
           }
         } catch (e) {

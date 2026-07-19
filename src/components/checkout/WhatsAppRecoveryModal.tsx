@@ -12,6 +12,10 @@ export interface RecoveryContext {
   } | null;
   items?: Array<{ name?: string; qty?: number; price?: number }> | null;
   order?: { total?: number } | null;
+  // Why the modal opened. "availability" = an item can no longer be sourced/priced
+  // (customer cannot self-fix); anything else is a technical hiccup. Only changes
+  // the intro copy; the pre-filled WhatsApp message is identical either way.
+  reason?: "availability" | "technical";
 }
 
 /**
@@ -71,10 +75,12 @@ export default function WhatsAppRecoveryModal({
         <div className="p-5">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-left">
-              Let's help you complete your order
+              {context?.reason === "availability" ? "Let's get these items sorted" : "Let's help you complete your order"}
             </DialogTitle>
             <DialogDescription className="text-sm text-text-med text-left leading-relaxed mt-2">
-              We're experiencing a small hiccup placing your order right now. Don't worry — tap below and our team will personally help you complete your order on WhatsApp in minutes.
+              {context?.reason === "availability"
+                ? "One or more items in your cart need our help to source. Tap below and our team will complete your order for you on WhatsApp."
+                : "We're experiencing a small hiccup placing your order right now. Don't worry — tap below and our team will personally help you complete your order on WhatsApp in minutes."}
             </DialogDescription>
           </DialogHeader>
           <p className="text-xs text-text-light mt-2">
