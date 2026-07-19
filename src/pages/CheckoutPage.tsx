@@ -1697,10 +1697,18 @@ export default function CheckoutPage() {
 
     const num = savedOrder.orderNumber || "";
     const shareToken = savedOrder.share_token || "";
+    const orderUuid = savedOrder.id || "";
     if (num && shareToken) {
       try { sessionStorage.setItem(`share_token_${num}`, shareToken); } catch { /* ignore */ }
     }
-    navigate(`/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`);
+    // Stash the order UUID too (same pattern as the share token) so the
+    // confirmation page can resume/reconcile a pending Klump payment, which the
+    // Klump edge functions key on the order id (get-order-confirmation does not
+    // return it).
+    if (num && orderUuid) {
+      try { sessionStorage.setItem(`order_id_${num}`, orderUuid); } catch { /* ignore */ }
+    }
+    navigate(`/order-confirmed?order=${encodeURIComponent(num)}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}${orderUuid ? `&oid=${encodeURIComponent(orderUuid)}` : ""}`);
   };
 
   // Post-payment finalize: fire the logging/linking side-effects WITHOUT

@@ -19,12 +19,25 @@ export default function OrderConfirmedPage() {
   const shareToken = searchParams.get("token")
     || (orderNumber ? sessionStorage.getItem(`share_token_${orderNumber}`) : null)
     || "";
+  // The order UUID. get-order-confirmation does NOT return it, so we read it from
+  // the URL (?oid) or the copy checkout stashed in sessionStorage. Required by the
+  // Klump resume/reconcile edge functions; absent only when the page is reopened
+  // in a fresh session (then the pay button hides and WhatsApp remains).
+  const orderUuid = searchParams.get("oid")
+    || (orderNumber ? sessionStorage.getItem(`order_id_${orderNumber}`) : null)
+    || "";
   const [showShareModal, setShowShareModal] = useState(false);
-  // Klump orders arrive here payment_status "pending" — the klump-webhook flips
-  // them to "paid" server-side. We poll for that flip for a bounded window and
-  // NEVER block the page on it: the confirmation renders immediately either way.
+  // Klump orders arrive here payment_status "pending". We reconcile once on
+  // return, then poll for the "paid" flip for a bounded window. The confirmation
+  // renders immediately either way; nothing blocks on the network.
   const [paidViaPoll, setPaidViaPoll] = useState(false);
   const [pollExhausted, setPollExhausted] = useState(false);
+  // False until the first reconcile + status check completes, so a customer
+  // returning from Klump sees "Confirming your payment" rather than the pay
+  // button flashing before we know their real status.
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const { data: settings } = useSiteSettings();
   const whatsapp = settings?.whatsapp_number || "";
   const bankName = settings?.bank_name || "";
@@ -84,37 +97,83 @@ export default function OrderConfirmedPage() {
     staleTime: 300_000,
   });
 
-  // A Klump order awaiting its webhook confirmation. Bank transfer keeps its own
-  // "complete your payment" banner and card is already paid by the time it lands
-  // here, so this only applies to Klump-pending.
-  const awaitingKlump = !!order && order.payment_method === "klump" && order.payment_status !== "paid" && !paidViaPoll;
+  // A Klump order that is not yet paid (webhook/reconcile not confirmed). Card is
+  // already paid on arrival; bank transfer keeps its own action banner.
+  const klumpUnpaid = !!order && order.payment_method === "klump" && order.payment_status !== "paid" && !paidViaPoll;
 
-  // Bounded poll (~24s) for the webhook to mark the order paid. If it does, we
-  // upgrade the hero to the full confirmed state; if the window elapses we show
-  // a reassuring "payment is being confirmed" message — never an infinite spin.
+  // On return from Klump: reconcile ONCE to force an immediate truth check, show
+  // a "confirming" state until the first status refresh lands (so the pay button
+  // never flashes), then poll get-order-confirmation every 10s for up to ~2 min.
+  // As soon as it reads "paid" we flip to the confirmed state and stop. Every
+  // network call is best-effort and can never crash the page or strand the user.
   useEffect(() => {
-    if (!awaitingKlump || !orderNumber || !shareToken) return;
+    if (!klumpUnpaid || !orderNumber || !shareToken) return;
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 8;
-    const DELAY = 3000;
-    const tick = async () => {
-      if (cancelled) return;
-      attempts++;
+    let interval: ReturnType<typeof setInterval> | undefined;
+
+    const refetchStatus = async (): Promise<boolean> => {
       try {
         const { data } = await supabase.functions.invoke("get-order-confirmation", {
           body: { order_number: orderNumber, share_token: shareToken },
         });
-        if (!cancelled && data?.order?.payment_status === "paid") { setPaidViaPoll(true); return; }
+        if (!cancelled && data?.order?.payment_status === "paid") { setPaidViaPoll(true); return true; }
       } catch { /* transient — keep polling */ }
-      if (cancelled) return;
-      if (attempts >= MAX_ATTEMPTS) { setPollExhausted(true); return; }
-      timer = setTimeout(tick, DELAY);
+      return false;
     };
-    timer = setTimeout(tick, DELAY);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [awaitingKlump, orderNumber, shareToken]);
+
+    (async () => {
+      // One immediate reconcile against Klump (needs the order UUID). It can only
+      // report Klump's truth, never fake a payment. Best-effort.
+      if (orderUuid) {
+        try { await supabase.functions.invoke("klump-reconcile", { body: { order_id: orderUuid } }); } catch { /* ignore */ }
+      }
+      if (cancelled) return;
+      const paidNow = await refetchStatus();
+      if (cancelled) return;
+      setInitialCheckDone(true);
+      if (paidNow) return;
+      // Poll every 10s, up to ~2 minutes, then settle on the last known status.
+      let attempts = 0;
+      const MAX_ATTEMPTS = 12;
+      interval = setInterval(async () => {
+        if (cancelled) return;
+        attempts++;
+        const done = await refetchStatus();
+        if (done || attempts >= MAX_ATTEMPTS) {
+          if (interval) clearInterval(interval);
+          if (!done) setPollExhausted(true);
+        }
+      }, 10000);
+    })();
+
+    return () => { cancelled = true; if (interval) clearInterval(interval); };
+  }, [klumpUnpaid, orderNumber, shareToken, orderUuid]);
+
+  // Start (or reuse) a Klump payment page for this unpaid order and send the
+  // customer there. Loading + friendly error handling; WhatsApp stays as fallback.
+  const handleCompleteKlump = async () => {
+    if (!orderUuid || !shareToken) {
+      setResumeError("We could not start your payment automatically. Please use WhatsApp below and we will help you finish.");
+      return;
+    }
+    setResumeLoading(true);
+    setResumeError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("klump-resume-payment", {
+        body: { order_id: orderUuid, share_token: shareToken },
+      });
+      const pageUrl = (data as any)?.page_url;
+      if (error || !pageUrl) {
+        setResumeError("We could not start your payment right now. Please try again, or use WhatsApp below and we will help you finish.");
+        setResumeLoading(false);
+        return;
+      }
+      window.location.href = pageUrl; // keep loading true through the redirect
+    } catch {
+      setResumeError("Something went wrong starting your payment. Please try again, or use WhatsApp below.");
+      setResumeLoading(false);
+    }
+  };
 
   // Mark this browser as having placed an order — used by AnnouncementEngine
   // to distinguish new_visitor vs returning_visitor audience targeting.
@@ -261,6 +320,38 @@ export default function OrderConfirmedPage() {
   const [firstName] = (order.customer_name || "").split(" ");
   const payLabels: Record<string, string> = { card: "Card Payment via Paystack", transfer: "Bank Transfer", ussd: "USSD / Mobile Money" };
 
+  // Honest status, driven by the real payment_status + method (never "Payment
+  // Received" unless actually paid; never the pay button once paid).
+  const isPaid = order.payment_status === "paid" || paidViaPoll;
+  const isKlump = order.payment_method === "klump";
+  const klumpPending = isKlump && !isPaid;
+  const transferPending = isBankTransfer && !isPaid;
+  const klumpConfirming = klumpPending && !initialCheckDone;      // reconcile/first-check in flight
+  const showKlumpActions = klumpPending && initialCheckDone;      // genuinely pending: offer completion
+  let heroIcon = "✅";
+  let heroTitle = "Payment Received 🎉";
+  let heroSub = `Thank you, ${firstName}! Your bundle is on its way.`;
+  if (!isPaid) {
+    heroIcon = "⏳";
+    if (isKlump) {
+      if (klumpConfirming) {
+        heroTitle = "Confirming your payment...";
+        heroSub = `Hang tight, ${firstName}. We are checking your Klump payment now.`;
+      } else {
+        heroTitle = "Order Placed - Complete Your Payment";
+        heroSub = `Thank you, ${firstName}! Your order is reserved but not confirmed until your Klump payment completes.`;
+      }
+    } else if (isBankTransfer) {
+      heroTitle = "Order Placed - Complete Your Bank Transfer";
+      heroSub = `Thank you, ${firstName}! Your order is reserved. Complete the bank transfer above to confirm it.`;
+    } else {
+      heroTitle = "Order Placed - Payment Pending";
+      heroSub = `Thank you, ${firstName}! Your order is placed and awaiting payment confirmation.`;
+    }
+  }
+  // Pre-filled WhatsApp message for a customer who wants help finishing Klump.
+  const klumpWhatsappMsg = `Hi BundledMum! I want to complete payment for my order ${orderId} (total ${fmt(order.total)}). Please help me finish my Klump payment.`;
+
   const deliveryDate = () => {
     const from = order.estimated_delivery_start ? new Date(order.estimated_delivery_start) : new Date();
     const to = order.estimated_delivery_end ? new Date(order.estimated_delivery_end) : new Date();
@@ -325,15 +416,9 @@ export default function OrderConfirmedPage() {
         <div className="absolute top-[-60px] left-[10%] w-[200px] h-[200px] rounded-full bg-coral/[0.07]" />
         <div className="absolute bottom-[-40px] right-[8%] w-[160px] h-[160px] rounded-full bg-primary-foreground/[0.04]" />
         <div className="max-w-[860px] mx-auto px-4 md:px-10 py-12 md:py-20 text-center">
-          <div className="w-[72px] h-[72px] bg-primary-foreground/[0.12] rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-pulse-scale">{awaitingKlump ? "⏳" : "✅"}</div>
-          <h1 className="pf text-3xl md:text-5xl text-primary-foreground mb-2.5">{awaitingKlump ? "Payment Received 🎉" : "Order Confirmed! 🎉"}</h1>
-          <p className="text-primary-foreground/70 text-sm md:text-[17px] mb-1.5">
-            {awaitingKlump
-              ? (pollExhausted
-                  ? `Thank you, ${firstName}! Your order is placed and we're confirming your payment — you'll get a confirmation email shortly.`
-                  : `Thank you, ${firstName}! We're confirming your payment now…`)
-              : `Thank you, ${firstName}! Your bundle is on its way.`}
-          </p>
+          <div className="w-[72px] h-[72px] bg-primary-foreground/[0.12] rounded-full flex items-center justify-center mx-auto mb-4 text-3xl animate-pulse-scale">{heroIcon}</div>
+          <h1 className="pf text-3xl md:text-5xl text-primary-foreground mb-2.5">{heroTitle}</h1>
+          <p className="text-primary-foreground/70 text-sm md:text-[17px] mb-1.5">{heroSub}</p>
           <div className="inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-5 py-2 mt-2.5">
             <span className="text-coral font-bold text-sm">Order #{orderId}</span>
           </div>
@@ -341,6 +426,49 @@ export default function OrderConfirmedPage() {
       </div>
 
       <div className="max-w-[860px] mx-auto px-4 md:px-10 py-8 md:py-14">
+        {/* Klump: still confirming after a return from Klump. Shown until the
+            first reconcile + status check lands, so the pay button never flashes
+            for someone who has actually paid. */}
+        {klumpConfirming && (
+          <div className="bg-card rounded-card shadow-card p-5 md:p-6 mb-5 flex items-center gap-3">
+            <div className="h-6 w-6 border-2 border-border border-t-forest rounded-full animate-spin flex-shrink-0" />
+            <p className="text-sm md:text-[15px] text-text-med">Confirming your payment with Klump. This only takes a moment.</p>
+          </div>
+        )}
+
+        {/* Klump: genuinely still unpaid. Offer completion actions. This block
+            disappears the instant the order flips to paid (button can never be
+            tapped again, no second payment link). */}
+        {showKlumpActions && (
+          <div className="bg-card rounded-card shadow-card border-2 border-coral/30 p-5 md:p-7 mb-5">
+            <h2 className="pf text-lg md:text-2xl text-foreground font-bold mb-1.5">Complete your payment to confirm this order</h2>
+            <p className="text-text-med text-sm md:text-[15px] mb-4">
+              Your order is reserved for <span className="font-semibold">{fmt(order.total)}</span> but not confirmed yet. Finish your Klump instalment plan to lock it in.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleCompleteKlump}
+                disabled={resumeLoading}
+                className="flex-1 rounded-pill bg-coral text-primary-foreground px-6 py-3.5 font-bold text-sm inline-flex items-center justify-center gap-2 hover:bg-coral-dark disabled:opacity-60 disabled:cursor-not-allowed min-h-[52px]"
+              >
+                {resumeLoading ? "Starting..." : "Complete Klump Payment"}
+              </button>
+              {whatsapp && (
+                <a
+                  href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(klumpWhatsappMsg)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex-1 rounded-pill border-2 border-[#25D366] text-[#0F6E56] px-6 py-3.5 font-bold text-sm inline-flex items-center justify-center gap-2 hover:bg-[#25D366]/10 min-h-[52px]"
+                >
+                  💬 Complete on WhatsApp
+                </a>
+              )}
+            </div>
+            {resumeError && (
+              <p className="text-sm text-coral-dark mt-3">{resumeError}</p>
+            )}
+          </div>
+        )}
+
         {/* Express Order banner — only when this order skipped checkout
             delivery and is awaiting an admin-issued WhatsApp quote. */}
         {order.is_express_order && (() => {
