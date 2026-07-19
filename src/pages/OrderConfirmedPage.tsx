@@ -512,7 +512,7 @@ export default function OrderConfirmedPage() {
               {items.map((item: any, i: number) => (
                 <div key={i} className="flex items-center justify-between gap-3 pb-2.5 border-b border-border/50 last:border-0">
                   <div className="flex items-center gap-3">
-                    <LineItemThumb src={brandImages[item.brand_id]} alt={item.product_name} className="w-9 h-9" />
+                    <LineItemThumb src={item.image_url || brandImages[item.brand_id]} alt={item.product_name} className="w-9 h-9" />
                     <div>
                       {item.bundle_name && <div className="text-[10px] font-bold text-coral">📦 {item.bundle_name}</div>}
                       <div className="text-sm font-semibold">{item.product_name}</div>
