@@ -1902,10 +1902,21 @@ export default function CheckoutPage() {
           finalizeAndConfirm(savedOrder, orderData);
         },
         onError: () => {
+          // Klump failed. The pending order already exists, so route the customer
+          // to its confirmation page (the "Complete Your Payment" recovery UI),
+          // NOT back to checkout. navigateToConfirmation does not clear the cart or
+          // the form, and creates no second order.
           setProcessing(false);
-          toast.error("Klump payment could not be started. Please try again or choose another payment method.");
+          navigateToConfirmation(savedOrder);
         },
-        onClose: () => { setProcessing(false); },
+        onClose: () => {
+          // Widget cancelled/closed without completing. Send the customer to their
+          // pending order's confirmation page to complete or retry payment there,
+          // instead of stranding them on checkout. Cart and form are preserved and
+          // no duplicate order is created (the order already exists).
+          setProcessing(false);
+          navigateToConfirmation(savedOrder);
+        },
       });
       return;
     }
