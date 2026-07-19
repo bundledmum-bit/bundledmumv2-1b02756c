@@ -55,7 +55,7 @@ interface NavItemFromDB {
 }
 
 function AdminLayoutInner() {
-  const { isAdmin, loading, signOut, user } = useAdmin();
+  const { isAdmin, isAdminLoading, loading, signOut, user } = useAdmin();
   const { can, adminUser } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
@@ -266,7 +266,9 @@ function AdminLayoutInner() {
   }, []);
 
   useEffect(() => {
-    if (!loading && !isAdmin) {
+    // Only redirect once the admin check has fully resolved, so an admin is
+    // never bounced mid-check and a non-admin never lingers on the shell.
+    if (!loading && !isAdminLoading && !isAdmin) {
       const here = location.pathname + location.search;
       // Avoid an infinite loop if the user is already heading to login.
       if (!location.pathname.startsWith("/admin/login")) {
@@ -275,7 +277,7 @@ function AdminLayoutInner() {
         navigate("/admin/login");
       }
     }
-  }, [loading, isAdmin, navigate, location.pathname, location.search]);
+  }, [loading, isAdminLoading, isAdmin, navigate, location.pathname, location.search]);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
@@ -287,7 +289,9 @@ function AdminLayoutInner() {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
-  if (loading) return (
+  // Show the neutral loader while EITHER the session or the admin check is still
+  // resolving, so the admin shell never paints before admin status is confirmed.
+  if (loading || isAdminLoading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "transparent" }}>
       <div className="text-center">
         <div className="mx-auto mb-3 flex items-center justify-center">

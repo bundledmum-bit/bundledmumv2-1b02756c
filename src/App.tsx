@@ -225,7 +225,7 @@ function PasswordRecoveryListener() {
  */
 function ComingSoonGate({ children }: { children: React.ReactNode }) {
   const { data: flags, isLoading: flagsLoading } = useComingSoonFlags();
-  const { isAdmin, loading: adminLoading } = useAdmin();
+  const { isAdmin, isAdminLoading } = useAdmin();
   const { ready: previewReady, valid: previewValid } = usePreviewToken();
   const location = useLocation();
 
@@ -237,7 +237,7 @@ function ComingSoonGate({ children }: { children: React.ReactNode }) {
   // this, the storefront paints for a frame and then yanks the customer
   // to /coming-soon — they see a flash of the live site before the
   // redirect fires.
-  if (flagsLoading || adminLoading || !previewReady) return null;
+  if (flagsLoading || isAdminLoading || !previewReady) return null;
 
   const shouldRedirect =
     flags?.enabled === true &&
