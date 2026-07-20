@@ -40,6 +40,13 @@ export default function KlumpAdBanner({ price, publicKey, enabled }: KlumpAdBann
       input.id = id;
       input.value = value;
       input.readOnly = true;
+      // Hide by default. klump.js only reads these fields (by id) to render its
+      // banner; it never needs them visible. Hiding them ourselves means that if
+      // klump.js is slow, blocked, or fails to render, the raw price / merchant
+      // key / currency never leak as plain text (previously they showed unstyled).
+      input.style.display = "none";
+      input.setAttribute("aria-hidden", "true");
+      input.tabIndex = -1;
       ad.appendChild(input);
     };
     addInput("number", "klump__price", String(Math.round(Number(price))));
