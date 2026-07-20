@@ -12,6 +12,17 @@ export interface RecommendedProduct {
   why_included: string;
   emoji: string | null;
   image_url: string | null;
+  // Per-product size options from run_quiz_recommendation. The RPC only
+  // emits IN-STOCK sizes (it filters ps.in_stock = TRUE), so an empty array
+  // means either "no size axis" or "every size is out of stock" — callers
+  // disambiguate with useVariantRequirements().requiresSize(). Absent on
+  // responses from other engines (push-gift, older fallbacks).
+  available_sizes?: Array<{
+    label: string;
+    code: string | null;
+    in_stock: boolean;
+    is_default: boolean;
+  }>;
   brand: {
     id: string;
     brand_name: string;

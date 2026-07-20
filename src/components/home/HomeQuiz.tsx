@@ -560,6 +560,23 @@ function ResultsScreen({
   const setQty = (item: RecommendedProduct, next: number) =>
     setQuantities(q => ({ ...q, [item.product_id]: Math.max(1, next) }));
 
+  // Inline size selection, lifted to the results screen (like `quantities`)
+  // so the bulk "Add all" action can see which items still need a size
+  // chosen. Keyed by product_id; value is the chosen size_label.
+  const [sizeSelections, setSizeSelections] = useState<Record<string, string>>({});
+  const setSizeFor = (item: RecommendedProduct, size: string) =>
+    setSizeSelections(m => ({ ...m, [item.product_id]: size }));
+  // product_id of the card briefly ring-highlighted when "Add all" is
+  // blocked because that item still needs a size chosen.
+  const [sizeErrorId, setSizeErrorId] = useState<string | null>(null);
+  // True when this run_quiz_recommendation item has a size axis with at least
+  // one in-stock option the shopper must pick before it can be added.
+  const needsSizeChoice = (item: RecommendedProduct): boolean =>
+    Array.isArray(item.available_sizes) &&
+    item.available_sizes.some(s => s.in_stock !== false) &&
+    variantReq.requiresSize(item.product_id) &&
+    !sizeSelections[item.product_id];
+
   // True when an item has at least one purchasable brand variant — the
   // run_quiz_recommendation RPC returns brand=null for SKUs we don't yet
   // stock, and we never want those rows to enter the cart payload sent
@@ -577,13 +594,15 @@ function ResultsScreen({
       toast("This item is coming soon and can't be added yet.");
       return;
     }
-    // Quiz result cards can't collect a size/colour — route variant-requiring
-    // products to their page to choose rather than adding with an empty size.
+    // Size is now chosen inline on the card (see the size picker in
+    // ResultProductCard), so add-to-cart is fully self-contained here and
+    // never routes to the product page. This stays as a defensive backstop:
+    // if a required size/colour is somehow still missing, surface a toast
+    // rather than adding a variant-less line the engine would reject.
     const missing = variantReq.missingAxes(item.product_id, overrideSize || undefined, item.selected_color);
     if (missing.length) {
       const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
-      if (item.slug) { navigate(`/products/${item.slug}`); toast(`Choose ${label} for ${item.name}`); }
-      else toast.error(`Please choose ${label} for ${item.name} on its product page.`);
+      toast.error(`Please choose ${label} for ${item.name}.`);
       return;
     }
     const brandName = overrideBrand?.label || item.brand?.brand_name || "Standard";
@@ -600,6 +619,10 @@ function ResultsScreen({
         price: brandPrice,
         selectedBrand: { id: brandId, label: brandName, price: brandPrice, img: item.emoji || "📦", imageUrl: brandImage || null, tier: overrideBrand?.tier || 1, color: overrideBrand?.color || "#E8F5E9" },
         selectedSize: overrideSize || "",
+        // Colour is auto-selected from the quiz (gender-driven selected_color)
+        // and passed through silently — no colour picker on the card. Null
+        // selected_color is omitted so non-gendered items carry no colour.
+        selectedColor: item.selected_color || undefined,
         brands: [],
         category: item.category as any,
         rating: 4.5,
@@ -818,12 +841,33 @@ function ResultsScreen({
     // Skip null-brand "Coming soon" items — they have no purchasable
     // variant and would be rejected by the place-order edge function.
     const buyable = results.filter(isPurchasable);
-    const skipped = results.length - buyable.length;
-    buyable.forEach(item => {
-      handleAddProduct(item, undefined, undefined, qtyFor(item));
+
+    // Option (a): if any buyable item still needs a size chosen, block the
+    // bulk add, scroll to the first such card and ring-highlight it so the
+    // shopper knows exactly which item to fix.
+    const firstMissing = buyable.find(needsSizeChoice);
+    if (firstMissing) {
+      setSizeErrorId(firstMissing.product_id);
+      document.getElementById(`quiz-item-${firstMissing.product_id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast.error(`Choose a size for ${firstMissing.name} before adding all.`);
+      window.setTimeout(() => setSizeErrorId(null), 2500);
+      return;
+    }
+
+    // Drop items whose size axis has zero in-stock options — they can't be
+    // added at all (the card shows them as "Out of stock").
+    const addable = buyable.filter(item =>
+      !(Array.isArray(item.available_sizes)
+        && item.available_sizes.length === 0
+        && variantReq.requiresSize(item.product_id)),
+    );
+    const skipped = results.length - addable.length;
+    addable.forEach(item => {
+      handleAddProduct(item, undefined, sizeSelections[item.product_id] || undefined, qtyFor(item));
     });
     if (skipped > 0) {
-      toast.success(`✓ Added ${buyable.length} items to cart. ${skipped} coming-soon item${skipped === 1 ? "" : "s"} skipped.`);
+      toast.success(`✓ Added ${addable.length} items to cart. ${skipped} unavailable item${skipped === 1 ? "" : "s"} skipped.`);
     } else {
       toast.success("✓ Your full bundle has been added to cart!");
     }
@@ -868,6 +912,38 @@ function ResultsScreen({
     const now = brand?.price ?? item.brand?.price ?? 0;
     return sum + (was > now ? (was - now) * qtyFor(item) : 0);
   }, 0);
+
+  // Single source of truth for a result card: every group (essentials, extras,
+  // also-recommended, etc.) renders through this so size-picker wiring stays
+  // identical. The wrapper carries the scroll anchor id + the "Add all" ring.
+  const renderCard = (item: RecommendedProduct, keyPrefix = "") => (
+    <div
+      key={`${keyPrefix}${item.product_id}`}
+      id={`quiz-item-${item.product_id}`}
+      className={`rounded-2xl transition-shadow ${sizeErrorId === item.product_id ? "ring-2 ring-coral ring-offset-2 ring-offset-background" : ""}`}
+    >
+      <ResultProductCard
+        item={item}
+        isInCart={addedIds.has(item.product_id)}
+        cartItem={cart.find(c => c.id === item.product_id)}
+        onQtyUpdate={(key, qty) => {
+          const c = cart.find(x => x._key === key);
+          if (!c) return;
+          setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
+        }}
+        onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
+        onRemove={() => handleRemoveProduct(item)}
+        fullProduct={productMap.get(item.product_id)}
+        onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
+        preAddQty={qtyFor(item)}
+        onPreAddQtyChange={(n) => setQty(item, n)}
+        availableSizes={item.available_sizes}
+        sizeRequired={variantReq.requiresSize(item.product_id)}
+        selectedSize={sizeSelections[item.product_id] || ""}
+        onSizeChange={(s) => setSizeFor(item, s)}
+      />
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-28 md:pb-0">
@@ -946,25 +1022,7 @@ function ResultsScreen({
               <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{giftItems.length}</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {giftItems.map(item => (
-                <ResultProductCard
-                  key={item.product_id}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {giftItems.map(item => renderCard(item))}
             </div>
           </div>
         )}
@@ -976,25 +1034,7 @@ function ResultsScreen({
               <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{mumItems.length}</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {mumItems.map(item => (
-                <ResultProductCard
-                  key={item.product_id}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {mumItems.map(item => renderCard(item))}
             </div>
           </div>
         )}
@@ -1006,25 +1046,7 @@ function ResultsScreen({
               <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{hospitalItems.length}</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {hospitalItems.map(item => (
-                <ResultProductCard
-                  key={item.product_id}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {hospitalItems.map(item => renderCard(item))}
             </div>
           </div>
         )}
@@ -1036,25 +1058,7 @@ function ResultsScreen({
               <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{babyItems.length}</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {babyItems.map(item => (
-                <ResultProductCard
-                  key={item.product_id}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {babyItems.map(item => renderCard(item))}
             </div>
           </div>
         )}
@@ -1066,25 +1070,7 @@ function ResultsScreen({
               <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{extrasItems.length}</span>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {extrasItems.map(item => (
-                <ResultProductCard
-                  key={item.product_id}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {extrasItems.map(item => renderCard(item))}
             </div>
           </div>
         )}
@@ -1111,25 +1097,7 @@ function ResultsScreen({
               These items fit your selection but didn't make it into your bundle. Add them individually if you'd like.
             </p>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {recommendation.also_recommended.map(item => (
-                <ResultProductCard
-                  key={`alsorec-${item.product_id}`}
-                  item={item}
-                  isInCart={addedIds.has(item.product_id)}
-                  cartItem={cart.find(c => c.id === item.product_id)}
-                  onQtyUpdate={(key, qty) => {
-                    const c = cart.find(x => x._key === key);
-                    if (!c) return;
-                    setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
-                  }}
-                  onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
-                  onRemove={() => handleRemoveProduct(item)}
-                  fullProduct={productMap.get(item.product_id)}
-                  onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
-                  preAddQty={qtyFor(item)}
-                  onPreAddQtyChange={(n) => setQty(item, n)}
-                />
-              ))}
+              {recommendation.also_recommended.map(item => renderCard(item, "alsorec-"))}
             </div>
           </section>
         )}

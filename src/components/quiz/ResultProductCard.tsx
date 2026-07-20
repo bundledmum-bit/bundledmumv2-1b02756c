@@ -10,7 +10,7 @@ import type { RecommendedProduct } from "./types";
 // chosen through dropdowns (a single-brand product shows a static brand chip
 // instead, since there is nothing to change). All add/remove/qty behaviour is
 // unchanged; preAddQty + onPreAddQtyChange render a quantity stepper before Add.
-export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange }: {
+export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange, availableSizes, sizeRequired, selectedSize: selectedSizeProp, onSizeChange }: {
   item: RecommendedProduct;
   onAdd: (overrideBrand?: any, overrideSize?: string) => void;
   onRemove: () => void;
@@ -21,14 +21,43 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   onViewDetail?: () => void;
   preAddQty?: number;
   onPreAddQtyChange?: (qty: number) => void;
+  // ── Quiz size mode (opt-in) ────────────────────────────────────────
+  // When `availableSizes` is provided (run_quiz_recommendation surfaces),
+  // the card drives its size picker from the RPC's in-stock size list and
+  // becomes a controlled input: the parent owns the selection via
+  // `selectedSize` / `onSizeChange` so it can gate Add-all on required
+  // sizes. Left undefined elsewhere (gift page), the card keeps its legacy
+  // fullProduct.sizes behaviour untouched.
+  availableSizes?: Array<{ label: string; code: string | null; in_stock: boolean; is_default: boolean }>;
+  sizeRequired?: boolean;
+  selectedSize?: string;
+  onSizeChange?: (size: string) => void;
 }) {
   const brands = fullProduct?.brands || [];
-  const sizes = fullProduct?.sizes || [];
+  const legacySizes = fullProduct?.sizes || [];
+
+  // Quiz size mode is active whenever the caller passes an availableSizes
+  // array (even an empty one — that carries the "all sizes OOS" signal).
+  const quizSizeMode = availableSizes !== undefined;
+  const inStockSizes = (availableSizes || []).filter(s => s.in_stock !== false);
+  // A size must be chosen when the product has a size axis. In quiz mode we
+  // trust the RPC list first (any in-stock option means "needs a size"),
+  // falling back to the product_sizes-backed sizeRequired flag so an
+  // all-OOS product is still recognised as size-bearing.
+  const needsSize = quizSizeMode ? (inStockSizes.length > 0 || !!sizeRequired) : legacySizes.length > 0;
+  // Size-bearing product with zero in-stock options → cannot be added.
+  const allSizesOos = quizSizeMode && needsSize && inStockSizes.length === 0;
 
   // Default to the recommended brand, allow switching
   const recommendedBrandId = item.brand?.id;
   const [selectedBrandId, setSelectedBrandId] = useState(recommendedBrandId || "");
-  const [selectedSize, setSelectedSize] = useState(sizes?.[0] || "");
+  // Legacy mode keeps its own auto-selected size; quiz mode is controlled by
+  // the parent and starts empty so the shopper must choose explicitly.
+  const [legacySize, setLegacySize] = useState(legacySizes?.[0] || "");
+  const selectedSize = quizSizeMode ? (selectedSizeProp || "") : legacySize;
+  const setSelectedSize = (s: string) => { if (quizSizeMode) onSizeChange?.(s); else setLegacySize(s); };
+  // In quiz mode, block Add until a required size is picked.
+  const sizeUnmet = quizSizeMode && needsSize && !allSizesOos && !selectedSize;
 
   const selectedBrand = brands.find(b => b.id === selectedBrandId) || (brands.length > 0 ? brands[0] : null);
   const displayImage = selectedBrand?.imageUrl || item.brand?.image_url || item.image_url;
@@ -42,10 +71,14 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
 
   const singleBrand = brands.length === 1 ? brands[0] : null;
   const showBrandSelect = brands.length > 1;
-  const showSizeSelect = sizes.length > 1;
+  // Quiz mode: show the picker whenever a size is required and at least one
+  // in-stock option exists (even a single one — the shopper must confirm it).
+  // Legacy mode keeps the "only when there's a real choice" rule.
+  const showSizeSelect = quizSizeMode ? (needsSize && !allSizesOos) : legacySizes.length > 1;
+  const sizeOptions = quizSizeMode ? inStockSizes.map(s => s.label) : legacySizes;
 
   const handleAdd = () => {
-    if (brandOos || comingSoon) return;
+    if (brandOos || comingSoon || allSizesOos || sizeUnmet) return;
     onAdd(selectedBrand, selectedSize);
   };
 
@@ -109,6 +142,8 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
             <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 text-[10px] font-semibold font-body">Coming soon</span>
           ) : brandOos ? (
             <span className="rounded-pill bg-border px-3 py-1.5 text-[10px] font-semibold text-muted-foreground font-body">Sold Out</span>
+          ) : allSizesOos ? (
+            <span className="rounded-pill bg-border px-3 py-1.5 text-[10px] font-semibold text-muted-foreground font-body">Out of stock</span>
           ) : isInCart && cartItem && onQtyUpdate ? (
             <QtyControl qty={cartItem.qty} onUpdate={(newQty) => onQtyUpdate(cartItem._key, newQty)} maxQty={selectedBrand?.stockQuantity ?? undefined} size="sm" />
           ) : (
@@ -121,7 +156,15 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
                   size="sm"
                 />
               )}
-              <button onClick={handleAdd} className="rounded-pill px-4 py-1.5 text-[12px] font-bold text-primary-foreground bg-coral hover:bg-coral-dark transition-colors whitespace-nowrap">+ Add</button>
+              <button
+                onClick={handleAdd}
+                disabled={sizeUnmet}
+                aria-disabled={sizeUnmet}
+                title={sizeUnmet ? "Select a size" : undefined}
+                className={`rounded-pill px-4 py-1.5 text-[12px] font-bold text-primary-foreground transition-colors whitespace-nowrap ${sizeUnmet ? "bg-coral/40 cursor-not-allowed" : "bg-coral hover:bg-coral-dark"}`}
+              >
+                {sizeUnmet ? "Select a size" : "+ Add"}
+              </button>
             </>
           )}
         </div>
@@ -151,15 +194,16 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
             <div className="flex-1 min-w-0">
               <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Size</label>
               <Select value={selectedSize} onValueChange={(s) => setSelectedSize(s)}>
-                <SelectTrigger className="h-9 rounded-lg text-[12px] font-semibold bg-card">
+                <SelectTrigger className={`h-9 rounded-lg text-[12px] font-semibold bg-card ${sizeUnmet ? "border-coral" : ""}`}>
                   <SelectValue placeholder="Choose size" />
                 </SelectTrigger>
                 <SelectContent>
-                  {sizes.map(s => (
+                  {sizeOptions.map(s => (
                     <SelectItem key={s} value={s} className="text-[12px]">{s}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {sizeUnmet && <p className="text-coral text-[10px] font-semibold mt-1">Select a size to add</p>}
             </div>
           )}
         </div>
