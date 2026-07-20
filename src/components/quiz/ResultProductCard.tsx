@@ -3,7 +3,7 @@ import { fmt } from "@/lib/cart";
 import type { Product } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChevronDown } from "lucide-react";
 import type { RecommendedProduct } from "./types";
 
 // Compact result row shared by HomeQuiz and GiftResultsPage. Brand and size are
@@ -170,39 +170,50 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
         </div>
       </div>
 
-      {/* Brand / size dropdowns — shown only when there's a real choice */}
+      {/* Brand / size dropdowns — shown only when there's a real choice.
+          Native <select> elements (not a popover) so they always render and
+          use the device-native picker — reliable on mobile, no portal/paint
+          issues. */}
       {(showBrandSelect || showSizeSelect) && (
         <div className="flex flex-col sm:flex-row gap-2 mt-2.5 pt-2.5 border-t border-border/60">
           {showBrandSelect && (
             <div className="flex-1 min-w-0">
               <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Brand</label>
-              <Select value={selectedBrandId} onValueChange={(id) => setSelectedBrandId(id)}>
-                <SelectTrigger className="h-9 rounded-lg text-[12px] font-semibold bg-card">
-                  <SelectValue placeholder="Choose brand" />
-                </SelectTrigger>
-                <SelectContent className="max-h-[260px]">
+              <div className="relative">
+                <select
+                  value={selectedBrandId}
+                  onChange={(e) => setSelectedBrandId(e.target.value)}
+                  aria-label="Choose brand"
+                  className="w-full h-9 rounded-lg border border-border bg-card text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40"
+                >
+                  {!selectedBrandId && <option value="" disabled>Choose brand</option>}
                   {brands.map(b => (
-                    <SelectItem key={b.id} value={b.id} disabled={!b.inStock} className="text-[12px]">
-                      {b.label} &middot; {fmt(b.price)}{b.id === recommendedBrandId ? " ★" : ""}{!b.inStock ? " (Out of stock)" : ""}
-                    </SelectItem>
+                    <option key={b.id} value={b.id} disabled={!b.inStock}>
+                      {b.label} · {fmt(b.price)}{b.id === recommendedBrandId ? " ★" : ""}{!b.inStock ? " (Out of stock)" : ""}
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
             </div>
           )}
           {showSizeSelect && (
             <div className="flex-1 min-w-0">
               <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Size</label>
-              <Select value={selectedSize} onValueChange={(s) => setSelectedSize(s)}>
-                <SelectTrigger className={`h-9 rounded-lg text-[12px] font-semibold bg-card ${sizeUnmet ? "border-coral" : ""}`}>
-                  <SelectValue placeholder="Choose size" />
-                </SelectTrigger>
-                <SelectContent>
+              <div className="relative">
+                <select
+                  value={selectedSize}
+                  onChange={(e) => setSelectedSize(e.target.value)}
+                  aria-label="Choose size"
+                  className={`w-full h-9 rounded-lg border bg-card text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40 ${sizeUnmet ? "border-coral" : "border-border"}`}
+                >
+                  <option value="" disabled>Choose size</option>
                   {sizeOptions.map(s => (
-                    <SelectItem key={s} value={s} className="text-[12px]">{s}</SelectItem>
+                    <option key={s} value={s}>{s}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              </div>
               {sizeUnmet && <p className="text-coral text-[10px] font-semibold mt-1">Select a size to add</p>}
             </div>
           )}
