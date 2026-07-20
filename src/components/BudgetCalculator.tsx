@@ -20,12 +20,14 @@ const DELIVERY = [
   { id: "both", label: "Unsure", emoji: "🤷‍♀️" },
 ];
 
-// Quiz engine v4.8 tier price ranges. Admin can override via
-// site_settings.calculator_base_prices.
+// Quiz engine tier price ranges. Boundaries mirror @/lib/budgetTiers so the
+// displayed estimate agrees with which tier a budget actually maps to
+// (starter tops at 265k, standard 265001-655000, premium 655001+). Admin can
+// override via site_settings.calculator_base_prices.
 const DEFAULT_BASE_PRICES: Record<string, [number, number]> = {
-  starter:  [178000,  400000],
-  standard: [400001,  900000],
-  premium:  [900001,  2500000],
+  starter:  [178000,  265000],
+  standard: [265001,  655000],
+  premium:  [655001,  2500000],
 };
 
 const DEFAULT_MODIFIERS = {

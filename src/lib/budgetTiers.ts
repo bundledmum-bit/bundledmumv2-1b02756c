@@ -4,15 +4,24 @@
  * Source of truth for tier boundaries on the frontend. Mirrors the
  * `run_quiz_recommendation` RPC's `p_budget_tier` contract.
  *
- *   starter  ₦178,000 – ₦400,000   (28-45 items)
- *   standard ₦400,001 – ₦900,000   (45-75 items)
- *   premium  ₦900,001 – ₦2,500,000 (75-130 items)
+ * Boundaries match each tier's REAL capacity against the live catalogue,
+ * and are kept in exact lockstep with the run_quiz_recommendation engine
+ * brackets so the frontend and backend agree on which tier a budget gets:
+ *
+ *   starter  up to ₦265,000        (core essentials floor ~₦178,000)
+ *   standard ₦265,001 – ₦655,000
+ *   premium  ₦655,001 and above
+ *
+ * A starter bundle physically maxes out around ₦265,000, so a 400k budget
+ * must classify as 'standard' (not 'starter') to spend the full amount.
+ * Only the .max values (265000 / 655000) are the classification cut points;
+ * starter.min stays the essentials floor and premium.max is the input cap.
  */
 
 export const TIER_RANGES = {
-  starter:  { min: 178000,  max: 400000,   minItems: 28, maxItems: 45 },
-  standard: { min: 400001,  max: 900000,   minItems: 45, maxItems: 75 },
-  premium:  { min: 900001,  max: 2500000,  minItems: 75, maxItems: 130 },
+  starter:  { min: 178000,  max: 265000,   minItems: 28, maxItems: 45 },
+  standard: { min: 265001,  max: 655000,   minItems: 45, maxItems: 75 },
+  premium:  { min: 655001,  max: 2500000,  minItems: 75, maxItems: 130 },
 } as const;
 
 export type BudgetTier = "starter" | "standard" | "premium";
