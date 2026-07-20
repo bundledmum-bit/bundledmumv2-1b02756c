@@ -33,9 +33,13 @@ type Gender = "boy" | "girl" | "unknown";
 // Keeping the constants here so tests / SSR / first render before settings
 // load still behaves sensibly.
 // Budget engine v4.8 expects ≥ ₦178,000 to deliver a complete starter
-// bundle. The hard fallback floor is the engine's starter minimum.
-const MIN_BUDGET_FALLBACK = ESSENTIALS_FLOOR;
-// Budget starts empty so the placeholder shows; user must enter an amount.
+// bundle. Below this the bundle would cost more than the customer entered, so it
+// is a HARD floor the quiz never lets a budget drop under. (The higher
+// ESSENTIALS_FLOOR / 178k remains a SOFT "complete list" nudge at submit time.)
+const HARD_MIN_BUDGET = 150000;
+const MIN_BUDGET_FALLBACK = HARD_MIN_BUDGET;
+// Budget starts empty so the placeholder shows; user must enter an amount. Never
+// submittable on its own, since progressing requires budget >= the hard minimum.
 const DEFAULT_BUDGET = 0;
 
 // Safe parser for admin-edited site_settings string values.
@@ -158,7 +162,9 @@ function QuizScreen({
   // All content and min-budget driven by site_settings, with hardcoded
   // fallbacks matching the seeded defaults so the UI never renders empty.
   const s = (key: string, fallback: string) => unwrapSetting(settings?.[key]) || fallback;
-  const minBudget = unwrapInt(settings?.quiz_min_budget, MIN_BUDGET_FALLBACK);
+  // Enforced floor: never below the ₦150,000 hard minimum, but honour a higher
+  // admin-configured quiz_min_budget if one is set.
+  const minBudget = Math.max(HARD_MIN_BUDGET, unwrapInt(settings?.quiz_min_budget, HARD_MIN_BUDGET));
 
   const labelBudget = s("quiz_label_budget", "WHAT IS YOUR BUDGET?");
   const labelCategories = s("quiz_label_what_you_need", "WHAT DO YOU NEED?");
@@ -216,7 +222,7 @@ function QuizScreen({
   // ── Wizard: one question per step ──────────────────────────────────────
   const STEP_COUNT = 3;
   const stepValid = [
-    budget > 0,
+    budget >= minBudget, // hard floor: cannot advance below the ₦150,000 minimum
     categories.size > 0 && (!giftSelected || !!giftSubcategory),
     !!gender,
   ][step];
@@ -266,6 +272,7 @@ function QuizScreen({
                   const n = digits ? parseInt(digits, 10) : 0;
                   setBudget(n);
                 }}
+                onBlur={() => { if (budget > 0 && budget < minBudget) setBudget(minBudget); }}
                 onKeyDown={e => { if (e.key === "Enter") goNext(); }}
                 placeholder="Type your budget"
                 aria-label="Budget"
@@ -1330,7 +1337,13 @@ export default function HomeQuiz({
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [screen]);
-  const [budget, setBudget] = useState<number>(initialState?.budget ?? DEFAULT_BUDGET);
+  const [budget, setBudget] = useState<number>(() => {
+    // Empty (0) stays empty so the input shows its placeholder; any positive
+    // restored value is raised to the hard minimum so a resumed quiz can never
+    // carry a below-floor budget into the recommendation RPC.
+    const b = initialState?.budget ?? DEFAULT_BUDGET;
+    return b > 0 && b < HARD_MIN_BUDGET ? HARD_MIN_BUDGET : b;
+  });
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [giftSubcategory, setGiftSubcategory] = useState<GiftSubcategory | null>(null);
