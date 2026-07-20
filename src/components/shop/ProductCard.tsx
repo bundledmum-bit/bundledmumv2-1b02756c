@@ -9,9 +9,13 @@ import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 // than one brand we show a "from" price and a brand-count cue, and the card
 // routes to the product group page where the shopper picks a brand. Single
 // brand products go straight to their standalone detail page.
-export default function ProductCard({ product, className = "", leadBrandId }: { product: Product; className?: string; leadBrandId?: string | null }) {
+export default function ProductCard({ product, className = "", leadBrandId, brandChoiceLabel = false }: { product: Product; className?: string; leadBrandId?: string | null; brandChoiceLabel?: boolean }) {
   const brands = product.brands || [];
   const inStockBrands = brands.filter((b) => b.inStock !== false);
+  // Count of brands the shopper can actually pick (in_stock = true), used for the
+  // optional "Choose from X brands" hint. Only surfaces that opt in (subcategory
+  // listing) pass brandChoiceLabel.
+  const inStockBrandCount = brands.filter((b) => b.inStock === true).length;
   const pricePool = (inStockBrands.length ? inStockBrands : brands)
     .map((b) => b.price)
     .filter((p): p is number => typeof p === "number" && p > 0);
@@ -83,7 +87,7 @@ export default function ProductCard({ product, className = "", leadBrandId }: { 
             {product.badge}
           </span>
         ) : null}
-        {multiBrand && (
+        {!brandChoiceLabel && multiBrand && (
           <span className="absolute bottom-2 right-2 rounded-pill bg-card/90 backdrop-blur-sm text-forest text-[10px] font-semibold px-2 py-0.5 border border-border">
             {brands.length} brands
           </span>
@@ -93,6 +97,11 @@ export default function ProductCard({ product, className = "", leadBrandId }: { 
         <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
           {product.name}
         </p>
+        {brandChoiceLabel && inStockBrandCount >= 2 && (
+          <span className="text-[11px] font-medium text-forest leading-none">
+            Choose from {inStockBrandCount} brands
+          </span>
+        )}
         <div className="mt-auto pt-1.5 flex items-baseline gap-1.5">
           {minPrice > 0 ? (
             <>

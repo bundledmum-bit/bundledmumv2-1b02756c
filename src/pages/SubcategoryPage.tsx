@@ -133,7 +133,7 @@ export default function SubcategoryPage({ tab }: { tab: "baby" | "mum" }) {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
             {products.map((product) => (
-              <ProductCard key={product.id} product={product} leadBrandId={merchBrand.get(product.id)} />
+              <ProductCard key={product.id} product={product} leadBrandId={merchBrand.get(product.id)} brandChoiceLabel />
             ))}
           </div>
         )}
