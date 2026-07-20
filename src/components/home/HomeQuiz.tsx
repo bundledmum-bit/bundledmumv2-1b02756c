@@ -842,65 +842,103 @@ function ResultsScreen({
     .filter(isPurchasable)
     .map(r => ({ name: r.name, price: ((r.brand?.price ?? 0)) * (r.quantity ?? 1) }));
 
+  // Composition chips for the summary card (only nonzero groups).
+  const composition = isGift
+    ? [{ n: giftItems.length, label: giftItems.length === 1 ? "gift item" : "gift items" }]
+    : [
+        { n: babyItems.length, label: "baby" },
+        { n: mumItems.length, label: "mum" },
+        { n: hospitalItems.length, label: "hospital" },
+        { n: extrasItems.length, label: "extras" },
+      ].filter((c) => c.n > 0);
+
+  // Real bundle savings vs buying at each brand's compare-at price. 0 when none,
+  // in which case the summary shows the free-delivery line instead.
+  const bundleSavings = results.reduce((sum, item) => {
+    const fp = productMap.get(item.product_id);
+    const brand = fp?.brands?.find((b) => b.id === item.brand?.id) || fp?.brands?.[0] || null;
+    const was = brand?.compareAtPrice ?? 0;
+    const now = brand?.price ?? item.brand?.price ?? 0;
+    return sum + (was > now ? (was - now) * qtyFor(item) : 0);
+  }, 0);
+
   return (
     <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-28 md:pb-0">
-      <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-4 md:px-10 pt-6 md:pt-12 pb-7 md:pb-12">
-        <div className="max-w-[720px] mx-auto text-center">
+      {/* Hero: intro on the warm ground, with the bundle summary card as anchor */}
+      <div className="px-4 md:px-8 pt-6 md:pt-10 pb-2">
+        <div className="max-w-[560px] mx-auto text-center">
           {isFallback && (
-            <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg px-4 py-2 mb-4 inline-block">
-              <p className="text-amber-200 text-xs">We widened your results to ensure a complete bundle — all items are relevant to your stage.</p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-4 inline-block">
+              <p className="text-amber-800 text-xs">We widened your results to ensure a complete bundle. All items suit your stage.</p>
             </div>
           )}
-          <div className="inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-3.5 py-1 mb-3">
-            <span className="text-coral text-[12px] font-semibold">{isGift ? "🎁 Gift bundle ready" : "✨ Your bundle is ready"}</span>
-          </div>
-          <h1 className="pf text-[22px] md:text-[36px] text-primary-foreground leading-tight mb-2.5">{heading}</h1>
-          <p className="text-primary-foreground/75 text-[13px] md:text-[15px] leading-relaxed mb-4 max-w-[560px] mx-auto">{subHeading}</p>
-
-          {/* Clean summary: item count + total */}
-          <div className="inline-flex items-center gap-3 bg-primary-foreground/10 border border-primary-foreground/15 rounded-pill px-4 py-2 mb-4">
-            <span className="text-primary-foreground/85 text-[13px] font-semibold">{results.length} item{results.length === 1 ? "" : "s"}</span>
-            <span className="w-px h-3.5 bg-primary-foreground/25" />
-            <span className="font-mono-price text-coral text-[15px] font-bold">{fmt(grandTotal)}</span>
-          </div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-coral">{isGift ? "Gift bundle ready" : "Your bundle is ready"}</div>
+          <h1 className="pf text-[26px] md:text-[36px] font-bold text-foreground leading-[1.08] text-balance mt-2 mb-2.5">{heading}</h1>
+          <p className="text-text-med text-[13.5px] md:text-[15px] leading-relaxed max-w-[46ch] mx-auto mb-4">{subHeading}</p>
 
           {/* Answer pills — tap to edit */}
           <div className="flex flex-wrap gap-2 justify-center mb-5">
             {pillData.map(p => (
-              <button key={p.step} onClick={onBack} className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-pill px-3 py-1 text-primary-foreground/80 text-[11px] font-semibold hover:bg-primary-foreground/20 transition-colors">
+              <button key={p.step} onClick={onBack} className="bg-card border border-border rounded-pill px-3 py-1 text-foreground text-[12px] font-semibold hover:border-forest transition-colors">
                 {p.emoji} {p.label}
               </button>
             ))}
-            <button onClick={onBack} className="rounded-pill border border-primary-foreground/25 px-3 py-1 text-primary-foreground/70 text-[11px] font-semibold hover:bg-primary-foreground/10 transition-colors">
+            <button onClick={onBack} className="rounded-pill border border-border px-3 py-1 text-text-med text-[12px] font-semibold hover:bg-muted/40 transition-colors">
               ↺ Edit answers
             </button>
           </div>
+        </div>
 
-          <div className="flex flex-col sm:flex-row gap-2.5 justify-center max-w-[380px] sm:max-w-none mx-auto">
-            <button onClick={handleAddAll} className="rounded-pill bg-coral px-7 py-3 font-body font-bold text-primary-foreground hover:bg-coral-dark transition-colors text-[15px]">
-              {isGift ? "Get gift bundle" : "Add all to cart"} — {fmt(recommendationTotal)}
+        {/* Bundle summary card — the single anchor + primary CTA */}
+        <div className="max-w-[560px] mx-auto rounded-3xl p-5 md:p-6 shadow-card-hover relative overflow-hidden" style={{ background: "linear-gradient(160deg, #2D6A4F, #1E5C44)" }}>
+          <div className="absolute -right-10 -top-12 w-40 h-40 rounded-full bg-primary-foreground/[0.06]" />
+          <div className="relative z-10 text-center">
+            {composition.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 justify-center mb-3.5">
+                {composition.map(c => (
+                  <span key={c.label} className="bg-primary-foreground/15 border border-primary-foreground/15 rounded-pill px-2.5 py-1 text-primary-foreground text-[12px] font-semibold">{c.n} {c.label}</span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end justify-center gap-2.5 mb-1">
+              <span className="text-primary-foreground/70 text-[13px] font-semibold pb-1.5">{results.length} item{results.length === 1 ? "" : "s"}</span>
+              <span className="font-mono-price text-primary-foreground font-extrabold text-[34px] leading-none tracking-tight">{fmt(grandTotal)}</span>
+            </div>
+            <p className="text-primary-foreground/85 text-[12.5px] mb-4">
+              {bundleSavings > 0
+                ? <>You save <b className="text-primary-foreground">{fmt(bundleSavings)}</b> vs buying separately &middot; free delivery</>
+                : <>Free delivery included on your bundle</>}
+            </p>
+            <button onClick={handleAddAll} className="w-full flex items-center justify-center gap-2.5 bg-coral text-primary-foreground rounded-pill py-3.5 font-body font-extrabold text-[16px] hover:bg-coral-dark transition-colors">
+              <span>{isGift ? "Get gift bundle" : "Add all to cart"}</span>
+              <span aria-hidden="true">&middot;</span>
+              <span className="font-mono-price">{fmt(recommendationTotal)}</span>
             </button>
-            <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="rounded-pill border-2 border-primary-foreground/30 px-6 py-3 font-body font-semibold text-primary-foreground/85 hover:bg-primary-foreground/10 transition-colors text-[15px]">
-              See my items
-            </button>
+            <div className="flex gap-5 justify-center mt-3">
+              <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors">↓ See my items</button>
+              <button onClick={handleShare} className="flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><Share2 className="h-3.5 w-3.5" /> Share</button>
+              <button onClick={handleCopyChecklist} className="flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><ClipboardCopy className="h-3.5 w-3.5" /> Copy</button>
+            </div>
           </div>
+        </div>
 
-          <div className="flex gap-4 justify-center mt-4">
-            <button onClick={handleShare} className="flex items-center gap-1.5 text-primary-foreground/55 text-xs hover:text-primary-foreground transition-colors">
-              <Share2 className="h-3.5 w-3.5" /> Share list
-            </button>
-            <button onClick={handleCopyChecklist} className="flex items-center gap-1.5 text-primary-foreground/55 text-xs hover:text-primary-foreground transition-colors">
-              <ClipboardCopy className="h-3.5 w-3.5" /> Copy checklist
-            </button>
-          </div>
+        {/* Trust row */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-4 max-w-[560px] mx-auto">
+          <span className="text-text-med text-[12px] font-semibold">🚚 Free delivery</span>
+          <span className="text-text-med text-[12px] font-semibold">🔒 Secure checkout</span>
+          <span className="text-text-med text-[12px] font-semibold">💚 Quality assured</span>
         </div>
       </div>
 
       <div id="quiz-results-items" className="max-w-[1000px] mx-auto px-4 md:px-10 py-8 md:py-10">
         {giftItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">🎁 Gift Bundle for the New Parents</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-forest-light flex items-center justify-center text-lg flex-shrink-0">🎁</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">Gift bundle for the new parents</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{giftItems.length}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {giftItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -925,8 +963,12 @@ function ResultsScreen({
         )}
         {mumItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">💛 Mum Essentials</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-coral/10 flex items-center justify-center text-lg flex-shrink-0">💛</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">Mum essentials</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{mumItems.length}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {mumItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -951,8 +993,12 @@ function ResultsScreen({
         )}
         {hospitalItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">🏥 Hospital Consumables</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-forest-light flex items-center justify-center text-lg flex-shrink-0">🏥</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">Hospital consumables</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{hospitalItems.length}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {hospitalItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -977,8 +1023,12 @@ function ResultsScreen({
         )}
         {babyItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">👶 Baby Essentials</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-forest-light flex items-center justify-center text-lg flex-shrink-0">👶</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">Baby essentials</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{babyItems.length}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {babyItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -1003,8 +1053,12 @@ function ResultsScreen({
         )}
         {extrasItems.length > 0 && (
           <div className="mb-10">
-            <h2 className="pf flex items-center gap-2 text-lg md:text-xl font-bold text-foreground mb-4 pb-2.5 border-b-2 border-coral/30">✨ Convenience Extras</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-coral/10 flex items-center justify-center text-lg flex-shrink-0">✨</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">Convenience extras</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{extrasItems.length}</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {extrasItems.map(item => (
                 <ResultProductCard
                   key={item.product_id}
@@ -1049,7 +1103,7 @@ function ResultsScreen({
             <p className="text-text-med text-sm md:text-base mb-5">
               These items fit your selection but didn't make it into your bundle. Add them individually if you'd like.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {recommendation.also_recommended.map(item => (
                 <ResultProductCard
                   key={`alsorec-${item.product_id}`}
@@ -1093,20 +1147,22 @@ function ResultsScreen({
         </div>
       </div>
 
-      {/* Sticky mobile checkout bar — persistent while scrolling the list */}
+      {/* Sticky mobile checkout bar — the constant purchase path */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border px-4 py-3 flex items-center gap-3"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center gap-3 px-4 py-3 border-t border-border bg-card/95 backdrop-blur-md"
         style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
       >
-        <div className="flex-shrink-0 leading-none">
-          <p className="text-[11px] text-muted-foreground mb-1">{results.length} item{results.length === 1 ? "" : "s"}</p>
-          <p className="font-mono-price text-forest font-bold text-[17px]">{fmt(recommendationTotal)}</p>
+        <div className="flex-shrink-0 leading-tight">
+          <p className="text-[11px] text-muted-foreground font-medium">{results.length} item{results.length === 1 ? "" : "s"} in your bundle</p>
+          <p className="font-mono-price text-forest font-extrabold text-[19px]">{fmt(recommendationTotal)}</p>
+          <p className="text-[10px] font-bold text-forest">Free delivery</p>
         </div>
         <button
           onClick={handleAddAll}
-          className="flex-1 rounded-pill bg-coral text-primary-foreground font-bold py-3 text-[15px] hover:bg-coral-dark transition-colors min-h-[48px]"
+          className="flex-1 flex items-center justify-center gap-2 rounded-pill bg-coral text-primary-foreground font-extrabold py-3.5 text-[15px] hover:bg-coral-dark transition-colors min-h-[52px]"
         >
-          {isGift ? "Get bundle" : "Add all to cart"} →
+          <span>{isGift ? "Get bundle" : "Add all to cart"}</span>
+          <span aria-hidden="true">→</span>
         </button>
       </div>
 

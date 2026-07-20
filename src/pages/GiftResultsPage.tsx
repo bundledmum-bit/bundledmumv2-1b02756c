@@ -319,7 +319,7 @@ export default function GiftResultsPage() {
             <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">
               🎁 Recommended Gift Bundles
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
               {bundles.map(renderCard)}
             </div>
           </div>
@@ -340,7 +340,7 @@ export default function GiftResultsPage() {
                 Add individual items alongside your chosen bundle.
               </p>
               <div className="bg-muted/40 rounded-2xl p-4 md:p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
                   {singles.map(renderCard)}
                 </div>
               </div>

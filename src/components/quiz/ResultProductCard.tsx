@@ -55,109 +55,106 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   };
 
   return (
-    <div className={`bg-card rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all group ${(brandOos || comingSoon) ? "opacity-60" : ""}`}>
-      <div className="relative h-36 md:h-44 flex items-center justify-center overflow-hidden bg-muted/30 cursor-pointer" onClick={onViewDetail}>
-        {item.priority === "essential" && (
-          <span className="absolute top-2.5 left-2.5 bg-coral text-primary-foreground text-[10px] font-bold px-2.5 py-1 rounded-pill uppercase tracking-wide z-10">Essential</span>
-        )}
+    <div className={`flex gap-3 items-start bg-card rounded-2xl border p-2.5 shadow-card transition-all ${(brandOos || comingSoon) ? "opacity-60" : ""} ${isInCart ? "border-forest/50 bg-forest-light/25" : "border-border"}`}>
+      {/* Thumbnail */}
+      <div className="relative w-[78px] h-[78px] md:w-[88px] md:h-[88px] flex-shrink-0 rounded-xl overflow-hidden bg-muted/30 cursor-pointer" onClick={onViewDetail}>
         {item.quantity > 1 && (
-          <span className="absolute top-2.5 right-2.5 bg-forest text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-pill z-10">×{item.quantity}</span>
+          <span className="absolute top-1 right-1 z-10 bg-forest text-primary-foreground text-[10px] font-bold px-1.5 rounded-pill">×{item.quantity}</span>
         )}
         {showSale && (
-          <span className="absolute top-2.5 right-2.5 bg-destructive text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-pill z-10">
-            Save {Math.round(((selectedBrand!.compareAtPrice! - selectedBrand!.price) / selectedBrand!.compareAtPrice!) * 100)}%
+          <span className="absolute top-1 left-1 z-10 bg-destructive text-primary-foreground text-[9px] font-bold px-1.5 rounded-pill">
+            -{Math.round(((selectedBrand!.compareAtPrice! - selectedBrand!.price) / selectedBrand!.compareAtPrice!) * 100)}%
           </span>
         )}
         <ProductImage
           imageUrl={displayImage}
           emoji={item.emoji || "📦"}
           alt={item.name}
-          className="w-full h-full group-hover:scale-110 transition-transform duration-300"
-          emojiClassName="text-5xl md:text-6xl"
+          className="w-full h-full"
+          emojiClassName="text-3xl md:text-4xl"
         />
       </div>
-      <div className="p-3.5 md:p-4">
-        <h3 className="pf text-sm md:text-[15px] font-bold leading-tight mb-1 cursor-pointer hover:text-forest transition-colors" onClick={onViewDetail}>{item.name}</h3>
-        {item.selected_color && <p className="text-muted-foreground text-[10px] mb-1">Colour: {item.selected_color}</p>}
-        <div className="text-forest bg-forest-light rounded-lg px-2 py-1.5 text-[10px] leading-relaxed italic mb-2 max-h-16 overflow-y-auto scrollbar-hide">💡 {item.why_included}</div>
-        {fullProduct && fullProduct.packInfo && <p className="text-muted-foreground text-[10px] mb-1">📦 {fullProduct.packInfo}</p>}
 
-        {/* Pre-add quantity stepper (only shown when managed externally and item isn't already in cart) */}
-        {preAddQty != null && onPreAddQtyChange && !isInCart && !brandOos && (
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Quantity</span>
-            <QtyControl
-              qty={preAddQty}
-              onUpdate={(newQty) => onPreAddQtyChange(Math.max(1, newQty))}
-              maxQty={selectedBrand?.stockQuantity ?? undefined}
-            />
-          </div>
+      {/* Body */}
+      <div className="flex-1 min-w-0">
+        <h3 className="pf text-[14px] font-bold leading-tight cursor-pointer hover:text-forest transition-colors line-clamp-2" onClick={onViewDetail}>{item.name}</h3>
+        {item.priority === "essential" && (
+          <span className="inline-block mt-0.5 text-coral text-[9.5px] font-bold uppercase tracking-wider">Essential</span>
         )}
+        {item.selected_color && <span className="text-muted-foreground text-[10px] ml-2">Colour: {item.selected_color}</span>}
+        <p className="text-muted-foreground text-[11.5px] leading-snug mt-1 line-clamp-2">💡 {item.why_included}</p>
 
-        {/* Brand selector */}
+        {/* Brand switcher (preserved) */}
         {brands.length > 0 && (
-          <div className="mb-2">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Brand</div>
-            <div className="flex flex-wrap gap-1">
-              {displayBrands.map(b => {
-                const bOos = !b.inStock;
-                return (
-                  <button key={b.id} onClick={() => setSelectedBrandId(b.id)}
-                    className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body ${bOos ? "opacity-50" : ""} ${selectedBrandId === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                    {b.label} {fmt(b.price)}
-                    {b.id === recommendedBrandId && !bOos && <span className="text-coral ml-0.5">★</span>}
-                  </button>
-                );
-              })}
-              {hiddenCount > 0 && !showMore && (
-                <button onClick={() => setShowMore(true)}
-                  className="px-2 py-0.5 rounded-pill text-[10px] font-semibold border-[1.5px] border-border bg-card text-forest font-body hover:border-forest">
-                  +{hiddenCount} more
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {displayBrands.map(b => {
+              const bOos = !b.inStock;
+              return (
+                <button key={b.id} onClick={() => setSelectedBrandId(b.id)}
+                  className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body ${bOos ? "opacity-50" : ""} ${selectedBrandId === b.id ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                  {b.label} {fmt(b.price)}
+                  {b.id === recommendedBrandId && !bOos && <span className="text-coral ml-0.5">★</span>}
                 </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Size selector */}
-        {sizes.length > 0 && (
-          <div className="mb-2">
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">Size</div>
-            <div className="flex flex-wrap gap-1">
-              {sizes.map(s => (
-                <button key={s} onClick={() => setSelectedSize(s)}
-                  className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border-[1.5px] transition-all font-body ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {isLowStock && <p className="text-[#E65100] text-[9px] font-semibold mb-1">🔥 Only {selectedBrand?.stockQuantity} left!</p>}
-
-        <div className="flex items-end justify-between mt-1">
-          <div>
-            {comingSoon ? (
-              <p className="text-muted-foreground text-[11px] italic">Price not available</p>
-            ) : (
-              <>
-                <p className="pf text-lg font-bold text-forest">{fmt(displayPrice * (item.quantity || 1))}</p>
-                {showSale && <p className="text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</p>}
-                {!showSale && brands.length > 1 && <p className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</p>}
-              </>
+              );
+            })}
+            {hiddenCount > 0 && !showMore && (
+              <button onClick={() => setShowMore(true)}
+                className="px-2 py-0.5 rounded-pill text-[10px] font-semibold border border-border bg-card text-forest font-body hover:border-forest">
+                +{hiddenCount} more
+              </button>
             )}
           </div>
+        )}
+
+        {/* Size switcher (preserved) */}
+        {sizes.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {sizes.map(s => (
+              <button key={s} onClick={() => setSelectedSize(s)}
+                className={`px-2 py-0.5 rounded-pill text-[10px] font-semibold border transition-all font-body ${selectedSize === s ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {isLowStock && <p className="text-[#E65100] text-[9.5px] font-semibold mt-1">🔥 Only {selectedBrand?.stockQuantity} left</p>}
+
+        {/* Price */}
+        <div className="mt-2">
           {comingSoon ? (
-            <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 text-[10px] font-semibold font-body">Coming soon</span>
-          ) : brandOos ? (
-            <span className="rounded-pill bg-border px-3 py-1.5 text-[10px] font-semibold text-muted-foreground font-body">Sold Out</span>
-          ) : isInCart && cartItem && onQtyUpdate ? (
-            <QtyControl qty={cartItem.qty} onUpdate={(newQty) => onQtyUpdate(cartItem._key, newQty)} maxQty={selectedBrand?.stockQuantity ?? undefined} />
+            <span className="text-muted-foreground text-[11px] italic">Price not available</span>
           ) : (
-            <button onClick={handleAdd} className="rounded-pill px-3 py-1.5 text-[11px] font-semibold text-primary-foreground font-body interactive" style={{ backgroundColor: "#F4845F" }}>Add to Cart</button>
+            <span className="flex items-baseline gap-1.5">
+              <span className="font-mono-price text-forest font-bold text-[15px]">{fmt(displayPrice * (item.quantity || 1))}</span>
+              {showSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</span>}
+              {!showSale && brands.length > 1 && <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</span>}
+            </span>
           )}
         </div>
+      </div>
+
+      {/* Controls — stacked (stepper over Add), matches the row layout */}
+      <div className="flex flex-col items-end gap-2 flex-shrink-0 self-center">
+        {comingSoon ? (
+          <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1.5 text-[10px] font-semibold font-body">Coming soon</span>
+        ) : brandOos ? (
+          <span className="rounded-pill bg-border px-3 py-1.5 text-[10px] font-semibold text-muted-foreground font-body">Sold Out</span>
+        ) : isInCart && cartItem && onQtyUpdate ? (
+          <QtyControl qty={cartItem.qty} onUpdate={(newQty) => onQtyUpdate(cartItem._key, newQty)} maxQty={selectedBrand?.stockQuantity ?? undefined} size="sm" />
+        ) : (
+          <>
+            {preAddQty != null && onPreAddQtyChange && (
+              <QtyControl
+                qty={preAddQty}
+                onUpdate={(newQty) => onPreAddQtyChange(Math.max(1, newQty))}
+                maxQty={selectedBrand?.stockQuantity ?? undefined}
+                size="sm"
+              />
+            )}
+            <button onClick={handleAdd} className="rounded-pill px-4 py-1.5 text-[12px] font-bold text-primary-foreground bg-coral hover:bg-coral-dark transition-colors whitespace-nowrap">+ Add</button>
+          </>
+        )}
       </div>
     </div>
   );
