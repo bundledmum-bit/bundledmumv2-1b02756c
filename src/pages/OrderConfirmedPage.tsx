@@ -559,12 +559,20 @@ export default function OrderConfirmedPage() {
         <div className="bg-card rounded-card shadow-card p-5 md:p-8 mb-4">
           <h3 className="pf text-lg md:text-xl text-forest mb-4">What Happens Next</h3>
           <div className="flex flex-col">
-            {[
-              { icon: "📧", title: "Confirmation Email Sent", desc: `We've sent order details to ${order.customer_email}.`, done: true },
-              { icon: "🔍", title: "Order Being Processed", desc: "Our team is picking and packing your items", done: true },
-              { icon: "📦", title: "Dispatched for Delivery", desc: `To ${order.delivery_address}, ${order.delivery_city}, ${order.delivery_state}`, done: false },
-              { icon: "🏠", title: "Delivered to Your Door", desc: `Expected delivery: ${deliveryDate()}`, done: false },
-            ].map((s, i, arr) => (
+            {(isPaid
+              ? [
+                  { icon: "📧", title: "Confirmation Email Sent", desc: `We've sent order details to ${order.customer_email}.`, done: true },
+                  { icon: "🔍", title: "Order Being Processed", desc: "Our team is picking and packing your items", done: true },
+                  { icon: "📦", title: "Dispatched for Delivery", desc: `To ${order.delivery_address}, ${order.delivery_city}, ${order.delivery_state}`, done: false },
+                  { icon: "🏠", title: "Delivered to Your Door", desc: `Expected delivery: ${deliveryDate()}`, done: false },
+                ]
+              : [
+                  { icon: "💳", title: "Complete Your Payment", desc: "Finish your payment to confirm and reserve your order.", done: true },
+                  { icon: "✅", title: "We Confirm Your Order", desc: "Once payment is received, we confirm your order right away.", done: false },
+                  { icon: "📦", title: "We Pack Your Bundle", desc: "Our team carefully picks and packs your items.", done: false },
+                  { icon: "🏠", title: "Delivered to Your Door", desc: "We deliver to your address once your order is packed.", done: false },
+                ]
+            ).map((s, i, arr) => (
               <div key={i} className="flex gap-3 pb-3">
                 <div className="flex flex-col items-center">
                   <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-lg flex-shrink-0 ${s.done ? "bg-forest-light border-forest" : "bg-warm-cream border-border"}`}>{s.icon}</div>
