@@ -227,8 +227,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // Brands shown to the user, filtered by the active variant axis value.
   // Products without a variant axis are passed through unchanged.
   const filteredBrands = (() => {
-    if (!hasVariants || !selectedVariant) return product.brands;
-    return product.brands.filter(b => b.sizeVariant === selectedVariant);
+    const base = (!hasVariants || !selectedVariant)
+      ? product.brands
+      : product.brands.filter(b => b.sizeVariant === selectedVariant);
+    // Show the brand options cheapest to most expensive; stable tie-break by name.
+    // Order only; out-of-stock brands are still shown (disabled) per BrandSelect.
+    return [...base].sort((a, b) => (a.price || 0) - (b.price || 0) || (a.label || "").localeCompare(b.label || ""));
   })();
 
   // ── Colour / gender selector ────────────────────────────────────────
@@ -963,7 +967,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           </div>
           <h2 className="pf text-lg md:text-xl font-bold mb-3">Choose your brand</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-            {product.brands.map(brand => {
+            {[...product.brands].sort((a, b) => (a.price || 0) - (b.price || 0) || (a.label || "").localeCompare(b.label || "")).map(brand => {
               const img = brand.imageUrl || product.imageUrl || null;
               const isOos = brand.inStock === false || (brand.stockQuantity !== null && brand.stockQuantity <= 0);
               const onSale = brand.compareAtPrice != null && brand.compareAtPrice > brand.price;

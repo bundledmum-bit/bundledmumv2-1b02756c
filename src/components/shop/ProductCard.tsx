@@ -46,6 +46,19 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
   const onSale = strike != null && strike > (minPrice || 0);
   const savingsPct = onSale && strike ? Math.round(((strike - minPrice) / strike) * 100) : 0;
 
+  // Subcategory "brand choice" cards: a product with 2+ in-stock brands shows the
+  // cheapest in-stock price as "from ...", and DROPS the struck compare-at price
+  // and the discount badge (there is no single struck price to justify a badge).
+  // cheapestInStockPrice = min brands.price among in_stock = true brands.
+  const inStockPrices = brands
+    .filter((b) => b.inStock === true)
+    .map((b) => b.price)
+    .filter((p): p is number => typeof p === "number" && p > 0);
+  const cheapestInStockPrice = inStockPrices.length ? Math.min(...inStockPrices) : 0;
+  const showBrandChoicePrice = brandChoiceLabel && inStockBrandCount >= 2 && cheapestInStockPrice > 0;
+  const priceToShow = showBrandChoicePrice ? cheapestInStockPrice : minPrice;
+  const showFromLabel = showBrandChoicePrice || multiBrand;
+
   const oos = isProductOOS(product);
   // Prefer the product image, then the first brand that actually carries one
   // (the cheapest brand may have no photo even when siblings do).
@@ -74,11 +87,11 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
           <span className="absolute top-2 left-2 rounded-pill bg-midnight/80 text-primary-foreground text-[10px] font-bold px-2 py-0.5">
             Sold out
           </span>
-        ) : promoDisplay ? (
+        ) : (!showBrandChoicePrice && promoDisplay) ? (
           <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5 max-w-[92%] truncate">
             {promoDisplay.headline}
           </span>
-        ) : onSale ? (
+        ) : (!showBrandChoicePrice && onSale) ? (
           <span className="absolute top-2 left-2 rounded-pill bg-coral text-primary-foreground text-[10px] font-bold px-2 py-0.5">
             Save {savingsPct}%
           </span>
@@ -103,15 +116,15 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
           </span>
         )}
         <div className="mt-auto pt-1.5 flex items-baseline gap-1.5">
-          {minPrice > 0 ? (
+          {priceToShow > 0 ? (
             <>
-              {multiBrand && (
+              {showFromLabel && (
                 <span className="text-[11px] text-muted-foreground">from</span>
               )}
               <span className="font-mono-price text-forest font-bold text-[15px]">
-                {fmt(minPrice)}
+                {fmt(priceToShow)}
               </span>
-              {onSale && !multiBrand && strike != null && (
+              {onSale && !multiBrand && !showBrandChoicePrice && strike != null && (
                 <span className="font-mono-price text-muted-foreground text-[10px] line-through">
                   {fmt(strike)}
                 </span>
