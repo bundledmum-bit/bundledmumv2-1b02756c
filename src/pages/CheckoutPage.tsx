@@ -247,6 +247,35 @@ export default function CheckoutPage() {
     }
   };
 
+  // Pull the REAL server error out of a failed edge-function call. supabase-js
+  // wraps a non-2xx response in a FunctionsHttpError whose `.message` is the
+  // generic "Edge Function returned a non-2xx status code"; the actual server JSON
+  // body ({ error: "..." }) lives on `.context` (a Response). We read it so the
+  // admin errors tab shows the true cause. Best-effort, never throws outward.
+  const extractServerError = async (err: any, result?: any): Promise<string> => {
+    try {
+      const ctx = err?.context;
+      if (ctx && typeof ctx.json === "function") {
+        const bodyClone = typeof ctx.clone === "function" ? ctx.clone() : ctx;
+        const body = await bodyClone.json();
+        if (body?.error) return String(body.error);
+      }
+    } catch { /* fall through to the wrapper message */ }
+    if (result?.error) return String(result.error); // invoke returned { error } in data
+    return String(err?.message || "").trim() || "Unknown error";
+  };
+
+  // Classify a checkout error from its REAL message for the errors tab.
+  const classifyCheckoutError = (
+    msg: string,
+  ): "unavailable_unpriced" | "payment_failed" | "technical" | "validation" | "other" => {
+    const m = (msg || "").toLowerCase();
+    if (m.includes("unavailable or unpriced") || m.includes("unavailable") || m.includes("out of stock") || m.includes("no longer available")) return "unavailable_unpriced";
+    if (m.includes("column of 'orders'") || m.includes("schema cache") || m.includes("internal server error") || /timeout|network|failed to fetch|service unavailable/.test(m)) return "technical";
+    if (m.includes("at least one item") || m.includes("required field") || m.includes("valid product") || m.includes("missing")) return "validation";
+    return "other";
+  };
+
   // Triggers the modal, assembles the wa.me prefill from the current form + cart
   // (full name, email, phone, full address, items, total), and logs the error
   // (whatsapp_modal_triggered = true), storing the error_id for the click mark.
@@ -255,7 +284,7 @@ export default function CheckoutPage() {
     err: unknown,
     reason: "availability" | "technical" = "technical",
     errorPoint: "payment" | "place_order" | "verify_payment" = "place_order",
-    errorType: "unavailable_unpriced" | "payment_failed" | "technical" | "other" = "technical",
+    errorType: "unavailable_unpriced" | "payment_failed" | "technical" | "validation" | "other" = "technical",
     message?: string,
   ) => {
     console.error(`[checkout] ${reason} failure (${tag}):`, err);
@@ -1570,18 +1599,22 @@ export default function CheckoutPage() {
         // can act on it.
         const ctxStatus: number | undefined = (fnError as any)?.context?.status;
         const errMsg = String(fnError?.message || result?.error || "").trim();
+        // The REAL server error, read from the response body, for LOGGING only.
+        // The customer-facing toast/modal copy below is unchanged.
+        const serverMsg = await extractServerError(fnError, result);
         const looksTechnical =
           !ctxStatus
           || ctxStatus >= 500
           || /internal server error|timeout|network|failed to fetch|service unavailable/i.test(errMsg);
         if (looksTechnical) {
-          triggerRecoveryModal("place-order", fnError || result, "technical", "place_order", "technical", errMsg);
+          triggerRecoveryModal("place-order", fnError || result, "technical", "place_order", classifyCheckoutError(serverMsg), serverMsg);
           return null;
         }
         // Remaining 400-class messages the customer can act on (empty cart,
-        // missing fields, invalid products). Inline toast, logged as validation.
+        // missing fields, invalid products). Inline toast (unchanged), but logged
+        // with the REAL server message so the errors tab shows the true cause.
         toast.error(`Order failed: ${errMsg || "Unknown error"}`);
-        logCheckoutError("place_order", /at least one item|required field|valid product|missing/i.test(errMsg) ? "validation" : "other", errMsg || "unknown place-order error", false);
+        logCheckoutError("place_order", classifyCheckoutError(serverMsg), serverMsg || "unknown place-order error", false);
         return null;
       }
 
@@ -1962,7 +1995,9 @@ export default function CheckoutPage() {
 
           if (verifyError || !verification?.verified) {
             setProcessing(false);
-            triggerRecoveryModal("verify-payment", verifyError || verification, "technical", "verify_payment", "payment_failed", String((verifyError as any)?.message || verification?.error || "payment verification failed"));
+            // Log the REAL verify-payment server error (body), not the wrapper.
+            const verifyMsg = (await extractServerError(verifyError, verification)) || "payment verification failed";
+            triggerRecoveryModal("verify-payment", verifyError || verification, "technical", "verify_payment", "payment_failed", verifyMsg);
             return;
           }
 
