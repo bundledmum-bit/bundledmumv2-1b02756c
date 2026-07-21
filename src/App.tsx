@@ -363,6 +363,10 @@ function StorefrontShell() {
           <Route path="/account/profile" element={<RequireCustomerAuth><AccountProfilePage /></RequireCustomerAuth>} />
           <Route path="/account/referral" element={<RequireCustomerAuth><AccountReferralPage /></RequireCustomerAuth>} />
           <Route path="/push-gifts" element={<PushGiftsPage />} />
+          {/* Bare /products has no page. Redirect the index to /shop; the
+              param route below still owns /products/:slug (v6 ranks by
+              specificity, so this never shadows real product pages). */}
+          <Route path="/products" element={<Navigate to="/shop" replace />} />
           <Route path="/products/:slug" element={<ProductPage />} />
           <Route path="/p/:slug" element={<DynamicPage />} />
           <Route path="*" element={<NotFound />} />
