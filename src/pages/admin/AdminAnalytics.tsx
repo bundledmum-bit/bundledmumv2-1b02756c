@@ -309,16 +309,9 @@ export default function AdminAnalytics() {
     },
   });
 
-  const { data: pageViews } = useQuery({
-    queryKey: ["analytics-pageviews", fromISO, toISO],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("page_views")
-        .select("page_url, page_title, session_id, created_at")
-        .gte("created_at", fromISO).lt("created_at", toISO);
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  // The page_views table is no longer written by the app (Google Analytics owns
+  // page traffic), so it is not read here anymore. The Landing Pages and Pages &
+  // Screens cards now show a neutral note instead of stale numbers.
 
   // ── Derived data ────────────────────────────
   const rawO = orders || [];
@@ -336,7 +329,6 @@ export default function AdminAnalytics() {
   const evts = events || [];
   const leads = quizLeads || [];
   const items = orderItems || [];
-  const pvs = pageViews || [];
 
   const groupByDay = (arr: any[], valueFn: (items: any[]) => number) => {
     const map: Record<string, any[]> = {};
@@ -790,16 +782,9 @@ export default function AdminAnalytics() {
               return { Source: source, Medium: medium, Sessions: d.sessions, Orders: d.orders, "Conv. Rate": `${d.sessions > 0 ? ((d.orders/d.sessions)*100).toFixed(1) : "0.0"}%` };
             });
 
-            // Landing pages from page_views
-            const lpData: Record<string, { sessions: Set<string>; views: number }> = {};
-            pvs.forEach((pv: any) => {
-              if (!lpData[pv.page_url]) lpData[pv.page_url] = { sessions: new Set(), views: 0 };
-              lpData[pv.page_url].sessions.add(pv.session_id);
-              lpData[pv.page_url].views++;
-            });
-            const lpTable = Object.entries(lpData).map(([page, d]) => ({
-              "Landing Page": page, Sessions: d.sessions.size, Views: d.views,
-            }));
+            // Landing Pages used to be derived from the page_views table, which
+            // the app no longer writes. Google Analytics now owns page traffic,
+            // so this card shows a neutral note rather than stale numbers.
 
             return (
               <div className="space-y-8">
@@ -820,12 +805,10 @@ export default function AdminAnalytics() {
                     { key: "Conv. Rate", label: "Conv. Rate" },
                   ]} data={smTable} />
                 </ChartCard>
-                <ChartCard title="Landing Pages" empty={lpTable.length === 0}>
-                  <DataTable columns={[
-                    { key: "Landing Page", label: "Landing Page" },
-                    { key: "Sessions", label: "Sessions" },
-                    { key: "Views", label: "Views" },
-                  ]} data={lpTable} />
+                <ChartCard title="Landing Pages">
+                  <p className="text-sm text-muted-foreground px-1 py-2">
+                    Page traffic is now tracked in Google Analytics.
+                  </p>
                 </ChartCard>
               </div>
             );
@@ -835,16 +818,9 @@ export default function AdminAnalytics() {
         {/* ═══ TAB 8: BEHAVIOUR ═══ */}
         <TabsContent value="behaviour">
           {(() => {
-            // Pages & Screens
-            const pageData: Record<string, { views: number; sessions: Set<string> }> = {};
-            pvs.forEach((pv: any) => {
-              if (!pageData[pv.page_url]) pageData[pv.page_url] = { views: 0, sessions: new Set() };
-              pageData[pv.page_url].views++;
-              pageData[pv.page_url].sessions.add(pv.session_id);
-            });
-            const pageTable = Object.entries(pageData).map(([url, d]) => ({
-              "Page URL": url, Views: d.views, "Unique Views": d.sessions.size,
-            }));
+            // Pages & Screens was derived from the page_views table, which the
+            // app no longer writes (Google Analytics now owns page traffic), so
+            // the card below shows a neutral note instead of stale numbers.
 
             // Events
             const eventCounts: Record<string, { count: number; sessions: Set<string> }> = {};
@@ -882,12 +858,10 @@ export default function AdminAnalytics() {
 
             return (
               <div className="space-y-8">
-                <ChartCard title="Pages and Screens" empty={pageTable.length === 0}>
-                  <DataTable columns={[
-                    { key: "Page URL", label: "Page URL" },
-                    { key: "Views", label: "Views" },
-                    { key: "Unique Views", label: "Unique Views" },
-                  ]} data={pageTable} />
+                <ChartCard title="Pages and Screens">
+                  <p className="text-sm text-muted-foreground px-1 py-2">
+                    Page traffic is now tracked in Google Analytics.
+                  </p>
                 </ChartCard>
                 <ChartCard title="Events" empty={eventTable.length === 0}>
                   <DataTable columns={[

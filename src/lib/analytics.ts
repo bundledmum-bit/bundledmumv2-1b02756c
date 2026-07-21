@@ -193,6 +193,9 @@ function incrementPageCount() {
 
 // ── Initialize Session ─────────────────────────
 let sessionInitialized = false;
+// Session-scoped flag so session_start is logged once per session, surviving
+// hard reloads within the same tab (see initSession).
+const SESSION_START_KEY = "bm-session-start-logged";
 
 async function initSession() {
   if (sessionInitialized) return;
@@ -202,11 +205,19 @@ async function initSession() {
   const attribution = getAttribution();
   const ua = parseUserAgent();
 
-  // Track session_start event
-  trackEvent("session_start", {
-    ...attribution,
-    ...ua,
-  });
+  // Track session_start EXACTLY ONCE per browser session. The module-level
+  // `sessionInitialized` flag resets on every hard reload / new tab / PWA
+  // relaunch while the session_id (sessionStorage) survives a reload, so
+  // without this guard a single session logged one session_start per page
+  // load. sessionStorage persists across reloads but is cleared when the tab
+  // session ends, so this flag yields exactly one session_start per session.
+  if (!sessionStorage.getItem(SESSION_START_KEY)) {
+    sessionStorage.setItem(SESSION_START_KEY, "1");
+    trackEvent("session_start", {
+      ...attribution,
+      ...ua,
+    });
+  }
 
   // First-touch session row via the pooling-safe RPC (landing page on first call).
   upsertSession({ landing: true });
@@ -246,15 +257,10 @@ function trackEvent(eventType: string, eventData?: Record<string, unknown>) {
 async function trackPageView() {
   await initSession();
   incrementPageCount();
-  const sid = getSessionId();
 
-  // Insert page_view (unchanged)
-  supabase.from("page_views").insert({
-    session_id: sid,
-    page_url: window.location.pathname,
-    page_title: document.title,
-    referrer: document.referrer || null,
-  }).then(() => {});
+  // The page_views table is no longer written from the app. Google Analytics
+  // captures raw page traffic, and no analytics_events view/function depends on
+  // page_views, so writing it on every route change was pure disk-IO waste.
 
   // Bump the session (exit_page + last_seen + page_count) via the RPC. The RPC
   // increments page_count / event_count and recomputes is_bounce server-side.

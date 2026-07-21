@@ -10,7 +10,6 @@ import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalList
 import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "@/lib/customItemsRequest";
 import ImageZoomModal from "@/components/ImageZoomModal";
 import { trackEvent } from "@/lib/analytics";
-import { usePageEngagement } from "@/hooks/usePageEngagement";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
 
 // Fire-and-forget hospital-list interaction event (reuses the shared analytics
@@ -120,8 +119,8 @@ export default function HospitalListPage() {
   const navigate = useNavigate();
   const { cart, addToCart, updateQty, getCartItem, totalItems, subtotal } = useCart();
   const isMobile = useIsMobile();
-  // Time-on-page + scroll-depth tracking (writes page_views metrics on exit).
-  usePageEngagement("/hospital-list");
+  // Page-level time/scroll tracking removed: it wrote to the page_views table,
+  // which the app no longer populates (Google Analytics covers page traffic).
   // Fire custom-items focus only on the FIRST focus.
   const customItemsFocusedRef = useRef(false);
 

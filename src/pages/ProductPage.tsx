@@ -82,7 +82,8 @@ export default function ProductPage() {
 
   useEffect(() => {
     if (product) {
-      trackEvent("product_page_viewed", { product_id: product.id, product_name: product.name });
+      // product_page_viewed removed: no analytics view/function reads it and it
+      // duplicated product_viewed. Meta Pixel ViewContent below is unaffected.
       const defaultBrand = product.brands?.[0];
       pixelTrack("ViewContent", pixelMoney(Number(defaultBrand?.price ?? 0), {
         content_ids: [product.id],
