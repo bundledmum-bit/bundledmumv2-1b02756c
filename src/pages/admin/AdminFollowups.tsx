@@ -1,15 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { MessageCircle, ClipboardCheck, ExternalLink, Loader2 } from "lucide-react";
+import { MessageCircle, Phone, StickyNote, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
 // Follow-up queue (route: /admin/followups). Reads the already-built
-// quote_followup_queue() RPC (due-today quotes, highest value first, already
-// excluding converted/paid/declined/paused/phone-less/logged stages) and logs
-// contact via log_quote_followup(). All money is NAIRA integers (no /100).
+// quote_followup_queue() RPC, which schedules real DATES with overdue
+// carry-forward and marks each contact via mark_followup_done() (the tick),
+// which auto-schedules the next follow-up (gaps widen 1, 2, 3, 5, 7 days).
+// Paid quotes are excluded server-side. All money is NAIRA integers (no /100).
 
 interface FollowupRow {
   out_quote_id: string;
@@ -20,29 +21,16 @@ interface FollowupRow {
   out_status: string | null;
   out_sent_at: string | null;
   out_days_since: number | null;
-  out_due_stage: string; // 'day1' | 'day3' | 'day5' | 'day7'
-  out_last_stage: string | null;
+  out_due_date: string | null;          // date this follow-up is due
+  out_days_overdue: number | null;      // 0 unless overdue
+  out_bucket: string;                   // 'overdue' | 'today' | 'tomorrow' | 'later'
+  out_kind: string;                     // 'chase_quote' | 'awaiting_payment'
+  out_followup_no: number | null;       // how many follow-ups already done
   out_last_contact: string | null;
 }
 
-const STAGES = [
-  { key: "day1", label: "Day 1" },
-  { key: "day3", label: "Day 3" },
-  { key: "day5", label: "Day 5" },
-  { key: "day7", label: "Day 7" },
-] as const;
-
-// SOP follow-up scripts, one per due stage. Pre-filled into WhatsApp; the human
-// still presses send. Used verbatim.
-const SOP_MESSAGES: Record<string, string> = {
-  day1: "Hello ma, just checking if you have gone through the list and have any questions?",
-  day3: "Good day ma, did you get a chance to look at your list? Happy to adjust anything or answer any questions.",
-  day5: "Hello ma, are you ready to place your order? You can also start with Pay Small Small and pay a part now.",
-  day7: "Good day ma, we have not heard from you. Are you still interested in the items? No pressure, just let me know either way.",
-};
-
-// log_quote_followup accepts exactly these outcomes. 'not_interested' and
-// 'ordered' auto-pause future follow-ups server-side.
+// mark_followup_done accepts exactly these outcomes; 'not_interested' and
+// 'ordered' stop the chase server-side.
 const OUTCOMES = [
   { value: "no_reply", label: "No reply" },
   { value: "replied", label: "Replied" },
@@ -51,19 +39,49 @@ const OUTCOMES = [
   { value: "ordered", label: "Ordered" },
 ] as const;
 
+// WhatsApp message templates. Chosen by out_kind, and the chase text varies by
+// how many follow-ups have already gone out (out_followup_no). Pre-filled into
+// WhatsApp; the human still presses send. Used verbatim.
+const CHASE_EARLY = "Hello ma, just checking if you have gone through the list and have any questions?";
+const CHASE_TWO = "Good day ma, did you get a chance to look at your list? Happy to adjust anything or answer any questions.";
+const CHASE_THREE = "Hello ma, are you ready to place your order? You can also start with Pay Small Small and pay a part now.";
+const CHASE_LATE = "Good day ma, we have not heard from you. Are you still interested in the items? No pressure, just let me know either way.";
+const PAYMENT_MESSAGE = "Hello ma, thank you for your order. We are ready to process it as soon as your payment comes through. Would you like to pay in full or use Pay Small Small?";
+
+function messageFor(kind: string, followupNo: number | null | undefined): string {
+  if (kind === "awaiting_payment") return PAYMENT_MESSAGE;
+  const n = Number(followupNo) || 0;
+  if (n <= 1) return CHASE_EARLY;
+  if (n === 2) return CHASE_TWO;
+  if (n === 3) return CHASE_THREE;
+  return CHASE_LATE;
+}
+
 const fmtNaira = (n: number | null | undefined) => "₦" + Number(n || 0).toLocaleString("en-NG");
-const stageLabel = (stage: string) => STAGES.find((s) => s.key === stage)?.label || stage;
 // wa.me needs digits only — strip +, spaces, dashes, brackets.
 const waDigits = (phone: string | null | undefined) => String(phone || "").replace(/\D/g, "");
-const waLink = (phone: string | null | undefined, stage: string) =>
-  `https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(SOP_MESSAGES[stage] || SOP_MESSAGES.day1)}`;
+const waLink = (phone: string | null | undefined, message: string) =>
+  `https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(message)}`;
+// tel: keeps the leading + and digits so it dials directly on mobile.
+const telLink = (phone: string | null | undefined) => `tel:${String(phone || "").replace(/[^\d+]/g, "")}`;
+
+const fmtDate = (d: string | null | undefined) => {
+  if (!d) return "";
+  // A bare date ("2026-07-25") must be parsed as LOCAL midnight, not UTC, or it
+  // can show the previous day in Nigeria's timezone.
+  const dt = new Date(String(d).length <= 10 ? `${d}T00:00:00` : d);
+  if (isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(",", "");
+};
+
+const sumValue = (arr: FollowupRow[]) => arr.reduce((s, r) => s + (Number(r.out_total) || 0), 0);
 
 export default function AdminFollowups() {
   const { adminUser } = usePermissions();
   const qc = useQueryClient();
-  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [tab, setTab] = useState<string>("today"); // DEFAULT: Follow Up Today
 
-  // Per-row "Log follow-up" form (only one open at a time).
+  // Per-row "Log / notes" form (only one open at a time).
   const [openLogId, setOpenLogId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<string>("no_reply");
   const [note, setNote] = useState<string>("");
@@ -78,40 +96,71 @@ export default function AdminFollowups() {
     staleTime: 30_000,
   });
 
-  const totalValue = useMemo(
-    () => rows.reduce((sum, r) => sum + (Number(r.out_total) || 0), 0),
-    [rows],
+  const overdueRows = useMemo(() => rows.filter((r) => r.out_bucket === "overdue"), [rows]);
+  const todayRows = useMemo(() => rows.filter((r) => r.out_bucket === "today"), [rows]);
+  const tomorrowRows = useMemo(() => rows.filter((r) => r.out_bucket === "tomorrow"), [rows]);
+  const laterRows = useMemo(() => rows.filter((r) => r.out_bucket === "later"), [rows]);
+  // Distinct future dates, ascending (ISO date strings sort chronologically).
+  const laterDates = useMemo(
+    () => [...new Set(laterRows.map((r) => r.out_due_date).filter(Boolean) as string[])].sort(),
+    [laterRows],
   );
 
-  const countByStage = useMemo(() => {
-    const m: Record<string, number> = { day1: 0, day3: 0, day5: 0, day7: 0 };
-    for (const r of rows) if (m[r.out_due_stage] != null) m[r.out_due_stage] += 1;
-    return m;
-  }, [rows]);
+  // Tab order: Overdue (only when present) -> Today -> Tomorrow -> real dates.
+  const tabs = useMemo(() => {
+    const list: Array<{ key: string; label: string; count: number; urgent?: boolean }> = [];
+    if (overdueRows.length) list.push({ key: "overdue", label: "Overdue", count: overdueRows.length, urgent: true });
+    list.push({ key: "today", label: "Follow Up Today", count: todayRows.length });
+    list.push({ key: "tomorrow", label: "Tomorrow", count: tomorrowRows.length });
+    for (const d of laterDates) list.push({ key: `date:${d}`, label: fmtDate(d), count: laterRows.filter((r) => r.out_due_date === d).length });
+    return list;
+  }, [overdueRows, todayRows, tomorrowRows, laterRows, laterDates]);
 
-  const filtered = stageFilter === "all" ? rows : rows.filter((r) => r.out_due_stage === stageFilter);
+  // If the selected tab vanished (e.g. its rows were all ticked), fall back to
+  // Today, which is always present.
+  const tabKeys = tabs.map((t) => t.key).join("|");
+  useEffect(() => {
+    if (!tabs.some((t) => t.key === tab)) setTab("today");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabKeys]);
 
-  const logMutation = useMutation({
-    mutationFn: async (v: { quoteId: string; stage: string; outcome: string; note: string }) => {
-      const { error } = await (supabase as any).rpc("log_quote_followup", {
+  const filtered = useMemo(() => {
+    if (tab === "overdue") return overdueRows;
+    if (tab === "tomorrow") return tomorrowRows;
+    if (tab.startsWith("date:")) { const d = tab.slice(5); return laterRows.filter((r) => r.out_due_date === d); }
+    return todayRows;
+  }, [tab, overdueRows, todayRows, tomorrowRows, laterRows]);
+
+  // THE TICK — logs the contact and auto-schedules the next follow-up. Also used
+  // by the Log/notes form (with an outcome + note). 'not_interested'/'ordered'
+  // stop the chase.
+  const doneMutation = useMutation({
+    mutationFn: async (v: { quoteId: string; outcome?: string | null; note?: string | null }) => {
+      const { data, error } = await (supabase as any).rpc("mark_followup_done", {
         p_quote_id: v.quoteId,
-        p_stage: v.stage,
         p_channel: "whatsapp",
-        p_note: v.note.trim() || null,
-        p_outcome: v.outcome,
+        p_outcome: v.outcome ?? null,
+        p_note: v.note?.trim() || null,
         p_by: adminUser?.email ?? adminUser?.id ?? null,
       });
       if (error) throw error;
+      return data as any;
     },
-    onSuccess: () => {
-      toast.success("Follow-up logged");
+    onSuccess: (data) => {
+      if (data?.stopped) {
+        toast.success(`Follow-ups stopped${data.reason ? ` (${String(data.reason).replace(/_/g, " ")})` : ""}.`);
+      } else if (data?.next_followup_date) {
+        toast.success(`Done. Next follow-up ${fmtDate(data.next_followup_date)}.`);
+      } else {
+        toast.success("Follow-up marked done.");
+      }
       setOpenLogId(null);
       setNote("");
       setOutcome("no_reply");
-      // Refetch: the just-logged stage is now done, so the row drops out.
+      // Refetch: the ticked row is rescheduled and drops out of this bucket.
       qc.invalidateQueries({ queryKey: ["quote-followup-queue"] });
     },
-    onError: (e: any) => toast.error(e?.message || "Could not log follow-up"),
+    onError: (e: any) => toast.error(e?.message || "Could not update the follow-up"),
   });
 
   const openLog = (id: string) => {
@@ -120,44 +169,50 @@ export default function AdminFollowups() {
     setNote("");
   };
 
+  const activeUrgent = tab === "overdue";
+
   return (
     <div className="max-w-[1100px] mx-auto px-4 py-6">
       {/* Header */}
-      <div className="mb-5">
+      <div className="mb-4">
         <h1 className="text-xl font-bold text-foreground">Follow-ups</h1>
         <p className="text-sm text-text-med mt-0.5">
-          Quotes due a follow-up today, highest value first. WhatsApp opens the SOP message pre-filled
-          (you press send), then log the outcome.
+          Tick each quote once you have contacted the customer and the next follow-up schedules itself.
+          Overdue quotes carry forward until they are ticked.
         </p>
         <div className="flex flex-wrap gap-3 mt-3">
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <div className="text-[11px] uppercase tracking-widest font-semibold text-text-med">Due today</div>
-            <div className="text-2xl font-bold text-foreground">{rows.length}</div>
+          <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-widest font-semibold text-destructive">Overdue</div>
+            <div className="text-2xl font-bold text-destructive">{overdueRows.length}</div>
+            <div className="text-[12px] font-mono-price text-destructive/80">{fmtNaira(sumValue(overdueRows))}</div>
           </div>
           <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <div className="text-[11px] uppercase tracking-widest font-semibold text-text-med">Total value</div>
-            <div className="text-2xl font-bold text-forest font-mono-price">{fmtNaira(totalValue)}</div>
+            <div className="text-[11px] uppercase tracking-widest font-semibold text-text-med">Follow up today</div>
+            <div className="text-2xl font-bold text-foreground">{todayRows.length}</div>
+            <div className="text-[12px] font-mono-price text-forest">{fmtNaira(sumValue(todayRows))}</div>
           </div>
         </div>
       </div>
 
-      {/* Stage filter with per-stage counts */}
+      {/* Tabs */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          onClick={() => setStageFilter("all")}
-          className={`rounded-pill px-3 py-1.5 text-xs font-semibold border ${stageFilter === "all" ? "bg-forest text-primary-foreground border-forest" : "bg-card text-foreground border-border hover:bg-muted"}`}
-        >
-          All ({rows.length})
-        </button>
-        {STAGES.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setStageFilter(s.key)}
-            className={`rounded-pill px-3 py-1.5 text-xs font-semibold border ${stageFilter === s.key ? "bg-forest text-primary-foreground border-forest" : "bg-card text-foreground border-border hover:bg-muted"}`}
-          >
-            {s.label} ({countByStage[s.key] ?? 0})
-          </button>
-        ))}
+        {tabs.map((t) => {
+          const active = t.key === tab;
+          const base = "rounded-pill px-3 py-1.5 text-xs font-semibold border transition-colors";
+          const cls = t.urgent
+            ? active
+              ? "bg-destructive text-primary-foreground border-destructive"
+              : "bg-destructive/10 text-destructive border-destructive/40 hover:bg-destructive/20"
+            : active
+              ? "bg-forest text-primary-foreground border-forest"
+              : "bg-card text-foreground border-border hover:bg-muted";
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)} className={`${base} ${cls}`}>
+              {t.urgent && <AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
+              {t.label} ({t.count})
+            </button>
+          );
+        })}
       </div>
 
       {/* States */}
@@ -174,7 +229,12 @@ export default function AdminFollowups() {
       {!isLoading && !isError && rows.length === 0 && (
         <div className="rounded-xl border border-border bg-card p-8 text-center">
           <p className="text-lg font-semibold text-foreground mb-1">All caught up 🎉</p>
-          <p className="text-sm text-text-med">No quotes are due a follow-up today.</p>
+          <p className="text-sm text-text-med">No quotes are due a follow-up.</p>
+        </div>
+      )}
+      {!isLoading && !isError && rows.length > 0 && filtered.length === 0 && (
+        <div className="rounded-xl border border-border bg-card p-8 text-center">
+          <p className="text-sm text-text-med">Nothing in this list.</p>
         </div>
       )}
 
@@ -183,16 +243,46 @@ export default function AdminFollowups() {
         <div className="space-y-2.5">
           {filtered.map((r) => {
             const isOpen = openLogId === r.out_quote_id;
+            const overdueBy = Number(r.out_days_overdue) || 0;
+            const awaitingPayment = r.out_kind === "awaiting_payment";
+            const message = messageFor(r.out_kind, r.out_followup_no);
+            const ticking = doneMutation.isPending && doneMutation.variables?.quoteId === r.out_quote_id;
+            const hasPhone = !!waDigits(r.out_phone);
             return (
-              <div key={r.out_quote_id} className="rounded-xl border border-border bg-card p-3.5">
-                <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <div
+                key={r.out_quote_id}
+                className={`rounded-xl border bg-card p-3.5 ${activeUrgent || overdueBy > 0 ? "border-destructive/40" : "border-border"}`}
+              >
+                <div className="flex items-start gap-3">
+                  {/* TICK — first thing on the card, before the name. */}
+                  <label className="flex-shrink-0 pt-0.5" title="Mark this follow-up done (schedules the next one)">
+                    {ticking ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-forest" />
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        disabled={doneMutation.isPending}
+                        onChange={() => doneMutation.mutate({ quoteId: r.out_quote_id })}
+                        className="w-5 h-5 accent-forest cursor-pointer disabled:opacity-40"
+                      />
+                    )}
+                  </label>
+
                   {/* Customer + meta */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm text-foreground truncate">{r.out_customer || "—"}</span>
-                      <span className="rounded-pill bg-forest-light text-forest border border-forest/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                        {stageLabel(r.out_due_stage)}
-                      </span>
+                      {overdueBy > 0 && (
+                        <span className="rounded-pill bg-destructive text-primary-foreground px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                          Overdue by {overdueBy} day{overdueBy === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {awaitingPayment && (
+                        <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                          Awaiting payment
+                        </span>
+                      )}
                     </div>
                     <div className="text-[12px] text-text-med mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
                       <span>{r.out_phone || "no phone"}</span>
@@ -204,26 +294,36 @@ export default function AdminFollowups() {
                     </div>
                   </div>
 
-                  {/* Actions */}
+                  {/* Actions: Call -> WhatsApp -> Log/notes */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <a
-                      href={waLink(r.out_phone, r.out_due_stage)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-2 text-xs font-semibold hover:brightness-95"
-                    >
-                      <MessageCircle className="w-4 h-4" /> WhatsApp
-                    </a>
+                    {hasPhone && (
+                      <a
+                        href={telLink(r.out_phone)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2 text-xs font-semibold hover:bg-forest-deep"
+                      >
+                        <Phone className="w-4 h-4" /> Call
+                      </a>
+                    )}
+                    {hasPhone && (
+                      <a
+                        href={waLink(r.out_phone, message)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-2 text-xs font-semibold hover:brightness-95"
+                      >
+                        <MessageCircle className="w-4 h-4" /> WhatsApp
+                      </a>
+                    )}
                     <button
                       onClick={() => openLog(r.out_quote_id)}
                       className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border ${isOpen ? "bg-forest text-primary-foreground border-forest" : "bg-card text-foreground border-border hover:bg-muted"}`}
                     >
-                      <ClipboardCheck className="w-4 h-4" /> Log follow-up
+                      <StickyNote className="w-4 h-4" /> Log / notes
                     </button>
                   </div>
                 </div>
 
-                {/* Inline log form */}
+                {/* Inline log form — records an outcome + note via mark_followup_done. */}
                 {isOpen && (
                   <div className="mt-3 pt-3 border-t border-border/70 flex flex-col sm:flex-row gap-2 sm:items-end">
                     <div className="sm:w-44">
@@ -248,15 +348,11 @@ export default function AdminFollowups() {
                       />
                     </div>
                     <button
-                      onClick={() => logMutation.mutate({ quoteId: r.out_quote_id, stage: r.out_due_stage, outcome, note })}
-                      disabled={logMutation.isPending}
+                      onClick={() => doneMutation.mutate({ quoteId: r.out_quote_id, outcome, note })}
+                      disabled={doneMutation.isPending}
                       className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
                     >
-                      {logMutation.isPending && logMutation.variables?.quoteId === r.out_quote_id ? (
-                        <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-                      ) : (
-                        "Save log"
-                      )}
+                      {ticking ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : "Save & mark done"}
                     </button>
                   </div>
                 )}
