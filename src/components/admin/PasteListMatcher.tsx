@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ClipboardPaste, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { ClipboardPaste, Loader2, ChevronDown, ChevronRight, Upload, AlertTriangle } from "lucide-react";
 import { fmtN, QUOTE_SECTIONS } from "@/components/admin/PackageItemsBuilder";
 
 // "Paste the list" fast quote builder. The admin pastes the customer's whole
@@ -123,6 +123,77 @@ export default function PasteListMatcher({
   const [rows, setRows] = useState<ReviewRow[] | null>(null);
   const [matching, setMatching] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [reading, setReading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Photo transcription. The read-hospital-list edge function TRANSCRIBES ONLY
+  // (it never stores the image); the returned text lands in the textarea for
+  // the admin to review/edit before matching. We never auto-match a photo and
+  // never re-display the image.
+  const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const res = String(fr.result || "");
+        const comma = res.indexOf(","); // strip the "data:image/...;base64," prefix
+        resolve(comma >= 0 ? res.slice(comma + 1) : res);
+      };
+      fr.onerror = () => reject(new Error("Could not read the image file."));
+      fr.readAsDataURL(file);
+    });
+
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so re-selecting the SAME file fires change again.
+    e.target.value = "";
+    if (!file) return;
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast.error("Please upload a JPEG, PNG, WebP or GIF image.");
+      return;
+    }
+    setReading(true);
+    try {
+      const image_base64 = await fileToBase64(file);
+      // functions.invoke attaches the admin's session JWT (verify_jwt=TRUE).
+      const { data, error } = await supabase.functions.invoke("read-hospital-list", {
+        body: { image_base64, media_type: file.type },
+      });
+      if (error) {
+        // Surface the edge function's returned error message plainly.
+        let msg = (error as any)?.message || "Could not read the photo.";
+        try {
+          const ctx = (error as any)?.context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch { /* keep the generic message */ }
+        throw new Error(msg);
+      }
+      if (!data?.success) throw new Error(data?.error || "Could not read the photo.");
+      // Land the transcription in the SAME textarea. Do NOT auto-run the matcher.
+      setRaw(String(data.text || ""));
+      const unreadable = Number(data.unreadable_count) || 0;
+      if (unreadable > 0) {
+        toast(`${unreadable} line${unreadable === 1 ? "" : "s"} could not be read clearly. Check the ??? lines before matching.`);
+      } else {
+        toast.success("List read. Review and edit before matching.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Could not read the photo.");
+    } finally {
+      setReading(false);
+    }
+  };
+
+  // Live count of unreadable lines still in the textarea (starts at the edge
+  // function's unreadable_count and drops as the admin fixes each ??? line).
+  const unreadableInText = useMemo(
+    () => raw.split("\n").filter((l) => l.trim().startsWith("???")).length,
+    [raw],
+  );
 
   const runMatch = async () => {
     if (!raw.trim()) { toast.error("Paste the customer's list first."); return; }
@@ -218,6 +289,32 @@ export default function PasteListMatcher({
           )}
 
           <div>
+            {/* Upload a photo of the list — an additional way to fill the same
+                textarea. Transcribes only; never stored, never re-displayed. */}
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled || reading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                {reading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Reading the list…</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Upload a photo of the list</>
+                )}
+              </button>
+              <span className="text-[11px] text-text-med">or paste / type the list below</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handlePhoto}
+                disabled={disabled || reading}
+                className="hidden"
+              />
+            </div>
+
             <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">
               Customer's list (one item per line)
             </label>
@@ -229,6 +326,17 @@ export default function PasteListMatcher({
               placeholder={"2 packs of newborn diapers\nMaternity pads\nDettol\nBaby wipes x3"}
               className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background font-mono disabled:opacity-50"
             />
+
+            {unreadableInText > 0 && (
+              <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 mt-2 flex items-start gap-1.5">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  {unreadableInText} line{unreadableInText === 1 ? "" : "s"} could not be read clearly.
+                  Please check the lines starting with <span className="font-mono font-bold">???</span> before matching.
+                </span>
+              </p>
+            )}
+
             <div className="flex items-center gap-2 mt-2">
               <button
                 type="button"
