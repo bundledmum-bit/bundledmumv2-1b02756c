@@ -22,6 +22,7 @@ import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmM
 import { useSpendThresholds, getSpendPrompt } from "@/hooks/useSpendThresholds";
 import { trackEvent, getSessionId, getAttribution, markSessionConverted } from "@/lib/analytics";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import { syncOrderToSheets } from "@/lib/googleSheets";
 import { analytics, trackEcommerce } from "@/lib/ga";
 
@@ -350,25 +351,18 @@ export default function CheckoutPage() {
 
   // Once deliverable states load, set the form's state to the first
   // active state if the current form.state isn't in the list.
-  // Meta Pixel InitiateCheckout — fires once on mount when the cart
-  // has contents. Guarded via sessionStorage so refreshes don't double-
-  // count.
+  // Fallback InitiateCheckout + checkout_started for direct /checkout visits
+  // (bookmark, refresh, typed URL). The proceed-to-checkout ACTIONS already
+  // fire these via trackCheckoutInitiated; the shared session guard means this
+  // fallback is a no-op when an action already fired, so there is never a
+  // double-fire. Runs when the cart has contents.
   useEffect(() => {
     if (totalItems === 0) return;
-    // Pixel InitiateCheckout, once per checkout session.
-    try {
-      const k = "bm_meta_initiate_checkout_fired";
-      if (!sessionStorage.getItem(k)) {
-        sessionStorage.setItem(k, "1");
-        pixelTrack("InitiateCheckout", pixelMoney(subtotal, {
-          num_items: totalItems,
-          content_ids: cart.map((c: any) => c.id),
-        }));
-      }
-    } catch {
-      // sessionStorage blocked: fire without the guard so the event still counts.
-      pixelTrack("InitiateCheckout", pixelMoney(subtotal, { num_items: totalItems, content_ids: cart.map((c: any) => c.id) }));
-    }
+    trackCheckoutInitiated({
+      value: subtotal,
+      numItems: totalItems,
+      contentIds: cart.map((c: any) => c.id),
+    });
 
     // GA begin_checkout on checkout mount, once per checkout session. Fired here
     // (not on the /cart Proceed button) so ALL entry paths count exactly once:
@@ -481,7 +475,8 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     document.title = "Secure Checkout | BundledMum";
-    trackEvent("checkout_started", { item_count: totalItems, subtotal });
+    // checkout_started now fires (with InitiateCheckout) via
+    // trackCheckoutInitiated at the proceed action / mount fallback above.
   }, []);
 
   useEffect(() => {

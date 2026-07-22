@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useCart, fmt, formatColor, cartItemImage, cartItemKey, type CartItem } from "@/lib/cart";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import Breadcrumb from "@/components/Breadcrumb";
 import EditCartItemModal from "@/components/EditCartItemModal";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
@@ -122,6 +123,10 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 
 export default function CartPage() {
   const { cart, setCart, clearCart, addToCart, subtotal, lineEffective, totalItems, gifts, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
+  // Proceed-to-checkout action: fire InitiateCheckout + checkout_started when
+  // the shopper clicks through to /checkout (deduped once per session).
+  const fireCheckoutInitiated = () =>
+    trackCheckoutInitiated({ value: subtotal, numItems: totalItems, contentIds: cart.map((c) => c.id) });
   const { data: settings } = useSiteSettings();
   const { data: thresholds } = useSpendThresholds();
   // Image zoom + Edit modal local state. Both are page-scoped because the
@@ -863,7 +868,7 @@ export default function CartPage() {
                   Remove unavailable items to continue
                 </button>
               ) : (
-                <Link to="/checkout" className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
+                <Link to="/checkout" onClick={fireCheckoutInitiated} className="mt-5 block w-full rounded-pill bg-forest py-3 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive">
                   Proceed to Checkout 🔒
                 </Link>
               )}
@@ -997,6 +1002,7 @@ export default function CartPage() {
             ) : (
               <Link
                 to="/checkout"
+                onClick={fireCheckoutInitiated}
                 className="flex-1 inline-flex items-center justify-center rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep"
               >
                 Proceed to Checkout →

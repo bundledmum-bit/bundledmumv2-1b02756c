@@ -10,6 +10,7 @@ import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalList
 import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "@/lib/customItemsRequest";
 import ImageZoomModal from "@/components/ImageZoomModal";
 import { trackEvent } from "@/lib/analytics";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
 
 // Fire-and-forget hospital-list interaction event (reuses the shared analytics
@@ -394,8 +395,15 @@ export default function HospitalListPage() {
     setQuery(v);
   };
 
-  const goToCheckout = () =>
+  const goToCheckout = () => {
+    // Proceed-to-checkout action: fire InitiateCheckout + checkout_started here.
+    trackCheckoutInitiated({
+      value: subtotal,
+      numItems: totalItems,
+      contentIds: cart.map((c) => c.id),
+    });
     navigate("/checkout", { state: { from: "/hospital-list" } });
+  };
 
   const cardProps = {
     cart,

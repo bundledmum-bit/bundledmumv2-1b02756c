@@ -8,6 +8,7 @@ import { fmt, useCart } from "@/lib/cart";
 import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import { analytics } from "@/lib/ga";
 import { getBrandImage } from "@/lib/brandImage";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import {
   useBundleItemsEdit,
   type BrandRow,
@@ -235,6 +236,12 @@ Please let me know the next steps to complete my order. Thank you! 🛍️`;
       })),
       removedDefaultCount,
     } as any);
+    // Proceed-to-checkout action: fire InitiateCheckout + checkout_started here.
+    trackCheckoutInitiated({
+      value: currentTotalPrice,
+      numItems: 1,
+      contentIds: [productId],
+    });
     navigate("/checkout");
   };
 

@@ -8,6 +8,7 @@ import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { getBrandImage } from "@/lib/brandImage";
 import { setLandingOrigin } from "@/lib/landingOrigin";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import { trackCartItemsAdded } from "@/lib/trackAddToCart";
 import QuoteItemsCard, { QUOTE_ITEM_SECTIONS } from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
@@ -530,6 +531,13 @@ export default function PackagePage() {
       setLandingOrigin(page.id, next.map((i) => String(i.id)));
       setConfirmReplace(false);
       setLoadingCart(false);
+      // Proceed-to-checkout action: fire InitiateCheckout + checkout_started
+      // here so this landing-page entry registers even before /checkout mounts.
+      trackCheckoutInitiated({
+        value: next.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0),
+        numItems: next.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+        contentIds: next.map((i) => String(i.id)),
+      });
       const preselectKlump = pendingPayKlump || urlPayKlump;
       navigate(preselectKlump ? "/checkout?pay=klump" : "/checkout");
     } catch (e: any) {

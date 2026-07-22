@@ -12,6 +12,7 @@ import {
 } from "@/hooks/useQuoteShare";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { trackCartItemsAdded } from "@/lib/trackAddToCart";
+import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import { formatQuoteDeliveryFee, QUOTE_DELIVERY_TBD } from "@/lib/quotes";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { downloadQuotePdf } from "@/lib/quotePdf";
@@ -182,6 +183,13 @@ export default function QuotePage() {
       sessionStorage.setItem(PENDING_QUOTE_TOKEN_KEY, shareToken);
       setConfirmReplace(false);
       setLoadingCart(false);
+      // Proceed-to-checkout action: fire InitiateCheckout + checkout_started
+      // here so this quote entry registers even before /checkout mounts.
+      trackCheckoutInitiated({
+        value: next.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.qty) || 0), 0),
+        numItems: next.reduce((s, i) => s + (Number(i.qty) || 0), 0),
+        contentIds: next.map((i) => String(i.id)),
+      });
       // Preselect Klump when requested via the CTA or the ?pay=klump deep-link.
       // Checkout falls back silently if Klump is disabled there.
       const preselectKlump = pendingPayKlump || urlPayKlump;
