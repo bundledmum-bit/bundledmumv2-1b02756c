@@ -180,13 +180,13 @@ export default function AdminFollowups() {
           Tick each quote once you have contacted the customer and the next follow-up schedules itself.
           Overdue quotes carry forward until they are ticked.
         </p>
-        <div className="flex flex-wrap gap-3 mt-3">
-          <div className="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3">
+        <div className="flex gap-3 mt-3">
+          <div className="flex-1 rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3">
             <div className="text-[11px] uppercase tracking-widest font-semibold text-destructive">Overdue</div>
             <div className="text-2xl font-bold text-destructive">{overdueRows.length}</div>
             <div className="text-[12px] font-mono-price text-destructive/80">{fmtNaira(sumValue(overdueRows))}</div>
           </div>
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <div className="flex-1 rounded-xl border border-border bg-card px-4 py-3">
             <div className="text-[11px] uppercase tracking-widest font-semibold text-text-med">Follow up today</div>
             <div className="text-2xl font-bold text-foreground">{todayRows.length}</div>
             <div className="text-[12px] font-mono-price text-forest">{fmtNaira(sumValue(todayRows))}</div>
@@ -194,11 +194,11 @@ export default function AdminFollowups() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      {/* Tabs — swipeable on mobile so many date tabs don't stack into rows. */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
         {tabs.map((t) => {
           const active = t.key === tab;
-          const base = "rounded-pill px-3 py-1.5 text-xs font-semibold border transition-colors";
+          const base = "rounded-pill px-3 py-2 text-xs font-semibold border transition-colors whitespace-nowrap flex-shrink-0";
           const cls = t.urgent
             ? active
               ? "bg-destructive text-primary-foreground border-destructive"
@@ -253,18 +253,21 @@ export default function AdminFollowups() {
                 key={r.out_quote_id}
                 className={`rounded-xl border bg-card p-3.5 ${activeUrgent || overdueBy > 0 ? "border-destructive/40" : "border-border"}`}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                  {/* Tick + customer info stay on one line; on mobile the action
+                      buttons drop to a full-width row below (see below). */}
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                   {/* TICK — first thing on the card, before the name. */}
-                  <label className="flex-shrink-0 pt-0.5" title="Mark this follow-up done (schedules the next one)">
+                  <label className="flex-shrink-0 py-1 -my-1 pr-1" title="Mark this follow-up done (schedules the next one)">
                     {ticking ? (
-                      <Loader2 className="w-5 h-5 animate-spin text-forest" />
+                      <Loader2 className="w-6 h-6 animate-spin text-forest" />
                     ) : (
                       <input
                         type="checkbox"
                         checked={false}
                         disabled={doneMutation.isPending}
                         onChange={() => doneMutation.mutate({ quoteId: r.out_quote_id })}
-                        className="w-5 h-5 accent-forest cursor-pointer disabled:opacity-40"
+                        className="w-6 h-6 accent-forest cursor-pointer disabled:opacity-40"
                       />
                     )}
                   </label>
@@ -293,13 +296,15 @@ export default function AdminFollowups() {
                       </Link>
                     </div>
                   </div>
+                  </div>
 
-                  {/* Actions: Call -> WhatsApp -> Log/notes */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  {/* Actions: Call -> WhatsApp -> Log/notes.
+                      Full-width tap row on mobile; inline on the right on desktop. */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0">
                     {hasPhone && (
                       <a
                         href={telLink(r.out_phone)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2 text-xs font-semibold hover:bg-forest-deep"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2.5 text-xs font-semibold hover:bg-forest-deep"
                       >
                         <Phone className="w-4 h-4" /> Call
                       </a>
@@ -309,16 +314,16 @@ export default function AdminFollowups() {
                         href={waLink(r.out_phone, message)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-2 text-xs font-semibold hover:brightness-95"
+                        className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-2.5 text-xs font-semibold hover:brightness-95"
                       >
                         <MessageCircle className="w-4 h-4" /> WhatsApp
                       </a>
                     )}
                     <button
                       onClick={() => openLog(r.out_quote_id)}
-                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold border ${isOpen ? "bg-forest text-primary-foreground border-forest" : "bg-card text-foreground border-border hover:bg-muted"}`}
+                      className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold border ${isOpen ? "bg-forest text-primary-foreground border-forest" : "bg-card text-foreground border-border hover:bg-muted"}`}
                     >
-                      <StickyNote className="w-4 h-4" /> Log / notes
+                      <StickyNote className="w-4 h-4" /> <span className="whitespace-nowrap">Log / notes</span>
                     </button>
                   </div>
                 </div>
