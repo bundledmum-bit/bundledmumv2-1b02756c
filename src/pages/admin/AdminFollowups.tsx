@@ -29,15 +29,32 @@ interface FollowupRow {
   out_last_contact: string | null;
 }
 
-// mark_followup_done accepts exactly these outcomes; 'not_interested' and
-// 'ordered' stop the chase server-side.
-const OUTCOMES = [
-  { value: "no_reply", label: "No reply" },
-  { value: "replied", label: "Replied" },
-  { value: "interested", label: "Interested" },
-  { value: "not_interested", label: "Not interested" },
-  { value: "ordered", label: "Ordered" },
-] as const;
+// An outcome rule from followup_outcome_rules(). The list is NEVER hardcoded —
+// labels, and whether an outcome closes the quote, come from the RPC so they
+// stay in sync with the backend.
+interface OutcomeRule {
+  outcome: string;
+  label: string;
+  next_gap_days: number | null;
+  closes: boolean;
+  closes_as: string | null;
+}
+
+// UI-only grouping so the picker scans well. Only the group membership lives
+// here; every label/closes flag is read from the RPC. Any outcome the RPC
+// returns that isn't listed here falls into an "Other" group so it is never
+// dropped from the picker.
+const OUTCOME_GROUPS: Array<{ title: string; codes: string[] }> = [
+  { title: "No contact made", codes: ["call_not_picked", "number_unreachable", "wrong_number"] },
+  {
+    title: "Still in play",
+    codes: [
+      "call_back_later", "still_deciding", "wants_discount", "whatsapp_sent",
+      "wants_revised_quote", "waiting_for_money", "delivery_far_off", "ready_to_order",
+    ],
+  },
+  { title: "Closed", codes: ["ordered", "not_interested", "already_given_birth", "bought_elsewhere"] },
+];
 
 // WhatsApp message templates. Chosen by out_kind, and the chase text varies by
 // how many follow-ups have already gone out (out_followup_no). Pre-filled into
@@ -83,7 +100,7 @@ export default function AdminFollowups() {
 
   // Per-row "Log / notes" form (only one open at a time).
   const [openLogId, setOpenLogId] = useState<string | null>(null);
-  const [outcome, setOutcome] = useState<string>("no_reply");
+  const [outcome, setOutcome] = useState<string>(""); // empty until the admin picks one
   const [note, setNote] = useState<string>("");
 
   const { data: rows = [], isLoading, isError, error } = useQuery({
@@ -95,6 +112,38 @@ export default function AdminFollowups() {
     },
     staleTime: 30_000,
   });
+
+  // Outcome picker options come from the backend, never hardcoded.
+  const { data: outcomeRules = [] } = useQuery({
+    queryKey: ["followup-outcome-rules"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("followup_outcome_rules");
+      if (error) throw error;
+      return (data || []) as OutcomeRule[];
+    },
+    staleTime: 10 * 60_000,
+  });
+
+  const ruleByOutcome = useMemo(() => {
+    const m = new Map<string, OutcomeRule>();
+    for (const r of outcomeRules) m.set(r.outcome, r);
+    return m;
+  }, [outcomeRules]);
+
+  // Group the RPC rules for the picker; anything not in a known group falls into
+  // "Other" so a newly-added backend outcome still appears.
+  const groupedOutcomes = useMemo(() => {
+    const used = new Set<string>();
+    const groups = OUTCOME_GROUPS.map((g) => ({
+      title: g.title,
+      rules: g.codes.map((c) => ruleByOutcome.get(c)).filter(Boolean).map((r) => { used.add(r!.outcome); return r!; }),
+    }));
+    const leftover = outcomeRules.filter((r) => !used.has(r.outcome));
+    if (leftover.length) groups.push({ title: "Other", rules: leftover });
+    return groups.filter((g) => g.rules.length > 0);
+  }, [outcomeRules, ruleByOutcome]);
+
+  const selectedRule = outcome ? ruleByOutcome.get(outcome) : undefined;
 
   const overdueRows = useMemo(() => rows.filter((r) => r.out_bucket === "overdue"), [rows]);
   const todayRows = useMemo(() => rows.filter((r) => r.out_bucket === "today"), [rows]);
@@ -131,41 +180,41 @@ export default function AdminFollowups() {
     return todayRows;
   }, [tab, overdueRows, todayRows, tomorrowRows, laterRows]);
 
-  // THE TICK — logs the contact and auto-schedules the next follow-up. Also used
-  // by the Log/notes form (with an outcome + note). 'not_interested'/'ordered'
-  // stop the chase.
+  // Records the contact with a COMPULSORY outcome. The backend decides the next
+  // date and any status change and returns a human-readable `message` we show
+  // as-is. The frontend never computes dates or statuses.
   const doneMutation = useMutation({
-    mutationFn: async (v: { quoteId: string; outcome?: string | null; note?: string | null }) => {
+    mutationFn: async (v: { quoteId: string; outcome: string; note?: string | null }) => {
       const { data, error } = await (supabase as any).rpc("mark_followup_done", {
         p_quote_id: v.quoteId,
         p_channel: "whatsapp",
-        p_outcome: v.outcome ?? null,
+        p_outcome: v.outcome,
         p_note: v.note?.trim() || null,
         p_by: adminUser?.email ?? adminUser?.id ?? null,
       });
       if (error) throw error;
+      // The RPC signals business failures (e.g. missing outcome) via success:false.
+      if (!data?.success) throw new Error(data?.error || "Could not update the follow-up.");
       return data as any;
     },
     onSuccess: (data) => {
-      if (data?.stopped) {
-        toast.success(`Follow-ups stopped${data.reason ? ` (${String(data.reason).replace(/_/g, " ")})` : ""}.`);
-      } else if (data?.next_followup_date) {
-        toast.success(`Done. Next follow-up ${fmtDate(data.next_followup_date)}.`);
-      } else {
-        toast.success("Follow-up marked done.");
-      }
+      toast.success(data.message || "Follow-up updated.");
       setOpenLogId(null);
       setNote("");
-      setOutcome("no_reply");
-      // Refetch: the ticked row is rescheduled and drops out of this bucket.
+      setOutcome("");
+      // Refetch so the card moves/disappears (or, for 'ordered', reappears
+      // tomorrow as an awaiting-payment follow-up — the backend decides).
       qc.invalidateQueries({ queryKey: ["quote-followup-queue"] });
     },
+    // On failure, leave the form open and the card unticked so the admin retries.
     onError: (e: any) => toast.error(e?.message || "Could not update the follow-up"),
   });
 
+  // Ticking (or the Log/notes button) OPENS the feedback form; it never saves on
+  // its own. Toggling it closed reverts the tick with nothing logged.
   const openLog = (id: string) => {
     setOpenLogId((cur) => (cur === id ? null : id));
-    setOutcome("no_reply");
+    setOutcome("");
     setNote("");
   };
 
@@ -257,16 +306,18 @@ export default function AdminFollowups() {
                   {/* Tick + customer info stay on one line; on mobile the action
                       buttons drop to a full-width row below (see below). */}
                   <div className="flex items-start gap-3 flex-1 min-w-0">
-                  {/* TICK — first thing on the card, before the name. */}
-                  <label className="flex-shrink-0 py-1 -my-1 pr-1" title="Mark this follow-up done (schedules the next one)">
+                  {/* TICK — first thing on the card, before the name. Ticking
+                      OPENS the outcome form; it never saves on its own. Shows as
+                      ticked while the form is open (pending) and reverts on cancel. */}
+                  <label className="flex-shrink-0 py-1 -my-1 pr-1" title="Log the outcome of this follow-up">
                     {ticking ? (
                       <Loader2 className="w-6 h-6 animate-spin text-forest" />
                     ) : (
                       <input
                         type="checkbox"
-                        checked={false}
+                        checked={isOpen}
                         disabled={doneMutation.isPending}
-                        onChange={() => doneMutation.mutate({ quoteId: r.out_quote_id })}
+                        onChange={() => openLog(r.out_quote_id)}
                         className="w-6 h-6 accent-forest cursor-pointer disabled:opacity-40"
                       />
                     )}
@@ -328,43 +379,68 @@ export default function AdminFollowups() {
                   </div>
                 </div>
 
-                {/* Inline log form — records an outcome + note via mark_followup_done. */}
+                {/* Feedback form — a compulsory outcome (from followup_outcome_rules)
+                    plus an optional note, saved via mark_followup_done. */}
                 {isOpen && (
-                  <div className="mt-3 pt-3 border-t border-border/70 flex flex-col sm:flex-row gap-2 sm:items-end">
-                    <div className="sm:w-44">
-                      <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">Outcome</label>
-                      <select
-                        value={outcome}
-                        onChange={(e) => setOutcome(e.target.value)}
-                        className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
-                      >
-                        {OUTCOMES.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                  <div className="mt-3 pt-3 border-t border-border/70 space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                      <div className="sm:w-72">
+                        <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">
+                          Outcome <span className="text-destructive">*</span>
+                        </label>
+                        <select
+                          value={outcome}
+                          onChange={(e) => setOutcome(e.target.value)}
+                          className={`w-full border rounded-lg px-3 py-2 text-sm bg-background ${outcome ? "border-input" : "border-amber-300"}`}
+                        >
+                          <option value="" disabled>Choose an outcome…</option>
+                          {groupedOutcomes.map((g) => (
+                            <optgroup key={g.title} label={g.title}>
+                              {g.rules.map((rule) => (
+                                <option key={rule.outcome} value={rule.outcome}>
+                                  {rule.label}{rule.closes ? " — closes quote" : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">Note (optional)</label>
+                        <input
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          placeholder="What happened on this follow-up?"
+                          className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => doneMutation.mutate({ quoteId: r.out_quote_id, outcome, note })}
+                          disabled={doneMutation.isPending || !outcome}
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
+                        >
+                          {ticking ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : "Save"}
+                        </button>
+                        <button
+                          onClick={() => { setOpenLogId(null); setOutcome(""); setNote(""); }}
+                          disabled={doneMutation.isPending}
+                          className="inline-flex items-center justify-center rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-text-med hover:bg-muted disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <label className="block text-[10px] uppercase tracking-widest font-semibold text-text-med mb-1">Note (optional)</label>
-                      <input
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        placeholder="What happened on this follow-up?"
-                        className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
-                      />
-                    </div>
-                    <button
-                      onClick={() => doneMutation.mutate({ quoteId: r.out_quote_id, outcome, note })}
-                      disabled={doneMutation.isPending}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50"
-                    >
-                      {ticking ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : "Save & mark done"}
-                    </button>
+                    {!outcome && (
+                      <p className="text-[11px] text-amber-700">Choose an outcome to save this follow-up.</p>
+                    )}
+                    {selectedRule?.closes && (
+                      <p className="text-[11px] text-destructive font-semibold flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        This closes the quote{selectedRule.closes_as ? ` as ${selectedRule.closes_as.replace(/_/g, " ")}` : ""}.
+                      </p>
+                    )}
                   </div>
-                )}
-                {isOpen && (outcome === "not_interested" || outcome === "ordered") && (
-                  <p className="text-[11px] text-text-med mt-1.5 italic">
-                    Logging {outcome === "ordered" ? "\"Ordered\"" : "\"Not interested\""} stops future follow-ups for this quote.
-                  </p>
                 )}
               </div>
             );
