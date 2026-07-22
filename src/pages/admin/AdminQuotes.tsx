@@ -1696,7 +1696,7 @@ function QuoteEditor({
   const requirePhone = (): boolean => {
     if (phoneValid) return true;
     setPhoneTouched(true);
-    toast.error(PHONE_REQUIRED_MSG);
+    toast.error("Add a phone number to save this quote.");
     return false;
   };
 
@@ -2182,8 +2182,7 @@ function QuoteEditor({
           <section className="bg-card border border-border rounded-xl p-4 space-y-2">
             <button
               onClick={handleSaveDraft}
-              disabled={!canEdit || upsertQuote.isPending || !phoneValid}
-              title={!phoneValid ? PHONE_REQUIRED_MSG : undefined}
+              disabled={!canEdit || upsertQuote.isPending}
               className="w-full inline-flex items-center justify-center gap-1.5 bg-card border border-border px-4 py-2 rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-40"
             >
               Save Draft
