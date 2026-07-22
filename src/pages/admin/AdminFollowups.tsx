@@ -28,6 +28,7 @@ interface FollowupRow {
   out_kind: string;                     // 'chase_quote' | 'awaiting_payment'
   out_followup_no: number | null;       // how many follow-ups already done
   out_last_contact: string | null;
+  out_expired: boolean | null;          // true = past expiry, only shown on a one-time grace round (stale prices)
 }
 
 // An outcome rule from followup_outcome_rules(). The list is NEVER hardcoded —
@@ -292,6 +293,7 @@ export default function AdminFollowups() {
             const isOpen = openLogId === r.out_quote_id;
             const overdueBy = Number(r.out_days_overdue) || 0;
             const awaitingPayment = r.out_kind === "awaiting_payment";
+            const expired = !!r.out_expired;
             const ticking = doneMutation.isPending && doneMutation.variables?.quoteId === r.out_quote_id;
             const hasPhone = !!waDigits(r.out_phone);
             return (
@@ -332,6 +334,11 @@ export default function AdminFollowups() {
                       {awaitingPayment && (
                         <span className="rounded-pill bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
                           Awaiting payment
+                        </span>
+                      )}
+                      {expired && (
+                        <span className="rounded-pill bg-muted text-text-med border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                          Expired quote - last follow-up
                         </span>
                       )}
                     </div>
