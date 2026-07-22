@@ -119,6 +119,7 @@ import AdminPromotions from "@/pages/admin/AdminPromotions";
 import AdminQuizLeads from "@/pages/admin/AdminQuizLeads";
 import AdminQuotes from "@/pages/admin/AdminQuotes";
 import QuotePipeline from "@/pages/admin/QuotePipeline";
+import AdminFollowups from "@/pages/admin/AdminFollowups";
 import AdminQuizEngine from "@/pages/admin/AdminQuizEngine";
 import AdminEmailTemplates from "@/pages/admin/AdminEmailTemplates";
 import AdminEmailLogs from "@/pages/admin/AdminEmailLogs";
@@ -433,6 +434,7 @@ const App = () => (
                 <Route path="quotes" element={<PermissionGate module="quotes" action="view"><AdminQuotes /></PermissionGate>} />
                 <Route path="hospital-list" element={<PermissionGate module="products" action="edit"><AdminHospitalList /></PermissionGate>} />
                 <Route path="quotes/pipeline" element={<PermissionGate module="quotes" action="view"><QuotePipeline /></PermissionGate>} />
+                <Route path="followups" element={<PermissionGate module="quotes" action="view"><AdminFollowups /></PermissionGate>} />
                 <Route path="deliverable-states" element={<PermissionGate module="delivery" action="view"><AdminDeliverableStates /></PermissionGate>} />
                 <Route path="couriers" element={<PermissionGate module="delivery" action="view"><AdminCouriers /></PermissionGate>} />
                 <Route path="pages" element={<PermissionGate module="content" action="view"><AdminPages /></PermissionGate>} />

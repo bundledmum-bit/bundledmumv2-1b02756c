@@ -199,6 +199,15 @@ function AdminLayoutInner() {
       extras.push({ to: "/admin/cart-data", label: "Cart Data", icon: ShoppingBag, exact: false, navKey: "cart_data", children: [] });
     }
 
+    // Follow-ups queue (Day 1/3/5/7 quote follow-up cadence). Frontend page
+    // with no admin_nav_items row yet, so append it for anyone who can view
+    // quotes.
+    const hasFollowups = base.some((e) => e.to === "/admin/followups" || e.navKey === "followups");
+    const canSeeFollowups = isSuperAdmin || can("quotes", "view");
+    if (!hasFollowups && canSeeFollowups) {
+      extras.push({ to: "/admin/followups", label: "Follow-ups", icon: MessageSquare, exact: false, navKey: "followups", children: [] });
+    }
+
     return extras.length ? [...base, ...extras] : base;
   }, [visibleNav, isSuperAdmin, can]);
 

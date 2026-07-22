@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -111,6 +111,20 @@ export default function AdminQuotes() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<"list" | "editor">("list");
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Deep link support: /admin/quotes?quote=<id> (e.g. the Follow-ups queue's
+  // "view quote" link) opens that quote straight into the editor.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const qid = searchParams.get("quote");
+    if (qid) {
+      setEditingId(qid);
+      setView("editor");
+      // Drop the param so a later "back to list" doesn't reopen it.
+      searchParams.delete("quote");
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<QuoteStatus>("all");
   // Modal toggles for the per-row workflow actions.
