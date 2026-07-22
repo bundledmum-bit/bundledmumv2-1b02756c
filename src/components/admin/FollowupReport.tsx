@@ -99,10 +99,10 @@ function StatCard({ label, value, sub, tone = "default" }: { label: string; valu
     tone === "good" ? "border-forest/30" : tone === "warn" ? "border-amber-300" : tone === "bad" ? "border-destructive/40" : "border-border";
   const valCls = tone === "good" ? "text-forest" : tone === "warn" ? "text-amber-700" : tone === "bad" ? "text-destructive" : "text-foreground";
   return (
-    <div className={`rounded-xl border bg-card px-3 py-2.5 ${toneCls}`}>
-      <div className="text-[10px] uppercase tracking-widest font-semibold text-text-med">{label}</div>
-      <div className={`text-xl font-bold ${valCls}`}>{value}</div>
-      {sub != null && <div className="text-[11px] text-text-med font-mono-price">{sub}</div>}
+    <div className={`rounded-xl border bg-card px-3 py-2.5 min-w-0 ${toneCls}`}>
+      <div className="text-[10px] uppercase tracking-wide font-semibold text-text-med leading-tight">{label}</div>
+      <div className={`text-lg sm:text-xl font-bold leading-tight truncate ${valCls}`}>{value}</div>
+      {sub != null && <div className="text-[11px] text-text-med font-mono-price truncate">{sub}</div>}
     </div>
   );
 }
@@ -172,9 +172,10 @@ export default function FollowupReport() {
         </div>
       </div>
 
-      {/* Filter + sort */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+      {/* Filter + sort. On mobile the state chips scroll horizontally and the
+          sort control sits on its own line; on desktop they share a row. */}
+      <div className="space-y-2 sm:flex sm:items-center sm:gap-2 sm:space-y-0">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap sm:flex-1">
           {STATE_FILTERS.map((f) => (
             <button
               key={f.key}
@@ -187,7 +188,7 @@ export default function FollowupReport() {
         </div>
         <button
           onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
-          className="ml-auto rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+          className="w-full sm:w-auto sm:flex-shrink-0 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-muted"
         >
           Value {sortDir === "desc" ? "↓ high to low" : "↑ low to high"}
         </button>
@@ -236,6 +237,13 @@ export default function FollowupReport() {
                       <span>{r.out_phone || "no phone"}</span>
                       <span className="font-mono-price text-forest font-semibold">{fmtNaira(r.out_total)}</span>
                       <span>{r.out_days_since_sent ?? "?"} day{r.out_days_since_sent === 1 ? "" : "s"} since sent</span>
+                      <Link
+                        to={`/admin/quotes?quote=${r.out_quote_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-forest font-semibold hover:underline"
+                      >
+                        {r.out_quote_number} <ExternalLink className="w-3 h-3" />
+                      </Link>
                     </div>
                     {/* Metrics */}
                     <div className="text-[11px] text-text-med mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
@@ -249,13 +257,6 @@ export default function FollowupReport() {
                       <span>Next follow-up: {r.out_next_followup ? fmtDate(r.out_next_followup) : "—"}</span>
                     </div>
                   </div>
-                  <Link
-                    to={`/admin/quotes?quote=${r.out_quote_id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-shrink-0 inline-flex items-center gap-1 text-forest text-[12px] font-semibold hover:underline"
-                  >
-                    {r.out_quote_number} <ExternalLink className="w-3 h-3" />
-                  </Link>
                 </button>
 
                 {/* History */}
