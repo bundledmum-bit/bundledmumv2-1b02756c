@@ -34,15 +34,17 @@ interface MatchRow {
   out_matched: boolean;
 }
 
-// Local editable row derived from a MatchRow.
+// Local editable row derived from a MatchRow (SQL matcher) OR a photo item.
 interface ReviewRow {
   lineNo: number;
   rawLine: string;
   matched: boolean;
-  confidence: "high" | "partial" | "none" | string;
+  // SQL matcher: high | partial | none. Photo matcher: high | medium | low | none.
+  confidence: "high" | "medium" | "low" | "partial" | "none" | string;
   productId: string | null;
   productName: string | null;
   section: string | null;
+  imageUrl: string | null;
   // Editable / selectable:
   quantity: number;
   brandId: string | null;
@@ -50,6 +52,7 @@ interface ReviewRow {
   price: number;
   include: boolean;
   // All brand options for this product's SAME product (matched brand + alts).
+  // Photo rows carry only the single matched brand (no alternatives).
   brandOptions: Alternative[];
 }
 
@@ -87,6 +90,7 @@ function toReviewRow(r: MatchRow): ReviewRow {
     productId: r.out_product_id,
     productName: r.out_product_name,
     section: r.out_section && VALID_SECTIONS.has(r.out_section) ? r.out_section : null,
+    imageUrl: null,
     quantity: Math.max(1, Number(r.out_quantity) || 1),
     brandId: r.out_brand_id,
     brandName: r.out_brand_name,
@@ -98,15 +102,56 @@ function toReviewRow(r: MatchRow): ReviewRow {
   };
 }
 
+// A single item from the read-hospital-list edge function (transcribe + match).
+interface PhotoItem {
+  raw_line: string;
+  quantity: number;
+  matched: boolean;
+  product_id: string | null;
+  product_name: string | null;
+  brand_id: string | null;
+  brand_name: string | null;
+  price: number | null;
+  section: string | null;
+  image_url: string | null;
+  confidence: "high" | "medium" | "low" | "none" | string;
+}
+
+function photoItemToReviewRow(it: PhotoItem, index: number): ReviewRow {
+  const options: Alternative[] = it.brand_id
+    ? [{ brand_id: it.brand_id, brand_name: it.brand_name || "Brand", price: Number(it.price) || 0 }]
+    : [];
+  return {
+    lineNo: index + 1,
+    rawLine: it.raw_line,
+    matched: !!it.matched,
+    confidence: it.confidence,
+    productId: it.product_id,
+    productName: it.product_name,
+    section: it.section && VALID_SECTIONS.has(it.section) ? it.section : null,
+    imageUrl: it.image_url || null,
+    quantity: Math.max(1, Number(it.quantity) || 1),
+    brandId: it.brand_id,
+    brandName: it.brand_name,
+    price: Number(it.price) || 0,
+    // Photo rule: auto-include ONLY high-confidence matches. medium / low /
+    // none default to UNCHECKED so the admin opts in deliberately.
+    include: !!it.matched && it.confidence === "high",
+    brandOptions: options,
+  };
+}
+
 const confidenceStyle = (c: string, matched: boolean) => {
   if (!matched || c === "none") return { label: "No match", cls: "bg-destructive/10 text-destructive border-destructive/30" };
-  if (c === "partial") return { label: "Check this", cls: "bg-amber-100 text-amber-800 border-amber-300" };
-  return { label: "High", cls: "bg-forest-light text-forest border-forest/30" };
+  if (c === "low") return { label: "Please verify", cls: "bg-orange-100 text-orange-800 border-orange-300" };
+  if (c === "medium" || c === "partial") return { label: "Check this", cls: "bg-amber-100 text-amber-800 border-amber-300" };
+  return { label: "Matched", cls: "bg-forest-light text-forest border-forest/30" };
 };
-// The whole row gets a subtle wash so misses/partials are impossible to miss.
+// The whole row gets a subtle wash so anything needing review is obvious.
 const rowWash = (c: string, matched: boolean) => {
   if (!matched || c === "none") return "bg-destructive/5";
-  if (c === "partial") return "bg-amber-50";
+  if (c === "low") return "bg-orange-50";
+  if (c === "medium" || c === "partial") return "bg-amber-50";
   return "";
 };
 
@@ -124,12 +169,16 @@ export default function PasteListMatcher({
   const [matching, setMatching] = useState(false);
   const [adding, setAdding] = useState(false);
   const [reading, setReading] = useState(false);
+  // Summary of the last photo read (null for pasted-text results).
+  const [photoSummary, setPhotoSummary] = useState<{ read: number; matched: number; unmatched: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Photo transcription. The read-hospital-list edge function TRANSCRIBES ONLY
-  // (it never stores the image); the returned text lands in the textarea for
-  // the admin to review/edit before matching. We never auto-match a photo and
-  // never re-display the image.
+  // Photo transcribe + match. The read-hospital-list edge function transcribes
+  // the photo AND matches products against our catalogue in one call; it never
+  // stores the image. The returned text fills the textarea (so the admin can
+  // still edit and re-run the free SQL matcher) and the matched items render in
+  // the SAME results table below. We never auto-add and never re-display the
+  // image.
   const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
   const fileToBase64 = (file: File) =>
@@ -173,14 +222,18 @@ export default function PasteListMatcher({
         throw new Error(msg);
       }
       if (!data?.success) throw new Error(data?.error || "Could not read the photo.");
-      // Land the transcription in the SAME textarea. Do NOT auto-run the matcher.
+      // Land the transcription in the textarea so the admin can still edit and
+      // re-run the free SQL matcher with "Match items" if they want.
       setRaw(String(data.text || ""));
-      const unreadable = Number(data.unreadable_count) || 0;
-      if (unreadable > 0) {
-        toast(`${unreadable} line${unreadable === 1 ? "" : "s"} could not be read clearly. Check the ??? lines before matching.`);
-      } else {
-        toast.success("List read. Review and edit before matching.");
-      }
+      // ALSO render the already-matched items in the same results table. This
+      // does NOT auto-add anything — "Add to quote" is still explicit.
+      const items = (Array.isArray(data.items) ? data.items : []) as PhotoItem[];
+      setRows(items.map((it, i) => photoItemToReviewRow(it, i)));
+      const lineCount = Number(data.line_count) || items.length;
+      const matched = Number(data.matched_count) || 0;
+      const unmatched = Number(data.unmatched_count) || Math.max(0, lineCount - matched);
+      setPhotoSummary({ read: lineCount, matched, unmatched });
+      toast.success(`Read ${lineCount} line${lineCount === 1 ? "" : "s"}. ${matched} matched, ${unmatched} could not be matched.`);
     } catch (err: any) {
       toast.error(err?.message || "Could not read the photo.");
     } finally {
@@ -206,6 +259,7 @@ export default function PasteListMatcher({
         .sort((a, b) => (a.out_line_no || 0) - (b.out_line_no || 0))
         .map(toReviewRow);
       setRows(parsed);
+      setPhotoSummary(null); // these are free SQL-matcher results, not a photo read
       if (parsed.length === 0) toast("No lines were parsed from the pasted text.");
     } catch (e: any) {
       toast.error(e?.message || "Could not match the list.");
@@ -265,7 +319,10 @@ export default function PasteListMatcher({
   };
 
   const matchedCount = (rows || []).filter((r) => r.matched).length;
-  const flaggedCount = (rows || []).filter((r) => !r.matched || r.confidence === "partial" || r.confidence === "none").length;
+  // Anything that isn't a high-confidence match needs a human look.
+  const flaggedCount = (rows || []).filter((r) => !(r.matched && r.confidence === "high")).length;
+  // Photo rows matched "by meaning" (medium/low) need explicit review.
+  const hasFlaggedByMeaning = (rows || []).some((r) => r.confidence === "medium" || r.confidence === "low");
 
   return (
     <section className="bg-card border border-border rounded-xl p-4">
@@ -349,7 +406,7 @@ export default function PasteListMatcher({
               {rows && (
                 <button
                   type="button"
-                  onClick={() => { setRows(null); }}
+                  onClick={() => { setRows(null); setPhotoSummary(null); }}
                   className="text-xs text-text-med hover:underline"
                 >
                   Clear results
@@ -360,6 +417,19 @@ export default function PasteListMatcher({
 
           {rows && rows.length > 0 && (
             <>
+              {photoSummary && (
+                <p className="text-[12px] text-text-med">
+                  Read {photoSummary.read} line{photoSummary.read === 1 ? "" : "s"}.{" "}
+                  <span className="font-semibold text-foreground">{photoSummary.matched} matched</span>,{" "}
+                  {photoSummary.unmatched} could not be matched.
+                </p>
+              )}
+              {hasFlaggedByMeaning && (
+                <p className="text-[12px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 flex items-start gap-1.5">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>Some items were matched by meaning. Please check the flagged rows before adding them.</span>
+                </p>
+              )}
               <div className="overflow-x-auto border border-border rounded-lg">
                 <table className="w-full text-[12px]">
                   <thead>
@@ -402,7 +472,18 @@ export default function PasteListMatcher({
                           </td>
                           <td className="p-2 max-w-[200px]">
                             {r.productId ? (
-                              <span className="text-foreground break-words">{r.productName}</span>
+                              <div className="flex items-center gap-2">
+                                {r.imageUrl && (
+                                  <img
+                                    src={r.imageUrl}
+                                    alt=""
+                                    loading="lazy"
+                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+                                    className="w-8 h-8 rounded object-cover border border-border flex-shrink-0"
+                                  />
+                                )}
+                                <span className="text-foreground break-words">{r.productName}</span>
+                              </div>
                             ) : (
                               <span className="text-destructive font-semibold">No match</span>
                             )}
