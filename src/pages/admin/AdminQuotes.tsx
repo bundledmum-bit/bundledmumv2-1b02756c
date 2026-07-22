@@ -20,6 +20,7 @@ import { computeAutoFees, AUTO_FEES_FALLBACK, type AutoFeesResult } from "@/lib/
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { downloadQuotePdf, type QuoteForPdf, type ContactBlock } from "@/lib/quotePdf";
+import { isValidPhone, normalizePhoneE164 } from "@/lib/phone";
 
 const inputCls = "w-full border border-input rounded-lg px-3 py-2 text-sm bg-background";
 const labelCls = "text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1";
@@ -1255,7 +1256,10 @@ function QuoteEditor({
   // all produce the same shape.
   const buildAutosavePayload = (f: QuoteForm) => ({
     customer_name: f.customer_name.trim() || null,
-    customer_phone: f.customer_phone.trim() || null,
+    // Store the phone in E.164 (+234…, +44…) when it is valid; otherwise keep
+    // the raw trimmed value (autosave is gated on validity, so this only stores
+    // normalised numbers in practice).
+    customer_phone: normalizePhoneE164(f.customer_phone) || (f.customer_phone.trim() || null),
     customer_email: f.customer_email.trim() || null,
     delivery_address: f.delivery_address.trim() || null,
     delivery_city: f.delivery_city || null,
@@ -1317,6 +1321,10 @@ function QuoteEditor({
     // lastSavedSigRef once data arrives, so the first post-load run is a
     // no-op and only genuine edits (including intentional clears) write.
     if (!quoteData) return;
+    // Never autosave a quote without a valid follow-up phone. Editing other
+    // fields on a phone-less quote will not persist until a phone is entered
+    // (viewing is unaffected — this only blocks writes).
+    if (!isValidPhone(form.customer_phone)) return;
     const payload = buildAutosavePayload(form);
     const sig = JSON.stringify(payload);
     if (sig === lastSavedSigRef.current) return;
@@ -1544,7 +1552,7 @@ function QuoteEditor({
     mutationFn: async (next: QuoteForm) => {
       const payload: any = {
         customer_name: next.customer_name.trim() || null,
-        customer_phone: next.customer_phone.trim() || null,
+        customer_phone: normalizePhoneE164(next.customer_phone) || (next.customer_phone.trim() || null),
         customer_email: next.customer_email.trim() || null,
         delivery_address: next.delivery_address.trim() || null,
         delivery_city: next.delivery_city.trim() || null,
@@ -1674,16 +1682,33 @@ function QuoteEditor({
 
   const update = (patch: Partial<QuoteForm>) => setForm((p) => ({ ...p, ...patch }));
 
-  // Customer fields are intentionally optional at the draft/save stage.
-  // The Send and Convert modals enforce their own field requirements at
-  // the point where the data is actually used (email send / order place).
+  // ── Required phone gate ─────────────────────────────────────────
+  // A quote must carry a follow-up phone number. Blocks every save path
+  // (Save Draft, Save & Download, status changes, and autosave) and the
+  // field is marked required up front. International numbers are accepted;
+  // see @/lib/phone.
+  const PHONE_REQUIRED_MSG = "A phone number is required so we can follow up on this quote.";
+  const phoneValid = isValidPhone(form.customer_phone);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const showPhoneError = !phoneValid && phoneTouched;
+  // Guard a save action: surfaces the inline error + a toast and stops the
+  // save when the phone is missing/invalid. Returns true when it is safe.
+  const requirePhone = (): boolean => {
+    if (phoneValid) return true;
+    setPhoneTouched(true);
+    toast.error(PHONE_REQUIRED_MSG);
+    return false;
+  };
+
   const handleSaveDraft = async () => {
+    if (!requirePhone()) return;
     const row = await upsertQuote.mutateAsync(form);
     toast.success(`Quote saved · ${row.quote_number}`);
     onClose();
   };
 
   const handleSaveAndDownload = async () => {
+    if (!requirePhone()) return;
     setPdfBusy(true);
     try {
       const row = await upsertQuote.mutateAsync(form);
@@ -1737,6 +1762,7 @@ function QuoteEditor({
   };
 
   const handleStatus = async (next: QuoteForm["status"]) => {
+    if (!requirePhone()) return;
     update({ status: next });
     const saved = await upsertQuote.mutateAsync({ ...form, status: next });
     toast.success(`Marked as ${next}`);
@@ -1798,8 +1824,9 @@ function QuoteEditor({
           <section className="bg-card border border-border rounded-xl p-4">
             <h2 className="text-sm font-bold mb-1">Customer Details</h2>
             <p className="text-[11px] text-text-med mb-3 italic">
-              Optional at this stage. Required when sending the quote email
-              or placing the order on the customer's behalf.
+              A phone number is required so we can follow up on the quote. Other
+              contact details are optional here and requested again when sending
+              the quote or placing the order.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
@@ -1807,8 +1834,20 @@ function QuoteEditor({
                 <input value={form.customer_name} onChange={(e) => update({ customer_name: e.target.value })} className={inputCls} disabled={!canEdit} />
               </div>
               <div>
-                <label className={labelCls}>Phone</label>
-                <input value={form.customer_phone} onChange={(e) => update({ customer_phone: e.target.value })} placeholder="+234 8…" className={inputCls} disabled={!canEdit} />
+                <label className={labelCls}>Phone <span className="text-destructive">*</span></label>
+                <input
+                  value={form.customer_phone}
+                  onChange={(e) => update({ customer_phone: e.target.value })}
+                  onBlur={() => setPhoneTouched(true)}
+                  placeholder="+234 8… or 080…"
+                  aria-required="true"
+                  aria-invalid={showPhoneError}
+                  className={`${inputCls} ${showPhoneError ? "border-destructive" : ""}`}
+                  disabled={!canEdit}
+                />
+                {showPhoneError && (
+                  <p className="text-destructive text-[11px] mt-1">{PHONE_REQUIRED_MSG}</p>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Email</label>
@@ -2143,14 +2182,16 @@ function QuoteEditor({
           <section className="bg-card border border-border rounded-xl p-4 space-y-2">
             <button
               onClick={handleSaveDraft}
-              disabled={!canEdit || upsertQuote.isPending}
+              disabled={!canEdit || upsertQuote.isPending || !phoneValid}
+              title={!phoneValid ? PHONE_REQUIRED_MSG : undefined}
               className="w-full inline-flex items-center justify-center gap-1.5 bg-card border border-border px-4 py-2 rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-40"
             >
               Save Draft
             </button>
             <button
               onClick={handleSaveAndDownload}
-              disabled={!canEdit || upsertQuote.isPending || pdfBusy}
+              disabled={!canEdit || upsertQuote.isPending || pdfBusy || !phoneValid}
+              title={!phoneValid ? PHONE_REQUIRED_MSG : undefined}
               className="w-full inline-flex items-center justify-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-deep disabled:opacity-40"
             >
               {pdfBusy ? (
