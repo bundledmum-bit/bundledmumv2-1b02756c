@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
 import PackageItemsBuilder, { fmtN } from "@/components/admin/PackageItemsBuilder";
+import PasteListMatcher from "@/components/admin/PasteListMatcher";
 import { Skeleton } from "@/components/ui/skeleton";
 import StateZoneLgaCityCascade from "@/components/address/StateZoneLgaCityCascade";
 import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmModal";
@@ -1637,6 +1638,36 @@ function QuoteEditor({
     onError: (e: any) => toast.error(e?.message || "Could not add item"),
   });
 
+  // Bulk insert for the "Paste the list" matcher. Uses the SAME quote_items
+  // insert shape as addItem (line_total stays trigger-computed); only
+  // display_order is bumped per row so pasted items keep their order.
+  const bulkAddItems = useMutation({
+    mutationFn: async (rows: Array<{
+      productId: string; productName: string; brandId: string; brandName: string;
+      price: number; quantity: number; section: string | null;
+    }>) => {
+      if (!currentId) throw new Error("Save the quote first");
+      if (rows.length === 0) return;
+      const base = items.length;
+      const payload = rows.map((r, i) => ({
+        quote_id: currentId,
+        product_id: r.productId,
+        brand_id: r.brandId,
+        product_name: r.productName,
+        brand_name: r.brandName,
+        size: null,
+        quantity: Math.max(1, Math.floor(Number(r.quantity) || 1)),
+        unit_price: Number(r.price) || 0,
+        display_order: base + i,
+        section: r.section || null,
+      }));
+      const { error } = await (supabase as any).from("quote_items").insert(payload);
+      if (error) throw error;
+    },
+    onSuccess: () => { refetchQuote(); queryClient.invalidateQueries({ queryKey: ["admin-quotes"] }); },
+    onError: (e: any) => toast.error(e?.message || "Could not add items"),
+  });
+
   const updateItem = useMutation({
     mutationFn: async ({ id, patch }: {
       id: string;
@@ -1886,6 +1917,12 @@ function QuoteEditor({
               />
             </div>
           </section>
+
+          {/* Paste the list — bulk-match the customer's whole list in one go. */}
+          <PasteListMatcher
+            disabled={!canEdit || !currentId}
+            onAdd={(rows) => bulkAddItems.mutateAsync(rows)}
+          />
 
           {/* Section B — Items (shared with the landing-pages admin) */}
           <PackageItemsBuilder
