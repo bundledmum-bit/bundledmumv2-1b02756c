@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { MessageCircle, Phone, StickyNote, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
+import FollowupReport from "@/components/admin/FollowupReport";
 
 // Follow-up queue (route: /admin/followups). Reads the already-built
 // quote_followup_queue() RPC, which schedules real DATES with overdue
@@ -56,29 +57,12 @@ const OUTCOME_GROUPS: Array<{ title: string; codes: string[] }> = [
   { title: "Closed", codes: ["ordered", "not_interested", "already_given_birth", "bought_elsewhere"] },
 ];
 
-// WhatsApp message templates. Chosen by out_kind, and the chase text varies by
-// how many follow-ups have already gone out (out_followup_no). Pre-filled into
-// WhatsApp; the human still presses send. Used verbatim.
-const CHASE_EARLY = "Hello ma, just checking if you have gone through the list and have any questions?";
-const CHASE_TWO = "Good day ma, did you get a chance to look at your list? Happy to adjust anything or answer any questions.";
-const CHASE_THREE = "Hello ma, are you ready to place your order? You can also start with Pay Small Small and pay a part now.";
-const CHASE_LATE = "Good day ma, we have not heard from you. Are you still interested in the items? No pressure, just let me know either way.";
-const PAYMENT_MESSAGE = "Hello ma, thank you for your order. We are ready to process it as soon as your payment comes through. Would you like to pay in full or use Pay Small Small?";
-
-function messageFor(kind: string, followupNo: number | null | undefined): string {
-  if (kind === "awaiting_payment") return PAYMENT_MESSAGE;
-  const n = Number(followupNo) || 0;
-  if (n <= 1) return CHASE_EARLY;
-  if (n === 2) return CHASE_TWO;
-  if (n === 3) return CHASE_THREE;
-  return CHASE_LATE;
-}
-
 const fmtNaira = (n: number | null | undefined) => "₦" + Number(n || 0).toLocaleString("en-NG");
 // wa.me needs digits only — strip +, spaces, dashes, brackets.
 const waDigits = (phone: string | null | undefined) => String(phone || "").replace(/\D/g, "");
-const waLink = (phone: string | null | undefined, message: string) =>
-  `https://wa.me/${waDigits(phone)}?text=${encodeURIComponent(message)}`;
+// Just opens the chat with that customer — NO pre-filled message (opening a chat
+// is not the same as messaging someone).
+const waLink = (phone: string | null | undefined) => `https://wa.me/${waDigits(phone)}`;
 // tel: keeps the leading + and digits so it dials directly on mobile.
 const telLink = (phone: string | null | undefined) => `tel:${String(phone || "").replace(/[^\d+]/g, "")}`;
 
@@ -155,13 +139,15 @@ export default function AdminFollowups() {
     [laterRows],
   );
 
-  // Tab order: Overdue (only when present) -> Today -> Tomorrow -> real dates.
+  // Tab order: Overdue (only when present) -> Today -> Tomorrow -> real dates ->
+  // Report (always last).
   const tabs = useMemo(() => {
-    const list: Array<{ key: string; label: string; count: number; urgent?: boolean }> = [];
+    const list: Array<{ key: string; label: string; count?: number; urgent?: boolean }> = [];
     if (overdueRows.length) list.push({ key: "overdue", label: "Overdue", count: overdueRows.length, urgent: true });
     list.push({ key: "today", label: "Follow Up Today", count: todayRows.length });
     list.push({ key: "tomorrow", label: "Tomorrow", count: tomorrowRows.length });
     for (const d of laterDates) list.push({ key: `date:${d}`, label: fmtDate(d), count: laterRows.filter((r) => r.out_due_date === d).length });
+    list.push({ key: "report", label: "Report" });
     return list;
   }, [overdueRows, todayRows, tomorrowRows, laterRows, laterDates]);
 
@@ -218,6 +204,16 @@ export default function AdminFollowups() {
     setNote("");
   };
 
+  // Record that the admin OPENED a chat / STARTED a call — an activity, not a
+  // logged follow-up. Fire-and-forget: it never blocks the link, never
+  // reschedules, never marks anything done, and never removes the card. Errors
+  // are ignored silently.
+  const logActivity = (quoteId: string, action: "whatsapp_opened" | "call_started") => {
+    (supabase as any)
+      .rpc("log_followup_activity", { p_quote_id: quoteId, p_action: action, p_by: adminUser?.email ?? adminUser?.id ?? null })
+      .then(() => {}, () => {});
+  };
+
   const activeUrgent = tab === "overdue";
 
   return (
@@ -258,43 +254,44 @@ export default function AdminFollowups() {
           return (
             <button key={t.key} onClick={() => setTab(t.key)} className={`${base} ${cls}`}>
               {t.urgent && <AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
-              {t.label} ({t.count})
+              {t.label}{t.count != null ? ` (${t.count})` : ""}
             </button>
           );
         })}
       </div>
 
+      {tab === "report" && <FollowupReport />}
+
       {/* States */}
-      {isLoading && (
+      {tab !== "report" && isLoading && (
         <div className="flex items-center gap-2 text-text-med text-sm py-10 justify-center">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading follow-up queue…
         </div>
       )}
-      {isError && (
+      {tab !== "report" && isError && (
         <div className="rounded-xl border border-destructive/40 bg-destructive/5 text-destructive text-sm p-4">
           Could not load the follow-up queue. {(error as any)?.message || ""}
         </div>
       )}
-      {!isLoading && !isError && rows.length === 0 && (
+      {tab !== "report" && !isLoading && !isError && rows.length === 0 && (
         <div className="rounded-xl border border-border bg-card p-8 text-center">
           <p className="text-lg font-semibold text-foreground mb-1">All caught up 🎉</p>
           <p className="text-sm text-text-med">No quotes are due a follow-up.</p>
         </div>
       )}
-      {!isLoading && !isError && rows.length > 0 && filtered.length === 0 && (
+      {tab !== "report" && !isLoading && !isError && rows.length > 0 && filtered.length === 0 && (
         <div className="rounded-xl border border-border bg-card p-8 text-center">
           <p className="text-sm text-text-med">Nothing in this list.</p>
         </div>
       )}
 
       {/* Rows */}
-      {!isLoading && !isError && filtered.length > 0 && (
+      {tab !== "report" && !isLoading && !isError && filtered.length > 0 && (
         <div className="space-y-2.5">
           {filtered.map((r) => {
             const isOpen = openLogId === r.out_quote_id;
             const overdueBy = Number(r.out_days_overdue) || 0;
             const awaitingPayment = r.out_kind === "awaiting_payment";
-            const message = messageFor(r.out_kind, r.out_followup_no);
             const ticking = doneMutation.isPending && doneMutation.variables?.quoteId === r.out_quote_id;
             const hasPhone = !!waDigits(r.out_phone);
             return (
@@ -355,6 +352,7 @@ export default function AdminFollowups() {
                     {hasPhone && (
                       <a
                         href={telLink(r.out_phone)}
+                        onClick={() => logActivity(r.out_quote_id, "call_started")}
                         className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2.5 text-xs font-semibold hover:bg-forest-deep"
                       >
                         <Phone className="w-4 h-4" /> Call
@@ -362,7 +360,8 @@ export default function AdminFollowups() {
                     )}
                     {hasPhone && (
                       <a
-                        href={waLink(r.out_phone, message)}
+                        href={waLink(r.out_phone)}
+                        onClick={() => logActivity(r.out_quote_id, "whatsapp_opened")}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-2.5 text-xs font-semibold hover:brightness-95"
