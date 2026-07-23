@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -44,6 +44,25 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
 
 const ACTIVE_STATUSES = new Set(["queued", "processing"]);
 
+// Chip -> p_filter value + the key to read its count from
+// image_improvement_counts(). "Needs review" leads: those are waiting on a
+// human to accept or reject.
+const STATUS_FILTERS: Array<{ label: string; key: string | null; countKey: string }> = [
+  { label: "Needs review", key: "needs_review", countKey: "needs_review" },
+  { label: "Not improved", key: "not_improved", countKey: "not_improved" },
+  { label: "In progress", key: "in_progress", countKey: "in_progress" },
+  { label: "Improved", key: "improved", countKey: "improved" },
+  { label: "Failed", key: "failed", countKey: "failed" },
+  { label: "All", key: null, countKey: "all" },
+];
+
+// Chip -> p_risk value.
+const RISK_FILTERS: Array<{ label: string; key: string | null; countKey: string | null }> = [
+  { label: "All types", key: null, countKey: null },
+  { label: "Soft goods", key: "soft", countKey: "soft" },
+  { label: "Packaged", key: "packaged", countKey: "packaged" },
+];
+
 export default function AdminImageImprovement() {
   const { adminUser } = usePermissions();
   const qc = useQueryClient();
@@ -51,18 +70,55 @@ export default function AdminImageImprovement() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [onlyUnimproved, setOnlyUnimproved] = useState(true);
+  // p_filter drives the list now (p_only_unimproved is always false, since the
+  // filter takes precedence server-side). null = All.
+  const [filter, setFilter] = useState<string | null>(null);
+  const [risk, setRisk] = useState<string | null>(null);
+  const [filterReady, setFilterReady] = useState(false);
+  // Brand ids currently being improved from their own card. A Set (not the
+  // mutation's variables) so several cards can run independently.
+  const [improvingIds, setImprovingIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [reviewId, setReviewId] = useState<string | null>(null);   // brand id under review
   const [zoomUrl, setZoomUrl] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Live counts for the filter chips.
+  const countsQ = useQuery({
+    queryKey: ["image-improvement-counts"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("image_improvement_counts");
+      if (error) throw error;
+      return (data || {}) as Record<string, number>;
+    },
+    staleTime: 15_000,
+  });
+  const counts = countsQ.data;
+
+  // Land on whatever needs the admin's attention: "Needs review" when anything
+  // is waiting to be accepted or rejected, otherwise "Not improved". Runs once,
+  // so it never overrides a chip the admin picked afterwards.
+  useEffect(() => {
+    if (filterReady) return;
+    if (countsQ.isSuccess) {
+      setFilter(Number(countsQ.data?.needs_review) > 0 ? "needs_review" : "not_improved");
+      setFilterReady(true);
+    } else if (countsQ.isError) {
+      setFilter("not_improved");
+      setFilterReady(true);
+    }
+  }, [countsQ.isSuccess, countsQ.isError, countsQ.data, filterReady]);
+
   const { data: rows = [], isLoading, isError, error } = useQuery({
-    queryKey: ["image-improvement-catalogue", onlyUnimproved, search],
+    queryKey: ["image-improvement-catalogue", filter, risk, search],
+    // Wait for the default filter so we don't fetch the whole catalogue first.
+    enabled: filterReady,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("image_improvement_catalogue", {
-        p_only_unimproved: onlyUnimproved,
+        p_only_unimproved: false, // p_filter takes precedence server-side
         p_search: search.trim() || null,
+        p_risk: risk,
+        p_filter: filter,
       });
       if (error) throw error;
       return (data || []) as CatalogueRow[];
@@ -130,9 +186,55 @@ export default function AdminImageImprovement() {
         toast.success(`${base} Processing started — statuses update automatically.`);
       }
       qc.invalidateQueries({ queryKey: ["image-improvement-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["image-improvement-counts"] });
     },
     onError: (e: any) => toast.error(e?.message || "Could not queue these images."),
   });
+
+  // Improve ONE card, without touching the multi-select. Tracked per brand id
+  // so each card shows its own spinner and the rest stay usable.
+  async function improveOne(brandId: string) {
+    setImprovingIds((prev) => new Set(prev).add(brandId));
+    try {
+      const { data, error } = await (supabase as any).rpc("queue_image_improvements", {
+        p_brand_ids: [brandId],
+        p_method: "generate",
+        p_by: by,
+      });
+      if (error) throw new Error(error.message);
+      const queued = Number((data as any)?.queued ?? 0);
+      if (queued === 0) {
+        toast(`Nothing queued for this image${(data as any)?.skipped ? " (already queued or improved)" : ""}.`);
+      }
+
+      let processError: string | null = null;
+      try {
+        const { data: proc, error: fnErr } = await supabase.functions.invoke("process-image-improvements", {
+          body: { limit: 1 },
+        });
+        if (fnErr) {
+          processError = fnErr.message || "processing failed";
+          try {
+            const b = await (fnErr as any)?.context?.json?.();
+            if (b?.error) processError = b.error;
+          } catch { /* keep */ }
+        } else if (proc && (proc as any).success === false) {
+          processError = (proc as any).error || "processing failed";
+        }
+      } catch (e: any) {
+        processError = e?.message || "processing failed";
+      }
+
+      if (processError) toast.error(`Queued, but processing could not start: ${processError}`);
+      else if (queued > 0) toast.success("Improving this image — the card updates automatically.");
+    } catch (e: any) {
+      toast.error(e?.message || "Could not improve this image.");
+    } finally {
+      setImprovingIds((prev) => { const n = new Set(prev); n.delete(brandId); return n; });
+      qc.invalidateQueries({ queryKey: ["image-improvement-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["image-improvement-counts"] });
+    }
+  }
 
   const applyMutation = useMutation({
     mutationFn: async (jobId: string) => {
@@ -145,6 +247,7 @@ export default function AdminImageImprovement() {
       toast.success("Applied to the website.");
       setReviewId(null);
       qc.invalidateQueries({ queryKey: ["image-improvement-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["image-improvement-counts"] });
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: any) => toast.error(e?.message || "Could not apply the image."),
@@ -165,6 +268,7 @@ export default function AdminImageImprovement() {
       setReviewId(null);
       setRejectReason("");
       qc.invalidateQueries({ queryKey: ["image-improvement-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["image-improvement-counts"] });
     },
     onError: (e: any) => toast.error(e?.message || "Could not reject the image."),
   });
@@ -179,6 +283,7 @@ export default function AdminImageImprovement() {
       toast.success("Reverted to the original image.");
       setReviewId(null);
       qc.invalidateQueries({ queryKey: ["image-improvement-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["image-improvement-counts"] });
       qc.invalidateQueries({ queryKey: ["products"] });
     },
     onError: (e: any) => toast.error(e?.message || "Could not revert."),
@@ -215,15 +320,50 @@ export default function AdminImageImprovement() {
           </button>
         </form>
 
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={onlyUnimproved}
-            onChange={(e) => { setOnlyUnimproved(e.target.checked); setSelected(new Set()); }}
-            className="w-4 h-4 accent-forest"
-          />
-          Only show images that have not been improved yet
-        </label>
+        {/* Status filters. "Needs review" is the one that blocks the admin, so
+            it leads and is styled loudest. Counts come from the RPC. */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+          {STATUS_FILTERS.map((f) => {
+            const active = filter === f.key;
+            const n = Number(counts?.[f.countKey] ?? 0);
+            const base = "rounded-pill px-3 py-1.5 text-xs font-semibold border whitespace-nowrap flex-shrink-0 transition-colors";
+            const cls = f.key === "needs_review"
+              ? active
+                ? "bg-forest text-primary-foreground border-forest ring-2 ring-forest/30"
+                : "bg-forest-light text-forest border-forest/40 hover:bg-forest-light/70"
+              : active
+                ? "bg-forest text-primary-foreground border-forest"
+                : "bg-card text-foreground border-border hover:bg-muted";
+            return (
+              <button
+                key={f.label}
+                type="button"
+                onClick={() => { setFilter(f.key); setSelected(new Set()); }}
+                className={`${base} ${cls}`}
+              >
+                {f.label} ({n})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Risk filters — cut the list to soft goods or packaged goods. */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-wrap">
+          {RISK_FILTERS.map((f) => {
+            const active = risk === f.key;
+            const n = f.countKey ? Number(counts?.[f.countKey] ?? 0) : Number(counts?.all ?? 0);
+            return (
+              <button
+                key={f.label}
+                type="button"
+                onClick={() => { setRisk(f.key); setSelected(new Set()); }}
+                className={`rounded-pill px-3 py-1.5 text-xs font-semibold border whitespace-nowrap flex-shrink-0 ${active ? "bg-foreground text-background border-foreground" : "bg-card text-text-med border-border hover:bg-muted"}`}
+              >
+                {f.label} ({n})
+              </button>
+            );
+          })}
+        </div>
 
         {/* Selection bar */}
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
@@ -288,6 +428,10 @@ export default function AdminImageImprovement() {
             const status = r.out_job_status ? STATUS_META[r.out_job_status] : null;
             const isSel = selected.has(r.out_brand_id);
             const live = r.out_image_url || "";
+            // A job already queued/processing server-side, or this card's own
+            // improve request still running locally.
+            const inFlight = ACTIVE_STATUSES.has(String(r.out_job_status));
+            const cardBusy = inFlight || improvingIds.has(r.out_brand_id);
             return (
               <div
                 key={r.out_brand_id}
@@ -345,15 +489,28 @@ export default function AdminImageImprovement() {
                     </div>
                   </div>
 
-                  {/* Row actions */}
+                  {/* Row actions. A ready job is the admin's job to review, so
+                      that becomes the primary button instead of Improve. */}
                   <div className="flex flex-wrap gap-2 mt-2.5">
-                    {r.out_job_status === "ready" && (
+                    {r.out_job_status === "ready" ? (
                       <button
                         type="button"
                         onClick={() => { setReviewId(r.out_brand_id); setRejectReason(""); }}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2 text-xs font-semibold hover:bg-forest-deep"
                       >
-                        Review before / after
+                        Review
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => improveOne(r.out_brand_id)}
+                        disabled={cardBusy}
+                        title={inFlight ? "This image is already being improved" : "Improve just this image"}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                      >
+                        {cardBusy
+                          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Improving…</>
+                          : <><Sparkles className="w-3.5 h-3.5" /> Improve this image</>}
                       </button>
                     )}
                     {r.out_job_status === "approved" && (
