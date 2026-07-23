@@ -690,6 +690,18 @@ function ExistingVariants({ label, items }: { label: string; items: string[] }) 
   );
 }
 
+// Packaged goods carry printed label text (ingredients, directions, warnings)
+// that AI regeneration can silently rewrite, so those get a louder warning.
+// Mirrors the backend's 'packaged' risk class, which isn't exposed on the
+// pending-product path, so we infer it from the product/brand wording.
+const PACKAGED_HINTS = [
+  "bottle", "tube", "carton", "tin", "sachet", "wipes", "formula", "cream", "lotion", "soap",
+];
+function looksPackaged(...parts: Array<string | null | undefined>): boolean {
+  const hay = parts.filter(Boolean).join(" ").toLowerCase();
+  return PACKAGED_HINTS.some((w) => hay.includes(w));
+}
+
 function ReviewEditModal({
   req, draft, onClose, onApplied,
 }: {
@@ -727,6 +739,65 @@ function ReviewEditModal({
   const [imageUrl, setImageUrl] = useState<string>(draft.image_url ?? "");
   const [zoomOpen, setZoomOpen] = useState(false);
   const [busy, setBusy] = useState<null | "confirm" | "reject">(null);
+
+  // ── Optional AI image improvement (explicit, per product) ─────────────
+  // Queues THIS pending product's CURRENT image (including a replacement the
+  // admin just uploaded), processes it, polls for the result, then shows
+  // before/after. Nothing changes unless the admin picks "Use improved image",
+  // which only swaps `imageUrl` so the existing apply() payload saves it on
+  // approval. Skipping this leaves the approval flow exactly as it was.
+  const [improving, setImproving] = useState(false);
+  const [improvedUrl, setImprovedUrl] = useState<string | null>(null);
+  const [improveError, setImproveError] = useState<string | null>(null);
+
+  async function runImprove() {
+    const pendingId = req.target_record_id;
+    if (!pendingId) { toast.error("This request has no pending product to improve."); return; }
+    const current = imageUrl.trim();
+    if (!current) { toast.error("There is no image to improve yet."); return; }
+    setImproving(true);
+    setImproveError(null);
+    setImprovedUrl(null);
+    try {
+      const { data: q, error: qErr } = await (supabase as any).rpc("queue_pending_image_improvement", {
+        p_pending_product_id: pendingId,
+        p_image_url: current,
+        p_by: null,
+      });
+      if (qErr) throw new Error(qErr.message);
+      if (!q?.success) throw new Error(q?.error || "Could not queue this image.");
+      const jobId = q.job_id as string;
+
+      // Kick the worker for this single job. If it fails the job stays queued,
+      // so we still poll rather than giving up here.
+      try {
+        await supabase.functions.invoke("process-image-improvements", { body: { limit: 1 } });
+      } catch { /* polling below still picks up the result */ }
+
+      const startedAt = Date.now();
+      let lastStatus = "queued";
+      while (Date.now() - startedAt < 120_000) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { data: job, error: jErr } = await (supabase as any).rpc("get_image_job", { p_job_id: jobId });
+        if (jErr) throw new Error(jErr.message);
+        lastStatus = String(job?.status || "");
+        if (lastStatus === "ready") {
+          if (!job?.improved_url) throw new Error("The job finished without an improved image.");
+          setImprovedUrl(job.improved_url as string);
+          return;
+        }
+        if (lastStatus === "failed") throw new Error(job?.error || "The image could not be improved.");
+      }
+      throw new Error(`Timed out waiting for the improved image (last status: ${lastStatus || "unknown"}).`);
+    } catch (e: any) {
+      // Leave the original image in place; just tell the admin what happened.
+      setImproveError(e?.message || "Could not improve this image.");
+    } finally {
+      setImproving(false);
+    }
+  }
+
+  const packagedRisk = looksPackaged(productName, brandName, draft.subcategory, draft.vendor_raw_name);
 
   // Editable size/colour lists from the propose draft (vendor-supplied or
   // AI-suggested). Sent (possibly edited) in the apply payload on confirm.
@@ -856,6 +927,14 @@ function ReviewEditModal({
               <button type="button" onClick={() => setImageUrl(draft.image_url ?? "")}
                 className="text-[10px] text-muted-foreground underline">Reset to vendor's</button>
             )}
+            {/* Optional AI re-shoot of whatever image is currently selected. */}
+            <Button type="button" size="sm" variant="outline" onClick={runImprove}
+              disabled={improving || !imageUrl.trim()}
+              className="h-7 px-2 text-[10px] whitespace-nowrap">
+              {improving
+                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Improving…</>
+                : "Improve this image"}
+            </Button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-w-0">
             {ctx("Vendor", draft.vendor_name)}
@@ -863,6 +942,75 @@ function ReviewEditModal({
             {ctx("Subcategory", draft.subcategory)}
           </div>
         </div>
+
+        {/* Image improvement: progress, errors, and the before/after choice.
+            Only rendered once the admin has explicitly asked for it. */}
+        {(improving || improvedUrl || improveError) && (
+          <div className="rounded-lg border border-border p-3 space-y-2.5">
+            {improving && (
+              <p className="text-xs flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Improving image… this can take up to a minute.
+              </p>
+            )}
+
+            {improveError && !improving && (
+              <p className="text-xs text-destructive">
+                {improveError} The original image has been kept.
+              </p>
+            )}
+
+            {improvedUrl && !improving && (
+              <>
+                {packagedRisk && (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-3 py-2.5 flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <p className="text-[13px] font-medium">
+                      This product has printed packaging text. Check that ingredients, directions and all
+                      label text match the original exactly before using the improved image.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground mb-1">Before (current)</div>
+                    <div className="rounded-lg border border-border bg-muted/40 overflow-hidden">
+                      <img src={imageUrl} alt="current" className="w-full h-[300px] object-contain" />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide font-semibold text-[#2D6A4F] mb-1">After (improved)</div>
+                    <div className="rounded-lg border border-[#2D6A4F]/40 bg-muted/40 overflow-hidden">
+                      <img src={improvedUrl} alt="improved" className="w-full h-[300px] object-contain" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    onClick={() => {
+                      setImageUrl(improvedUrl);
+                      setImprovedUrl(null);
+                      toast.success("Using the improved image. It will be saved when you publish.");
+                    }}
+                  >
+                    Use improved image
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setImprovedUrl(null)}
+                  >
+                    Keep original
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="space-y-3 mt-1">
           {/* Brand & attributes (editable, seeded from the draft) */}
