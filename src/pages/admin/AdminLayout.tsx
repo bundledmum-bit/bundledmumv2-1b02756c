@@ -208,6 +208,14 @@ function AdminLayoutInner() {
       extras.push({ to: "/admin/followups", label: "Follow-ups", icon: MessageSquare, exact: false, navKey: "followups", children: [] });
     }
 
+    // Image Improvement — temporary tool for re-shooting product photos with AI
+    // and reviewing before/after. Frontend page with no admin_nav_items row.
+    const hasImageImp = base.some((e) => e.to === "/admin/image-improvement" || e.navKey === "image_improvement");
+    const canSeeImageImp = isSuperAdmin || can("products", "edit");
+    if (!hasImageImp && canSeeImageImp) {
+      extras.push({ to: "/admin/image-improvement", label: "Image Improvement", icon: Image, exact: false, navKey: "image_improvement", children: [] });
+    }
+
     return extras.length ? [...base, ...extras] : base;
   }, [visibleNav, isSuperAdmin, can]);
 
