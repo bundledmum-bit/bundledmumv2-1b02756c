@@ -577,10 +577,12 @@ interface VendorReportRow {
 }
 
 function ReportStat({ label, value }: { label: string; value: string }) {
+  // min-w-0 + truncate so a long naira figure can't widen the 3-column grid
+  // past a phone's viewport (which would scroll the whole page sideways).
   return (
-    <div className="bg-card border border-border rounded-xl p-3 text-center">
-      <div className="text-base font-bold text-[#2D6A4F]">{value}</div>
-      <div className="text-muted-foreground text-[10px]">{label}</div>
+    <div className="bg-card border border-border rounded-xl p-2.5 sm:p-3 text-center min-w-0">
+      <div className="text-sm sm:text-base font-bold text-[#2D6A4F] truncate">{value}</div>
+      <div className="text-muted-foreground text-[10px] leading-tight">{label}</div>
     </div>
   );
 }

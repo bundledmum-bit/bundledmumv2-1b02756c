@@ -496,7 +496,7 @@ export default function AdminImageImprovement() {
                       <button
                         type="button"
                         onClick={() => { setReviewId(r.out_brand_id); setRejectReason(""); }}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2 text-xs font-semibold hover:bg-forest-deep"
+                        className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-forest text-primary-foreground px-3 py-2.5 text-xs font-semibold hover:bg-forest-deep"
                       >
                         Review
                       </button>
@@ -506,7 +506,7 @@ export default function AdminImageImprovement() {
                         onClick={() => improveOne(r.out_brand_id)}
                         disabled={cardBusy}
                         title={inFlight ? "This image is already being improved" : "Improve just this image"}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                        className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                       >
                         {cardBusy
                           ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Improving…</>
@@ -518,7 +518,7 @@ export default function AdminImageImprovement() {
                         type="button"
                         onClick={() => revertMutation.mutate(r.out_brand_id)}
                         disabled={revertMutation.isPending}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                        className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
                       >
                         <RotateCcw className="w-3.5 h-3.5" /> Revert to original
                       </button>
@@ -572,9 +572,9 @@ export default function AdminImageImprovement() {
                     className="block w-full rounded-lg border border-border bg-muted/40 overflow-hidden"
                   >
                     {reviewRow.out_image_url ? (
-                      <img src={reviewRow.out_image_url} alt="before" className="w-full h-[340px] object-contain" />
+                      <img src={reviewRow.out_image_url} alt="before" className="w-full h-[240px] sm:h-[340px] object-contain" />
                     ) : (
-                      <div className="h-[340px] flex items-center justify-center text-sm text-text-med">No image</div>
+                      <div className="h-[240px] sm:h-[340px] flex items-center justify-center text-sm text-text-med">No image</div>
                     )}
                   </button>
                 </div>
@@ -586,9 +586,9 @@ export default function AdminImageImprovement() {
                     className="block w-full rounded-lg border border-forest/40 bg-muted/40 overflow-hidden"
                   >
                     {reviewRow.out_job_improved_url ? (
-                      <img src={reviewRow.out_job_improved_url} alt="after" className="w-full h-[340px] object-contain" />
+                      <img src={reviewRow.out_job_improved_url} alt="after" className="w-full h-[240px] sm:h-[340px] object-contain" />
                     ) : (
-                      <div className="h-[340px] flex items-center justify-center text-sm text-text-med">No improved image</div>
+                      <div className="h-[240px] sm:h-[340px] flex items-center justify-center text-sm text-text-med">No improved image</div>
                     )}
                   </button>
                 </div>
@@ -601,7 +601,7 @@ export default function AdminImageImprovement() {
                 className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background"
               />
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 sticky bottom-0 bg-background pt-2 border-t border-border">
                 <button
                   type="button"
                   onClick={() => reviewRow.out_job_id && applyMutation.mutate(reviewRow.out_job_id)}
