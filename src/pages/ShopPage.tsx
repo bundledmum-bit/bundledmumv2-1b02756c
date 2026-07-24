@@ -442,18 +442,20 @@ export default function ShopPage() {
         if (!p) continue;                 // not in the active catalogue
         if (!passesTab(p)) continue;      // mirror tab scoping client-side
         if (!passesFilters(p)) continue;  // mirror chip/price/stock filters
-        // Pre-select the searched brand only when the RPC signals a match
-        // (per-brand matched_brand, or a top-level matched_brand for the query).
-        // A generic query (matched_brand null) falls back to the default brand,
-        // exactly as before. "Show all brands" opts out of the pre-select.
-        const brandMatched = rp.brand?.matched_brand === true || !!(searchData as any)?.matched_brand;
-        const matchedBrandId = !showAllBrands && brandMatched && rp.brand?.id && p.brands.some(b => b.id === rp.brand.id)
+        // The RPC already picks the right brand to surface for THIS card in
+        // rp.brand — the searched brand for a brand-specific query, and the
+        // backend's sensible default otherwise. Seed the card to it so its
+        // price, image and size reflect product.brand on first render, instead
+        // of the client's cheapest-brand default. "Show all brands" opts back
+        // out to that default. The "Brand match" badge is shown only when this
+        // brand is the one the customer actually searched for.
+        const surfacedBrandId = !showAllBrands && rp.brand?.id && p.brands.some(b => b.id === rp.brand.id)
           ? rp.brand.id : undefined;
         hits.push({
           product: p,
-          brandId: matchedBrandId,
-          brandSku: matchedBrandId ? (rp.brand?.sku || undefined) : undefined,
-          isBrandMatch: !!matchedBrandId,
+          brandId: surfacedBrandId,
+          brandSku: surfacedBrandId ? (rp.brand?.sku || undefined) : undefined,
+          isBrandMatch: rp.brand?.matched_brand === true && !!surfacedBrandId,
         });
       }
     } else {
