@@ -29,6 +29,15 @@ import ShopFilterDrawer from "@/components/ShopFilterDrawer";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Filter, ArrowUpDown, Check, Truck, ShieldCheck, RotateCcw, Search } from "lucide-react";
 
+// Subcategories tagged parent_category='both' in the DB but that are really
+// baby-only (baby bath/travel/laundry gear, ~0 mum products). They belong on
+// the Baby shop only, so hide them from the Mum section's tiles and filters.
+const MUM_EXCLUDED_CATEGORY_SLUGS = new Set<string>([
+  "bath-grooming",
+  "travel-gear",
+  "laundry-household",
+]);
+
 function ProductCard({ product, defaultBudget = "standard", forceBrand, selectedBrandId, matchBadge, deepLinkSku, onAdd, deliveryText }: { product: Product; defaultBudget?: string; forceBrand?: string; selectedBrandId?: string; matchBadge?: string; deepLinkSku?: string; onAdd: (item: any) => void; deliveryText?: string }) {
   const defaultBrand = getBrandForBudget(product, defaultBudget);
   const seedBrand = selectedBrandId
@@ -376,7 +385,7 @@ export default function ShopPage() {
   const filteredCategories = useMemo(() => {
     if (!categories) return [];
     if (tab === "baby") return categories.filter(c => c.parent_category === "baby" || c.parent_category === "both");
-    if (tab === "mum") return categories.filter(c => c.parent_category === "mum" || c.parent_category === "both");
+    if (tab === "mum") return categories.filter(c => (c.parent_category === "mum" || c.parent_category === "both") && !MUM_EXCLUDED_CATEGORY_SLUGS.has(c.slug));
     return categories;
   }, [categories, tab]);
 
@@ -684,14 +693,19 @@ export default function ShopPage() {
     (c) => c.parent_category === "baby" || c.parent_category === "both"
   );
   const mumCats = (categories || []).filter(
-    (c) => c.parent_category === "mum" || c.parent_category === "both"
+    (c) => (c.parent_category === "mum" || c.parent_category === "both") && !MUM_EXCLUDED_CATEGORY_SLUGS.has(c.slug)
   );
 
   // Category nav data: the section's categories, each linking to its
   // subcategory page, plus a leading "All {section}" item.
   const navCats = isBaby ? babyCats : isMum ? mumCats : (categories || []);
-  const navLinkFor = (c: (typeof navCats)[number]) =>
-    `/shop/${c.parent_category === "mum" ? "mum" : "baby"}/${c.slug}`;
+  // Link to the tile's OWN section: on the Mum landing every tile is a mum-shop
+  // link, on Baby a baby-shop link. (Shared 'both' categories used to always
+  // route to /shop/baby, which made mum-page tiles open the baby shop.)
+  const navLinkFor = (c: (typeof navCats)[number]) => {
+    const section = isMum ? "mum" : isBaby ? "baby" : (c.parent_category === "mum" ? "mum" : "baby");
+    return `/shop/${section}/${c.slug}`;
+  };
   const navAll = isBaby
     ? { label: "All Baby", href: "/shop/baby", icon: "👶" }
     : isMum
