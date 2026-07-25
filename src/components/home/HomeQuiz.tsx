@@ -74,6 +74,14 @@ const MIN_BUDGET_FALLBACK = HARD_MIN_BUDGET;
 // submittable on its own, since progressing requires budget >= the hard minimum.
 const DEFAULT_BUDGET = 0;
 
+// Boolean site_settings reader. Same coercion as readExitPopupSetting in
+// AdminQuizExitPopupTab (jsonb true / "true" / 1 / "1"), so a toggle behaves
+// identically however the value was written.
+function unwrapBool(v: any, fallback: boolean): boolean {
+  if (v === undefined || v === null || v === "") return fallback;
+  return v === true || v === "true" || v === 1 || v === "1";
+}
+
 // Safe parser for admin-edited site_settings string values.
 function unwrapSetting(v: any): string {
   if (v === null || v === undefined) return "";
@@ -1409,7 +1417,7 @@ function FloorWarningModal({
           <span className="text-2xl">💡</span>
           <div>
             <h3 className="pf font-bold text-base text-foreground leading-tight mb-1">
-              Heads up — your budget is below the typical starter floor
+              Heads up, your budget is below the typical starter floor
             </h3>
             <p className="text-sm text-text-med leading-relaxed">
               At {fmt(amount)}, your bundle may not include every hospital essential.
@@ -1521,6 +1529,12 @@ export default function HomeQuiz({
   // below ₦178,000, we hold the submit, surface the warning, and let them
   // choose: bump up to the floor, or continue at their entered amount.
   const [floorWarning, setFloorWarning] = useState(false);
+  // The below-floor nudge is OFF unless site_settings turns it on. It
+  // interrupted her at the moment she was about to see her list and asked her
+  // to spend more before she had seen anything, so it stays in the codebase
+  // but behind quiz_budget_floor_popup_enabled. Absent setting = off.
+  const { data: quizSettings } = useSiteSettings();
+  const floorPopupEnabled = unwrapBool(quizSettings?.quiz_budget_floor_popup_enabled, false);
 
   // ── GA4 quiz funnel ────────────────────────────────────────────────
   // quiz_start once per mount, regardless of how many re-renders happen.
@@ -1682,7 +1696,7 @@ export default function HomeQuiz({
   // Public submit handler — wraps continueSubmit with the below-floor
   // warning. If the user is under ₦178,000, we intercept and ask first.
   const handleSubmitFromQuiz = () => {
-    if (isBelowEssentialsFloor(budget)) {
+    if (floorPopupEnabled && isBelowEssentialsFloor(budget)) {
       setFloorWarning(true);
       return;
     }
@@ -1701,7 +1715,7 @@ export default function HomeQuiz({
           resumeAtLastStep={resumeAtLastStep}
           onNext={handleSubmitFromQuiz}
         />
-        {floorWarning && (
+        {floorPopupEnabled && floorWarning && (
           <FloorWarningModal
             amount={budget}
             onIncrease={() => { setBudget(ESSENTIALS_FLOOR); continueSubmit(); }}
