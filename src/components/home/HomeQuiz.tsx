@@ -689,18 +689,30 @@ function ResultsScreen({
   // so the bulk "Add all" action can see which items still need a size
   // chosen. Keyed by product_id; value is the chosen size_label.
   const [sizeSelections, setSizeSelections] = useState<Record<string, string>>({});
-  const setSizeFor = (item: RecommendedProduct, size: string) =>
+  const setSizeFor = (item: RecommendedProduct, size: string) => {
     setSizeSelections(m => ({ ...m, [item.product_id]: size }));
+    // Clear this card's "needs a size" ring as soon as she picks one.
+    setSizeErrorIds(prev => {
+      if (!prev.has(item.product_id)) return prev;
+      const next = new Set(prev); next.delete(item.product_id); return next;
+    });
+  };
   // product_id of the card briefly ring-highlighted when "Add all" is
   // blocked because that item still needs a size chosen.
-  const [sizeErrorId, setSizeErrorId] = useState<string | null>(null);
+  const [sizeErrorIds, setSizeErrorIds] = useState<Set<string>>(new Set());
   // True when this run_quiz_recommendation item has a size axis with at least
   // one in-stock option the shopper must pick before it can be added.
-  const needsSizeChoice = (item: RecommendedProduct): boolean =>
-    Array.isArray(item.available_sizes) &&
-    item.available_sizes.some(s => s.in_stock !== false) &&
-    variantReq.requiresSize(item.product_id) &&
-    !sizeSelections[item.product_id];
+  const needsSizeChoice = (item: RecommendedProduct): boolean => {
+    if (sizeSelections[item.product_id]) return false;         // already chosen
+    if (!variantReq.requiresSize(item.product_id)) return false; // no size axis
+    // A size axis with an explicitly EMPTY in-stock list can't be satisfied —
+    // that item is unavailable, not "needs a choice". Note we deliberately do
+    // NOT require available_sizes to be present: when the RPC omits it, the
+    // product still needs a size and must not slip through unsized.
+    if (Array.isArray(item.available_sizes) && item.available_sizes.length > 0
+        && !item.available_sizes.some(s => s.in_stock !== false)) return false;
+    return true;
+  };
 
   // True when an item has at least one purchasable brand variant — the
   // run_quiz_recommendation RPC returns brand=null for SKUs we don't yet
@@ -968,30 +980,46 @@ function ResultsScreen({
     // variant and would be rejected by the place-order edge function.
     const buyable = results.filter(isPurchasable);
 
-    // Option (a): if any buyable item still needs a size chosen, block the
-    // bulk add, scroll to the first such card and ring-highlight it so the
-    // shopper knows exactly which item to fix.
-    const firstMissing = buyable.find(needsSizeChoice);
-    if (firstMissing) {
-      setSizeErrorId(firstMissing.product_id);
-      document.getElementById(`quiz-item-${firstMissing.product_id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-      toast.error(`Choose a size for ${firstMissing.name} before adding all.`);
-      window.setTimeout(() => setSizeErrorId(null), 2500);
-      return;
-    }
+    // Items whose size axis has zero in-stock options can't be added at all
+    // (the card shows them as "Out of stock").
+    const unavailable = buyable.filter(item =>
+      Array.isArray(item.available_sizes)
+      && item.available_sizes.length === 0
+      && variantReq.requiresSize(item.product_id));
 
-    // Drop items whose size axis has zero in-stock options — they can't be
-    // added at all (the card shows them as "Out of stock").
-    const addable = buyable.filter(item =>
-      !(Array.isArray(item.available_sizes)
-        && item.available_sizes.length === 0
-        && variantReq.requiresSize(item.product_id)),
-    );
-    const skipped = results.length - addable.length;
+    // Everything still waiting on a size the shopper must pick. We never
+    // choose one for her — several of these products (nursing bras,
+    // compression socks, hospital slippers) have no sensible default at all.
+    const outstanding = buyable.filter(item => !unavailable.includes(item) && needsSizeChoice(item));
+    const addable = buyable.filter(item => !unavailable.includes(item) && !outstanding.includes(item));
+
+    // Add everything that IS ready, rather than blocking the whole batch on
+    // one unsized item.
     addable.forEach(item => {
       handleAddProduct(item, undefined, sizeSelections[item.product_id] || undefined, qtyFor(item));
     });
+
+    const skipped = results.length - addable.length - outstanding.length;
+
+    if (outstanding.length) {
+      // Ring every outstanding card, then take her to the first one so the
+      // next step is obvious. No navigation to the cart — there is still
+      // something to do on this page.
+      setSizeErrorIds(new Set(outstanding.map(i => i.product_id)));
+      const names = outstanding.slice(0, 3).map(i => i.name).join(", ");
+      const more = outstanding.length > 3 ? ` and ${outstanding.length - 3} more` : "";
+      document.getElementById(`quiz-item-${outstanding[0].product_id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (addable.length) {
+        toast.success(`✓ Added ${addable.length} item${addable.length === 1 ? "" : "s"} to cart.`);
+      }
+      toast.error(
+        `${outstanding.length} item${outstanding.length === 1 ? "" : "s"} still need${outstanding.length === 1 ? "s" : ""} a size: ${names}${more}. Choose a size on the highlighted card${outstanding.length === 1 ? "" : "s"}, then add again.`,
+        { duration: 8000 },
+      );
+      return;
+    }
+
     if (skipped > 0) {
       toast.success(`✓ Added ${addable.length} items to cart. ${skipped} unavailable item${skipped === 1 ? "" : "s"} skipped.`);
     } else {
@@ -1046,7 +1074,7 @@ function ResultsScreen({
     <div
       key={`${keyPrefix}${item.product_id}`}
       id={`quiz-item-${item.product_id}`}
-      className={`rounded-2xl transition-shadow ${sizeErrorId === item.product_id ? "ring-2 ring-coral ring-offset-2 ring-offset-background" : ""}`}
+      className={`rounded-2xl transition-shadow ${sizeErrorIds.has(item.product_id) ? "ring-2 ring-coral ring-offset-2 ring-offset-background" : ""}`}
     >
       <ResultProductCard
         item={item}

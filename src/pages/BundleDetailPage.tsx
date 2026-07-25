@@ -117,6 +117,19 @@ export default function BundleDetailPage() {
     // bundleItems carries the chosen composition (with the bundle's pre-set
     // default size/colour for variant-required children) so the order reflects
     // exactly what she built. Mirrors BundleCustomiser / the maternity path.
+    // A bundle child may only take a size that merchandising CURATED as the
+    // default (variantReq.defaultSize returns is_default rows only). If a
+    // size-required child has no curated default we stop rather than invent
+    // one — every bundle today has defaults, so this is a guard against a
+    // future no-default product being merchandised into a bundle.
+    const undecidable = allItems.filter(
+      item => variantReq.requiresSize(item.productId) && !variantReq.defaultSize(item.productId));
+    if (undecidable.length) {
+      toast.error(
+        `${undecidable.map(i => i.name).join(", ")} needs a size we can't pick for you. Please add ${undecidable.length === 1 ? "it" : "them"} from the product page.`,
+      );
+      return;
+    }
     const bundleItems = allItems.map(item => {
       const size = variantReq.requiresSize(item.productId) ? variantReq.defaultSize(item.productId) : null;
       const color = variantReq.requiresColor(item.productId) ? variantReq.defaultColor(item.productId) : null;

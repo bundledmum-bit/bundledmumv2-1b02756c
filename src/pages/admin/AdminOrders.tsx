@@ -1095,6 +1095,124 @@ function KlumpPaymentLinkCard({ order: o }: { order: any }) {
   );
 }
 
+// ─── Missing required size warning (order detail) ────────────────────────────
+// order_items.size is empty on a product that has in-stock product_sizes rows.
+// Those orders can't be packed, so this is loud, sits at the top of the detail
+// page, and offers the fix inline. Sizes come from the product's own list —
+// nothing is ever pre-selected, because guessing a bra or slipper size is
+// worse than leaving it blank.
+function MissingSizeWarning({ order, canEdit, adminUser }: { order: any; canEdit: boolean; adminUser: any }) {
+  const queryClient = useQueryClient();
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const items: any[] = Array.isArray(order?.order_items) ? order.order_items : [];
+  const productIds = useMemo(
+    () => [...new Set(items.map((it) => it.product_id).filter(Boolean))] as string[],
+    [items],
+  );
+
+  // Which of this order's products actually offer sizes (in stock).
+  const { data: sizesByProduct } = useQuery({
+    queryKey: ["order-item-sizes", productIds.slice().sort().join(",")],
+    enabled: productIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("product_sizes")
+        .select("product_id, size_label, display_order, in_stock")
+        .in("product_id", productIds)
+        .eq("in_stock", true)
+        .order("display_order");
+      if (error) throw error;
+      const m = new Map<string, string[]>();
+      (data || []).forEach((r: any) => {
+        const k = String(r.product_id);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k)!.push(r.size_label);
+      });
+      return m;
+    },
+  });
+
+  const missing = useMemo(
+    () => items.filter((it) =>
+      !String(it.size || "").trim() && (sizesByProduct?.get(String(it.product_id))?.length || 0) > 0),
+    [items, sizesByProduct],
+  );
+
+  if (!missing.length) return null;
+
+  const save = async (item: any) => {
+    const size = choice[item.id];
+    if (!size) { toast.error("Choose a size first."); return; }
+    setSaving(item.id);
+    const { data, error } = await (supabase as any).rpc("set_order_item_size", {
+      p_order_item_id: item.id,
+      p_size: size,
+      p_by: adminUser?.display_name || adminUser?.email || "admin",
+    });
+    setSaving(null);
+    if (error) { toast.error(error.message); return; }
+    if (data && data.success === false) { toast.error(data.error || "Could not save that size."); return; }
+    toast.success(`${item.product_name}: size ${size} saved`);
+    queryClient.invalidateQueries({ queryKey: ["admin-order-detail"] });
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+  };
+
+  return (
+    <div className="mb-4 rounded-xl border-2 border-destructive bg-destructive/[0.07] p-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-destructive">
+            Do not dispatch — {missing.length} item{missing.length === 1 ? "" : "s"} {missing.length === 1 ? "is" : "are"} missing a required size
+          </div>
+          <p className="text-xs text-destructive/90 mt-0.5">
+            {missing.length === 1 ? "This item" : "These items"} cannot be packed correctly until a size is set. Confirm the size with the customer, then save it here.
+          </p>
+
+          <div className="mt-3 space-y-2">
+            {missing.map((it) => {
+              const options = sizesByProduct?.get(String(it.product_id)) || [];
+              return (
+                <div key={it.id} className="rounded-lg border border-destructive/30 bg-card p-2.5 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold truncate">{it.product_name}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">
+                      {it.brand_name || "—"} · Qty {it.quantity}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <select
+                      value={choice[it.id] || ""}
+                      disabled={!canEdit}
+                      onChange={(e) => setChoice((c) => ({ ...c, [it.id]: e.target.value }))}
+                      className="text-xs border border-input rounded px-2 min-h-[36px] bg-background min-w-[130px] disabled:opacity-50"
+                      aria-label={`Size for ${it.product_name}`}
+                    >
+                      <option value="">Choose size…</option>
+                      {options.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => save(it)}
+                      disabled={!canEdit || !choice[it.id] || saving === it.id}
+                      className="text-xs font-semibold rounded-lg bg-destructive text-primary-foreground px-3 min-h-[36px] disabled:opacity-40"
+                    >
+                      {saving === it.id ? "Saving…" : "Save size"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPrint }: { order: any; adminUser: any; can: (m: string, a: string) => boolean; isSuperAdmin: boolean; onBack: () => void; onPrint: () => void | Promise<void> }) {
   const queryClient = useQueryClient();
   const [newStatus, setNewStatus] = useState(o.order_status);
@@ -1395,6 +1513,11 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
           <span className={`px-3 py-1 rounded text-xs font-semibold ${STATUS_COLORS[o.payment_status] || ""}`}>{o.payment_status}</span>
         </div>
       </div>
+
+      {/* Missing-size warning — sits directly under the header because an
+          order dispatched without a size for a bra / slippers / socks cannot
+          be packed correctly. */}
+      <MissingSizeWarning order={o} canEdit={can("orders", "edit")} adminUser={adminUser} />
 
       {/* Subscription delivery date — prominent so the fulfilment team
           ships on the customer's chosen day, not before. */}

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { primeVariantRequirements, requiresColorSync, requiresSizeSync } from "@/lib/variantRequirements";
 import { computeAutoFees, type AutoFeesResult } from "@/lib/computeAutoFees";
 import { useCartEffectivePricing, useEarnedGifts, type BrandPrice, type EarnedGift } from "@/hooks/useBrandPricing";
 import { trackEvent } from "@/lib/analytics";
@@ -52,11 +53,18 @@ export interface CartItem {
 // such rows have no variant and add freely. These helpers read those arrays,
 // so ANY add path that spreads a mapped product is covered by the same rule
 // the server-side place-order validateVariantRequirements enforces.
+// When the payload carries the mapped arrays we trust them. When it does NOT
+// (quiz / gift recommendation cards and the cart's "you might also like" rail
+// build their payload from an RPC row, with no sizes[]), we fall back to the
+// process-wide requirement cache — otherwise the absence of an array reads as
+// "no size needed" and a size-required product slips into the cart unsized.
 export function productRequiresSize(p: any): boolean {
-  return Array.isArray(p?.sizes) && p.sizes.length > 0;
+  if (Array.isArray(p?.sizes)) return p.sizes.length > 0;
+  return requiresSizeSync(p?.id) === true;
 }
 export function productRequiresColor(p: any): boolean {
-  return Array.isArray(p?.colors) && p.colors.length > 0;
+  if (Array.isArray(p?.colors)) return p.colors.length > 0;
+  return requiresColorSync(p?.id) === true;
 }
 // Which required variant axes are still unselected on a product about to be
 // added (its selectedSize / selectedColor already set by the caller). Bundles
@@ -215,6 +223,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
+
+  // Warm the size/colour requirement sets as early as the cart exists, so the
+  // add-time guard below can answer for payloads that carry no sizes[] array.
+  useEffect(() => { primeVariantRequirements(); }, []);
 
   const addToCart = useCallback((product: any): boolean => {
     // Hard gate at the point of adding: a product that requires a size and/or

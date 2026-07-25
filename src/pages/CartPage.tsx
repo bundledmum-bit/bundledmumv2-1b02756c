@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useCart, fmt, formatColor, cartItemImage, cartItemKey, type CartItem } from "@/lib/cart";
 import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import Breadcrumb from "@/components/Breadcrumb";
@@ -31,6 +31,7 @@ import { getBrandImage } from "@/lib/brandImage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { requiresColorSync, requiresSizeSync } from "@/lib/variantRequirements";
 import { MessageCircle, Copy as CopyIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -122,6 +123,7 @@ function resolveEmojiFallback(raw: unknown): string | undefined {
 }
 
 export default function CartPage() {
+  const navigate = useNavigate();
   const { cart, setCart, clearCart, addToCart, subtotal, lineEffective, totalItems, gifts, savedItems, saveForLater, moveToCart, removeSaved, removeFromCart } = useCart();
   // Proceed-to-checkout action: fire InitiateCheckout + checkout_started when
   // the shopper clicks through to /checkout (deduped once per session).
@@ -471,6 +473,19 @@ export default function CartPage() {
     const inStockBrands = live ? live.brands.filter(b => b.inStock !== false && (b.price || 0) > 0) : [];
     const hasOptions = !!live && (inStockBrands.length > 1 || (live.sizes?.length || 0) > 0 || !!live.genderRelevant);
     if (live && hasOptions) { setDrawerProduct(live); return; }
+    // The RPC row carries no sizes[], so when the adapter feed has no entry to
+    // open the drawer with we ask the requirement cache directly. Several of
+    // the products this rail surfaces need a size (and most of those have no
+    // default), so adding blind would put an unfulfillable line in the cart.
+    if (!live && (requiresSizeSync(row.product_id) || requiresColorSync(row.product_id))) {
+      if (row.slug) {
+        navigate(`/products/${row.slug}`);
+        toast("Choose an option for this item first.");
+      } else {
+        toast.error(`Please choose an option for ${row.name} on its product page.`);
+      }
+      return;
+    }
     addRecommendation(row);
   };
 

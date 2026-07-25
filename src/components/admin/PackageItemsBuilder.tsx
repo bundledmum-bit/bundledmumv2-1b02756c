@@ -142,6 +142,11 @@ export function AddItemDialog({ product, onCancel, onConfirm }: {
 
 export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
   const currentBrand = brands.find((b: any) => b.id === it.brand_id) ?? null;
+  // A line for a size-bearing product with no size yet. Allowed while the
+  // quote is being built (the size is often unknown at that point), but it
+  // must be impossible to miss, because conversion turns it into an order
+  // line nobody can pack.
+  const sizeMissing = sizes.some((s: any) => s.in_stock !== false) && !it.size;
   const imgSrc: string | null =
     getBrandImage(currentBrand) ||
     (Array.isArray(currentBrand?.images) && currentBrand.images.length > 0 ? currentBrand.images[0] : null) ||
@@ -149,7 +154,7 @@ export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPendin
   const isOos = currentBrand != null && currentBrand.in_stock === false;
 
   return (
-    <div className={`border border-border rounded-lg p-3 relative transition-opacity ${isPending ? "opacity-60 pointer-events-none" : ""}`}>
+    <div className={`border rounded-lg p-3 relative transition-opacity ${sizeMissing ? "border-destructive border-[1.5px] bg-destructive/[0.03]" : "border-border"} ${isPending ? "opacity-60 pointer-events-none" : ""}`}>
       <div className="flex gap-3">
         {/* Thumbnail — click to zoom */}
         <div className="shrink-0">
@@ -174,6 +179,11 @@ export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPendin
           {/* Product name + SKU */}
           <div>
             <div className="font-semibold text-sm leading-tight">{it.product_name}</div>
+            {sizeMissing && (
+              <div className="mt-1 inline-flex items-center gap-1 rounded-pill bg-destructive/10 text-destructive border border-destructive/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                Needs a size
+              </div>
+            )}
             {currentBrand?.sku && (
               <div className="text-[11px] text-muted-foreground mt-0.5">SKU: {currentBrand.sku}</div>
             )}
@@ -217,9 +227,9 @@ export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPendin
                 disabled={!canEdit}
                 value={it.size || ""}
                 onChange={(e) => onUpdate({ size: e.target.value || null })}
-                className="flex-1 text-xs border border-input rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex-1 text-xs border rounded px-2 py-1 bg-background min-w-[120px] disabled:opacity-50 disabled:cursor-not-allowed ${sizeMissing ? "border-destructive text-destructive font-semibold" : "border-input"}`}
               >
-                <option value="">— No size —</option>
+                <option value="">— Not chosen yet —</option>
                 {sizes.map((s: any) => (
                   <option key={s.id} value={s.size_label}>
                     {s.size_label}{s.in_stock === false ? " (OOS)" : ""}
@@ -512,6 +522,17 @@ export default function PackageItemsBuilder({
 
   const liveSubtotal = (items as any[]).reduce((s, it) => s + (it.line_total || 0), 0);
 
+  // Lines whose product offers sizes but which carry none yet. Surfaced as a
+  // running count so it is resolved before the quote becomes an order —
+  // pasted lists in particular come in with no size at all.
+  const missingSizeItems = useMemo(
+    () => (items as any[]).filter((it: any) => {
+      const s = sizesByProduct.get(it.product_id) || [];
+      return s.some((x: any) => x.in_stock !== false) && !it.size;
+    }),
+    [items, sizesByProduct],
+  );
+
   const handleSelectProduct = async (row: any) => {
     const { data, error } = await (supabase as any)
       .from("product_sizes")
@@ -545,6 +566,16 @@ export default function PackageItemsBuilder({
   return (
     <section className="bg-card border border-border rounded-xl p-4">
       <h2 className="text-sm font-bold mb-3">Line Items</h2>
+      {missingSizeItems.length > 0 && (
+        <div className="mb-3 rounded-lg border-[1.5px] border-destructive bg-destructive/[0.06] px-3 py-2">
+          <p className="text-xs font-bold text-destructive">
+            {missingSizeItems.length} item{missingSizeItems.length === 1 ? "" : "s"} still need{missingSizeItems.length === 1 ? "s" : ""} a size
+          </p>
+          <p className="text-[11px] text-destructive/90 mt-0.5">
+            {missingSizeItems.map((it: any) => it.product_name).join(", ")}. Pick a size on each highlighted line — this quote cannot be converted to an order until they are set.
+          </p>
+        </div>
+      )}
       {disabled && disabledHint && (
         <p className="text-xs text-muted-foreground mb-2 italic">{disabledHint}</p>
       )}

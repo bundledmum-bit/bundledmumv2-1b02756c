@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { setVariantRequirementIds } from "@/lib/variantRequirements";
 
 // Lightweight lookup of which products require a size / color, keyed by
 // product_id. Used by entry points that build cart payloads WITHOUT the
@@ -20,8 +21,10 @@ export interface VariantRequirements {
     size?: string | null,
     color?: string | null,
   ) => ("size" | "color")[];
-  /** A sensible pre-set default size (is_default row, else first by
-   *  display_order) — used to auto-assign variants to bundle items. */
+  /** The product's CURATED default size — an is_default product_sizes row and
+   *  nothing else. Returns null when merchandising never picked one, so a
+   *  caller can never fall back to "first size in the list": guessing a bra,
+   *  sock, slipper or belly-band size is worse than having none. */
   defaultSize: (productId: string | number | null | undefined) => string | null;
   /** Default color (first by display_order). */
   defaultColor: (productId: string | number | null | undefined) => string | null;
@@ -34,7 +37,7 @@ export function useVariantRequirements(): VariantRequirements {
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const [sizeRes, colorRes] = await Promise.all([
-        supabase.from("product_sizes").select("product_id, size_label, display_order, is_default"),
+        supabase.from("product_sizes").select("product_id, size_label, display_order, is_default").eq("in_stock", true),
         supabase.from("product_colors").select("product_id, color_name, display_order"),
       ]);
       const sizeIds = new Set<string>();
@@ -46,9 +49,9 @@ export function useVariantRequirements(): VariantRequirements {
         sizeIds.add(pid);
         const cur = defaultSizes.get(pid);
         const cand = { label: r.size_label, order: r.display_order ?? 0, isDefault: !!r.is_default };
-        if (!cur || (cand.isDefault && !cur.isDefault) || (cand.isDefault === cur.isDefault && cand.order < cur.order)) {
-          defaultSizes.set(pid, cand);
-        }
+        // Only is_default rows are eligible; among several, lowest order wins.
+        if (!cand.isDefault) continue;
+        if (!cur || cand.order < cur.order) defaultSizes.set(pid, cand);
       }
       const defaultColors = new Map<string, { name: string; order: number }>();
       for (const r of (colorRes.data || []) as any[]) {
@@ -58,6 +61,9 @@ export function useVariantRequirements(): VariantRequirements {
         const cand = { name: r.color_name, order: r.display_order ?? 0 };
         if (!cur || cand.order < cur.order) defaultColors.set(pid, cand);
       }
+      // Share this fetch with the synchronous cache the cart guard reads,
+      // so both layers always agree on what requires a size.
+      setVariantRequirementIds(sizeIds, colorIds);
       return { sizeIds, colorIds, defaultSizes, defaultColors };
     },
   });

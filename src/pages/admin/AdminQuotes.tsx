@@ -921,6 +921,69 @@ function normalizeNgPhoneForWa(raw: string | null | undefined): string {
 // order_number = Klump merchant_reference). Nothing here marks the order paid.
 // customerSig is a debounced signature of the quote's customer fields — when it
 // changes (after autosave persists an edit) the eligibility check re-runs.
+// ── Missing-size helpers (quote → order) ────────────────────────────────────
+// A quote line needs a size when its product has at least one in-stock
+// product_sizes row and the line carries none. Sizes are looked up live so a
+// stale editor cache can't wave an unsized line through.
+async function fetchQuoteLinesMissingSize(
+  quoteId: string,
+): Promise<Array<{ id: string; product_name: string }>> {
+  const { data: lines, error } = await (supabase as any)
+    .from("quote_items")
+    .select("id, product_id, product_name, size")
+    .eq("quote_id", quoteId);
+  if (error || !lines?.length) return [];
+  const productIds = [...new Set(lines.map((l: any) => l.product_id).filter(Boolean))];
+  if (!productIds.length) return [];
+  const { data: sizeRows } = await (supabase as any)
+    .from("product_sizes")
+    .select("product_id")
+    .in("product_id", productIds)
+    .eq("in_stock", true);
+  const needsSize = new Set((sizeRows || []).map((r: any) => String(r.product_id)));
+  return lines
+    .filter((l: any) => needsSize.has(String(l.product_id)) && !String(l.size || "").trim())
+    .map((l: any) => ({ id: l.id, product_name: l.product_name }));
+}
+
+// Copy each quote line's size onto the matching order item created by
+// convert_quote_to_pending_order (which doesn't carry the column across).
+// Lines are matched on product + brand + quantity; each order item is claimed
+// once so duplicate products can't both take the same target row.
+async function carryQuoteSizesToOrder(quoteId: string, orderId: string): Promise<void> {
+  try {
+    const [{ data: qItems }, { data: oItems }] = await Promise.all([
+      (supabase as any).from("quote_items")
+        .select("product_id, brand_id, quantity, size").eq("quote_id", quoteId),
+      (supabase as any).from("order_items")
+        .select("id, product_id, brand_id, quantity, size").eq("order_id", orderId),
+    ]);
+    const sized = (qItems || []).filter((q: any) => String(q.size || "").trim());
+    if (!sized.length || !oItems?.length) return;
+    const claimed = new Set<string>();
+    for (const q of sized) {
+      const match = (oItems as any[]).find((oi) =>
+        !claimed.has(oi.id) &&
+        String(oi.product_id) === String(q.product_id) &&
+        String(oi.brand_id) === String(q.brand_id) &&
+        Number(oi.quantity) === Number(q.quantity) &&
+        !String(oi.size || "").trim());
+      if (!match) continue;
+      claimed.add(match.id);
+      const { data } = await (supabase as any).rpc("set_order_item_size", {
+        p_order_item_id: match.id, p_size: q.size, p_by: "quote conversion",
+      });
+      if (data && data.success === false) {
+        console.warn("[quote→order] size rejected:", q.size, data.error);
+      }
+    }
+  } catch (e) {
+    // Never fail the conversion over this — the order exists and the admin
+    // order page surfaces anything still missing a size.
+    console.warn("[quote→order] could not carry sizes:", e);
+  }
+}
+
 function QuotePaymentLinkCard({
   quoteId, customerName, customerPhone, customerEmail, customerSig, canConvert,
 }: {
@@ -972,6 +1035,17 @@ function QuotePaymentLinkCard({
 
   const run = async () => {
     if (!ready?.ready || busy) return;
+    // A size-required line with no size becomes an unpackable order line, so
+    // the size must be resolved BEFORE the irreversible conversion. This is
+    // the quote half of the missing-size leak.
+    const unsized = await fetchQuoteLinesMissingSize(quoteId);
+    if (unsized.length) {
+      const names = unsized.map((u) => u.product_name).join(", ");
+      const m = `${unsized.length} item${unsized.length === 1 ? "" : "s"} still need${unsized.length === 1 ? "s" : ""} a size: ${names}. Set the size on each line item, then convert.`;
+      setErr(m);
+      toast.error(m, { duration: 9000 });
+      return;
+    }
     if (!window.confirm("This will create an order from this quote and send the customer a payment link. Continue?")) return;
     setBusy(true);
     setErr(null);
@@ -992,6 +1066,11 @@ function QuotePaymentLinkCard({
         toast.error("Conversion returned no order id.");
         return;
       }
+      // convert_quote_to_pending_order copies name/brand/qty/price but NOT the
+      // size column, so stamp the quote's sizes onto the new order items here.
+      // set_order_item_size validates each value against product_sizes, so a
+      // size the product doesn't offer can never be written.
+      await carryQuoteSizesToOrder(quoteId, row.out_order_id);
       queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
       // 2. Create the Klump page against the new order.
       const { data: page, error: pageErr } = await (supabase as any).functions.invoke("klump-create-payment-page", { body: { order_id: row.out_order_id } });

@@ -79,7 +79,7 @@ export default function GiftResultsPage() {
     }
     // Recommendation cards can't collect a size/colour — if this product needs
     // one, send the shopper to its page to choose rather than adding blind.
-    const missing = variantReq.missingAxes(item.product_id, item.selected_color);
+    const missing = variantReq.missingAxes(item.product_id, null, item.selected_color);
     if (missing.length) {
       const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
       if (item.slug) { navigate(`/products/${item.slug}`); toast(`Choose ${label} for ${item.name}`); }
