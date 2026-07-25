@@ -1035,18 +1035,20 @@ function QuotePaymentLinkCard({
 
   const run = async () => {
     if (!ready?.ready || busy) return;
-    // A size-required line with no size becomes an unpackable order line, so
-    // the size must be resolved BEFORE the irreversible conversion. This is
-    // the quote half of the missing-size leak.
+    // A missing size NEVER stops the conversion — same rule as checkout. The
+    // line items already carry a "Needs a size" badge and a running count for
+    // anyone who wants to fix them first; here we only say it out loud once,
+    // then get out of the way. Any order that still has an unsized required
+    // line raises the order_missing_size admin notification by itself.
     const unsized = await fetchQuoteLinesMissingSize(quoteId);
     if (unsized.length) {
-      const names = unsized.map((u) => u.product_name).join(", ");
-      const m = `${unsized.length} item${unsized.length === 1 ? "" : "s"} still need${unsized.length === 1 ? "s" : ""} a size: ${names}. Set the size on each line item, then convert.`;
-      setErr(m);
-      toast.error(m, { duration: 9000 });
+      const ok = window.confirm(
+        `${unsized.length} item${unsized.length === 1 ? "" : "s"} ${unsized.length === 1 ? "has" : "have"} no size. You can convert now and confirm sizes with her before dispatch.\n\nOK to convert, or Cancel to set the sizes first.`,
+      );
+      if (!ok) return;
+    } else if (!window.confirm("This will create an order from this quote and send the customer a payment link. Continue?")) {
       return;
     }
-    if (!window.confirm("This will create an order from this quote and send the customer a payment link. Continue?")) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1066,10 +1068,11 @@ function QuotePaymentLinkCard({
         toast.error("Conversion returned no order id.");
         return;
       }
-      // convert_quote_to_pending_order copies name/brand/qty/price but NOT the
-      // size column, so stamp the quote's sizes onto the new order items here.
-      // set_order_item_size validates each value against product_sizes, so a
-      // size the product doesn't offer can never be written.
+      // convert_quote_to_pending_order now copies size/color at source, so
+      // this is a backstop: it only touches order items that came through
+      // with an EMPTY size and whose quote line has one. set_order_item_size
+      // validates each value, so a size the product doesn't offer can never
+      // be written. Lines with no size are left alone — never guessed.
       await carryQuoteSizesToOrder(quoteId, row.out_order_id);
       queryClient.invalidateQueries({ queryKey: ["admin-quotes"] });
       // 2. Create the Klump page against the new order.

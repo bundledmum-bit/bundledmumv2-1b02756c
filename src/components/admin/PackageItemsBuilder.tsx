@@ -572,7 +572,7 @@ export default function PackageItemsBuilder({
             {missingSizeItems.length} item{missingSizeItems.length === 1 ? "" : "s"} still need{missingSizeItems.length === 1 ? "s" : ""} a size
           </p>
           <p className="text-[11px] text-destructive/90 mt-0.5">
-            {missingSizeItems.map((it: any) => it.product_name).join(", ")}. Pick a size on each highlighted line — this quote cannot be converted to an order until they are set.
+            {missingSizeItems.map((it: any) => it.product_name).join(", ")}. Pick a size on each highlighted line if you know it. You can still convert this quote — we will confirm the sizes with her before dispatch.
           </p>
         </div>
       )}
