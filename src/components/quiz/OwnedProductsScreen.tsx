@@ -96,7 +96,7 @@ export default function OwnedProductsScreen({
   return (
     // The site header sits above this overlay (same as every other quiz
     // screen), so everything is offset by --bm-header-h.
-    <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-28">
+    <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-[calc(7rem+env(safe-area-inset-bottom))]">
       {/* Title scrolls away; only the search bar stays pinned, so a phone
           keeps as much of the list on screen as possible. */}
       <div className="max-w-[720px] mx-auto px-4 pt-4">
@@ -131,13 +131,13 @@ export default function OwnedProductsScreen({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search products…"
               aria-label="Search products you already have"
-              className="w-full rounded-[14px] border-2 border-border bg-card pl-10 pr-10 py-3 text-sm font-body outline-none transition-colors focus:border-forest"
+              className="w-full rounded-[14px] border-2 border-border bg-card pl-10 pr-10 py-3 text-[16px] font-body outline-none transition-colors focus:border-forest"
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
                 aria-label="Clear search"
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted after:absolute after:content-[''] after:-inset-2"
               >
                 <X className="w-4 h-4" />
               </button>

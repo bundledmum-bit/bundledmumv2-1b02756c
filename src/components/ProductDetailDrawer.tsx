@@ -163,7 +163,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
       <div className="sticky top-0 z-20 flex justify-end p-3 pb-0 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button
           onClick={onClose}
-          className="flex items-center justify-center w-10 h-10 rounded-full bg-foreground/10 hover:bg-foreground/20 transition-colors"
+          className="flex items-center justify-center w-11 h-11 rounded-full bg-foreground/10 hover:bg-foreground/20 transition-colors"
           aria-label="Close product details"
         >
           <X className="h-5 w-5 text-foreground" />
@@ -374,7 +374,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
             ) : isInCart && cartItem ? (
               <div className="flex items-center gap-3">
                 <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
-                <Link to="/cart" className="text-forest text-sm font-semibold hover:underline font-body">
+                <Link to="/cart" className="inline-flex items-center min-h-[44px] px-1 text-forest text-sm font-semibold hover:underline font-body">
                   Cart →
                 </Link>
               </div>
@@ -419,7 +419,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
           <Link
             to={`/products/${product.slug}`}
             onClick={onClose}
-            className="block text-center text-forest/80 hover:text-forest font-semibold text-xs mt-3 hover:underline"
+            className="flex items-center justify-center min-h-[44px] text-center text-forest/80 hover:text-forest font-semibold text-xs mt-1 hover:underline"
           >
             View Full Product →
           </Link>

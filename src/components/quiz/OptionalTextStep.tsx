@@ -72,7 +72,7 @@ export default function OptionalTextStep({
               value={value}
               onChange={e => setValue(e.target.value)}
               placeholder={placeholder}
-              className={`w-full rounded-[14px] border-2 px-4 py-3.5 text-sm bg-card font-body outline-none transition-colors ${error ? "border-destructive" : "border-border focus:border-forest"}`}
+              className={`w-full rounded-[14px] border-2 px-4 py-3.5 text-[16px] bg-card font-body outline-none transition-colors ${error ? "border-destructive" : "border-border focus:border-forest"}`}
             />
             {error && <p className="text-destructive text-[11px]">{error}</p>}
             {!isWhatsappStep && config.helper_text && <p className="text-muted-foreground text-[11px]">{config.helper_text}</p>}

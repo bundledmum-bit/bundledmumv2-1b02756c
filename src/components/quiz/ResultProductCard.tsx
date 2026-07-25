@@ -161,7 +161,9 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
                 disabled={sizeUnmet}
                 aria-disabled={sizeUnmet}
                 title={sizeUnmet ? "Select a size" : undefined}
-                className={`rounded-pill px-4 py-1.5 text-[12px] font-bold text-primary-foreground transition-colors whitespace-nowrap ${sizeUnmet ? "bg-coral/40 cursor-not-allowed" : "bg-coral hover:bg-coral-dark"}`}
+                // min-h-44: this is the card's primary action, so it gets a
+                // full-size touch target rather than the 30px pill it was.
+                className={`rounded-pill px-4 min-h-[44px] text-[12px] font-bold text-primary-foreground transition-colors whitespace-nowrap ${sizeUnmet ? "bg-coral/40 cursor-not-allowed" : "bg-coral hover:bg-coral-dark"}`}
               >
                 {sizeUnmet ? "Select a size" : "+ Add"}
               </button>
@@ -184,7 +186,7 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
                   value={selectedBrandId}
                   onChange={(e) => setSelectedBrandId(e.target.value)}
                   aria-label="Choose brand"
-                  className="w-full h-9 rounded-lg border border-border bg-card text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40"
+                  className="w-full h-11 rounded-lg border border-border bg-card text-[16px] sm:text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40"
                 >
                   {!selectedBrandId && <option value="" disabled>Choose brand</option>}
                   {brands.map(b => (
@@ -205,7 +207,7 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
                   value={selectedSize}
                   onChange={(e) => setSelectedSize(e.target.value)}
                   aria-label="Choose size"
-                  className={`w-full h-9 rounded-lg border bg-card text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40 ${sizeUnmet ? "border-coral" : "border-border"}`}
+                  className={`w-full h-11 rounded-lg border bg-card text-[16px] sm:text-[12px] font-semibold pl-3 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-forest/40 ${sizeUnmet ? "border-coral" : "border-border"}`}
                 >
                   <option value="" disabled>Choose size</option>
                   {sizeOptions.map(s => (

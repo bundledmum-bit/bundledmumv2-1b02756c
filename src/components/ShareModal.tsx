@@ -195,7 +195,7 @@ export default function ShareModal({ onClose, title, subtitle, items, totalPrice
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onClose}>
       <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" />
       <div className="relative bg-card rounded-[20px] shadow-2xl max-w-[420px] w-full max-h-[90vh] overflow-y-auto animate-fade-in p-5 max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center hover:bg-foreground/20">
+        <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center hover:bg-foreground/20 after:absolute after:content-[''] after:-inset-1.5">
           <X className="h-4 w-4" />
         </button>
 
@@ -211,16 +211,16 @@ export default function ShareModal({ onClose, title, subtitle, items, totalPrice
 
         {/* Share buttons */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          <button onClick={handleWhatsApp} className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] text-primary-foreground py-2.5 text-sm font-semibold interactive">
+          <button onClick={handleWhatsApp} className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] text-primary-foreground min-h-[44px] text-sm font-semibold interactive">
             📱 WhatsApp
           </button>
-          <button onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-xl bg-forest text-primary-foreground py-2.5 text-sm font-semibold interactive">
+          <button onClick={handleDownload} className="flex items-center justify-center gap-2 rounded-xl bg-forest text-primary-foreground min-h-[44px] text-sm font-semibold interactive">
             <Download className="h-4 w-4" /> Save Image
           </button>
-          <button onClick={handleTwitter} className="flex items-center justify-center gap-2 rounded-xl bg-foreground text-primary-foreground py-2.5 text-sm font-semibold interactive">
+          <button onClick={handleTwitter} className="flex items-center justify-center gap-2 rounded-xl bg-foreground text-primary-foreground min-h-[44px] text-sm font-semibold interactive">
             🐦 Twitter/X
           </button>
-          <button onClick={handleFacebook} className="flex items-center justify-center gap-2 rounded-xl bg-[#1877F2] text-primary-foreground py-2.5 text-sm font-semibold interactive">
+          <button onClick={handleFacebook} className="flex items-center justify-center gap-2 rounded-xl bg-[#1877F2] text-primary-foreground min-h-[44px] text-sm font-semibold interactive">
             📘 Facebook
           </button>
         </div>
@@ -230,7 +230,7 @@ export default function ShareModal({ onClose, title, subtitle, items, totalPrice
           <p className="text-text-light text-[11px] mb-1.5">Your unique link:</p>
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold truncate flex-1">{shareUrl}</p>
-            <button onClick={handleCopyLink} className="flex-shrink-0 rounded-pill bg-forest px-3 py-1.5 text-[11px] font-semibold text-primary-foreground interactive flex items-center gap-1">
+            <button onClick={handleCopyLink} className="flex-shrink-0 rounded-pill bg-forest px-3 min-h-[44px] text-[11px] font-semibold text-primary-foreground interactive flex items-center gap-1">
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
               {copied ? "Copied!" : "Copy"}
             </button>

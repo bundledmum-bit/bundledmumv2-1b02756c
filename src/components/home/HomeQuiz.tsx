@@ -1072,7 +1072,11 @@ function ResultsScreen({
   );
 
   return (
-    <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-28 md:pb-0">
+    // The sticky checkout bar grows by env(safe-area-inset-bottom) on an
+    // iPhone with a home indicator (~34px), which the flat pb-28 didn't
+    // allow for — the last rows ended up under the bar. The padding now
+    // tracks the same inset the bar uses.
+    <div className="min-h-screen bg-background pt-[var(--bm-header-h,108px)] pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-0">
       {/* Hero: intro on the warm ground, with the bundle summary card as anchor */}
       <div className="px-4 md:px-8 pt-6 md:pt-10 pb-2">
         <div className="max-w-[560px] mx-auto text-center">
@@ -1092,14 +1096,16 @@ function ResultsScreen({
             </p>
           )}
 
-          {/* Answer pills — tap to edit */}
-          <div className="flex flex-wrap gap-2 justify-center mb-5">
+          {/* Answer pills — tap to edit. The pills stay visually compact but
+              carry an invisible touch pad so each one is a 44px target; the
+              row uses gap-y-3 so those pads never overlap when it wraps. */}
+          <div className="flex flex-wrap gap-x-2 gap-y-4 justify-center mb-5">
             {pillData.map(p => (
-              <button key={p.step} onClick={onBack} className="bg-card border border-border rounded-pill px-3 py-1 text-foreground text-[12px] font-semibold hover:border-forest transition-colors">
+              <button key={p.step} onClick={onBack} className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 bg-card border border-border rounded-pill px-3 py-1 text-foreground text-[12px] font-semibold hover:border-forest transition-colors">
                 {p.emoji} {p.label}
               </button>
             ))}
-            <button onClick={onBack} className="rounded-pill border border-border px-3 py-1 text-text-med text-[12px] font-semibold hover:bg-muted/40 transition-colors">
+            <button onClick={onBack} className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 rounded-pill border border-border px-3 py-1 text-text-med text-[12px] font-semibold hover:bg-muted/40 transition-colors">
               ↺ Edit answers
             </button>
           </div>
@@ -1130,10 +1136,12 @@ function ResultsScreen({
               <span aria-hidden="true">&middot;</span>
               <span className="font-mono-price">{fmt(recommendationTotal)}</span>
             </button>
+            {/* Text actions: 19px of type is far too small to tap, so each
+                gets an invisible pad taking it to 44px tall. */}
             <div className="flex gap-5 justify-center mt-3">
-              <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors">↓ See my items</button>
-              <button onClick={handleShare} className="flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><Share2 className="h-3.5 w-3.5" /> Share</button>
-              <button onClick={handleCopyChecklist} className="flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><ClipboardCopy className="h-3.5 w-3.5" /> Copy</button>
+              <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors">↓ See my items</button>
+              <button onClick={handleShare} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><Share2 className="h-3.5 w-3.5" /> Share</button>
+              <button onClick={handleCopyChecklist} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><ClipboardCopy className="h-3.5 w-3.5" /> Copy</button>
             </div>
           </div>
         </div>
@@ -1242,13 +1250,13 @@ function ResultsScreen({
             <button onClick={() => {
               const text = "Hey mama! 🤰 I just used BundledMum to get all my baby things in one place — no market runs! Build your own personalised list FREE: https://bundledmum.com?ref=friend_share";
               window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-            }} className="rounded-pill bg-[#25D366] px-6 py-2.5 font-body font-semibold text-primary-foreground text-sm interactive">
+            }} className="rounded-pill bg-[#25D366] px-6 min-h-[44px] font-body font-semibold text-primary-foreground text-sm interactive">
               📱 Share on WhatsApp
             </button>
             <button onClick={() => {
               navigator.clipboard.writeText("https://bundledmum.com?ref=friend_share");
               toast.success("Link copied!");
-            }} className="rounded-pill border-2 border-primary-foreground/30 px-6 py-2.5 font-body font-semibold text-primary-foreground/80 text-sm interactive">
+            }} className="rounded-pill border-2 border-primary-foreground/30 px-6 min-h-[44px] font-body font-semibold text-primary-foreground/80 text-sm interactive">
               📋 Copy Link
             </button>
           </div>
