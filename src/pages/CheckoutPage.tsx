@@ -87,7 +87,7 @@ function cartItemHasIssue(item: any, issues: StockIssue[]): boolean {
 }
 
 export default function CheckoutPage() {
-  const { cart, subtotal, clearCart, totalItems, gifts, autoFees } = useCart();
+  const { cart, setCart, updateVariant, subtotal, clearCart, totalItems, gifts, autoFees } = useCart();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -116,14 +116,19 @@ export default function CheckoutPage() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("products")
-        .select("id, slug, product_sizes(id), product_colors(id)")
+        .select("id, slug, product_sizes(id, size_label, display_order, in_stock), product_colors(id)")
         .in("id", variantProductIds);
       if (error) throw error;
-      const map = new Map<string, { slug: string | null; requiresSize: boolean; requiresColor: boolean }>();
+      const map = new Map<string, { slug: string | null; requiresSize: boolean; requiresColor: boolean; sizeOptions: string[] }>();
       (data || []).forEach((p: any) => map.set(String(p.id), {
         slug: p.slug ?? null,
         requiresSize: (p.product_sizes || []).length > 0,
         requiresColor: (p.product_colors || []).length > 0,
+        // Only in-stock labels are offered — and nothing is preselected.
+        sizeOptions: ((p.product_sizes || []) as any[])
+          .filter((r) => r.in_stock !== false)
+          .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+          .map((r) => r.size_label),
       }));
       return map;
     },
@@ -131,8 +136,8 @@ export default function CheckoutPage() {
   });
 
   const itemsMissingVariants = useMemo(() => {
-    if (!variantReq) return [] as Array<{ key: string; name: string; slug: string | null; missing: string[] }>;
-    const out: Array<{ key: string; name: string; slug: string | null; missing: string[] }> = [];
+    if (!variantReq) return [] as Array<{ key: string; name: string; slug: string | null; missing: string[]; productId: string; sizeOptions: string[]; bundleKey?: string; bundleIndex?: number }>;
+    const out: Array<{ key: string; name: string; slug: string | null; missing: string[]; productId: string; sizeOptions: string[]; bundleKey?: string; bundleIndex?: number }> = [];
     const missingFor = (req: { requiresSize: boolean; requiresColor: boolean }, size: any, color: any) => {
       const m: string[] = [];
       if (req.requiresSize && !size) m.push("size");
@@ -142,12 +147,13 @@ export default function CheckoutPage() {
     (cart || []).forEach((it: any) => {
       // Bundle row: check each child against its product's requirements.
       if (it?.bundleItems?.length) {
-        it.bundleItems.forEach((bi: any) => {
+        it.bundleItems.forEach((bi: any, idx: number) => {
           const req = variantReq.get(String(bi.productId));
           if (!req) return;
           const missing = missingFor(req, bi.size, bi.color);
           if (missing.length) {
-            out.push({ key: `${it._key}-${bi.productId}`, name: `${bi.productName || "Item"} (in ${it.bundleName || it.name})`, slug: req.slug, missing });
+            out.push({ key: `${it._key}-${bi.productId}`, name: `${bi.productName || "Item"} (in ${it.bundleName || it.name})`, slug: req.slug, missing,
+              productId: String(bi.productId), sizeOptions: req.sizeOptions, bundleKey: it._key, bundleIndex: idx });
           }
         });
         return;
@@ -156,20 +162,12 @@ export default function CheckoutPage() {
       if (!req) return;
       const missing = missingFor(req, it.selectedSize, it.selectedColor);
       if (missing.length) {
-        out.push({ key: it._key, name: it.name, slug: it.slug || req.slug, missing });
+        out.push({ key: it._key, name: it.name, slug: it.slug || req.slug, missing, productId: String(it.id), sizeOptions: req.sizeOptions });
       }
     });
     return out;
   }, [cart, variantReq]);
 
-  const hasMissingVariants = itemsMissingVariants.length > 0;
-  // Human label for the union of missing attributes across flagged items.
-  const missingAttrLabel = useMemo(() => {
-    const all = new Set<string>();
-    itemsMissingVariants.forEach((it) => it.missing.forEach((m) => all.add(m)));
-    const parts = ["size", "color"].filter((a) => all.has(a));
-    return parts.length === 0 ? "options" : parts.join(" & ");
-  }, [itemsMissingVariants]);
   const [form, setForm] = useState<FormData>({ firstName: "", lastName: "", phone: "", email: "", address: "", city: "", state: "Lagos", notes: "", lga: "" });
   // Unpriced "other items not listed" note from /hospital-list. Forwarded onto
   // the order as custom_items_request; NEVER added to any total.
@@ -1791,12 +1789,9 @@ export default function CheckoutPage() {
       navigate("/cart");
       return;
     }
-    // Client-side variant gate (server place-order v38 is the backstop).
-    if (hasMissingVariants) {
-      toast.error(`Please choose ${missingAttrLabel} for the highlighted item(s) before checking out.`);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
+    // NOTE: a missing size or colour NEVER blocks the order. The cart lines
+    // offer an optional picker instead, and an order placed without one fires
+    // the order_missing_size admin notification so we can confirm by phone.
     if (!validate()) return;
     if (notDeliverable) {
       toast.error(`Sorry, we don't currently deliver to ${form.city || "this area"}. Please contact us on WhatsApp.`);
@@ -2171,26 +2166,49 @@ export default function CheckoutPage() {
           )}
         </div>
 
-        {hasMissingVariants && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-            <div className="font-semibold text-amber-900 mb-2">
-              Please choose {missingAttrLabel} for {itemsMissingVariants.length} item{itemsMissingVariants.length > 1 ? "s" : ""} before checking out
+        {/* Optional size picker. This NEVER blocks the order — it is a one-tap
+            convenience so we don't have to phone her. Leaving it blank is a
+            supported outcome: the order goes through and the
+            order_missing_size admin notification tells us to confirm. */}
+        {itemsMissingVariants.some((it) => it.missing.includes("size") && it.sizeOptions.length > 0) && (
+          <div className="bg-card border border-border rounded-xl p-4 mb-4">
+            <div className="font-semibold text-sm text-foreground">
+              Pick a size <span className="font-normal text-text-med">(optional — we will confirm with you if you skip it)</span>
             </div>
-            <ul className="space-y-2">
-              {itemsMissingVariants.map((it) => (
-                <li key={it.key} className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-amber-900 min-w-0 break-words">{it.name}</span>
-                  {it.slug && (
-                    <Link
-                      to={`/products/${it.slug}`}
-                      className="text-sm text-coral font-semibold underline-offset-2 hover:underline whitespace-nowrap flex-shrink-0"
+            <ul className="mt-3 space-y-2">
+              {itemsMissingVariants
+                .filter((it) => it.missing.includes("size") && it.sizeOptions.length > 0)
+                .map((it) => (
+                  <li key={it.key} className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm text-foreground min-w-0 break-words flex-1">{it.name}</span>
+                    <select
+                      defaultValue=""
+                      aria-label={`Size for ${it.name}`}
+                      onChange={(e) => {
+                        const size = e.target.value;
+                        if (!size) return;
+                        if (it.bundleKey != null && it.bundleIndex != null) {
+                          setCart((prev: any[]) => prev.map((row: any) => row._key !== it.bundleKey ? row : {
+                            ...row,
+                            bundleItems: (row.bundleItems || []).map((bi: any, i: number) => i === it.bundleIndex ? { ...bi, size } : bi),
+                          }));
+                        } else {
+                          updateVariant(it.key, { selectedSize: size });
+                        }
+                      }}
+                      className="text-sm border border-input rounded-lg px-2 min-h-[44px] bg-background min-w-[140px] flex-shrink-0"
                     >
-                      Pick {it.missing.join(" & ")} →
-                    </Link>
-                  )}
-                </li>
-              ))}
+                      {/* No size is ever preselected — an unchosen size is a
+                          valid answer, and guessing one is worse than asking. */}
+                      <option value="">Choose if you know it</option>
+                      {it.sizeOptions.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
+                    </select>
+                  </li>
+                ))}
             </ul>
+            <p className="text-[11px] text-text-med mt-2.5">
+              Not sure? Leave it — we will call or WhatsApp you to confirm before we pack.
+            </p>
           </div>
         )}
 
@@ -2622,7 +2640,6 @@ export default function CheckoutPage() {
                 || (isExpressOrder
                     ? !expressAcknowledged
                     : (notDeliverable || quoteLoading || !deliveryReady))
-                || hasMissingVariants
               }
               className="w-full rounded-pill bg-forest py-4 text-center font-body font-semibold text-primary-foreground hover:bg-forest-deep interactive text-base disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -2796,7 +2813,7 @@ export default function CheckoutPage() {
               || (isExpressOrder
                   ? !expressAcknowledged
                   : (notDeliverable || quoteLoading || !deliveryReady))
-                || hasMissingVariants            }
+            }
             className="flex-1 rounded-pill bg-forest text-primary-foreground py-2.5 text-sm font-semibold hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {processing

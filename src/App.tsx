@@ -409,6 +409,8 @@ const App = () => (
                 <Route path="products/margins" element={<PermissionGate module="products" action="view"><MarginsPage /></PermissionGate>} />
                 <Route path="bundles" element={<PermissionGate module="products" action="view"><AdminBundles /></PermissionGate>} />
                 <Route path="orders" element={<PermissionGate module="orders" action="view"><AdminOrders /></PermissionGate>} />
+                {/* Deep link used by the order_missing_size admin notification. */}
+                <Route path="orders/:orderId" element={<PermissionGate module="orders" action="view"><AdminOrders /></PermissionGate>} />
                 <Route path="delivery" element={<PermissionGate module="delivery" action="view"><AdminDelivery /></PermissionGate>} />
                 <Route path="content" element={<PermissionGate module="content" action="view"><AdminContent /></PermissionGate>} />
                 <Route path="blog" element={<PermissionGate module="content" action="view"><AdminBlog /></PermissionGate>} />

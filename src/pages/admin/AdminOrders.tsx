@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams, Link as RouterLink } from "react-router-dom";
+import { useSearchParams, useParams, useNavigate, Link as RouterLink } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -135,7 +135,12 @@ export default function AdminOrders() {
   const [dateOpen, setDateOpen] = useState(false);
   const [showCustom, setShowCustom] = useState(datePreset === "custom");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [detailOrder, setDetailOrder] = useState<string | null>(null);
+  // /admin/orders/:orderId opens straight into that order — this is the link
+  // the "Size needed before dispatch" notification sends admins to.
+  const { orderId: routeOrderId } = useParams();
+  const navigate = useNavigate();
+  const [detailOrder, setDetailOrder] = useState<string | null>(routeOrderId || null);
+  useEffect(() => { if (routeOrderId) setDetailOrder(routeOrderId); }, [routeOrderId]);
   const [bulkRunning, setBulkRunning] = useState<string | null>(null);
   const [highlightOrderId, setHighlightOrderId] = useState<string | null>(null);
 
@@ -448,7 +453,7 @@ export default function AdminOrders() {
 
   if (detailOrder) {
     if (!detailOrderData) return <div className="flex justify-center py-20"><Skeleton className="h-8 w-48" /></div>;
-    return <OrderDetailPage order={detailOrderData} adminUser={adminUser} can={can} isSuperAdmin={isSuperAdmin} onBack={() => setDetailOrder(null)} onPrint={() => openBrandedInvoice(detailOrderData, adminUser?.id)} />;
+    return <OrderDetailPage order={detailOrderData} adminUser={adminUser} can={can} isSuperAdmin={isSuperAdmin} onBack={() => { setDetailOrder(null); if (routeOrderId) navigate("/admin/orders", { replace: true }); }} onPrint={() => openBrandedInvoice(detailOrderData, adminUser?.id)} />;
   }
 
   const showFinance = can("finance", "view");
