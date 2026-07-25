@@ -42,7 +42,10 @@ export default function CardAttributeSelect({
         className="w-full min-h-[34px] h-auto rounded-pill border border-border bg-card px-3 py-1 text-[11px] font-semibold text-foreground focus:ring-forest focus:border-forest data-[state=open]:border-forest"
       >
         <span className="flex items-center gap-2 min-w-0 flex-1 text-left">
-          {label && <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium shrink-0">{label}</span>}
+          {/* mr-2 (not just the flex gap): the shadcn SelectTrigger forces this
+              inner span's display off flex, so `gap-2` is ignored — an explicit
+              margin guarantees the space between the label and the value. */}
+          {label && <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium shrink-0 mr-2">{label}</span>}
           <span className="truncate"><SelectValue placeholder={placeholder || `Select ${(label || "option").toLowerCase()}`} /></span>
         </span>
       </SelectTrigger>
