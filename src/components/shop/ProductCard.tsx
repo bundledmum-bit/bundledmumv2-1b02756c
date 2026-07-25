@@ -111,8 +111,8 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
           {product.name}
         </p>
         {brandChoiceLabel && inStockBrandCount >= 2 && (
-          <span className="text-[11px] font-medium text-forest leading-none">
-            Choose from {inStockBrandCount} brands
+          <span className="text-[11px] font-bold text-destructive leading-none">
+            Click to Choose from {inStockBrandCount} {inStockBrandCount === 1 ? "Brand" : "Brands"}
           </span>
         )}
         <div className="mt-auto pt-1.5 flex items-baseline gap-1.5">
