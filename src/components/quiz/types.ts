@@ -47,6 +47,10 @@ export interface RecommendationResult {
   target_count: number;
   engine_version: string;
   products: RecommendedProduct[];
+  // How many products the engine dropped because the shopper ticked them on
+  // the "already have" screen. Only present on the 12-argument overload
+  // (p_exclude_product_ids); absent when nothing was ticked.
+  excluded_count?: number;
   // v4.9 — products that fit the customer's tier/scope but were excluded
   // from the main bundle due to budget or subcategory caps. Up to 5 items.
   // May be missing on older engine responses; treat as optional.

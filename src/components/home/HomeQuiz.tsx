@@ -18,6 +18,8 @@ import {
   BUDGET_MAX,
 } from "@/lib/budgetTiers";
 import OptionalTextStep from "@/components/quiz/OptionalTextStep";
+import ChoiceStepBody, { quizOptionCardClass } from "@/components/quiz/ChoiceStepBody";
+import OwnedProductsScreen from "@/components/quiz/OwnedProductsScreen";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ShareModal from "@/components/ShareModal";
@@ -25,9 +27,39 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { buildQuizStory } from "@/lib/quizStory";
 import type { RecommendationResult, RecommendedProduct } from "@/components/quiz/types";
 
-type Screen = "quiz" | "whatsapp" | "results";
+type Screen = "quiz" | "owned" | "whatsapp" | "results";
 type Category = "maternity" | "baby" | "gift";
 type Gender = "boy" | "girl" | "unknown";
+
+// Extra single_choice steps that live entirely in quiz_questions. They render
+// after the three built-in steps, in step_order, and ONLY when the row is
+// is_active — so an inactive question simply doesn't appear (useQuizQuestions
+// already filters on is_active). Answers are keyed by step_id.
+const DYNAMIC_STEP_IDS = ["multiples", "firstBaby", "hospitalType", "deliveryMethod", "alreadyBought"] as const;
+export type QuizExtras = Record<string, string>;
+
+// ── Extras → engine arguments ────────────────────────────────────────────
+// Each helper falls back to the value the quiz sent before these questions
+// existed, so an unanswered (or skipped, or still-inactive) step behaves
+// exactly like today.
+export function multiplesFrom(extras: QuizExtras): number {
+  const n = parseInt(extras.multiples || "", 10); // "3+" → 3
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+export function firstBabyFrom(extras: QuizExtras): boolean {
+  return extras.firstBaby === "yes";
+}
+export function hospitalTypeFrom(extras: QuizExtras): string {
+  return extras.hospitalType || "both";
+}
+export function deliveryMethodFrom(extras: QuizExtras): string {
+  return extras.deliveryMethod || "both";
+}
+// "Yes, I have some already" routes to the owned-products picker; anything
+// else (including a skipped step) goes straight on to the WhatsApp step.
+export function screenAfterQuestions(extras: QuizExtras): Screen {
+  return extras.alreadyBought === "yes" ? "owned" : "whatsapp";
+}
 
 // Fallback defaults — overridden by site_settings (see QuizScreen).
 // Keeping the constants here so tests / SSR / first render before settings
@@ -75,7 +107,7 @@ function stageFor(categories: Set<Category>): "expecting" | "newborn" {
 
 // Build the `answers` object the old quiz uses, from home-quiz state,
 // so buildQuizStory and all the heading/pill logic stays identical.
-function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender): Record<string, string> {
+function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender, extras: QuizExtras = {}): Record<string, string> {
   const isGift = categories.has("gift");
   return {
     shopper: isGift ? "gift" : "self",
@@ -83,7 +115,11 @@ function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender)
     scope: scopeFor(categories),
     stage: stageFor(categories),
     gender,
-    multiples: "1",
+    // buildQuizStory keys off "2"/"3", so the "3+" option value is narrowed
+    // to the same integer we send the engine.
+    multiples: String(multiplesFrom(extras)),
+    ...(extras.hospitalType ? { hospitalType: extras.hospitalType } : {}),
+    ...(extras.deliveryMethod ? { deliveryMethod: extras.deliveryMethod } : {}),
   };
 }
 
@@ -133,6 +169,8 @@ function QuizScreen({
   categories, setCategories,
   gender, setGender,
   giftSubcategory, setGiftSubcategory,
+  extras, setExtra,
+  resumeAtLastStep = false,
   onNext,
 }: {
   budget: number;
@@ -143,10 +181,16 @@ function QuizScreen({
   setGender: (g: Gender) => void;
   giftSubcategory: GiftSubcategory | null;
   setGiftSubcategory: (g: GiftSubcategory | null) => void;
+  extras: QuizExtras;
+  setExtra: (stepId: string, value: string) => void;
+  // Coming back from the owned-products screen should land on the question
+  // that sent you there, not all the way back at the budget input.
+  resumeAtLastStep?: boolean;
   onNext: () => void;
 }) {
   const [step, setStep] = useState(0);
   const { data: settings } = useSiteSettings();
+  const { data: questions } = useQuizQuestions();
 
   // Focus the budget input whenever the budget step is shown so the caret
   // is ready. preventScroll stops the page jumping on mobile.
@@ -219,25 +263,62 @@ function QuizScreen({
   const belowMin = budget > 0 && budget < minBudget;
   const minBudgetDisplay = `Minimum ₦${minBudget.toLocaleString("en-NG")}`;
 
+  // ── DB-driven steps ────────────────────────────────────────────────────
+  // Everything after the three built-in questions comes straight out of
+  // quiz_questions: the ones in DYNAMIC_STEP_IDS that are active and apply
+  // to this shopper's path, in step_order. All five are currently inactive,
+  // so today this list is empty and the wizard is unchanged.
+  const path: "self" | "gift" = giftSelected ? "gift" : "self";
+  const dynamicSteps = useMemo(
+    () =>
+      (questions || [])
+        .filter((q) => (DYNAMIC_STEP_IDS as readonly string[]).includes(q.step_id))
+        .filter((q) => !q.applies_to_path?.length || q.applies_to_path.includes(path))
+        .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0)),
+    [questions, path],
+  );
+
   // ── Wizard: one question per step ──────────────────────────────────────
-  const STEP_COUNT = 3;
-  const stepValid = [
-    budget >= minBudget, // hard floor: cannot advance below the ₦150,000 minimum
-    categories.size > 0 && (!giftSelected || !!giftSubcategory),
-    !!gender,
-  ][step];
+  const BASE_STEP_COUNT = 3;
+  const STEP_COUNT = BASE_STEP_COUNT + dynamicSteps.length;
+  // Switching to/from the gift path can shorten the list under our feet.
+  useEffect(() => {
+    setStep((n) => Math.min(n, STEP_COUNT - 1));
+  }, [STEP_COUNT]);
+
+  // Resume on the last question — deferred until the DB steps have loaded,
+  // since STEP_COUNT is still 3 on the first render.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (!resumeAtLastStep || resumedRef.current) return;
+    if (dynamicSteps.length === 0) return;
+    resumedRef.current = true;
+    setStep(STEP_COUNT - 1);
+  }, [resumeAtLastStep, dynamicSteps.length, STEP_COUNT]);
+
+  const dynamicStep = step >= BASE_STEP_COUNT ? dynamicSteps[step - BASE_STEP_COUNT] : undefined;
+  const stepValid = dynamicStep
+    ? !!extras[dynamicStep.step_id] || !!dynamicStep.is_skippable
+    : [
+        budget >= minBudget, // hard floor: cannot advance below the ₦150,000 minimum
+        categories.size > 0 && (!giftSelected || !!giftSubcategory),
+        !!gender,
+      ][step];
   const goNext = () => {
     if (!stepValid) return;
     if (step < STEP_COUNT - 1) setStep((n) => n + 1);
     else onNext(); // last step → parent submit (floor warning + routing)
   };
   const goBack = () => setStep((n) => Math.max(0, n - 1));
+  // Skip leaves the answer unset, which is what makes the engine fall back
+  // to its default for that argument.
+  const goSkip = () => {
+    if (step < STEP_COUNT - 1) setStep((n) => n + 1);
+    else onNext();
+  };
 
   // Reusable option-card class (idle vs selected) on the cream wizard card.
-  const optionCard = (selected: boolean) =>
-    `w-full flex items-center gap-3 px-3.5 py-3 rounded-[14px] border-2 text-left transition-all ${
-      selected ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
-    }`;
+  const optionCard = quizOptionCardClass;
 
   return (
     <div className="w-full max-w-[460px] mx-auto">
@@ -358,6 +439,16 @@ function QuizScreen({
           </div>
         )}
 
+        {/* DB-driven steps — question text, sub-text and options all come
+            from quiz_questions / quiz_options. */}
+        {dynamicStep && (
+          <ChoiceStepBody
+            question={dynamicStep}
+            value={extras[dynamicStep.step_id]}
+            onChange={(v) => setExtra(dynamicStep.step_id, v)}
+          />
+        )}
+
         {/* Navigation */}
         <div className="flex items-center gap-2.5 mt-6">
           {step > 0 && (
@@ -377,6 +468,16 @@ function QuizScreen({
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Skip — only for questions the admin marked skippable. */}
+        {dynamicStep?.is_skippable && (
+          <button
+            onClick={goSkip}
+            className="w-full mt-3 text-muted-foreground text-xs hover:text-forest transition-colors font-body min-h-[36px]"
+          >
+            ⏭️ {dynamicStep.ui_config?.skip_label || "Skip this question"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -387,12 +488,20 @@ function QuizScreen({
 // =============================================================================
 function ResultsScreen({
   budget, categories, gender,
+  extras = {},
+  excludeIds = [],
   onBack,
   onComplete,
 }: {
   budget: number;
   categories: Set<Category>;
   gender: Gender;
+  // Answers to the DB-driven steps, keyed by step_id. Empty when those
+  // questions are inactive or were skipped.
+  extras?: QuizExtras;
+  // Products the shopper ticked as "already have" — sent to the engine's
+  // 12-argument overload as p_exclude_product_ids.
+  excludeIds?: string[];
   onBack: () => void;
   onComplete?: () => void;
 }) {
@@ -407,7 +516,11 @@ function ResultsScreen({
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
 
-  const answers = useMemo(() => toOldAnswers(budget, categories, gender), [budget, categories, gender]);
+  const answers = useMemo(() => toOldAnswers(budget, categories, gender, extras), [budget, categories, gender, extras]);
+  // Stable primitives for the effect below — a fresh array/object identity on
+  // every render would otherwise re-run the recommendation RPC in a loop.
+  const excludeKey = excludeIds.join(",");
+  const extrasKey = JSON.stringify(extras);
 
   useEffect(() => {
     let cancelled = false;
@@ -499,19 +612,31 @@ function ResultsScreen({
           // p_delivery_method='vaginal', plus p_gender='unknown' for the
           // "It's a Surprise!" answer — none of which the engine recognised,
           // so it fell through to its empty fallback bracket.
-          const params = {
+          //
+          // hospital_type / delivery_method / multiples / first_baby now
+          // carry the shopper's real answers when the matching DB steps are
+          // active; each helper falls back to the previous default when the
+          // question wasn't asked or was skipped.
+          const baseParams = {
             p_budget_tier: budgetTier,
             p_scope: scope,
             p_stage: stage,
-            p_hospital_type: "both",
-            p_delivery_method: "both",
-            p_multiples: 1,
+            p_hospital_type: hospitalTypeFrom(extras),
+            p_delivery_method: deliveryMethodFrom(extras),
+            p_multiples: multiplesFrom(extras),
             p_gender: gender === "unknown" ? "neutral" : gender,
             p_is_gift: false,
-            p_first_baby: false,
+            p_first_baby: firstBabyFrom(extras),
             p_gift_relationship: null,
             p_budget_amount: budget,
           };
+          // Ticked "already have" products switch us to the 12-argument
+          // overload. With nothing ticked we call the 11-argument version
+          // exactly as before — PostgREST resolves the overload by the
+          // argument names present in the payload.
+          const params = excludeIds.length
+            ? { ...baseParams, p_exclude_product_ids: excludeIds }
+            : baseParams;
           // eslint-disable-next-line no-console
           console.log("[quiz] calling RPC with params:", JSON.stringify(params, null, 2));
           const { data, error } = await supabase.rpc("run_quiz_recommendation", params as any);
@@ -542,7 +667,7 @@ function ResultsScreen({
       }
     })();
     return () => { cancelled = true; };
-  }, [budget, categories, gender]);
+  }, [budget, categories, gender, extrasKey, excludeKey]);
 
   const productMap = useMemo(() => {
     const m = new Map<string, Product>();
@@ -816,7 +941,8 @@ function ResultsScreen({
   }, 0);
   const grandTotal = recommendationTotal;
   const budgetLabel = answers.budget === "starter" ? "Starter" : answers.budget === "premium" ? "Premium" : "Standard";
-  const multiples = 1;
+  // v5 12-arg overload only — absent (and irrelevant) when nothing was ticked.
+  const excludedCount = Number(recommendation.excluded_count ?? 0) || 0;
   const isFallback = recommendation.engine_version?.includes("fallback");
 
   const recScope = recommendation.scope || answers.scope || "";
@@ -958,6 +1084,13 @@ function ResultsScreen({
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-coral">{isGift ? "Gift bundle ready" : "Your bundle is ready"}</div>
           <h1 className="pf text-[26px] md:text-[36px] font-bold text-foreground leading-[1.08] text-balance mt-2 mb-2.5">{heading}</h1>
           <p className="text-text-med text-[13.5px] md:text-[15px] leading-relaxed max-w-[46ch] mx-auto mb-4">{subHeading}</p>
+
+          {/* Exclusions the engine honoured — a count only, never the list. */}
+          {excludedCount > 0 && (
+            <p className="inline-block bg-forest-light border border-forest/15 rounded-pill px-3 py-1 text-forest text-[12.5px] font-semibold mb-4">
+              We left out {excludedCount} item{excludedCount === 1 ? "" : "s"} you already have.
+            </p>
+          )}
 
           {/* Answer pills — tap to edit */}
           <div className="flex flex-wrap gap-2 justify-center mb-5">
@@ -1281,7 +1414,19 @@ export type HomeQuizInitialState = {
   budget: number;
   categories: Category[];
   gender: Gender;
-  autoAdvance?: Screen; // "whatsapp" | "results"
+  // Answers to the DB-driven steps, plus anything ticked on the owned-products
+  // screen — carried across the Home → /quiz hop so nothing is re-asked.
+  extras?: QuizExtras;
+  ownedProductIds?: string[];
+  autoAdvance?: Screen; // "owned" | "whatsapp" | "results"
+};
+
+export type HomeQuizAnswers = {
+  budget: number;
+  categories: Category[];
+  gender: Gender;
+  extras: QuizExtras;
+  ownedProductIds: string[];
 };
 
 export default function HomeQuiz({
@@ -1289,7 +1434,7 @@ export default function HomeQuiz({
   onSubmit,
 }: {
   initialState?: HomeQuizInitialState;
-  onSubmit?: (answers: { budget: number; categories: Category[]; gender: Gender }) => void;
+  onSubmit?: (answers: HomeQuizAnswers) => void;
 } = {}) {
   const [screen, setScreen] = useState<Screen>(initialState?.autoAdvance || "quiz");
 
@@ -1301,7 +1446,7 @@ export default function HomeQuiz({
   // before any screen change, and stays on "quiz" here), so resetting the
   // window scroll is safe. Instant (no animation) — never seen scrolling.
   useEffect(() => {
-    if (screen === "whatsapp" || screen === "results") {
+    if (screen !== "quiz") {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
   }, [screen]);
@@ -1315,6 +1460,22 @@ export default function HomeQuiz({
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [giftSubcategory, setGiftSubcategory] = useState<GiftSubcategory | null>(null);
+  // Answers to the DB-driven steps, keyed by step_id, and the products the
+  // shopper ticked as "already have". Both live here (not in QuizScreen) so
+  // they survive stepping back and forward through the flow.
+  const [extras, setExtras] = useState<QuizExtras>(initialState?.extras || {});
+  const setExtra = (stepId: string, value: string) => setExtras((prev) => ({ ...prev, [stepId]: value }));
+  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => new Set(initialState?.ownedProductIds || []));
+  const toggleOwned = (productId: string) =>
+    setOwnedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  const excludeIds = useMemo(() => Array.from(ownedIds), [ownedIds]);
+  // Set when the owned-products screen hands control back to the questions.
+  const [resumeAtLastStep, setResumeAtLastStep] = useState(false);
   const navigateRoot = useNavigate();
   // Stable session id for this quiz run. Persisted to localStorage so
   // the same row gets enriched across submit → WhatsApp → checkout, and
@@ -1350,6 +1511,7 @@ export default function HomeQuiz({
         // Step index/name based on the screen at unmount time.
         const stepMap: Record<Screen, { n: number; name: string }> = {
           quiz: { n: 1, name: "answers" },
+          owned: { n: 2, name: "already_owned" },
           whatsapp: { n: 2, name: "whatsapp" },
           results: { n: 3, name: "results" },
         };
@@ -1439,6 +1601,8 @@ export default function HomeQuiz({
       scope,
       stage,
       gift_subcategory: giftSubcategory,
+      ...extras,
+      already_owned_product_ids: excludeIds,
     };
     saveLead({
       p_session_id: sessionId,
@@ -1447,8 +1611,10 @@ export default function HomeQuiz({
       p_scope: scope,
       p_stage: stage,
       p_baby_gender: gender ?? null,
-      p_multiples: "1",
-      p_first_baby: false,
+      p_hospital_type: extras.hospitalType ?? null,
+      p_delivery_method: extras.deliveryMethod ?? null,
+      p_multiples: String(multiplesFrom(extras)),
+      p_first_baby: firstBabyFrom(extras),
       p_gift_wrap: false,
       p_push_gift_category: isGift ? (giftSubcategory ?? null) : null,
       p_push_gift_budget: isGift ? budgetTier : null,
@@ -1470,10 +1636,11 @@ export default function HomeQuiz({
     if (onSubmit && gender) {
       // Host-controlled: let the host page handle transition (e.g. Home
       // routing to /quiz before showing WhatsApp).
-      onSubmit({ budget, categories: Array.from(categories), gender });
+      onSubmit({ budget, categories: Array.from(categories), gender, extras, ownedProductIds: excludeIds });
       return;
     }
-    setScreen("whatsapp");
+    // "Yes, I have some already" → owned-products picker, then WhatsApp.
+    setScreen(screenAfterQuestions(extras));
   };
 
   // Public submit handler — wraps continueSubmit with the below-floor
@@ -1494,6 +1661,8 @@ export default function HomeQuiz({
           categories={categories} setCategories={setCategories}
           gender={gender} setGender={setGender}
           giftSubcategory={giftSubcategory} setGiftSubcategory={setGiftSubcategory}
+          extras={extras} setExtra={setExtra}
+          resumeAtLastStep={resumeAtLastStep}
           onNext={handleSubmitFromQuiz}
         />
         {floorWarning && (
@@ -1513,11 +1682,27 @@ export default function HomeQuiz({
   // old /quiz route UX — Build My List takes over the viewport).
   // The hero stays mounted underneath so quiz state is preserved on back.
 
+  // Owned-products picker — sits between the last question and WhatsApp.
+  if (screen === "owned") {
+    return createPortal(
+      <div className="fixed inset-0 z-[500] bg-background overflow-y-auto">
+        <OwnedProductsScreen
+          selectedIds={ownedIds}
+          onToggle={toggleOwned}
+          onDone={() => setScreen("whatsapp")}
+          onBack={() => { setResumeAtLastStep(true); setScreen("quiz"); }}
+        />
+      </div>,
+      document.body
+    );
+  }
+
   if (screen === "whatsapp") {
     const content = !whatsappQuestion ? (
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
+          extras={extras} excludeIds={excludeIds}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />
@@ -1528,7 +1713,7 @@ export default function HomeQuiz({
         progress={100}
         onSubmit={finishWhatsapp}
         onSkip={() => finishWhatsapp(undefined)}
-        onBack={() => setScreen("quiz")}
+        onBack={() => { setResumeAtLastStep(false); setScreen("quiz"); }}
       />
     );
     return createPortal(
@@ -1544,6 +1729,7 @@ export default function HomeQuiz({
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
+          extras={extras} excludeIds={excludeIds}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />

@@ -7,7 +7,7 @@ import { useAllProducts, useTestimonials, useSiteSettings, useBundles } from "@/
 import type { Product } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
-import HomeQuiz from "@/components/home/HomeQuiz";
+import HomeQuiz, { screenAfterQuestions } from "@/components/home/HomeQuiz";
 import ShopShortcuts from "@/components/home/ShopShortcuts";
 import FeaturedProductsRail from "@/components/home/FeaturedProductsRail";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
@@ -134,7 +134,9 @@ function HeroSection() {
               // On Home, advancing from screen 1 routes to /quiz with the
               // answers seeded so the WhatsApp + Results screens render
               // on the /quiz route instead of overlaying the home page.
-              navigate("/quiz", { state: { answers, autoAdvance: "whatsapp" } });
+              // "I already have some" lands on the owned-products picker
+              // first — same routing decision the /quiz flow makes.
+              navigate("/quiz", { state: { answers, autoAdvance: screenAfterQuestions(answers.extras) } });
             }}
           />
         </div>

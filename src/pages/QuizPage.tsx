@@ -12,8 +12,14 @@ export default function QuizPage() {
   useEffect(() => { document.title = "Build My List | BundledMum"; }, []);
 
   const state = location.state as {
-    answers?: { budget: number; categories: Array<"maternity" | "baby" | "gift">; gender: "boy" | "girl" | "unknown" };
-    autoAdvance?: "whatsapp" | "results";
+    answers?: {
+      budget: number;
+      categories: Array<"maternity" | "baby" | "gift">;
+      gender: "boy" | "girl" | "unknown";
+      extras?: Record<string, string>;
+      ownedProductIds?: string[];
+    };
+    autoAdvance?: "owned" | "whatsapp" | "results";
   } | null;
 
   const initialState: HomeQuizInitialState | undefined = state?.answers
@@ -21,6 +27,8 @@ export default function QuizPage() {
         budget: state.answers.budget,
         categories: state.answers.categories,
         gender: state.answers.gender,
+        extras: state.answers.extras,
+        ownedProductIds: state.answers.ownedProductIds,
         autoAdvance: state.autoAdvance,
       }
     : undefined;
