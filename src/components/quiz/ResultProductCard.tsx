@@ -106,12 +106,11 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
 
         {/* Body */}
         <div className="flex-1 min-w-0">
+          {/* No priority badge: 'essential' / 'recommended' / 'nice-to-have'
+              are internal engine values. priority still drives the section
+              grouping on the results page, it just isn't shown per card. */}
           <h3 className="pf text-[14px] font-bold leading-tight cursor-pointer hover:text-forest transition-colors line-clamp-2" onClick={onViewDetail}>{item.name}</h3>
-          {item.priority === "essential" && (
-            <span className="inline-block mt-0.5 text-coral text-[9.5px] font-bold uppercase tracking-wider">Essential</span>
-          )}
-          {item.selected_color && <span className="text-muted-foreground text-[10px] ml-2">Colour: {item.selected_color}</span>}
-          <p className="text-muted-foreground text-[11.5px] leading-snug mt-1 line-clamp-2">💡 {item.why_included}</p>
+          {item.selected_color && <span className="text-muted-foreground text-[10px]">Colour: {item.selected_color}</span>}
 
           {/* Single-brand products just show the brand (nothing to choose) */}
           {singleBrand && (
@@ -171,6 +170,18 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
           )}
         </div>
       </div>
+
+      {/* Why we included this — the engine's own reason for the pick, shown
+          in full. Deliberately NOT clamped or truncated: the copy is written
+          to fit, and a card that grows taller is the correct outcome (grid
+          rows size to the tallest card, so nothing is clipped). Renders
+          nothing at all when the engine sent no reason. */}
+      {item.why_included?.trim() && (
+        <div className="mt-2.5 pt-2.5 border-t border-border/60">
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Why we included this</p>
+          <p className="text-[12.5px] leading-relaxed text-foreground/80 mt-1">{item.why_included.trim()}</p>
+        </div>
+      )}
 
       {/* Brand / size dropdowns — shown only when there's a real choice.
           Native <select> elements (not a popover) so they always render and
