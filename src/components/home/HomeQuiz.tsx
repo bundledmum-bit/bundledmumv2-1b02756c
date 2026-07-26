@@ -12,6 +12,7 @@ import { useGiftMoments } from "@/hooks/useGiftMoments";
 import { useBudgetGuidance, type BudgetGuidance } from "@/hooks/useBudgetGuidance";
 import { useBudgetSuggestions } from "@/hooks/useBudgetSuggestions";
 import { useGenderPalette } from "@/hooks/useGenderPalette";
+import { useBrandColours } from "@/hooks/useBrandColours";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -1113,8 +1114,18 @@ function ResultsScreen({
   }, [palette, selectedColors]);
   // Her choice for a product, defaulting to the FIRST colour she kept — never
   // the engine's selected_color, which is just the first of the full palette.
+  // Brand-specific colours for every product on the page, in ONE request.
+  // The card resolves its own brand against this map, so switching brand is a
+  // lookup rather than a fetch.
+  const brandColoursFor = useBrandColours(
+    useMemo(() => (result?.products || []).map((p) => p.product_id), [result]),
+    gender,
+  );
+  // A card syncs its resolved colour up (see ResultProductCard), so a stored
+  // selection always wins — including the brand's own colour on a product the
+  // engine left with a null selected_color.
   const colorFor = (item: RecommendedProduct): string =>
-    item.selected_color ? (colorSelections[item.product_id] || colorOptions[0]?.name || "") : "";
+    colorSelections[item.product_id] || (item.selected_color ? colorOptions[0]?.name || "" : "");
   const setSizeFor = (item: RecommendedProduct, size: string) => {
     setSizeSelections(m => ({ ...m, [item.product_id]: size }));
     // Clear this card's "needs a size" ring as soon as she picks one.
@@ -1527,6 +1538,7 @@ function ResultsScreen({
         colorOptions={colorOptions}
         selectedColor={colorFor(item)}
         onColorChange={(c) => setColorFor(item, c)}
+        brandColoursFor={brandColoursFor}
         onSizeChange={(s) => setSizeFor(item, s)}
       />
     </div>

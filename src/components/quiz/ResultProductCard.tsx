@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { fmt } from "@/lib/cart";
 import type { Product } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
@@ -10,7 +10,7 @@ import type { RecommendedProduct } from "./types";
 // chosen through dropdowns (a single-brand product shows a static brand chip
 // instead, since there is nothing to change). All add/remove/qty behaviour is
 // unchanged; preAddQty + onPreAddQtyChange render a quantity stepper before Add.
-export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange, availableSizes, sizeRequired, selectedSize: selectedSizeProp, onSizeChange, colorOptions = [], selectedColor: selectedColorProp, onColorChange }: {
+export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange, availableSizes, sizeRequired, selectedSize: selectedSizeProp, onSizeChange, colorOptions = [], selectedColor: selectedColorProp, onColorChange, brandColoursFor }: {
   item: RecommendedProduct;
   onAdd: (overrideBrand?: any, overrideSize?: string, overrideColor?: string) => void;
   onRemove: () => void;
@@ -39,6 +39,11 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   colorOptions?: Array<{ name: string; hex: string }>;
   selectedColor?: string;
   onColorChange?: (color: string) => void;
+  // Colours belonging to a specific brand, looked up from the page-level batch.
+  // A brand that has its own colours can only ship those, so they REPLACE the
+  // palette on this card. Resolved per render from the brand currently
+  // selected here, so switching brand refreshes the options with no refetch.
+  brandColoursFor?: (brandId: string | null | undefined) => Array<{ name: string; hex: string }>;
 }) {
   const brands = fullProduct?.brands || [];
   const legacySizes = fullProduct?.sizes || [];
@@ -91,11 +96,28 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   const effectiveQty = Math.max(1, preAddQty ?? item.quantity ?? 1);
   const lineTotal = displayPrice * effectiveQty;
 
+  // Brand-specific colours win outright: this brand comes in these and
+  // nothing else, so offering the rest of her palette would promise a colour
+  // we cannot ship. Empty (the usual case) falls back to her ticked palette.
+  const brandColours = brandColoursFor?.(selectedBrandId) ?? [];
+  const effectiveColorOptions = brandColours.length ? brandColours : colorOptions;
   // selected_color null => unisex item (wipes, nappy cream). No picker, and
-  // nothing invented. Otherwise the value comes from HER ticked list, never
-  // from the engine's first-of-palette guess.
-  const hasColorAxis = !!item.selected_color && colorOptions.length > 0;
-  const activeColor = hasColorAxis ? (selectedColorProp || colorOptions[0]?.name || "") : "";
+  // nothing invented — unless the brand itself declares colours, which is
+  // proof enough that this card has a colour to choose.
+  const hasColorAxis = (!!item.selected_color || brandColours.length > 0) && effectiveColorOptions.length > 0;
+  // Her choice, but only if the current options still offer it; otherwise the
+  // first option, which is what a brand switch lands on.
+  const activeColor = hasColorAxis
+    ? (effectiveColorOptions.some((c) => c.name === selectedColorProp)
+        ? (selectedColorProp as string)
+        : effectiveColorOptions[0].name)
+    : "";
+
+  // Keep the parent in step with what this card is actually showing, so the
+  // bulk "Add all" path sends the brand's colour rather than a palette one.
+  useEffect(() => {
+    if (hasColorAxis && activeColor && activeColor !== selectedColorProp) onColorChange?.(activeColor);
+  }, [hasColorAxis, activeColor, selectedColorProp, onColorChange]);
 
   const handleAdd = () => {
     if (brandOos || comingSoon || allSizesOos || sizeUnmet) return;
@@ -217,7 +239,7 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
         <div className="mt-2.5 pt-2.5 border-t border-border/60">
           <p className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Colour</p>
           <div className="flex flex-wrap gap-1.5">
-            {colorOptions.map((c) => {
+            {effectiveColorOptions.map((c) => {
               const on = activeColor === c.name;
               return (
                 <button
