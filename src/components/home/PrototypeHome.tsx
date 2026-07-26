@@ -5,6 +5,7 @@ import { useSiteSettings, useBundles, useAllProducts } from "@/hooks/useSupabase
 import { useCart, fmt } from "@/lib/cart";
 import HeroCarousel, { type HeroSlide } from "@/components/home/HeroCarousel";
 import FlashDeals, { useDealProducts } from "@/components/home/FlashDeals";
+import QuizCtaBand from "@/components/home/QuizCtaBand";
 
 /**
  * Homepage in the "BundledMum Prototype" layout.
@@ -193,6 +194,10 @@ export default function PrototypeHome() {
           <HeroCarousel slides={heroSlides} />
         </div>
       </section>
+
+      {/* Its own band, not part of the hero. Renders only when the
+          homepage_sections row says so — see QuizCtaBand. */}
+      <QuizCtaBand />
 
       {/* Shop by Category */}
       <section className="px-4 md:px-6 py-5">
