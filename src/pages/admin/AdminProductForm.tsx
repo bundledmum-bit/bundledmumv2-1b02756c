@@ -148,6 +148,11 @@ const TAG_TYPES = [
 ];
 
 export default function AdminProductForm({ product, onClose, onSaved }: Props) {
+  // Colours the product ACTUALLY has after saving, read back from the same
+  // function the storefront reads. A gender toggle rewrites colour data via a
+  // trigger, which is not obvious from the control, so the result is shown
+  // rather than described.
+  const [genderResult, setGenderResult] = useState<{ total: number; byGender: string } | null>(null);
   const isEdit = !!product;
   const { data: allCategories = [] } = useProductCategories();
   const { data: adminUser } = useAdminUser();
@@ -163,6 +168,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
     contents: product?.contents || "", allergen_info: product?.allergen_info || "",
     safety_info: product?.safety_info || "", rating: product?.rating || 4.5,
     review_count: product?.review_count || 0, gender_relevant: product?.gender_relevant || false,
+    fixed_gender: product?.fixed_gender || "",
     multiples_bump: product?.multiples_bump || 1.0, first_baby: product?.first_baby,
     why_included: product?.why_included || "", why_included_variants: product?.why_included_variants ? JSON.stringify(product.why_included_variants) : "",
     meta_title: product?.meta_title || "", meta_description: product?.meta_description || "", og_image_url: product?.og_image_url || "",
@@ -175,7 +181,6 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
 
   const [brands, setBrands] = useState<any[]>(product?.brands?.map((b: any) => seedBrandImages({ ...b })) || []);
   const [sizes, setSizes] = useState<any[]>(product?.product_sizes?.map((s: any) => ({ ...s })) || []);
-  const [colors, setColors] = useState<any[]>(product?.product_colors?.map((c: any) => ({ ...c })) || []);
   const [selectedTags, setSelectedTags] = useState<Record<string, string[]>>(() => {
     const tags = (product?.product_tags || []) as any[];
     const map: Record<string, string[]> = {};
@@ -235,6 +240,11 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         material: form.material || null, contents: form.contents || null,
         allergen_info: form.allergen_info || null, safety_info: form.safety_info || null,
         rating: form.rating, review_count: form.review_count, gender_relevant: form.gender_relevant,
+        // Only ever these two fields. A DB trigger owns product_colors; the
+        // form never inserts, updates or deletes a colour row.
+        // Unisex is "" here and NULL in the column, and a product with no
+        // colour axis cannot be single-gender.
+        fixed_gender: form.gender_relevant ? (form.fixed_gender || null) : null,
         multiples_bump: form.multiples_bump, first_baby: form.first_baby,
         why_included: form.why_included || null, why_included_variants: parsedVariants,
         meta_title: form.meta_title || null, meta_description: form.meta_description || null, og_image_url: form.og_image_url || null,
@@ -254,7 +264,7 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
       } else {
         // INSERT path: super_admins write directly. For everyone else,
         // submit a single approval request capturing the full proposed
-        // product (including brands/sizes/colors/tags) and bail out — the
+        // product (including brands/sizes/tags) and bail out — the
         // super_admin will recreate the product manually after approving.
         if (!isSuperAdmin) {
           const description = `Add product: ${form.name}`;
@@ -262,7 +272,6 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
             product: productData,
             brands,
             sizes,
-            colors,
             tags: selectedTags,
           };
           await requestAction.mutateAsync({
@@ -387,15 +396,10 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         await supabase.from("product_sizes").insert(sizeRows);
       }
 
-      // Upsert colors
-      if (isEdit) await supabase.from("product_colors").delete().eq("product_id", productId);
-      if (colors.length > 0) {
-        const colorRows = colors.map((c, i) => ({
-          product_id: productId, color_name: c.color_name, color_hex: c.color_hex || null,
-          in_stock: c.in_stock ?? true, display_order: i,
-        }));
-        await supabase.from("product_colors").insert(colorRows);
-      }
+      // product_colors is deliberately NOT written here. The
+      // sync_product_gender_variants trigger owns the generated palette, and
+      // brand-specific colours are real product facts it never touches. The
+      // old editor could express neither, so it could only degrade them.
 
       // Upsert tags
       if (isEdit) await supabase.from("product_tags").delete().eq("product_id", productId);
@@ -404,6 +408,22 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
         values.forEach(v => tagRows.push({ product_id: productId, tag_type: type, tag_value: v }));
       });
       if (tagRows.length > 0) await supabase.from("product_tags").insert(tagRows);
+
+      // Read back the resulting colour state. Never queries product_colors —
+      // same source as the storefront.
+      try {
+        const { data: opts } = await (supabase as any).rpc("get_product_variant_options", {
+          p_product_id: productId,
+          p_brand_id: null,
+        });
+        const byGender = (opts?.colors_by_gender || {}) as Record<string, Array<unknown>>;
+        const parts = Object.entries(byGender)
+          .filter(([, list]) => Array.isArray(list) && list.length > 0)
+          .map(([g, list]) => `${g} ${(list as unknown[]).length}`);
+        const total = Object.values(byGender)
+          .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
+        setGenderResult({ total, byGender: parts.join(" · ") });
+      } catch { setGenderResult(null); }
 
       toast.success(isEdit ? "Product updated!" : "Product created!");
       onSaved();
@@ -703,25 +723,6 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                   </div>
                 ))}
               </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-semibold">Colours</label>
-                  <button type="button" onClick={() => setColors(c => [...c, { color_name: "", color_hex: "#000000", in_stock: true }])}
-                    className="flex items-center gap-1 text-xs text-forest font-semibold"><Plus className="w-3 h-3" /> Add Colour</button>
-                </div>
-                {colors.map((c, i) => (
-                  <div key={i} className="flex gap-2 mb-2 items-center">
-                    <input placeholder="Colour Name" value={c.color_name}
-                      onChange={e => setColors(cs => cs.map((cl, idx) => idx === i ? { ...cl, color_name: e.target.value } : cl))}
-                      className="flex-1 border border-input rounded-lg px-2 py-1.5 text-xs bg-background" />
-                    <input type="color" value={c.color_hex || "#000000"}
-                      onChange={e => setColors(cs => cs.map((cl, idx) => idx === i ? { ...cl, color_hex: e.target.value } : cl))}
-                      className="w-8 h-8 rounded border border-input cursor-pointer" />
-                    <button type="button" onClick={() => setColors(cs => cs.filter((_, idx) => idx !== i))}
-                      className="p-1 text-destructive hover:bg-destructive/10 rounded"><Trash2 className="w-3 h-3" /></button>
-                  </div>
-                ))}
-              </div>
             </TabsContent>
 
             <TabsContent value="tags" className="space-y-4 mt-0">
@@ -756,9 +757,38 @@ export default function AdminProductForm({ product, onClose, onSaved }: Props) {
                 <div><label className={labelCls}>Multiples Bump</label>
                   <input type="number" step="0.1" value={form.multiples_bump}
                     onChange={e => setForm(f => ({ ...f, multiples_bump: parseFloat(e.target.value) || 1 }))} className={inputCls} /></div>
+                <div><label className={labelCls}>Gender Availability</label>
+                  <select
+                    value={form.fixed_gender}
+                    disabled={!form.gender_relevant}
+                    onChange={e => setForm(f => ({ ...f, fixed_gender: e.target.value }))}
+                    className={`${inputCls} disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <option value="">Unisex</option>
+                    <option value="boy">Boy only</option>
+                    <option value="girl">Girl only</option>
+                  </select>
+                  {genderResult && (
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {genderResult.total === 0
+                        ? "No colours"
+                        : `${genderResult.total} colours — ${genderResult.byGender}`}
+                    </p>
+                  )}</div>
                 <div className="flex items-center gap-4 pt-5">
                   <label className="flex items-center gap-1.5 text-xs">
-                    <input type="checkbox" checked={form.gender_relevant} onChange={e => setForm(f => ({ ...f, gender_relevant: e.target.checked }))} className="rounded" />
+                    <input
+                      type="checkbox"
+                      checked={form.gender_relevant}
+                      onChange={e => setForm(f => ({
+                        ...f,
+                        gender_relevant: e.target.checked,
+                        // Turning the axis off forces Unisex: single-gender is
+                        // meaningless without colours.
+                        fixed_gender: e.target.checked ? f.fixed_gender : "",
+                      }))}
+                      className="rounded"
+                    />
                     Gender Relevant
                   </label>
                   <label className="flex items-center gap-1.5 text-xs">
