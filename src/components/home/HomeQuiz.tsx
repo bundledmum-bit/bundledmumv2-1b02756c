@@ -7,7 +7,7 @@ import { useCart, fmt } from "@/lib/cart";
 import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import type { Brand, Product } from "@/lib/supabaseAdapters";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
-import { useQuizQuestions } from "@/hooks/useQuizConfig";
+import { useQuizQuestions, type QuizQuestion } from "@/hooks/useQuizConfig";
 import { useGiftMoments } from "@/hooks/useGiftMoments";
 import { useBudgetGuidance, type BudgetGuidance } from "@/hooks/useBudgetGuidance";
 import { useGenderPalette } from "@/hooks/useGenderPalette";
@@ -66,6 +66,44 @@ export function deliveryMethodFrom(extras: QuizExtras): string {
 }
 // "Yes, I have some already" routes to the owned-products picker; anything
 // else (including a skipped step) goes straight on to the WhatsApp step.
+// The baby-only path: "Baby Things" on its own. She is asked baby's real age
+// and what she wants covered, instead of the tile deciding both for her.
+// Picking maternity as well keeps the maternity path's derivation for now.
+export function isBabyOnlyPath(categories: Set<Category>): boolean {
+  return categories.has("baby") && !categories.has("maternity") && !categories.has("gift");
+}
+
+// Stages where a hospital bag is still ahead of her. Anyone past newborn is
+// not packing one, so the hospital/home fork is never asked.
+const HOSPITAL_STAGES = new Set(["expecting", "newborn"]);
+export function babyScopeApplies(categories: Set<Category>, extras: QuizExtras): boolean {
+  return isBabyOnlyPath(categories) && HOSPITAL_STAGES.has(extras.stage || "");
+}
+
+/** p_stage — her real answer on the baby path, derived elsewhere. */
+export function stageFrom(categories: Set<Category>, extras: QuizExtras): string {
+  if (isBabyOnlyPath(categories) && extras.stage) return extras.stage;
+  return stageFor(categories);
+}
+
+/**
+ * p_scope — her babyScope answer verbatim (the option values ARE the scope
+ * values). When the fork was skipped because baby is past newborn, she is not
+ * shopping a hospital bag, so it is home things only.
+ */
+export function scopeFrom(categories: Set<Category>, extras: QuizExtras): string {
+  if (isBabyOnlyPath(categories)) {
+    if (babyScopeApplies(categories, extras) && extras.babyScope) return extras.babyScope;
+    return "general-baby-prep";
+  }
+  return scopeFor(categories);
+}
+
+/** Hospital-type and delivery-method only make sense with hospital items. */
+export function scopeIncludesHospital(scope: string): boolean {
+  return scope === "hospital-bag" || scope === "hospital-bag-baby" || scope === "hospital-bag+general";
+}
+
 export function screenAfterQuestions(extras: QuizExtras): Screen {
   return extras.alreadyBought === "yes" ? "owned" : "whatsapp";
 }
@@ -128,8 +166,8 @@ function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender,
   return {
     shopper: isGift ? "gift" : "self",
     budget: budgetTierFor(budget),
-    scope: scopeFor(categories),
-    stage: stageFor(categories),
+    scope: scopeFrom(categories, extras),
+    stage: stageFrom(categories, extras),
     gender,
     // buildQuizStory keys off "2"/"3", so the "3+" option value is narrowed
     // to the same integer we send the engine.
@@ -157,8 +195,8 @@ export function buildAnswersSnapshot(
     budget_tier: budgetTierFor(budget),
     categories: Array.from(categories),
     gender,
-    scope: isGift ? "gift" : scopeFor(categories),
-    stage: isGift ? "newborn" : stageFor(categories),
+    scope: isGift ? "gift" : scopeFrom(categories, extras),
+    stage: isGift ? "newborn" : stageFrom(categories, extras),
     gift_subcategory: giftSubcategory,
     // Which colours she kept — the interesting signal is what people untick.
     selected_colors: selectedColors,
@@ -340,11 +378,18 @@ function QuizScreen({
   const { data: settings } = useSiteSettings();
   const { data: questions } = useQuizQuestions();
   const { data: moments, isLoading: momentsLoading } = useGiftMoments();
-  // Guidance for the maternity / baby paths. Disabled on the gift path by
-  // passing a null scope, so the RPC is never called there.
-  const guidanceScope = categories.has("gift") || categories.size === 0
+  // Guidance for the maternity / baby paths, using the scope and stage she
+  // actually chose so the minimum matches the list she will get.
+  //
+  // NOTE: quiz_budget_guidance has no branch for the new 'hospital-bag-baby'
+  // scope — it falls through to the same default as an unknown string and
+  // returns the "both" figures (51 essentials / ~₦402,925) for what is really
+  // a 25-item baby-only list. Rather than quote her a number that wrong, the
+  // panel is suppressed for that scope until the function learns it.
+  const resolvedScope = scopeFrom(categories, extras);
+  const guidanceScope = categories.has("gift") || categories.size === 0 || resolvedScope === "hospital-bag-baby"
     ? null
-    : scopeFor(categories);
+    : resolvedScope;
   // One palette fetch per gender, shared by every swatch — never per product.
   const { palette } = useGenderPalette(gender);
   // An empty stored list means "not chosen yet", which reads as all ticked.
@@ -361,14 +406,14 @@ function QuizScreen({
   const { guidance, isSettling: guidanceSettling } = useBudgetGuidance(
     guidanceScope,
     budget,
-    categories.has("maternity") ? "expecting" : "newborn",
+    stageFrom(categories, extras),
   );
 
   // Focus the budget input whenever the budget step is shown so the caret
   // is ready. preventScroll stops the page jumping on mobile.
   const budgetRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (step !== 1) return; // budget is step 2 now
+    if (baseSteps[step]?.kind !== "budget") return;
     const id = window.setTimeout(() => {
       budgetRef.current?.focus({ preventScroll: true });
     }, 120);
@@ -452,12 +497,40 @@ function QuizScreen({
       (questions || [])
         .filter((q) => (DYNAMIC_STEP_IDS as readonly string[]).includes(q.step_id))
         .filter((q) => !q.applies_to_path?.length || q.applies_to_path.includes(path))
+        // "Which hospital?" and "What delivery method?" only make sense when
+        // the list actually contains hospital items. Asking a mum with a six
+        // month old where she is delivering makes the quiz look like it is
+        // not listening.
+        .filter((q) => {
+          if (q.step_id !== "hospitalType" && q.step_id !== "deliveryMethod") return true;
+          return scopeIncludesHospital(scopeFrom(categories, extras));
+        })
         .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0)),
-    [questions, path],
+    [questions, path, categories, extras],
   );
 
   // ── Wizard: one question per step ──────────────────────────────────────
-  const BASE_STEP_COUNT = 3;
+  // The base steps are no longer a fixed three: the baby path inserts the age
+  // question, and the hospital/home fork after it, BEFORE budget — budget
+  // guidance needs the real scope and stage to quote the right minimum.
+  // Both read their text and options from quiz_questions / quiz_options, so
+  // admin edits land with no code change.
+  const stageQuestion = (questions || []).find((q) => q.step_id === "stage");
+  const babyScopeQuestion = (questions || []).find((q) => q.step_id === "babyScope");
+  const babyPath = isBabyOnlyPath(categories);
+  const askBabyScope = babyScopeApplies(categories, extras);
+
+  type BaseStep = { id: string; kind: "categories" | "budget" | "gender" | "dbchoice"; question?: QuizQuestion };
+  const baseSteps: BaseStep[] = useMemo(() => {
+    const out: BaseStep[] = [{ id: "scope", kind: "categories" }];
+    if (babyPath && stageQuestion) out.push({ id: "stage", kind: "dbchoice", question: stageQuestion });
+    if (askBabyScope && babyScopeQuestion) out.push({ id: "babyScope", kind: "dbchoice", question: babyScopeQuestion });
+    out.push({ id: "budget", kind: "budget" });
+    out.push({ id: "gender", kind: "gender" });
+    return out;
+  }, [babyPath, askBabyScope, stageQuestion, babyScopeQuestion]);
+
+  const BASE_STEP_COUNT = baseSteps.length;
   const STEP_COUNT = BASE_STEP_COUNT + dynamicSteps.length;
   // Switching to/from the gift path can shorten the list under our feet.
   useEffect(() => {
@@ -475,17 +548,16 @@ function QuizScreen({
   }, [resumeAtLastStep, dynamicSteps.length, STEP_COUNT]);
 
   const dynamicStep = step >= BASE_STEP_COUNT ? dynamicSteps[step - BASE_STEP_COUNT] : undefined;
+  const baseStep = step < BASE_STEP_COUNT ? baseSteps[step] : undefined;
   const stepValid = dynamicStep
     ? !!extras[dynamicStep.step_id] || !!dynamicStep.is_skippable
-    : [
-        categories.size > 0 && (!giftSelected || !!giftSubcategory),
-        budget >= minBudget, // the floor for the path chosen on step 1
-        !!gender,
-      ][step];
-  // Step ids mirror the equivalent quiz_questions rows (budget / scope /
-  // gender) so session rows written now line up with the pre-April ones.
-  const BASE_STEP_IDS = ["scope", "budget", "gender"] as const;
-  const currentStepId = dynamicStep ? dynamicStep.step_id : BASE_STEP_IDS[step] ?? `step_${step}`;
+    : baseStep?.kind === "categories" ? categories.size > 0 && (!giftSelected || !!giftSubcategory)
+    : baseStep?.kind === "budget" ? budget >= minBudget
+    : baseStep?.kind === "gender" ? !!gender
+    : baseStep?.kind === "dbchoice" ? !!extras[baseStep.id] || !!baseStep.question?.is_skippable
+    : false;
+  // Step ids match the quiz_questions rows, so session rows stay comparable.
+  const currentStepId = dynamicStep ? dynamicStep.step_id : baseStep?.id ?? `step_${step}`;
   const goNext = () => {
     if (!stepValid) return;
     onStepAnswered?.(currentStepId);
@@ -519,7 +591,7 @@ function QuizScreen({
 
         {/* STEP 1 — What do you need? This now comes first: knowing the
             path means no later step can reject a choice made here. */}
-        {step === 0 && (
+        {baseStep?.kind === "categories" && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelCategories}</h2>
             {labelCategoriesHint && (
@@ -597,7 +669,7 @@ function QuizScreen({
 
         {/* STEP 2 — Budget. Asked AFTER the path, so the floor and the
             guidance below always know which list she is building. */}
-        {step === 1 && (
+        {baseStep?.kind === "budget" && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
             {helpBudget && <p className="text-muted-foreground text-[13px] mb-4">{helpBudget}</p>}
@@ -634,7 +706,7 @@ function QuizScreen({
                 guidance={guidance}
                 isSettling={guidanceSettling}
                 budget={budget}
-                scope={scopeFor(categories)}
+                scope={resolvedScope}
                 onIncrease={(amount) => setBudget(amount)}
                 onSwitchToBaby={() => setCategories(new Set(["baby"] as Category[]))}
               />
@@ -643,7 +715,7 @@ function QuizScreen({
         )}
 
         {/* STEP 3 — Baby's gender */}
-        {step === 2 && (
+        {baseStep?.kind === "gender" && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelGender}</h2>
             {helpGender && <p className="text-muted-foreground text-[13px] mb-4">{helpGender}</p>}
@@ -710,6 +782,23 @@ function QuizScreen({
               </div>
             )}
           </div>
+        )}
+
+        {/* Baby-path questions (age, then the hospital/home fork). Same
+            renderer and same tables as the dynamic steps — they are just
+            positioned before budget, because the budget guidance needs the
+            real scope and stage to quote the right minimum. */}
+        {baseStep?.kind === "dbchoice" && baseStep.question && (
+          <ChoiceStepBody
+            question={baseStep.question}
+            value={extras[baseStep.id]}
+            onChange={(v) => {
+              setExtra(baseStep.id, v);
+              // Moving to a stage past newborn drops the fork entirely, so a
+              // previously chosen babyScope must not linger in the answers.
+              if (baseStep.id === "stage" && !HOSPITAL_STAGES.has(v)) setExtra("babyScope", "");
+            }}
+          />
         )}
 
         {/* DB-driven steps — question text, sub-text and options all come
@@ -820,8 +909,8 @@ function ResultsScreen({
           quiz_name: "bundle_recommendation",
           budget_tier: budgetTier,
           budget_amount: budget,
-          scope: isGift ? "gift" : scopeFor(categories),
-          stage: isGift ? "newborn" : stageFor(categories),
+          scope: isGift ? "gift" : scopeFrom(categories, extras),
+          stage: isGift ? "newborn" : stageFrom(categories, extras),
           gender: gender || "unknown",
         });
       } catch { /* ignore */ }
@@ -858,8 +947,10 @@ function ResultsScreen({
             engineVersion: normalised.engine_version || null,
           });
         } else {
-          const scope = scopeFor(categories);
-          const stage = stageFor(categories);
+          // Real answers on the baby path (stage question + hospital/home
+          // fork); the maternity path still derives both from the tile.
+          const scope = scopeFrom(categories, extras);
+          const stage = stageFrom(categories, extras);
           // RPC v4.8 contract (verified against pg_proc):
           //   p_budget_tier        — 'starter' | 'standard' | 'premium'
           //   p_hospital_type      — 'both'    (storefront quiz doesn't ask)
@@ -1966,8 +2057,8 @@ export default function HomeQuiz({
     // Persist the quiz lead. Fire-and-forget so the UX never blocks; the
     // RPC upserts by session_id and is later enriched by finishWhatsapp.
     const isGift = categories.has("gift");
-    const scope = isGift ? "gift" : scopeFor(categories);
-    const stage = isGift ? "newborn" : stageFor(categories);
+    const scope = isGift ? "gift" : scopeFrom(categories, extras);
+    const stage = isGift ? "newborn" : stageFrom(categories, extras);
     const budgetTier = budgetTierFor(budget);
     const fullAnswers = buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds, selectedColors);
     // The attempt now has a lead row, so this is the id CheckoutPage should
