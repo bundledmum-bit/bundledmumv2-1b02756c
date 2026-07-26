@@ -84,6 +84,13 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   const showSizeSelect = quizSizeMode ? (needsSize && !allSizesOos) : legacySizes.length > 1;
   const sizeOptions = quizSizeMode ? inStockSizes.map(s => s.label) : legacySizes;
 
+  // The engine works out pack counts from usage rates, so quantity is often
+  // >1 (10 packs of wipes for a newborn month). The stepper owns the live
+  // value; item.quantity is only its starting point. Pricing off preAddQty
+  // keeps the card in step with the bundle total, which already uses it.
+  const effectiveQty = Math.max(1, preAddQty ?? item.quantity ?? 1);
+  const lineTotal = displayPrice * effectiveQty;
+
   // selected_color null => unisex item (wipes, nappy cream). No picker, and
   // nothing invented. Otherwise the value comes from HER ticked list, never
   // from the engine's first-of-palette guess.
@@ -100,8 +107,8 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
       <div className="flex gap-3 items-start">
         {/* Thumbnail */}
         <div className="relative w-[78px] h-[78px] md:w-[88px] md:h-[88px] flex-shrink-0 rounded-xl overflow-hidden bg-muted/30 cursor-pointer" onClick={onViewDetail}>
-          {item.quantity > 1 && (
-            <span className="absolute top-1 right-1 z-10 bg-forest text-primary-foreground text-[10px] font-bold px-1.5 rounded-pill">×{item.quantity}</span>
+          {effectiveQty > 1 && (
+            <span className="absolute top-1 right-1 z-10 bg-forest text-primary-foreground text-[10px] font-bold px-1.5 rounded-pill">×{effectiveQty}</span>
           )}
           {showSale && (
             <span className="absolute top-1 left-1 z-10 bg-destructive text-primary-foreground text-[9px] font-bold px-1.5 rounded-pill">
@@ -138,10 +145,17 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
             {comingSoon ? (
               <span className="text-muted-foreground text-[11px] italic">Price not available</span>
             ) : (
-              <span className="flex items-baseline gap-1.5">
-                <span className="font-mono-price text-forest font-bold text-[15px]">{fmt(displayPrice * (item.quantity || 1))}</span>
-                {showSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</span>}
-                {!showSale && brands.length > 1 && <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</span>}
+              <span className="block">
+                <span className="flex items-baseline gap-1.5">
+                  <span className="font-mono-price text-forest font-bold text-[15px]">{fmt(lineTotal)}</span>
+                  {showSale && <span className="font-mono-price text-muted-foreground text-[10px] line-through">{fmt(selectedBrand!.compareAtPrice!)}</span>}
+                  {!showSale && brands.length > 1 && <span className="text-muted-foreground text-[10px]">from {fmt(Math.min(...brands.map(b => b.price)))}</span>}
+                </span>
+                {effectiveQty > 1 && (
+                  <span className="block text-muted-foreground text-[11px] mt-0.5 tabular-nums">
+                    {effectiveQty} × {fmt(displayPrice)}
+                  </span>
+                )}
               </span>
             )}
           </div>

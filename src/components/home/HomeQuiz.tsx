@@ -688,22 +688,25 @@ function QuizScreen({
             {!giftSelected && budgetSuggestions.length > 0 && (
               <div className="mb-4">
                 <div className="space-y-2">
+                  {/* Rendered in the order the database returns them — never
+                      re-sorted here. Amounts run from five to seven digits, so
+                      each card stacks the amount above its copy rather than
+                      sitting beside it, and no width is assumed. */}
                   {budgetSuggestions.map((sug) => (
                     <button
                       key={sug.key}
                       type="button"
                       onClick={() => setBudget(sug.amount)}
-                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[14px] border-2 text-left transition-all ${
+                      aria-pressed={budget === sug.amount}
+                      className={`w-full flex flex-col items-start gap-0.5 px-3.5 py-2.5 rounded-[14px] border-2 text-left transition-all ${
                         budget === sug.amount ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
                       }`}
                     >
-                      <span className="flex-1 min-w-0">
-                        <span className="block pf font-bold text-[14px] text-foreground leading-tight">{sug.label}</span>
-                        <span className="block text-text-med text-[11.5px] mt-0.5 leading-snug">{sug.reason}</span>
-                      </span>
-                      <span className="font-mono-price font-bold text-[15px] text-forest shrink-0">
+                      <span className="font-mono-price font-bold text-[18px] text-forest leading-none tabular-nums">
                         ₦{sug.amount.toLocaleString("en-NG")}
                       </span>
+                      <span className="w-full min-w-0 pf font-bold text-[13.5px] text-foreground leading-tight">{sug.label}</span>
+                      <span className="w-full min-w-0 text-text-med text-[11.5px] leading-snug">{sug.sub}</span>
                     </button>
                   ))}
                 </div>

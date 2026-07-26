@@ -2,20 +2,21 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Two starting points for the budget field, derived from what she has already
- * told us: enough for the most important items, and enough for the complete
- * essentials list.
+ * Starting points for the budget field, derived from what she has already
+ * told us. The set (currently three: low / mid / high) and all of its copy
+ * come from the database, so both can change without a deploy.
  *
  * Deliberately NOT a function of the amount she types — the query key is only
  * scope + stage, so typing never refetches this. It answers "where could I
  * start?", which does not change as she types.
  */
 export interface BudgetSuggestion {
-  key: string;
+  key: string;          // 'low' | 'mid' | 'high'
   amount: number;
   label: string;
+  sub: string;
   item_count: number;
-  reason: string;
+  brand_tier: string;
 }
 
 export interface BudgetSuggestions {
