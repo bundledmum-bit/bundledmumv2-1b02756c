@@ -10,6 +10,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions } from "@/hooks/useQuizConfig";
 import { useGiftMoments } from "@/hooks/useGiftMoments";
 import { useBudgetGuidance, type BudgetGuidance } from "@/hooks/useBudgetGuidance";
+import { useGenderPalette } from "@/hooks/useGenderPalette";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -148,6 +149,7 @@ export function buildAnswersSnapshot(
   extras: QuizExtras,
   giftSubcategory: string | null,
   excludeIds: string[],
+  selectedColors: string[] = [],
 ): Record<string, any> {
   const isGift = categories.has("gift");
   return {
@@ -158,6 +160,8 @@ export function buildAnswersSnapshot(
     scope: isGift ? "gift" : scopeFor(categories),
     stage: isGift ? "newborn" : stageFor(categories),
     gift_subcategory: giftSubcategory,
+    // Which colours she kept — the interesting signal is what people untick.
+    selected_colors: selectedColors,
     ...extras,
     already_owned_product_ids: excludeIds,
   };
@@ -305,6 +309,7 @@ function QuizScreen({
   budget, setBudget,
   categories, setCategories,
   gender, setGender,
+  selectedColors, setSelectedColors,
   giftSubcategory, setGiftSubcategory,
   extras, setExtra,
   resumeAtLastStep = false,
@@ -317,6 +322,8 @@ function QuizScreen({
   setCategories: (s: Set<Category>) => void;
   gender: Gender | null;
   setGender: (g: Gender) => void;
+  selectedColors: string[];
+  setSelectedColors: (names: string[]) => void;
   giftSubcategory: GiftSubcategory | null;
   setGiftSubcategory: (g: GiftSubcategory | null) => void;
   extras: QuizExtras;
@@ -338,6 +345,19 @@ function QuizScreen({
   const guidanceScope = categories.has("gift") || categories.size === 0
     ? null
     : scopeFor(categories);
+  // One palette fetch per gender, shared by every swatch — never per product.
+  const { palette } = useGenderPalette(gender);
+  // An empty stored list means "not chosen yet", which reads as all ticked.
+  const tickedColors = selectedColors.length ? selectedColors : palette.map((c) => c.name);
+  const toggleColor = (name: string) => {
+    const next = tickedColors.includes(name)
+      ? tickedColors.filter((n) => n !== name)
+      : [...tickedColors, name];
+    if (next.length === 0) return; // never clear the last one
+    // Store in palette order, so "her first colour" is predictable downstream.
+    setSelectedColors(palette.map((c) => c.name).filter((n) => next.includes(n)));
+  };
+
   const { guidance, isSettling: guidanceSettling } = useBudgetGuidance(
     guidanceScope,
     budget,
@@ -631,7 +651,7 @@ function QuizScreen({
               {genderCards.map(g => {
                 const selected = gender === g.id;
                 return (
-                  <button key={g.id} onClick={() => setGender(g.id)} className={optionCard(selected)}>
+                  <button key={g.id} onClick={() => { if (g.id !== gender) setSelectedColors([]); setGender(g.id); }} className={optionCard(selected)}>
                     <div className="flex-shrink-0 w-10 h-10 rounded-full bg-warm-cream flex items-center justify-center text-xl">{g.emoji}</div>
                     <div className="flex-1 min-w-0">
                       <div className="pf font-bold text-[15px] text-foreground leading-tight">{g.title}</div>
@@ -646,6 +666,49 @@ function QuizScreen({
                 );
               })}
             </div>
+
+            {/* Progressive disclosure INSIDE this question — not a new step.
+                Everything starts ticked: she is opting out, not opting in. */}
+            {gender && palette.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="pf font-bold text-[14px] text-foreground leading-tight">Colours you would like</p>
+                <p className="text-text-med text-[12px] mt-0.5 mb-3 leading-snug">
+                  All are ticked to start. Untick anything you would rather not receive.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {palette.map((c) => {
+                    const ticked = tickedColors.includes(c.name);
+                    // The last remaining colour cannot be unticked — it simply
+                    // stays ticked rather than raising an error at her.
+                    const isLastTicked = ticked && tickedColors.length === 1;
+                    return (
+                      <button
+                        key={c.name}
+                        type="button"
+                        onClick={() => toggleColor(c.name)}
+                        aria-pressed={ticked}
+                        title={isLastTicked ? "Keep at least one colour" : undefined}
+                        className={`flex items-center gap-2 px-2.5 min-h-[44px] rounded-[12px] border-2 text-left transition-all ${
+                          ticked ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
+                        }`}
+                      >
+                        <span
+                          className="flex-shrink-0 w-6 h-6 rounded-full border border-black/10"
+                          style={{ backgroundColor: c.hex }}
+                          aria-hidden="true"
+                        />
+                        <span className="flex-1 min-w-0 text-[12.5px] font-semibold text-foreground truncate">{c.name}</span>
+                        {ticked && (
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-coral flex items-center justify-center">
+                            <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -702,6 +765,7 @@ function ResultsScreen({
   excludeIds = [],
   sessionId = "",
   giftSubcategory = null,
+  selectedColors = [],
   onBack,
   onComplete,
 }: {
@@ -712,6 +776,9 @@ function ResultsScreen({
   // the step tracking has been writing to.
   sessionId?: string;
   giftSubcategory?: string | null;
+  // Colour names she kept on the gender step. Drives the per-product picker;
+  // empty means she never reached that step (gift path), so no picker shows.
+  selectedColors?: string[];
   // Answers to the DB-driven steps, keyed by step_id. Empty when those
   // questions are inactive or were skipped.
   extras?: QuizExtras;
@@ -786,7 +853,7 @@ function ResultsScreen({
               .map((prod) => prod.product_id)
               .filter((id): id is string => !!id),
             resultProductCount: normalised.products.length,
-            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds),
+            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds, selectedColors),
             shopperType: shopperTypeFor(categories),
             engineVersion: normalised.engine_version || null,
           });
@@ -861,7 +928,7 @@ function ResultsScreen({
               .map((prod) => prod.product_id)
               .filter((id): id is string => !!id),
             resultProductCount: normalised.products.length,
-            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds),
+            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds, selectedColors),
             shopperType: shopperTypeFor(categories),
             engineVersion: normalised.engine_version || null,
           });
@@ -895,6 +962,24 @@ function ResultsScreen({
   // so the bulk "Add all" action can see which items still need a size
   // chosen. Keyed by product_id; value is the chosen size_label.
   const [sizeSelections, setSizeSelections] = useState<Record<string, string>>({});
+  // Per-product colour, keyed by product_id, so changing one card never
+  // touches another. Unset means "her first ticked colour".
+  const [colorSelections, setColorSelections] = useState<Record<string, string>>({});
+  const setColorFor = (item: RecommendedProduct, color: string) =>
+    setColorSelections((m) => ({ ...m, [item.product_id]: color }));
+  // The palette for her gender, fetched ONCE here and shared by every card.
+  const { palette } = useGenderPalette(gender);
+  // Her ticked colours, in palette order, with hexes for the swatches. An
+  // empty selection (she never reached the step) reads as the whole palette.
+  const colorOptions = useMemo(() => {
+    if (!palette.length) return [] as Array<{ name: string; hex: string }>;
+    const kept = selectedColors.length ? selectedColors : palette.map((c) => c.name);
+    return palette.filter((c) => kept.includes(c.name)).map((c) => ({ name: c.name, hex: c.hex }));
+  }, [palette, selectedColors]);
+  // Her choice for a product, defaulting to the FIRST colour she kept — never
+  // the engine's selected_color, which is just the first of the full palette.
+  const colorFor = (item: RecommendedProduct): string =>
+    item.selected_color ? (colorSelections[item.product_id] || colorOptions[0]?.name || "") : "";
   const setSizeFor = (item: RecommendedProduct, size: string) => {
     setSizeSelections(m => ({ ...m, [item.product_id]: size }));
     // Clear this card's "needs a size" ring as soon as she picks one.
@@ -930,7 +1015,7 @@ function ResultsScreen({
   // Cart payload mirrors the old quiz's handleAddProduct byte-for-byte.
   // qtyOverride lets callers push N copies of the same product (Add All +
   // the pre-add qty stepper both use this).
-  const handleAddProduct = (item: RecommendedProduct, overrideBrand?: Brand | null, overrideSize?: string, qtyOverride?: number) => {
+  const handleAddProduct = (item: RecommendedProduct, overrideBrand?: Brand | null, overrideSize?: string, qtyOverride?: number, overrideColor?: string) => {
     // Guard against null-brand SKUs sneaking into the cart — without a
     // brand_id, place-order can't insert a valid order_items row.
     if (!overrideBrand && !isPurchasable(item)) {
@@ -942,7 +1027,8 @@ function ResultsScreen({
     // never routes to the product page. This stays as a defensive backstop:
     // if a required size/colour is somehow still missing, surface a toast
     // rather than adding a variant-less line the engine would reject.
-    const missing = variantReq.missingAxes(item.product_id, overrideSize || undefined, item.selected_color);
+    const chosenColor = overrideColor || colorFor(item) || item.selected_color;
+    const missing = variantReq.missingAxes(item.product_id, overrideSize || undefined, chosenColor);
     if (missing.length) {
       const label = missing.length === 2 ? "a size & colour" : missing[0] === "color" ? "a colour" : "a size";
       toast.error(`Please choose ${label} for ${item.name}.`);
@@ -965,7 +1051,10 @@ function ResultsScreen({
         // Colour is auto-selected from the quiz (gender-driven selected_color)
         // and passed through silently — no colour picker on the card. Null
         // selected_color is omitted so non-gendered items carry no colour.
-        selectedColor: item.selected_color || undefined,
+        // HER colour for this product. Falls back to the engine's value only
+        // when she has no palette (gift path), and stays undefined for unisex
+        // items so they carry no colour at all.
+        selectedColor: overrideColor || colorFor(item) || item.selected_color || undefined,
         brands: [],
         category: item.category as any,
         rating: 4.5,
@@ -1202,7 +1291,7 @@ function ResultsScreen({
     // Add everything that IS ready, rather than blocking the whole batch on
     // one unsized item.
     addable.forEach(item => {
-      handleAddProduct(item, undefined, sizeSelections[item.product_id] || undefined, qtyFor(item));
+      handleAddProduct(item, undefined, sizeSelections[item.product_id] || undefined, qtyFor(item), colorFor(item) || undefined);
     });
 
     const skipped = results.length - addable.length - outstanding.length;
@@ -1291,7 +1380,7 @@ function ResultsScreen({
           if (!c) return;
           setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
         }}
-        onAdd={(brand, size) => handleAddProduct(item, brand, size, qtyFor(item))}
+        onAdd={(brand, size, color) => handleAddProduct(item, brand, size, qtyFor(item), color)}
         onRemove={() => handleRemoveProduct(item)}
         fullProduct={productMap.get(item.product_id)}
         onViewDetail={() => { const fp = productMap.get(item.product_id); if (fp) setDetailProduct(fp); }}
@@ -1300,6 +1389,9 @@ function ResultsScreen({
         availableSizes={item.available_sizes}
         sizeRequired={variantReq.requiresSize(item.product_id)}
         selectedSize={sizeSelections[item.product_id] || ""}
+        colorOptions={colorOptions}
+        selectedColor={colorFor(item)}
+        onColorChange={(c) => setColorFor(item, c)}
         onSizeChange={(s) => setSizeFor(item, s)}
       />
     </div>
@@ -1660,6 +1752,7 @@ export type HomeQuizInitialState = {
   // screen — carried across the Home → /quiz hop so nothing is re-asked.
   extras?: QuizExtras;
   ownedProductIds?: string[];
+  selectedColors?: string[];
   autoAdvance?: Screen; // "owned" | "whatsapp" | "results"
 };
 
@@ -1709,6 +1802,11 @@ export default function HomeQuiz({
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
   const [giftSubcategory, setGiftSubcategory] = useState<GiftSubcategory | null>(null);
+  // Colour names she wants, from the palette for the chosen gender. Everything
+  // starts ticked (she opts OUT, not in) and at least one always stays ticked.
+  // Lives here, not in QuizScreen, so it survives stepping back and forward
+  // and can be read by the results screen.
+  const [selectedColors, setSelectedColors] = useState<string[]>(initialState?.selectedColors || []);
   // Answers to the DB-driven steps, keyed by step_id, and the products the
   // shopper ticked as "already have". Both live here (not in QuizScreen) so
   // they survive stepping back and forward through the flow.
@@ -1736,7 +1834,7 @@ export default function HomeQuiz({
   // single source of truth for progress within the attempt.
   const stepsCompletedRef = useRef<string[]>([]);
   const snapshot = () =>
-    buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds);
+    buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds, selectedColors);
 
   // Called by QuizScreen as each step is answered. Deliberately NOT awaited:
   // tracking must never delay the next question. The RPC wrapper owns the
@@ -1871,7 +1969,7 @@ export default function HomeQuiz({
     const scope = isGift ? "gift" : scopeFor(categories);
     const stage = isGift ? "newborn" : stageFor(categories);
     const budgetTier = budgetTierFor(budget);
-    const fullAnswers = buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds);
+    const fullAnswers = buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds, selectedColors);
     // The attempt now has a lead row, so this is the id CheckoutPage should
     // attribute an order to. Promoting only here (never on a fresh start) is
     // what keeps attribution intact when she restarts the quiz and abandons it.
@@ -1934,6 +2032,7 @@ export default function HomeQuiz({
           budget={budget} setBudget={setBudget}
           categories={categories} setCategories={setCategories}
           gender={gender} setGender={setGender}
+          selectedColors={selectedColors} setSelectedColors={setSelectedColors}
           giftSubcategory={giftSubcategory} setGiftSubcategory={setGiftSubcategory}
           extras={extras} setExtra={setExtra}
           resumeAtLastStep={resumeAtLastStep}
@@ -1977,7 +2076,7 @@ export default function HomeQuiz({
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
-          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory}
+          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory} selectedColors={selectedColors}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />
@@ -2004,7 +2103,7 @@ export default function HomeQuiz({
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
-          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory}
+          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory} selectedColors={selectedColors}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />

@@ -10,9 +10,9 @@ import type { RecommendedProduct } from "./types";
 // chosen through dropdowns (a single-brand product shows a static brand chip
 // instead, since there is nothing to change). All add/remove/qty behaviour is
 // unchanged; preAddQty + onPreAddQtyChange render a quantity stepper before Add.
-export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange, availableSizes, sizeRequired, selectedSize: selectedSizeProp, onSizeChange }: {
+export default function ResultProductCard({ item, onAdd, onRemove, isInCart, cartItem, onQtyUpdate, fullProduct, onViewDetail, preAddQty, onPreAddQtyChange, availableSizes, sizeRequired, selectedSize: selectedSizeProp, onSizeChange, colorOptions = [], selectedColor: selectedColorProp, onColorChange }: {
   item: RecommendedProduct;
-  onAdd: (overrideBrand?: any, overrideSize?: string) => void;
+  onAdd: (overrideBrand?: any, overrideSize?: string, overrideColor?: string) => void;
   onRemove: () => void;
   isInCart: boolean;
   cartItem?: { qty: number; _key: string } | null;
@@ -32,6 +32,13 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   sizeRequired?: boolean;
   selectedSize?: string;
   onSizeChange?: (size: string) => void;
+  // ── Colour (quiz only) ─────────────────────────────────────────────
+  // The colours SHE ticked on the gender step, with their hexes. The engine's
+  // item.selected_color is only a signal that this product HAS a colour axis
+  // (null = unisex item, no picker at all); the value shown is always hers.
+  colorOptions?: Array<{ name: string; hex: string }>;
+  selectedColor?: string;
+  onColorChange?: (color: string) => void;
 }) {
   const brands = fullProduct?.brands || [];
   const legacySizes = fullProduct?.sizes || [];
@@ -77,9 +84,15 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
   const showSizeSelect = quizSizeMode ? (needsSize && !allSizesOos) : legacySizes.length > 1;
   const sizeOptions = quizSizeMode ? inStockSizes.map(s => s.label) : legacySizes;
 
+  // selected_color null => unisex item (wipes, nappy cream). No picker, and
+  // nothing invented. Otherwise the value comes from HER ticked list, never
+  // from the engine's first-of-palette guess.
+  const hasColorAxis = !!item.selected_color && colorOptions.length > 0;
+  const activeColor = hasColorAxis ? (selectedColorProp || colorOptions[0]?.name || "") : "";
+
   const handleAdd = () => {
     if (brandOos || comingSoon || allSizesOos || sizeUnmet) return;
-    onAdd(selectedBrand, selectedSize);
+    onAdd(selectedBrand, selectedSize, activeColor || undefined);
   };
 
   return (
@@ -110,7 +123,6 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
               are internal engine values. priority still drives the section
               grouping on the results page, it just isn't shown per card. */}
           <h3 className="pf text-[14px] font-bold leading-tight cursor-pointer hover:text-forest transition-colors line-clamp-2" onClick={onViewDetail}>{item.name}</h3>
-          {item.selected_color && <span className="text-muted-foreground text-[10px]">Colour: {item.selected_color}</span>}
 
           {/* Single-brand products just show the brand (nothing to choose) */}
           {singleBrand && (
@@ -187,6 +199,36 @@ export default function ResultProductCard({ item, onAdd, onRemove, isInCart, car
           Native <select> elements (not a popover) so they always render and
           use the device-native picker — reliable on mobile, no portal/paint
           issues. */}
+      {hasColorAxis && (
+        <div className="mt-2.5 pt-2.5 border-t border-border/60">
+          <p className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Colour</p>
+          <div className="flex flex-wrap gap-1.5">
+            {colorOptions.map((c) => {
+              const on = activeColor === c.name;
+              return (
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => onColorChange?.(c.name)}
+                  aria-pressed={on}
+                  title={c.name}
+                  className={`inline-flex items-center gap-1.5 rounded-pill border-[1.5px] pl-1 pr-2.5 min-h-[36px] text-[11px] font-semibold transition-colors ${
+                    on ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-text-med hover:border-forest/50"
+                  }`}
+                >
+                  <span
+                    className="w-5 h-5 rounded-full border border-black/10 flex-shrink-0"
+                    style={{ backgroundColor: c.hex }}
+                    aria-hidden="true"
+                  />
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {(showBrandSelect || showSizeSelect) && (
         <div className="flex flex-col sm:flex-row gap-2 mt-2.5 pt-2.5 border-t border-border/60">
           {showBrandSelect && (
