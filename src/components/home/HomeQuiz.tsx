@@ -9,6 +9,7 @@ import type { Brand, Product } from "@/lib/supabaseAdapters";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions } from "@/hooks/useQuizConfig";
 import { useGiftMoments } from "@/hooks/useGiftMoments";
+import { useBudgetGuidance, type BudgetGuidance } from "@/hooks/useBudgetGuidance";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -197,6 +198,109 @@ function attemptIdFor(isContinuation: boolean): string {
 // shows up on the storefront on its own.
 type GiftSubcategory = string;
 
+
+// =============================================================================
+// Budget guidance — what the money actually covers
+// =============================================================================
+// Never blocks and never scolds: a smaller budget is a fact to work with, not
+// a mistake. Every figure comes from quiz_budget_guidance, computed live from
+// current prices, so nothing here is hardcoded.
+function BudgetGuidancePanel({
+  guidance, isSettling, budget, scope, onIncrease, onSwitchToBaby,
+}: {
+  guidance: BudgetGuidance | null;
+  isSettling: boolean;
+  budget: number;
+  scope: string;
+  onIncrease: (amount: number) => void;
+  onSwitchToBaby: () => void;
+}) {
+  if (budget <= 0) return null;
+  if (!guidance || guidance.status === "no_budget_given") {
+    return isSettling
+      ? <p className="mt-3 text-[12px] text-muted-foreground text-center">Checking what this covers…</p>
+      : null;
+  }
+
+  const listName = scope === "general-baby-prep" ? "baby list" : "maternity list";
+  const money = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
+
+  if (guidance.status === "covers_essentials") {
+    return (
+      <div className="mt-3 rounded-[14px] border border-forest/30 bg-forest-light/40 px-3.5 py-2.5">
+        <p className="text-[12.5px] font-semibold text-forest">
+          This covers all {guidance.essentials_count} essentials on your {listName}.
+        </p>
+      </div>
+    );
+  }
+
+  if (guidance.status === "partial_good") {
+    return (
+      <div className="mt-3 rounded-[14px] border border-border bg-warm-cream px-3.5 py-2.5">
+        <p className="text-[12.5px] text-foreground leading-relaxed">
+          <b>{money(budget)}</b> covers <b>{guidance.affordable_count} of the {guidance.essentials_count}</b> essentials
+          on a {listName}. A complete list comes to about <b>{money(guidance.recommended_minimum)}</b>.
+        </p>
+        <button
+          type="button"
+          onClick={() => onIncrease(guidance.recommended_minimum)}
+          className="mt-2 text-[12px] font-semibold text-forest underline underline-offset-2"
+        >
+          Use {money(guidance.recommended_minimum)} instead
+        </button>
+      </div>
+    );
+  }
+
+  // too_low — show the coverage plainly, then offer real choices.
+  const firstFew = (guidance.would_cover || []).slice(0, 4);
+  const babyFitsBetter = scope !== "general-baby-prep";
+  return (
+    <div className="mt-3 rounded-[14px] border border-border bg-warm-cream px-3.5 py-3">
+      <p className="text-[12.5px] text-foreground leading-relaxed">
+        <b>{money(budget)}</b> covers <b>{guidance.affordable_count} of {guidance.essentials_count}</b> essentials
+        on a {listName}. You can carry on with this budget, and we will start with what matters most.
+      </p>
+      {firstFew.length > 0 && (
+        <div className="mt-2.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-1">
+            What we would buy first
+          </p>
+          <ul className="space-y-0.5">
+            {firstFew.map((it) => (
+              <li key={it.slug || it.name} className="flex items-baseline justify-between gap-2 text-[12px]">
+                <span className="text-foreground min-w-0 truncate">
+                  {it.quantity > 1 ? `×${it.quantity} ` : ""}{it.name}
+                </span>
+                <span className="font-mono-price text-muted-foreground shrink-0">{money(it.price)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onIncrease(guidance.recommended_minimum)}
+          className="rounded-pill border-[1.5px] border-forest text-forest px-3 min-h-[36px] text-[12px] font-semibold hover:bg-forest/5"
+        >
+          Increase to {money(guidance.recommended_minimum)}
+        </button>
+        {babyFitsBetter && (
+          <button
+            type="button"
+            onClick={onSwitchToBaby}
+            className="rounded-pill border-[1.5px] border-border text-text-med px-3 min-h-[36px] text-[12px] font-semibold hover:border-forest hover:text-forest"
+          >
+            Switch to baby things only
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QuizScreen({
   budget, setBudget,
   categories, setCategories,
@@ -229,12 +333,22 @@ function QuizScreen({
   const { data: settings } = useSiteSettings();
   const { data: questions } = useQuizQuestions();
   const { data: moments, isLoading: momentsLoading } = useGiftMoments();
+  // Guidance for the maternity / baby paths. Disabled on the gift path by
+  // passing a null scope, so the RPC is never called there.
+  const guidanceScope = categories.has("gift") || categories.size === 0
+    ? null
+    : scopeFor(categories);
+  const { guidance, isSettling: guidanceSettling } = useBudgetGuidance(
+    guidanceScope,
+    budget,
+    categories.has("maternity") ? "expecting" : "newborn",
+  );
 
   // Focus the budget input whenever the budget step is shown so the caret
   // is ready. preventScroll stops the page jumping on mobile.
   const budgetRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (step !== 0) return;
+    if (step !== 1) return; // budget is step 2 now
     const id = window.setTimeout(() => {
       budgetRef.current?.focus({ preventScroll: true });
     }, 120);
@@ -249,12 +363,10 @@ function QuizScreen({
   // Each falls back independently when its setting is absent or unparseable.
   const giftFloor = unwrapInt(settings?.quiz_min_budget_gift, MIN_BUDGET_GIFT_FALLBACK);
   const maternityFloor = unwrapInt(settings?.quiz_min_budget, MIN_BUDGET_FALLBACK);
+  // The path is already chosen by the time budget is asked, so there is one
+  // floor and it is the right one. quiz_min_budget is now a sanity check
+  // (₦20,000), not a gate — guidance does the honest work instead.
   const minBudget = categories.has("gift") ? giftFloor : maternityFloor;
-  // The budget step is asked BEFORE she picks gift vs maternity, so it can
-  // only enforce the lowest floor any path allows. The categories step then
-  // enforces the floor for the path she actually chose — which is what keeps
-  // the maternity minimum intact while letting a ₦30,000 gift through.
-  const entryFloor = Math.min(giftFloor, maternityFloor);
 
   const labelBudget = s("quiz_label_budget", "WHAT IS YOUR BUDGET?");
   const labelCategories = s("quiz_label_what_you_need", "WHAT DO YOU NEED?");
@@ -306,12 +418,8 @@ function QuizScreen({
     { id: "unknown" as const, title: s("quiz_gender_surprise_title", "It's a Surprise!"), sub: s("quiz_gender_surprise_sub", "Neutral & unisex"), emoji: "🎁" },
   ];
 
-  const belowMin = budget > 0 && budget < entryFloor;
-  const minBudgetDisplay = `Minimum ₦${entryFloor.toLocaleString("en-NG")}`;
-  // Chosen a path whose floor her budget doesn't reach (e.g. ₦30,000 with
-  // "Bundles & Kits" selected). Shown on the categories step, not the budget
-  // step, because that is where the path becomes known.
-  const belowPathFloor = budget > 0 && budget < minBudget;
+  const belowMin = budget > 0 && budget < minBudget;
+  const minBudgetDisplay = `Minimum ₦${minBudget.toLocaleString("en-NG")}`;
 
   // ── DB-driven steps ────────────────────────────────────────────────────
   // Everything after the three built-in questions comes straight out of
@@ -350,13 +458,13 @@ function QuizScreen({
   const stepValid = dynamicStep
     ? !!extras[dynamicStep.step_id] || !!dynamicStep.is_skippable
     : [
-        budget >= entryFloor, // lowest floor of any path — see entryFloor
-        categories.size > 0 && (!giftSelected || !!giftSubcategory) && budget >= minBudget,
+        categories.size > 0 && (!giftSelected || !!giftSubcategory),
+        budget >= minBudget, // the floor for the path chosen on step 1
         !!gender,
       ][step];
   // Step ids mirror the equivalent quiz_questions rows (budget / scope /
   // gender) so session rows written now line up with the pre-April ones.
-  const BASE_STEP_IDS = ["budget", "scope", "gender"] as const;
+  const BASE_STEP_IDS = ["scope", "budget", "gender"] as const;
   const currentStepId = dynamicStep ? dynamicStep.step_id : BASE_STEP_IDS[step] ?? `step_${step}`;
   const goNext = () => {
     if (!stepValid) return;
@@ -389,41 +497,9 @@ function QuizScreen({
           Step {step + 1} of {STEP_COUNT}
         </p>
 
-        {/* STEP 1 — Budget */}
+        {/* STEP 1 — What do you need? This now comes first: knowing the
+            path means no later step can reject a choice made here. */}
         {step === 0 && (
-          <div>
-            <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
-            {helpBudget && <p className="text-muted-foreground text-[13px] mb-4">{helpBudget}</p>}
-            <div className="relative">
-              {budget > 0 && (
-                <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
-              )}
-              <input
-                ref={budgetRef}
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                value={budget ? budget.toLocaleString("en-NG") : ""}
-                onChange={e => {
-                  const digits = e.target.value.replace(/\D/g, "");
-                  const n = digits ? parseInt(digits, 10) : 0;
-                  setBudget(n);
-                }}
-                onBlur={() => { if (budget > 0 && budget < minBudget) setBudget(minBudget); }}
-                onKeyDown={e => { if (e.key === "Enter") goNext(); }}
-                placeholder="Type your budget"
-                aria-label="Budget"
-                className={`w-full ${budget > 0 ? "pl-12" : "pl-5"} pr-5 py-3.5 text-center bg-background border-2 rounded-[14px] pf text-midnight text-[26px] md:text-[30px] font-bold tracking-tight outline-none transition-colors placeholder:text-midnight/35 placeholder:text-[16px] placeholder:font-semibold ${belowMin ? "border-coral" : "border-border focus:border-forest"}`}
-              />
-            </div>
-            <div className={`text-[12px] mt-2 font-body font-semibold text-center ${belowMin ? "text-coral" : "text-muted-foreground"}`}>
-              {minBudgetDisplay}
-            </div>
-          </div>
-        )}
-
-        {/* STEP 2 — What do you need? */}
-        {step === 1 && (
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelCategories}</h2>
             {labelCategoriesHint && (
@@ -450,11 +526,6 @@ function QuizScreen({
                 );
               })}
             </div>
-            {belowPathFloor && (
-              <p className="mt-3 text-[12.5px] font-semibold text-coral">
-                A {categories.has("gift") ? "gift" : "maternity"} list starts at ₦{minBudget.toLocaleString("en-NG")}. Go back and raise your budget, or pick a different option.
-              </p>
-            )}
             {giftSelected && (
               <div className="mt-4 pt-4 border-t border-border">
                 <h3 className="pf text-[17px] font-bold leading-tight mb-1">Where is she right now?</h3>
@@ -500,6 +571,53 @@ function QuizScreen({
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 2 — Budget. Asked AFTER the path, so the floor and the
+            guidance below always know which list she is building. */}
+        {step === 1 && (
+          <div>
+            <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
+            {helpBudget && <p className="text-muted-foreground text-[13px] mb-4">{helpBudget}</p>}
+            <div className="relative">
+              {budget > 0 && (
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
+              )}
+              <input
+                ref={budgetRef}
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={budget ? budget.toLocaleString("en-NG") : ""}
+                onChange={e => {
+                  const digits = e.target.value.replace(/\D/g, "");
+                  const n = digits ? parseInt(digits, 10) : 0;
+                  setBudget(n);
+                }}
+                onBlur={() => { if (budget > 0 && budget < minBudget) setBudget(minBudget); }}
+                onKeyDown={e => { if (e.key === "Enter") goNext(); }}
+                placeholder="Type your budget"
+                aria-label="Budget"
+                className={`w-full ${budget > 0 ? "pl-12" : "pl-5"} pr-5 py-3.5 text-center bg-background border-2 rounded-[14px] pf text-midnight text-[26px] md:text-[30px] font-bold tracking-tight outline-none transition-colors placeholder:text-midnight/35 placeholder:text-[16px] placeholder:font-semibold ${belowMin ? "border-coral" : "border-border focus:border-forest"}`}
+              />
+            </div>
+            <div className={`text-[12px] mt-2 font-body font-semibold text-center ${belowMin ? "text-coral" : "text-muted-foreground"}`}>
+              {minBudgetDisplay}
+            </div>
+
+            {/* Honest guidance — never a gate. Maternity and baby paths only;
+                the gift path has no essentials list to measure against. */}
+            {!giftSelected && (
+              <BudgetGuidancePanel
+                guidance={guidance}
+                isSettling={guidanceSettling}
+                budget={budget}
+                scope={scopeFor(categories)}
+                onIncrease={(amount) => setBudget(amount)}
+                onSwitchToBaby={() => setCategories(new Set(["baby"] as Category[]))}
+              />
             )}
           </div>
         )}
