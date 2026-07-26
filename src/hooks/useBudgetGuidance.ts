@@ -65,6 +65,12 @@ export function useBudgetGuidance(
     queryKey: ["quiz_budget_guidance", scope, debouncedBudget, stage],
     enabled: !!scope && debouncedBudget > 0,
     staleTime: 5 * 60 * 1000,
+    // An unknown scope now RAISES in the function rather than returning
+    // figures for the wrong list. That is a bug on our side, not something to
+    // put in front of a customer, so a failure resolves to null and the panel
+    // simply does not render. One retry only, since a bad scope will never
+    // succeed on a repeat.
+    retry: 1,
     queryFn: async () => {
       const { data, error } = await (supabase as any).rpc("quiz_budget_guidance", {
         p_scope: scope,
@@ -76,15 +82,20 @@ export function useBudgetGuidance(
         p_delivery_method: "both",
         p_multiples: 1,
       });
-      if (error) throw error;
-      return data as unknown as BudgetGuidance;
+      if (error) {
+        console.warn("[BudgetGuidance] quiz_budget_guidance failed:", error.message);
+        return null;
+      }
+      return (data as unknown as BudgetGuidance) ?? null;
     },
   });
 
   return {
     guidance: query.data ?? null,
     // True while the typed amount has not yet reached the server, so the UI
-    // can hold the previous answer instead of flashing.
-    isSettling: debouncedBudget !== budget || query.isFetching,
+    // can hold the previous answer instead of flashing. Never true once the
+    // query has settled — including when it failed — so a failure hides the
+    // panel outright instead of leaving a "checking…" line on screen.
+    isSettling: !query.isError && (debouncedBudget !== budget || query.isFetching),
   };
 }

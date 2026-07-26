@@ -264,7 +264,14 @@ function BudgetGuidancePanel({
       : null;
   }
 
-  const listName = scope === "general-baby-prep" ? "baby list" : "maternity list";
+  // Name the list she is actually building. 'hospital-bag-baby' is a baby
+  // hospital list with nothing for the mum, so calling it a maternity list
+  // (as this did before that scope could reach here) reads as not listening.
+  const listName =
+    scope === "general-baby-prep" ? "baby list"
+    : scope === "hospital-bag-baby" ? "baby hospital list"
+    : scope === "hospital-bag+general" ? "maternity and baby list"
+    : "maternity list";
   const money = (n: number) => `₦${Math.round(n).toLocaleString("en-NG")}`;
 
   if (guidance.status === "covers_essentials") {
@@ -297,7 +304,7 @@ function BudgetGuidancePanel({
 
   // too_low — show the coverage plainly, then offer real choices.
   const firstFew = (guidance.would_cover || []).slice(0, 4);
-  const babyFitsBetter = scope !== "general-baby-prep";
+  const babyFitsBetter = scope === "hospital-bag" || scope === "hospital-bag+general";
   return (
     <div className="mt-3 rounded-[14px] border border-border bg-warm-cream px-3.5 py-3">
       <p className="text-[12.5px] text-foreground leading-relaxed">
@@ -380,16 +387,11 @@ function QuizScreen({
   const { data: moments, isLoading: momentsLoading } = useGiftMoments();
   // Guidance for the maternity / baby paths, using the scope and stage she
   // actually chose so the minimum matches the list she will get.
-  //
-  // NOTE: quiz_budget_guidance has no branch for the new 'hospital-bag-baby'
-  // scope — it falls through to the same default as an unknown string and
-  // returns the "both" figures (51 essentials / ~₦402,925) for what is really
-  // a 25-item baby-only list. Rather than quote her a number that wrong, the
-  // panel is suppressed for that scope until the function learns it.
+  // quiz_budget_guidance now knows every scope we send, including
+  // 'hospital-bag-baby'; the gift path has no essentials list to measure
+  // against, so it stays disabled there.
   const resolvedScope = scopeFrom(categories, extras);
-  const guidanceScope = categories.has("gift") || categories.size === 0 || resolvedScope === "hospital-bag-baby"
-    ? null
-    : resolvedScope;
+  const guidanceScope = categories.has("gift") || categories.size === 0 ? null : resolvedScope;
   // One palette fetch per gender, shared by every swatch — never per product.
   const { palette } = useGenderPalette(gender);
   // An empty stored list means "not chosen yet", which reads as all ticked.
