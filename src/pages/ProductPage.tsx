@@ -16,6 +16,7 @@ import { trackEvent } from "@/lib/analytics";
 import { trackEcommerce } from "@/lib/ga";
 import ProductImage from "@/components/ProductImage";
 import QtyControl from "@/components/QtyControl";
+import { useProductVariantOptions, colorsForGender } from "@/hooks/useProductVariantOptions";
 import { Star, ShoppingBag, ChevronLeft, ZoomIn, X, Share2, Truck, Shield, Package, Repeat, MessageCircle, Minus, Plus, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubscriptionSettings } from "@/hooks/useSubscription";
@@ -236,27 +237,26 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     return [...base].sort((a, b) => (a.price || 0) - (b.price || 0) || (a.label || "").localeCompare(b.label || ""));
   })();
 
-  // ── Colour / gender selector ────────────────────────────────────────
-  // Products with gender_relevant=true and a gender_colors map surface a
-  // colour pill row. The chosen key is persisted into the cart payload so
-  // ops can pack the right tone (boy/girl/neutral).
-  const hasGenderOptions = product.genderRelevant === true
-    && !!product.genderColors
-    && Object.keys(product.genderColors).length > 0;
-  const genderOptions = hasGenderOptions
-    ? (Object.entries(product.genderColors as Record<string, string>) as [string, string][])
-      .filter(([, c]) => !!c)
-      .map(([key, color]) => ({
-        key,
-        label: key === "boy" ? "Boy" : key === "girl" ? "Girl" : "Neutral",
-        color,
-      }))
-    : [];
-  const [selectedGender, setSelectedGender] = useState<string | null>(() => {
-    if (!hasGenderOptions || genderOptions.length === 0) return null;
-    const neutral = genderOptions.find(o => o.key === "neutral");
-    return (neutral?.key ?? genderOptions[0].key) || null;
-  });
+  // ── Gender + colour, from get_product_variant_options ───────────────
+  // One call drives both pickers AND the requires_color / requires_size
+  // flags, so the guard below can never disagree with what is on screen.
+  // Deliberately NOT product.colors: those are raw product_colors rows,
+  // unfiltered by gender, brand or stock and undeduped.
+  const [selectedGender, setSelectedGender] = useState<string>("neutral");
+  const { options: variantOptions } = useProductVariantOptions(product?.id, selectedBrand?.id);
+  const genderOptions = variantOptions?.has_gender ? (variantOptions.genders || []) : [];
+  const colorOptions = colorsForGender(variantOptions, selectedGender);
+  // Brand switches refetch the options, so a colour the new brand cannot ship
+  // must not survive: land on the first colour it can, or clear it entirely
+  // when the new brand has no colour axis (Cussons → Johnson).
+  useEffect(() => {
+    const names = colorOptions.map(c => c.name);
+    if (names.length === 0) {
+      if (selectedColorName) setSelectedColorName("");
+      return;
+    }
+    if (!names.includes(selectedColorName)) setSelectedColorName(names[0]);
+  }, [colorOptions.map(c => c.name).join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Age-range badge (read-only, no variant selector) ────────────────
   // For products that DON'T expose a variant selector but DO have a single
@@ -372,7 +372,8 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   // Data-driven attribute requirements: require an attribute ONLY when the
   // product actually has rows for it.
   const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
-  const requiresColorChoice = !!(product.colors && product.colors.length > 0);
+  // requires_color comes from the same call as the options.
+  const requiresColorChoice = variantOptions?.requires_color === true;
   const sizeMissing = requiresSizeChoice && !selectedSize;
   const colorMissing = requiresColorChoice && !selectedColorName;
   const attrMissing = sizeMissing || colorMissing;
@@ -389,7 +390,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     product.id,
     selectedBrand?.id,
     selectedSize || (hasVariants ? selectedVariant : selectedBrand?.sizeVariant) || null,
-    selectedColorName || selectedGender || null,
+    selectedColorName || null,
     hasVariants ? selectedVariant : null,
   );
   const cartItem = cart.find(c => c._key === currentVariantKey);
@@ -467,13 +468,19 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     const sizeForCart = selectedSize || (hasVariants ? selectedVariant : selectedBrand.sizeVariant) || null;
     addToCart({
       ...product,
+      // The guard reads colors[]/sizes[] off the payload. Hand it the SAME
+      // resolved list the pickers showed, not product.colors' raw rows, so
+      // "requires a colour" means exactly what the page displayed.
+      colors: colorOptions,
       selectedBrand,
       price: selectedBrand.price,
       name: `${product.name} (${selectedBrand.label})`,
       selectedSize: sizeForCart,
-      // Catalogue colour wins over the gender axis (they never co-occur today);
-      // both map to order_items.color.
-      selectedColor: selectedColorName || selectedGender || null,
+      // Only a real colour reaches order_items.color. Gender is now its own
+      // axis and must not be written here: a product with no colour axis
+      // used to record the literal string "neutral" as its colour, which
+      // means nothing to whoever packs the box.
+      selectedColor: selectedColorName || null,
       selectedVariant: hasVariants ? selectedVariant : null,
     });
     toast.success(`✓ ${product.name} added to cart`, {
@@ -1273,26 +1280,29 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               <Truck className="h-4 w-4" /> {deliveryText}
             </div>
 
-            {/* Colour / Gender selector — pill row with a colour dot per
-                option. Only shown for products that admins have flagged
-                as gender-relevant AND that ship a gender_colors mapping. */}
-            {hasGenderOptions && genderOptions.length > 0 && (
-              <div className="mb-3">
+            {/* Gender — pills in the size picker's exact treatment. Only
+                rendered when the resolved options actually have a gender
+                axis. Always starts at neutral; never inferred, never
+                remembered between products. */}
+            {genderOptions.length > 0 && (
+              <div className="mb-4">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Colour
+                  Who is it for?
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {genderOptions.map(opt => (
+                  {genderOptions.map(g => (
                     <button
-                      key={opt.key}
-                      onClick={() => setSelectedGender(opt.key)}
-                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body inline-flex items-center gap-1.5 ${selectedGender === opt.key ? "border-forest bg-forest-light text-forest" : "border-border bg-card text-muted-foreground"}`}
+                      key={g.value}
+                      onClick={() => {
+                        setSelectedGender(g.value);
+                        // Swapping gender swaps the colour list, so the old
+                        // selection cannot survive: land on the first colour
+                        // of the new list (Boy → Sky Blue, Girl → Baby Pink).
+                        setSelectedColorName(colorsForGender(variantOptions, g.value)[0]?.name || "");
+                      }}
+                      className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedGender === g.value ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
                     >
-                      <span
-                        className="inline-block rounded-full border border-border"
-                        style={{ width: 12, height: 12, backgroundColor: opt.color }}
-                      />
-                      {opt.label}
+                      {g.label}
                     </button>
                   ))}
                 </div>
@@ -1359,14 +1369,16 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
               </div>
             )}
 
-            {/* Colour Selector (product_colors) — no auto-pick. */}
+            {/* Colour — scoped to the chosen gender and brand by
+                get_product_variant_options, so it is deduped, ordered and
+                never shows another brand's colours. 12px dot retained. */}
             {requiresColorChoice && (
               <div className="mb-4">
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Select Color {colorMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {product.colors!.map(c => (
+                  {colorOptions.map(c => (
                     <button key={c.name} onClick={() => setSelectedColorName(c.name)}
                       className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body inline-flex items-center gap-1.5 ${selectedColorName === c.name ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}>
                       {c.hex && <span className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0" style={{ backgroundColor: c.hex }} />}
