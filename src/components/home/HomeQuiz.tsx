@@ -10,6 +10,7 @@ import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions, type QuizQuestion } from "@/hooks/useQuizConfig";
 import { useGiftMoments } from "@/hooks/useGiftMoments";
 import { useBudgetGuidance, type BudgetGuidance } from "@/hooks/useBudgetGuidance";
+import { useBudgetSuggestions } from "@/hooks/useBudgetSuggestions";
 import { useGenderPalette } from "@/hooks/useGenderPalette";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
@@ -410,6 +411,12 @@ function QuizScreen({
     budget,
     stageFrom(categories, extras),
   );
+  // Suggested starting points. Same scope/stage as the guidance call, but
+  // independent of the amount typed, so it never refetches while she types.
+  const { suggestions: budgetSuggestions, note: budgetNote } = useBudgetSuggestions(
+    guidanceScope,
+    stageFrom(categories, extras),
+  );
 
   // Focus the budget input whenever the budget step is shown so the caret
   // is ready. preventScroll stops the page jumping on mobile.
@@ -675,6 +682,38 @@ function QuizScreen({
           <div>
             <h2 className="pf text-[20px] md:text-[24px] font-bold leading-tight mb-1">{labelBudget}</h2>
             {helpBudget && <p className="text-muted-foreground text-[13px] mb-4">{helpBudget}</p>}
+
+            {/* Starting points, above the field, before she types. Tapping one
+                fills the field; she can still type anything, higher or lower. */}
+            {!giftSelected && budgetSuggestions.length > 0 && (
+              <div className="mb-4">
+                <div className="space-y-2">
+                  {budgetSuggestions.map((sug) => (
+                    <button
+                      key={sug.key}
+                      type="button"
+                      onClick={() => setBudget(sug.amount)}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[14px] border-2 text-left transition-all ${
+                        budget === sug.amount ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
+                      }`}
+                    >
+                      <span className="flex-1 min-w-0">
+                        <span className="block pf font-bold text-[14px] text-foreground leading-tight">{sug.label}</span>
+                        <span className="block text-text-med text-[11.5px] mt-0.5 leading-snug">{sug.reason}</span>
+                      </span>
+                      <span className="font-mono-price font-bold text-[15px] text-forest shrink-0">
+                        ₦{sug.amount.toLocaleString("en-NG")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {/* Wording owned by the database so it can change without a deploy. */}
+                {budgetNote && (
+                  <p className="text-[11px] text-muted-foreground mt-2 leading-snug">{budgetNote}</p>
+                )}
+              </div>
+            )}
+
             <div className="relative">
               {budget > 0 && (
                 <span className="absolute left-5 top-1/2 -translate-y-1/2 pf text-midnight text-[26px] md:text-[30px] font-bold pointer-events-none leading-none">₦</span>
