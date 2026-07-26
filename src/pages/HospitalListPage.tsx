@@ -9,6 +9,9 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import HospitalListExitPopup, { HL_WA_USED_KEY } from "@/components/HospitalListExitPopup";
 import { getCustomItemsRequest, setCustomItemsRequest, customItemsLines } from "@/lib/customItemsRequest";
 import ImageZoomModal from "@/components/ImageZoomModal";
+import { useProductVariantOptionsBulk } from "@/hooks/useProductVariantOptionsBulk";
+import type { ProductVariantOptions } from "@/hooks/useProductVariantOptions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trackEvent } from "@/lib/analytics";
 import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
@@ -276,10 +279,23 @@ export default function HospitalListPage() {
     };
   }, [displayIdsSig]);
 
-  // Batched variant load (sizes + colors) for the visible products, via the
-  // SAME anon-safe products embed the storefront uses (product_sizes /
-  // product_colors are RLS-locked directly, but readable through products).
-  // One query, not per-card. Only in-stock rows count; ordered by display_order.
+  // Variant options for every displayed row, resolved in ONE request by
+  // get_product_variant_options_bulk. The rules (which gender, which colours,
+  // what is required, whether to preselect) live in that function and are
+  // shared with the product page — nothing is reimplemented here, and
+  // product_colors is no longer read directly.
+  // displayList covers both modes; budgetItems is null outside budget mode.
+  const variantPairs = useMemo(
+    () => displayList.map((p: any) => ({
+      product_id: p.product_id,
+      brand_id: p.brand_id || null,
+    })).filter((p) => !!p.product_id),
+    [displayList],
+  );
+  const variantFor = useProductVariantOptionsBulk(variantPairs);
+
+  // Legacy sizes/colors load — retained only for surfaces this commit does
+  // not touch. Superseded on the rows themselves by variantFor above.
   useEffect(() => {
     if (!displayIdsSig) {
       setSizesByProduct(new Map());
@@ -603,8 +619,7 @@ export default function HospitalListPage() {
                 key={`${p.product_id}-${p.brand_id}`}
                 product={p}
                 canSwap={multiBrandIds.has(p.product_id)}
-                sizes={sizesByProduct.get(p.product_id) || []}
-                colors={colorsByProduct.get(p.product_id) || []}
+                variantOptions={variantFor(p.product_id)}
                 initialQty={p.quantity || 1}
                 {...cardProps}
               />
@@ -625,8 +640,7 @@ export default function HospitalListPage() {
                 key={`${p.product_id}-${p.brand_id}`}
                 product={p}
                 canSwap={multiBrandIds.has(p.product_id)}
-                sizes={sizesByProduct.get(p.product_id) || []}
-                colors={colorsByProduct.get(p.product_id) || []}
+                variantOptions={variantFor(p.product_id)}
                 {...cardProps}
               />
             ))}
@@ -671,8 +685,7 @@ export default function HospitalListPage() {
                     key={`${p.product_id}-${p.brand_id}`}
                     product={p}
                     canSwap={multiBrandIds.has(p.product_id)}
-                    sizes={sizesByProduct.get(p.product_id) || []}
-                    colors={colorsByProduct.get(p.product_id) || []}
+                    variantOptions={variantFor(p.product_id)}
                     {...cardProps}
                   />
                 ))}
@@ -775,8 +788,9 @@ export default function HospitalListPage() {
 interface ProductCardProps {
   product: HLProduct;
   canSwap: boolean;
-  sizes?: string[];
-  colors?: ColorOption[];
+  // Resolved by get_product_variant_options_bulk for this row's product and
+  // its currently chosen brand. Null while the one bulk call is in flight.
+  variantOptions?: ProductVariantOptions | null;
   initialQty?: number;
   cart: ReturnType<typeof useCart>["cart"];
   addToCart: ReturnType<typeof useCart>["addToCart"];
@@ -784,15 +798,26 @@ interface ProductCardProps {
   getCartItem: ReturnType<typeof useCart>["getCartItem"];
 }
 
-// If a product has more sizes than this, use a dropdown instead of chips
-// (e.g. Nursing Bra spans S–8XL).
-const SIZE_CHIP_LIMIT = 5;
+// One class string for every variant control on a row, so the native selects
+// and the Radix colour trigger are visually identical despite the different
+// implementations. Mirrors the brand picker, which is untouched.
+const VARIANT_CONTROL_CLASS =
+  "w-full h-11 px-3 rounded-lg border-2 border-border bg-card text-sm text-text-dark focus:border-forest focus:outline-none";
+
+function ColorDot({ hex }: { hex: string | null }) {
+  return (
+    <span
+      className="w-5 h-5 rounded-full border border-black/10 shrink-0"
+      style={{ backgroundColor: hex || "#e5e5e5" }}
+      aria-hidden="true"
+    />
+  );
+}
 
 function ProductCard({
   product,
   canSwap,
-  sizes = [],
-  colors = [],
+  variantOptions = null,
   initialQty = 1,
   addToCart,
   updateQty,
@@ -809,12 +834,38 @@ function ProductCard({
   const [zoomOpen, setZoomOpen] = useState(false);
   const fetchedRef = useRef(false);
 
-  // Variant selections — NEVER auto-picked. Empty = unchosen. A product that
-  // has sizes and/or colors can't be added until the required one(s) are set.
-  const hasSizes = sizes.length > 0;
-  const hasColors = colors.length > 0;
+  // ── Variant axes, all from get_product_variant_options_bulk ──────────
+  // Same rules as the product page: gender starts at default_gender, a
+  // single-gender product shows no picker, and colours are only preselected
+  // when preselect_default says they are real rather than the generic palette.
+  const sizeOptions = variantOptions?.requires_size ? (variantOptions.sizes || []) : [];
+  const genderOptions = variantOptions?.has_gender ? (variantOptions.genders || []) : [];
+  const [selectedGender, setSelectedGender] = useState<string>("");
+  useEffect(() => {
+    if (variantOptions?.default_gender) setSelectedGender(variantOptions.default_gender);
+  }, [variantOptions?.default_gender]);
+  const activeGender = selectedGender || variantOptions?.default_gender || "neutral";
+  const colorOptions = variantOptions?.requires_color
+    ? (variantOptions.colors_by_gender?.[activeGender] ?? [])
+    : [];
+
+  const hasSizes = sizeOptions.length > 0;
+  const hasColors = colorOptions.length > 0;
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedColor, setSelectedColor] = useState("");
+  // Preselect only when the colours are the brand's own; on the generic
+  // palette she chooses. Also keeps the selection valid when the gender or
+  // brand changes the list under it.
+  useEffect(() => {
+    const names = colorOptions.map((c) => c.name);
+    if (names.length === 0) {
+      if (selectedColor) setSelectedColor("");
+      return;
+    }
+    if (!names.includes(selectedColor)) {
+      setSelectedColor(variantOptions?.preselect_default ? names[0] : "");
+    }
+  }, [colorOptions.map((c) => c.name).join("|"), variantOptions?.preselect_default]); // eslint-disable-line react-hooks/exhaustive-deps
   const variantMissing = (hasSizes && !selectedSize) || (hasColors && !selectedColor);
 
   const hasMultiple = canSwap;
@@ -940,82 +991,84 @@ function ProductCard({
         <p className="text-base font-semibold text-text-dark leading-snug">{product.name}</p>
         <p className="text-lg font-bold text-forest mt-0.5">{fmt(chosen.price)}</p>
 
-        {/* Size selector — chips, or a dropdown when there are many. Never
-            pre-selected; the customer must choose before Add unlocks. */}
-        {hasSizes && (
+        {/* Variant controls. Each is one fixed-height line, so six colours
+            and one colour produce the same row height — the wrapping pill
+            rows were what made the list lose its rhythm. Rows with no
+            variant axes render nothing here and are unchanged. */}
+
+        {/* Gender — native, matching the brand picker. Hidden for
+            single-gender products, which the function resolves itself. */}
+        {genderOptions.length > 0 && (
           <div className="mt-2">
-            <p className="text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
-              Size{!selectedSize && <span className="text-coral normal-case"> — choose one</span>}
-            </p>
-            {sizes.length > SIZE_CHIP_LIMIT ? (
-              <select
-                value={selectedSize}
-                onChange={(e) => setSelectedSize(e.target.value)}
-                aria-label={`Choose size for ${product.name}`}
-                className="w-full h-10 px-3 rounded-lg border-2 border-border bg-card text-sm text-text-dark focus:border-forest focus:outline-none"
-              >
-                <option value="">Select size…</option>
-                {sizes.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {sizes.map((s) => {
-                  const active = selectedSize === s;
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSelectedSize(active ? "" : s)}
-                      aria-pressed={active}
-                      className={`min-h-10 px-3 py-1.5 rounded-pill text-sm font-semibold border-2 transition-colors ${
-                        active
-                          ? "border-forest bg-forest text-primary-foreground"
-                          : "border-border bg-card text-text-med"
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <label className="block text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+              Who is it for?
+            </label>
+            <select
+              value={activeGender}
+              onChange={(e) => setSelectedGender(e.target.value)}
+              aria-label={`Choose who ${product.name} is for`}
+              className={VARIANT_CONTROL_CLASS}
+            >
+              {genderOptions.map((g) => (
+                <option key={g.value} value={g.value}>{g.label}</option>
+              ))}
+            </select>
           </div>
         )}
 
-        {/* Color selector — swatch chips (color_hex + color_name). */}
+        {/* Size — native, same treatment. Never pre-selected. */}
+        {hasSizes && (
+          <div className="mt-2">
+            <label className="block text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+              Size{!selectedSize && <span className="text-coral normal-case"> — choose one</span>}
+            </label>
+            <select
+              value={selectedSize}
+              onChange={(e) => setSelectedSize(e.target.value)}
+              aria-label={`Choose size for ${product.name}`}
+              className={VARIANT_CONTROL_CLASS}
+            >
+              <option value="">Select size…</option>
+              {sizeOptions.map((sz) => (
+                <option key={sz.label} value={sz.label}>{sz.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Colour — the one non-native control on the row, because a native
+            <option> cannot carry a swatch. Classes match the selects above
+            so the two read as the same control. */}
         {hasColors && (
           <div className="mt-2">
-            <p className="text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
+            <label className="block text-xs font-semibold text-text-med uppercase tracking-wide mb-1">
               Color{!selectedColor && <span className="text-coral normal-case"> — choose one</span>}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {colors.map((c) => {
-                const active = selectedColor === c.name;
-                return (
-                  <button
-                    key={c.name}
-                    type="button"
-                    onClick={() => setSelectedColor(active ? "" : c.name)}
-                    aria-pressed={active}
-                    className={`min-h-10 pl-1.5 pr-3 py-1 rounded-pill text-sm font-semibold border-2 inline-flex items-center gap-1.5 transition-colors ${
-                      active
-                        ? "border-forest bg-forest-light text-forest"
-                        : "border-border bg-card text-text-med"
-                    }`}
-                  >
-                    <span
-                      className="w-5 h-5 rounded-full border border-black/10 shrink-0"
-                      style={{ backgroundColor: c.hex || "#e5e5e5" }}
-                    />
-                    {c.name}
-                  </button>
-                );
-              })}
-            </div>
+            </label>
+            <Select value={selectedColor} onValueChange={setSelectedColor}>
+              <SelectTrigger
+                aria-label={`Choose color for ${product.name}`}
+                className={`${VARIANT_CONTROL_CLASS} justify-between`}
+              >
+                {selectedColor ? (
+                  <span className="flex items-center gap-2 min-w-0">
+                    <ColorDot hex={colorOptions.find((c) => c.name === selectedColor)?.hex ?? null} />
+                    <span className="truncate">{selectedColor}</span>
+                  </span>
+                ) : (
+                  <SelectValue placeholder="Select color…" />
+                )}
+              </SelectTrigger>
+              <SelectContent className="max-h-[280px]">
+                {colorOptions.map((c) => (
+                  <SelectItem key={c.name} value={c.name} className="text-sm">
+                    <span className="flex items-center gap-2">
+                      <ColorDot hex={c.hex} />
+                      {c.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 
