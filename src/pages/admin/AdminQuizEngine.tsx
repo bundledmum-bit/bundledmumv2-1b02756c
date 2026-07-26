@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getBudgetTier } from "@/lib/budgetTiers";
 import { useAllQuizConfig, type QuizQuestion, type QuizRoutingRule, type QuizAdjustmentRule, type QuizTargetCount } from "@/hooks/useQuizConfig";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -602,6 +603,10 @@ function EngineTestPanel() {
     p_gender: "neutral",
     p_first_baby: false,
     p_is_gift: false,
+    // Naira, not a tier. The storefront always sends this, and the engine's
+    // budget-slice logic only runs on the overload that takes it — without it
+    // the tester was resolving to a different function from production.
+    p_budget_amount: 300000,
   });
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -630,6 +635,9 @@ function EngineTestPanel() {
   const runTest = async () => {
     setLoading(true);
     try {
+      // IDENTICAL argument set to HomeQuiz.tsx's baseParams (same 11 names,
+      // same order), so the tester resolves to the same overload the customer
+      // hits and its output is comparable.
       const { data, error } = await supabase.rpc("run_quiz_recommendation", {
         p_budget_tier: params.p_budget_tier,
         p_scope: params.p_scope,
@@ -638,10 +646,11 @@ function EngineTestPanel() {
         p_delivery_method: params.p_delivery_method,
         p_multiples: params.p_multiples,
         p_gender: params.p_gender,
-        p_first_baby: params.p_first_baby,
         p_is_gift: params.p_is_gift,
+        p_first_baby: params.p_first_baby,
         p_gift_relationship: null,
-      });
+        p_budget_amount: params.p_budget_amount,
+      } as any);
       if (error) throw error;
       setResult(data);
       toast.success("Engine test completed");
@@ -700,6 +709,31 @@ function EngineTestPanel() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Budget amount — the naira figure the customer types on the
+            storefront. Sent as p_budget_amount, and kept in step with the tier
+            buttons above the same way getBudgetTier does on the quiz. */}
+        <div>
+          <label htmlFor="tester-budget-amount" className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
+            Budget Amount (₦) — drives the engine's budget slice
+          </label>
+          <input
+            id="tester-budget-amount"
+            type="text"
+            inputMode="numeric"
+            value={params.p_budget_amount ? params.p_budget_amount.toLocaleString("en-NG") : ""}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, "");
+              const n = digits ? parseInt(digits, 10) : 0;
+              setParams(p => ({ ...p, p_budget_amount: n, p_budget_tier: n > 0 ? getBudgetTier(n) : p.p_budget_tier }));
+            }}
+            placeholder="300,000"
+            className="w-full border border-input rounded-lg px-3 py-2 text-sm bg-background font-mono"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Typing an amount also re-selects the matching tier, exactly as the storefront does.
+          </p>
         </div>
 
         {/* Other fields — overridable advanced knobs */}

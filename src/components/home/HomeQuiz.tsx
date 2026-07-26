@@ -15,7 +15,6 @@ import {
   getBudgetTier,
   isBelowEssentialsFloor,
   ESSENTIALS_FLOOR,
-  BUDGET_MAX,
 } from "@/lib/budgetTiers";
 import OptionalTextStep from "@/components/quiz/OptionalTextStep";
 import ChoiceStepBody, { quizOptionCardClass } from "@/components/quiz/ChoiceStepBody";
@@ -25,6 +24,13 @@ import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ShareModal from "@/components/ShareModal";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { buildQuizStory } from "@/lib/quizStory";
+import {
+  completeQuizSession,
+  currentQuizAttemptId,
+  promoteAttemptToAttributed,
+  startQuizAttempt,
+  trackQuizSession,
+} from "@/lib/quizSessionTracking";
 import type { RecommendationResult, RecommendedProduct } from "@/components/quiz/types";
 
 type Screen = "quiz" | "owned" | "whatsapp" | "results";
@@ -61,15 +67,11 @@ export function screenAfterQuestions(extras: QuizExtras): Screen {
   return extras.alreadyBought === "yes" ? "owned" : "whatsapp";
 }
 
-// Fallback defaults — overridden by site_settings (see QuizScreen).
-// Keeping the constants here so tests / SSR / first render before settings
-// load still behaves sensibly.
-// Budget engine v4.8 expects ≥ ₦178,000 to deliver a complete starter
-// bundle. Below this the bundle would cost more than the customer entered, so it
-// is a HARD floor the quiz never lets a budget drop under. (The higher
-// ESSENTIALS_FLOOR / 178k remains a SOFT "complete list" nudge at submit time.)
-const HARD_MIN_BUDGET = 150000;
-const MIN_BUDGET_FALLBACK = HARD_MIN_BUDGET;
+// The minimum budget is owned by site_settings.quiz_min_budget. This constant
+// is ONLY the fallback for when that setting is missing or unparseable (and
+// for the first render, before settings have loaded) — it must never override
+// the admin's value, which is what the old HARD_MIN_BUDGET did.
+export const MIN_BUDGET_FALLBACK = 150000;
 // Budget starts empty so the placeholder shows; user must enter an amount. Never
 // submittable on its own, since progressing requires budget >= the hard minimum.
 const DEFAULT_BUDGET = 0;
@@ -131,6 +133,35 @@ function toOldAnswers(budget: number, categories: Set<Category>, gender: Gender,
   };
 }
 
+// The answers object sent to track_quiz_session / complete_quiz_session and
+// stored as save_quiz_lead's p_full_answers — one shape, so a session row and
+// its lead row never disagree.
+export function buildAnswersSnapshot(
+  budget: number,
+  categories: Set<Category>,
+  gender: Gender | null,
+  extras: QuizExtras,
+  giftSubcategory: string | null,
+  excludeIds: string[],
+): Record<string, any> {
+  const isGift = categories.has("gift");
+  return {
+    budget,
+    budget_tier: budgetTierFor(budget),
+    categories: Array.from(categories),
+    gender,
+    scope: isGift ? "gift" : scopeFor(categories),
+    stage: isGift ? "newborn" : stageFor(categories),
+    gift_subcategory: giftSubcategory,
+    ...extras,
+    already_owned_product_ids: excludeIds,
+  };
+}
+
+export function shopperTypeFor(categories: Set<Category>): string {
+  return categories.has("gift") ? "gift" : "self";
+}
+
 // Fire-and-forget quiz lead persistence. Calls the save_quiz_lead RPC,
 // which upserts the quiz_customers row keyed on p_session_id and uses
 // COALESCE so missing params preserve any value already on the row.
@@ -144,21 +175,14 @@ async function saveLead(payload: Record<string, any>) {
   }
 }
 
-// Stable per-quiz session id stored in localStorage so the lead row can
-// be progressively enriched (initial submit → WhatsApp → checkout) and
-// so CheckoutPage's existing bm_quiz_session_id lookup links orders to
-// the lead row.
-function getOrCreateQuizSessionId(): string {
+// One id per ATTEMPT. A fresh start mints a new one so a returning visitor no
+// longer overwrites her previous lead and session rows; a handoff from the
+// Home widget (initialState) is the SAME attempt continuing, so it reuses the
+// id already in flight. See lib/quizSessionTracking for why the checkout
+// attribution key is separate.
+function attemptIdFor(isContinuation: boolean): string {
   if (typeof window === "undefined") return "";
-  try {
-    const existing = localStorage.getItem("bm_quiz_session_id");
-    if (existing) return existing;
-  } catch { /* ignore */ }
-  const fresh = (typeof crypto !== "undefined" && (crypto as any).randomUUID)
-    ? (crypto as any).randomUUID()
-    : `quiz_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  try { localStorage.setItem("bm_quiz_session_id", fresh); } catch { /* ignore */ }
-  return fresh;
+  return isContinuation ? currentQuizAttemptId() : startQuizAttempt();
 }
 
 // =============================================================================
@@ -180,6 +204,7 @@ function QuizScreen({
   extras, setExtra,
   resumeAtLastStep = false,
   onNext,
+  onStepAnswered,
 }: {
   budget: number;
   setBudget: (n: number) => void;
@@ -195,6 +220,9 @@ function QuizScreen({
   // that sent you there, not all the way back at the budget input.
   resumeAtLastStep?: boolean;
   onNext: () => void;
+  // Fired with the step id as each step is answered, so the parent can record
+  // progress. Must never block the wizard.
+  onStepAnswered?: (stepId: string) => void;
 }) {
   const [step, setStep] = useState(0);
   const { data: settings } = useSiteSettings();
@@ -214,9 +242,9 @@ function QuizScreen({
   // All content and min-budget driven by site_settings, with hardcoded
   // fallbacks matching the seeded defaults so the UI never renders empty.
   const s = (key: string, fallback: string) => unwrapSetting(settings?.[key]) || fallback;
-  // Enforced floor: never below the ₦150,000 hard minimum, but honour a higher
-  // admin-configured quiz_min_budget if one is set.
-  const minBudget = Math.max(HARD_MIN_BUDGET, unwrapInt(settings?.quiz_min_budget, HARD_MIN_BUDGET));
+  // Enforced floor: whatever the admin set in quiz_min_budget, falling back to
+  // MIN_BUDGET_FALLBACK only when the setting is absent or unparseable.
+  const minBudget = unwrapInt(settings?.quiz_min_budget, MIN_BUDGET_FALLBACK);
 
   const labelBudget = s("quiz_label_budget", "WHAT IS YOUR BUDGET?");
   const labelCategories = s("quiz_label_what_you_need", "WHAT DO YOU NEED?");
@@ -308,19 +336,25 @@ function QuizScreen({
   const stepValid = dynamicStep
     ? !!extras[dynamicStep.step_id] || !!dynamicStep.is_skippable
     : [
-        budget >= minBudget, // hard floor: cannot advance below the ₦150,000 minimum
+        budget >= minBudget, // floor from site_settings.quiz_min_budget
         categories.size > 0 && (!giftSelected || !!giftSubcategory),
         !!gender,
       ][step];
+  // Step ids mirror the equivalent quiz_questions rows (budget / scope /
+  // gender) so session rows written now line up with the pre-April ones.
+  const BASE_STEP_IDS = ["budget", "scope", "gender"] as const;
+  const currentStepId = dynamicStep ? dynamicStep.step_id : BASE_STEP_IDS[step] ?? `step_${step}`;
   const goNext = () => {
     if (!stepValid) return;
+    onStepAnswered?.(currentStepId);
     if (step < STEP_COUNT - 1) setStep((n) => n + 1);
     else onNext(); // last step → parent submit (floor warning + routing)
   };
   const goBack = () => setStep((n) => Math.max(0, n - 1));
   // Skip leaves the answer unset, which is what makes the engine fall back
-  // to its default for that argument.
+  // to its default for that argument. The step is still recorded as reached.
   const goSkip = () => {
+    onStepAnswered?.(currentStepId);
     if (step < STEP_COUNT - 1) setStep((n) => n + 1);
     else onNext();
   };
@@ -498,12 +532,18 @@ function ResultsScreen({
   budget, categories, gender,
   extras = {},
   excludeIds = [],
+  sessionId = "",
+  giftSubcategory = null,
   onBack,
   onComplete,
 }: {
   budget: number;
   categories: Set<Category>;
   gender: Gender;
+  // Attempt id, so the recommendation can close out the same quiz_sessions row
+  // the step tracking has been writing to.
+  sessionId?: string;
+  giftSubcategory?: string | null;
   // Answers to the DB-driven steps, keyed by step_id. Empty when those
   // questions are inactive or were skipped.
   extras?: QuizExtras;
@@ -667,6 +707,19 @@ function ResultsScreen({
             products: Array.isArray(unwrapped?.products) ? unwrapped.products : [],
           } as RecommendationResult;
           setResult(normalised);
+          // Close out the session row. Not awaited — the results are already
+          // on screen and tracking must never hold them up.
+          void completeQuizSession({
+            sessionId,
+            resultTier: normalised.budget_tier || budgetTier,
+            resultProductIds: normalised.products
+              .map((prod) => prod.product_id)
+              .filter((id): id is string => !!id),
+            resultProductCount: normalised.products.length,
+            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds),
+            shopperType: shopperTypeFor(categories),
+            engineVersion: normalised.engine_version || null,
+          });
         }
       } catch (err: any) {
         if (!cancelled) setError(err?.message || "Something went wrong.");
@@ -974,7 +1027,7 @@ function ResultsScreen({
   else if (recScope === "hospital-bag+general") heading = `Your ${amount} maternity and baby list`;
   else heading = `Your ${amount} bundle`;
 
-  const subHeading = buildQuizStory(answers, { isDadPath: false, dadPurpose: "", productCount: results.length });
+  const subHeading = buildQuizStory(answers, { productCount: results.length });
 
   const pillData = [
     answers.gender && answers.gender !== "neutral" && answers.gender !== "unknown"
@@ -1498,8 +1551,11 @@ export default function HomeQuiz({
     // Empty (0) stays empty so the input shows its placeholder; any positive
     // restored value is raised to the hard minimum so a resumed quiz can never
     // carry a below-floor budget into the recommendation RPC.
+    // Settings aren't loaded on the first render, so a resumed below-floor
+    // budget is raised to the fallback; QuizScreen re-validates against the
+    // live quiz_min_budget before she can advance.
     const b = initialState?.budget ?? DEFAULT_BUDGET;
-    return b > 0 && b < HARD_MIN_BUDGET ? HARD_MIN_BUDGET : b;
+    return b > 0 && b < MIN_BUDGET_FALLBACK ? MIN_BUDGET_FALLBACK : b;
   });
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
   const [gender, setGender] = useState<Gender | null>(initialState?.gender || null);
@@ -1521,10 +1577,33 @@ export default function HomeQuiz({
   // Set when the owned-products screen hands control back to the questions.
   const [resumeAtLastStep, setResumeAtLastStep] = useState(false);
   const navigateRoot = useNavigate();
-  // Stable session id for this quiz run. Persisted to localStorage so
-  // the same row gets enriched across submit → WhatsApp → checkout, and
-  // so CheckoutPage's bm_quiz_session_id lookup attributes the order.
-  const [sessionId] = useState<string>(() => getOrCreateQuizSessionId());
+  // One id for THIS attempt. A handoff from the Home widget carries
+  // initialState, which means the same attempt is continuing on /quiz, so we
+  // keep its id; anything else is a fresh start and mints a new one.
+  const [sessionId] = useState<string>(() => attemptIdFor(!!initialState));
+
+  // Ordered list of step ids answered so far. track_quiz_session takes the
+  // FULL array each call (it never regresses server-side), so this is the
+  // single source of truth for progress within the attempt.
+  const stepsCompletedRef = useRef<string[]>([]);
+  const snapshot = () =>
+    buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds);
+
+  // Called by QuizScreen as each step is answered. Deliberately NOT awaited:
+  // tracking must never delay the next question. The RPC wrapper owns the
+  // error path and logs failures.
+  const trackStep = (stepId: string) => {
+    if (!stepsCompletedRef.current.includes(stepId)) {
+      stepsCompletedRef.current = [...stepsCompletedRef.current, stepId];
+    }
+    void trackQuizSession({
+      sessionId,
+      currentStep: stepId,
+      answers: snapshot(),
+      shopperType: shopperTypeFor(categories),
+      stepsCompleted: stepsCompletedRef.current,
+    });
+  };
   // Soft below-floor warning state. When the user submits with a budget
   // below ₦178,000, we hold the submit, surface the warning, and let them
   // choose: bump up to the floor, or continue at their entered amount.
@@ -1643,17 +1722,11 @@ export default function HomeQuiz({
     const scope = isGift ? "gift" : scopeFor(categories);
     const stage = isGift ? "newborn" : stageFor(categories);
     const budgetTier = budgetTierFor(budget);
-    const fullAnswers = {
-      budget,
-      budget_tier: budgetTier,
-      categories: Array.from(categories),
-      gender,
-      scope,
-      stage,
-      gift_subcategory: giftSubcategory,
-      ...extras,
-      already_owned_product_ids: excludeIds,
-    };
+    const fullAnswers = buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds);
+    // The attempt now has a lead row, so this is the id CheckoutPage should
+    // attribute an order to. Promoting only here (never on a fresh start) is
+    // what keeps attribution intact when she restarts the quiz and abandons it.
+    promoteAttemptToAttributed(sessionId);
     saveLead({
       p_session_id: sessionId,
       p_shopper_type: isGift ? "gift" : "self",
@@ -1714,6 +1787,7 @@ export default function HomeQuiz({
           extras={extras} setExtra={setExtra}
           resumeAtLastStep={resumeAtLastStep}
           onNext={handleSubmitFromQuiz}
+          onStepAnswered={trackStep}
         />
         {floorPopupEnabled && floorWarning && (
           <FloorWarningModal
@@ -1752,7 +1826,7 @@ export default function HomeQuiz({
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
-          extras={extras} excludeIds={excludeIds}
+          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />
@@ -1779,7 +1853,7 @@ export default function HomeQuiz({
       <QuizResultsErrorBoundary onBack={() => setScreen("quiz")}>
         <ResultsScreen
           budget={budget} categories={categories} gender={gender as Gender}
-          extras={extras} excludeIds={excludeIds}
+          extras={extras} excludeIds={excludeIds} sessionId={sessionId} giftSubcategory={giftSubcategory}
           onBack={() => setScreen("quiz")}
           onComplete={() => { quizCompletedRef.current = true; }}
         />

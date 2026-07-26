@@ -4,19 +4,16 @@
 
 export function buildQuizStory(
   answers: Record<string, string>,
-  opts: { isDadPath: boolean; dadPurpose: string; productCount?: number }
+  opts: { productCount?: number } = {}
 ): string {
   const parts: string[] = [];
   const isGift = answers.shopper === "gift";
-  const isDad = opts.isDadPath || answers.shopper === "dad";
 
   // Opener
   if (isGift) {
     parts.push("A personalised gift bundle");
     if (answers.giftRelationship) parts.push(`for a ${answers.giftRelationship}`);
     if (answers.giftOccasion) parts.push(`for ${answers.giftOccasion}`);
-  } else if (isDad) {
-    parts.push("Here is what we have put together for your wife");
   } else {
     parts.push("Here is what we have put together for you");
   }
