@@ -378,9 +378,24 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const requiresSizeChoice = !!(product.sizes && product.sizes.length > 0);
   // requires_color comes from the same call as the options.
   const requiresColorChoice = variantOptions?.requires_color === true;
+  // Which picker the blocked CTA last pointed at. Same ring-and-scroll
+  // pattern the quiz results page uses for missing sizes, and the same
+  // timing: the ring stays until she satisfies that axis.
+  const [attrErrorAxis, setAttrErrorAxis] = useState<"size" | "color" | null>(null);
   const sizeMissing = requiresSizeChoice && !selectedSize;
   const colorMissing = requiresColorChoice && !selectedColorName;
   const attrMissing = sizeMissing || colorMissing;
+  // Size first when both are missing — it sits higher on the page.
+  const revealFirstMissing = () => {
+    const axis = sizeMissing ? "size" : colorMissing ? "color" : null;
+    if (!axis) return;
+    setAttrErrorAxis(axis);
+    document.getElementById(axis === "size" ? "pp-size-picker" : "pp-color-picker")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  // Ring only while the flagged axis is genuinely still unsatisfied.
+  const ringSize = attrErrorAxis === "size" && sizeMissing;
+  const ringColor = attrErrorAxis === "color" && colorMissing;
   const { cart, addToCart, updateQty } = useCart();
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
@@ -1358,7 +1373,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
 
             {/* Size Selector — no auto-pick; customer must tap a chip. */}
             {requiresSizeChoice && (
-              <div className="mb-4">
+              <div
+                id="pp-size-picker"
+                className={`mb-4 rounded-2xl transition-shadow ${ringSize ? "ring-2 ring-coral ring-offset-2 ring-offset-background" : ""}`}
+              >
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Select Size {sizeMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
                 </p>
@@ -1380,7 +1398,10 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                 get_product_variant_options, so it is deduped, ordered and
                 never shows another brand's colours. 12px dot retained. */}
             {requiresColorChoice && (
-              <div className="mb-4">
+              <div
+                id="pp-color-picker"
+                className={`mb-4 rounded-2xl transition-shadow ${ringColor ? "ring-2 ring-coral ring-offset-2 ring-offset-background" : ""}`}
+              >
                 <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Select Color {colorMissing && <span className="text-coral normal-case tracking-normal">— required</span>}
                 </p>
@@ -1420,12 +1441,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                   </button>
                 </div>
               ) : attrMissing ? (
-                <button
-                  disabled
-                  className="w-full rounded-pill bg-muted text-muted-foreground text-sm font-semibold py-4 min-h-[52px] cursor-not-allowed"
-                >
-                  {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
-                </button>
+                <div onClick={revealFirstMissing} role="presentation">
+                  <button
+                    disabled
+                    className="w-full rounded-pill bg-muted text-muted-foreground text-sm font-semibold py-4 min-h-[52px] cursor-not-allowed pointer-events-none"
+                  >
+                    {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
+                  </button>
+                </div>
               ) : (
                 <div className="flex gap-3">
                   <button onClick={handleAdd} className="flex-1 rounded-pill text-sm font-semibold text-white font-body flex items-center gap-2 min-h-[52px] justify-center transition-colors hover:opacity-90" style={{ backgroundColor: "#F4845F" }}>
@@ -1651,12 +1674,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <Link to="/cart" className="text-forest text-sm font-semibold">Cart →</Link>
           </div>
         ) : attrMissing ? (
-          <button
-            disabled
-            className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
-          >
-            {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
-          </button>
+          <div onClick={revealFirstMissing} role="presentation">
+            <button
+              disabled
+              className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px] pointer-events-none"
+            >
+              {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
+            </button>
+          </div>
         ) : (
           <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
             <ShoppingBag className="h-4 w-4" /> Add to Cart
