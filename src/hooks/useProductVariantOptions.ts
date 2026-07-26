@@ -46,6 +46,14 @@ export interface ProductVariantOptions {
   sizes: VariantSize[];
   requires_color: boolean;
   requires_size: boolean;
+  /**
+   * true  — the colours belong to this brand and are real, so opening on one
+   *         is a genuine default (a Cussons pack really is Blue or Pink).
+   * false — the colours are the generic palette applied across ~81 products.
+   *         Offer them, but presume none: BundledMum sources on demand, so
+   *         the choice is hers to make, not ours to assume.
+   */
+  preselect_default: boolean;
 }
 
 export function useProductVariantOptions(

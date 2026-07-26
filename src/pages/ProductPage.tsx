@@ -246,17 +246,21 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   const { options: variantOptions } = useProductVariantOptions(product?.id, selectedBrand?.id);
   const genderOptions = variantOptions?.has_gender ? (variantOptions.genders || []) : [];
   const colorOptions = colorsForGender(variantOptions, selectedGender);
+  // Only preselect when the colours are the brand's own and therefore real.
+  // On the generic palette we offer the colours but presume none, so the
+  // picker opens empty and she chooses.
+  const preselectColor = variantOptions?.preselect_default === true;
   // Brand switches refetch the options, so a colour the new brand cannot ship
-  // must not survive: land on the first colour it can, or clear it entirely
-  // when the new brand has no colour axis (Cussons → Johnson).
+  // must not survive: clear it, then land on the first only when preselecting
+  // is warranted (Cussons → Johnson clears; Johnson → Cussons lands on Blue).
   useEffect(() => {
     const names = colorOptions.map(c => c.name);
     if (names.length === 0) {
       if (selectedColorName) setSelectedColorName("");
       return;
     }
-    if (!names.includes(selectedColorName)) setSelectedColorName(names[0]);
-  }, [colorOptions.map(c => c.name).join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!names.includes(selectedColorName)) setSelectedColorName(preselectColor ? names[0] : "");
+  }, [colorOptions.map(c => c.name).join("|"), preselectColor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Age-range badge (read-only, no variant selector) ────────────────
   // For products that DON'T expose a variant selector but DO have a single
@@ -1296,9 +1300,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
                       onClick={() => {
                         setSelectedGender(g.value);
                         // Swapping gender swaps the colour list, so the old
-                        // selection cannot survive: land on the first colour
-                        // of the new list (Boy → Sky Blue, Girl → Baby Pink).
-                        setSelectedColorName(colorsForGender(variantOptions, g.value)[0]?.name || "");
+                        // selection cannot survive. Land on the new list's
+                        // first colour only when preselecting is warranted;
+                        // on the generic palette, clear it and let her pick.
+                        setSelectedColorName(
+                          preselectColor ? (colorsForGender(variantOptions, g.value)[0]?.name || "") : "",
+                        );
                       }}
                       className={`min-h-[44px] px-3 py-2 rounded-pill text-xs font-semibold border-[1.5px] transition-all font-body ${selectedGender === g.value ? "border-forest bg-forest text-primary-foreground" : "border-border bg-card text-muted-foreground hover:border-forest/40"}`}
                     >
@@ -1643,12 +1650,12 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
             <QtyControl qty={cartItem.qty} onUpdate={(newQty) => updateQty(cartItem._key, newQty)} size="md" maxQty={selectedBrand.stockQuantity ?? undefined} />
             <Link to="/cart" className="text-forest text-sm font-semibold">Cart →</Link>
           </div>
-        ) : sizeMissing ? (
+        ) : attrMissing ? (
           <button
             disabled
             className="rounded-pill bg-border px-6 py-3 text-sm font-semibold text-muted-foreground cursor-not-allowed min-h-[44px]"
           >
-            Select a Size
+            {sizeMissing && colorMissing ? "Select Size & Color" : sizeMissing ? "Select a Size" : "Select a Color"}
           </button>
         ) : (
           <button onClick={handleAdd} className="rounded-pill px-6 py-3 text-sm font-semibold text-primary-foreground font-body flex items-center gap-2 min-h-[44px]" style={{ backgroundColor: "#F4845F" }}>
