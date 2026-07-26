@@ -11,12 +11,15 @@ import { supabase } from "@/integrations/supabase/client";
  * REPLACE the palette for that card; when it has none (the overwhelming
  * majority) the card keeps showing her ticked palette colours.
  *
- * Batched deliberately: one request covers every card on the page, keyed on
- * the result set's product ids. The brand_colours(uuid, text) RPC answers for
- * a single brand, so using it would mean one call per card — this reads the
- * same product_colors rows with the same filters (gender_match, in_stock,
- * display_order) in a single round trip. Only 8 of ~1,466 colour rows carry a
- * brand_id at all, so the response is tiny.
+ * One call for the whole page: brand_colours_bulk(uuid[], text) takes every
+ * product id on the results page and returns an object keyed by brand id. A
+ * brand with no colours of its own is simply absent from that object, which
+ * is exactly the "fall back to the global palette" signal the resolver wants.
+ *
+ * This deliberately does NOT query product_colors directly. The colour rules
+ * (which rows count as brand-specific, how gender is matched, stock and
+ * ordering) belong in one place; duplicating them here would let the two
+ * drift apart silently the next time they change.
  */
 export interface BrandColour {
   name: string;
@@ -32,25 +35,19 @@ export function useBrandColours(productIds: string[], gender: string | null) {
     enabled: ids.length > 0 && !!gender,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("product_colors")
-        .select("brand_id, color_name, color_hex, display_order")
-        .in("product_id", ids)
-        // brand_id NOT NULL is what makes a colour brand-specific; every other
-        // row is product-level and belongs to the global palette path.
-        .not("brand_id", "is", null)
-        .eq("gender_match", key)
-        .eq("in_stock", true)
-        .order("display_order");
+      const { data, error } = await (supabase as any).rpc("brand_colours_bulk", {
+        p_product_ids: ids,
+        p_gender: key,
+      });
       if (error) {
-        console.warn("[BrandColours] lookup failed:", error.message);
+        // A failure here must not strip the palette off every card, so the
+        // empty map falls everything back to the global palette.
+        console.warn("[BrandColours] brand_colours_bulk failed:", error.message);
         return new Map<string, BrandColour[]>();
       }
       const map = new Map<string, BrandColour[]>();
-      (data || []).forEach((r: any) => {
-        const list = map.get(r.brand_id) || [];
-        list.push({ name: r.color_name, hex: r.color_hex });
-        map.set(r.brand_id, list);
+      Object.entries((data || {}) as Record<string, BrandColour[]>).forEach(([brandId, colours]) => {
+        if (Array.isArray(colours) && colours.length) map.set(brandId, colours);
       });
       return map;
     },
