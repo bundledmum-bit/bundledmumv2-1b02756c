@@ -8,6 +8,7 @@ import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import type { Brand, Product } from "@/lib/supabaseAdapters";
 import { useAllProducts, useSiteSettings } from "@/hooks/useSupabaseData";
 import { useQuizQuestions } from "@/hooks/useQuizConfig";
+import { useGiftMoments } from "@/hooks/useGiftMoments";
 import { supabase } from "@/integrations/supabase/client";
 import { track as pixelTrack } from "@/lib/metaPixel";
 import { analytics, trackEcommerce } from "@/lib/ga";
@@ -72,6 +73,9 @@ export function screenAfterQuestions(extras: QuizExtras): Screen {
 // for the first render, before settings have loaded) — it must never override
 // the admin's value, which is what the old HARD_MIN_BUDGET did.
 export const MIN_BUDGET_FALLBACK = 150000;
+// A gift is not a hospital bag: ₦150,000 would lock out every normal gift
+// budget, so the gift path reads its own setting.
+export const MIN_BUDGET_GIFT_FALLBACK = 10000;
 // Budget starts empty so the placeholder shows; user must enter an amount. Never
 // submittable on its own, since progressing requires budget >= the hard minimum.
 const DEFAULT_BUDGET = 0;
@@ -188,13 +192,10 @@ function attemptIdFor(isContinuation: boolean): string {
 // =============================================================================
 // Screen 1 — Quiz form
 // =============================================================================
-// Internal slug values must match the get_gift_category_products RPC.
-type GiftSubcategory = "postpartum_kits" | "baby_shower_boxes" | "push_gifts";
-const GIFT_OPTIONS: { value: GiftSubcategory; label: string }[] = [
-  { value: "postpartum_kits", label: "Postpartum Kits" },
-  { value: "baby_shower_boxes", label: "Baby Shower Gift Boxes" },
-  { value: "push_gifts", label: "Push Gifts" },
-];
+// The gift path is keyed on a gift_moments.key ("where is she right now"),
+// loaded from the database — never a hardcoded list, so a new moment row
+// shows up on the storefront on its own.
+type GiftSubcategory = string;
 
 function QuizScreen({
   budget, setBudget,
@@ -227,6 +228,7 @@ function QuizScreen({
   const [step, setStep] = useState(0);
   const { data: settings } = useSiteSettings();
   const { data: questions } = useQuizQuestions();
+  const { data: moments, isLoading: momentsLoading } = useGiftMoments();
 
   // Focus the budget input whenever the budget step is shown so the caret
   // is ready. preventScroll stops the page jumping on mobile.
@@ -242,9 +244,17 @@ function QuizScreen({
   // All content and min-budget driven by site_settings, with hardcoded
   // fallbacks matching the seeded defaults so the UI never renders empty.
   const s = (key: string, fallback: string) => unwrapSetting(settings?.[key]) || fallback;
-  // Enforced floor: whatever the admin set in quiz_min_budget, falling back to
-  // MIN_BUDGET_FALLBACK only when the setting is absent or unparseable.
-  const minBudget = unwrapInt(settings?.quiz_min_budget, MIN_BUDGET_FALLBACK);
+  // Enforced floor. Two separate settings: the maternity path keeps
+  // quiz_min_budget untouched, the gift path reads quiz_min_budget_gift.
+  // Each falls back independently when its setting is absent or unparseable.
+  const giftFloor = unwrapInt(settings?.quiz_min_budget_gift, MIN_BUDGET_GIFT_FALLBACK);
+  const maternityFloor = unwrapInt(settings?.quiz_min_budget, MIN_BUDGET_FALLBACK);
+  const minBudget = categories.has("gift") ? giftFloor : maternityFloor;
+  // The budget step is asked BEFORE she picks gift vs maternity, so it can
+  // only enforce the lowest floor any path allows. The categories step then
+  // enforces the floor for the path she actually chose — which is what keeps
+  // the maternity minimum intact while letting a ₦30,000 gift through.
+  const entryFloor = Math.min(giftFloor, maternityFloor);
 
   const labelBudget = s("quiz_label_budget", "WHAT IS YOUR BUDGET?");
   const labelCategories = s("quiz_label_what_you_need", "WHAT DO YOU NEED?");
@@ -296,8 +306,12 @@ function QuizScreen({
     { id: "unknown" as const, title: s("quiz_gender_surprise_title", "It's a Surprise!"), sub: s("quiz_gender_surprise_sub", "Neutral & unisex"), emoji: "🎁" },
   ];
 
-  const belowMin = budget > 0 && budget < minBudget;
-  const minBudgetDisplay = `Minimum ₦${minBudget.toLocaleString("en-NG")}`;
+  const belowMin = budget > 0 && budget < entryFloor;
+  const minBudgetDisplay = `Minimum ₦${entryFloor.toLocaleString("en-NG")}`;
+  // Chosen a path whose floor her budget doesn't reach (e.g. ₦30,000 with
+  // "Bundles & Kits" selected). Shown on the categories step, not the budget
+  // step, because that is where the path becomes known.
+  const belowPathFloor = budget > 0 && budget < minBudget;
 
   // ── DB-driven steps ────────────────────────────────────────────────────
   // Everything after the three built-in questions comes straight out of
@@ -336,8 +350,8 @@ function QuizScreen({
   const stepValid = dynamicStep
     ? !!extras[dynamicStep.step_id] || !!dynamicStep.is_skippable
     : [
-        budget >= minBudget, // floor from site_settings.quiz_min_budget
-        categories.size > 0 && (!giftSelected || !!giftSubcategory),
+        budget >= entryFloor, // lowest floor of any path — see entryFloor
+        categories.size > 0 && (!giftSelected || !!giftSubcategory) && budget >= minBudget,
         !!gender,
       ][step];
   // Step ids mirror the equivalent quiz_questions rows (budget / scope /
@@ -436,19 +450,55 @@ function QuizScreen({
                 );
               })}
             </div>
+            {belowPathFloor && (
+              <p className="mt-3 text-[12.5px] font-semibold text-coral">
+                A {categories.has("gift") ? "gift" : "maternity"} list starts at ₦{minBudget.toLocaleString("en-NG")}. Go back and raise your budget, or pick a different option.
+              </p>
+            )}
             {giftSelected && (
-              <div className="mt-3">
-                <label className="text-muted-foreground text-[11px] font-bold uppercase tracking-[1.5px] mb-1.5 block">Gift Category</label>
-                <select
-                  value={giftSubcategory || ""}
-                  onChange={e => setGiftSubcategory((e.target.value || null) as GiftSubcategory | null)}
-                  className="w-full bg-background border-2 border-border rounded-[14px] px-3.5 py-3 text-sm font-semibold text-foreground outline-none focus:border-coral"
-                >
-                  <option value="" disabled>Choose a gift category…</option>
-                  {GIFT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+              <div className="mt-4 pt-4 border-t border-border">
+                <h3 className="pf text-[17px] font-bold leading-tight mb-1">Where is she right now?</h3>
+                <p className="text-muted-foreground text-[13px] mb-3">
+                  The right gift depends on the moment she is in.
+                </p>
+                {momentsLoading && !(moments || []).length ? (
+                  <p className="text-muted-foreground text-[13px] py-2">Loading moments…</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(moments || []).map((m) => {
+                      const selected = giftSubcategory === m.key;
+                      return (
+                        <button
+                          key={m.key}
+                          type="button"
+                          onClick={() => setGiftSubcategory(m.key)}
+                          aria-pressed={selected}
+                          className={`w-full flex items-start gap-3 px-3.5 py-3 rounded-[14px] border-2 text-left transition-all ${
+                            selected ? "bg-[#FFF0EB] border-coral" : "bg-card border-border hover:border-coral/40"
+                          }`}
+                        >
+                          <span className="flex-shrink-0 w-10 h-10 rounded-full bg-warm-cream flex items-center justify-center text-xl">
+                            {m.emoji || "🎁"}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block pf font-bold text-[15px] text-foreground leading-tight">{m.label}</span>
+                            {m.description && (
+                              <span className="block text-text-med text-[12px] mt-0.5 leading-snug">{m.description}</span>
+                            )}
+                            {m.timing_hint && (
+                              <span className="block text-[11px] text-muted-foreground mt-1 font-medium">🕒 {m.timing_hint}</span>
+                            )}
+                          </span>
+                          {selected && (
+                            <span className="flex-shrink-0 w-5 h-5 rounded-full bg-coral flex items-center justify-center mt-0.5">
+                              <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -592,59 +642,36 @@ function ResultsScreen({
       } catch { /* ignore */ }
       try {
         if (isGift) {
-          // Gift path uses the push-gift recommendation engine — it queries
-          // is_push_gift_eligible products (silk robes, jewellery, chocolate
-          // hampers, etc.) instead of the family-bundle RPC which returns
-          // maternity/baby essentials.
-          const pushTier = budgetTier === "starter" ? "push-starter"
-            : budgetTier === "premium" ? "push-premium"
-            : "push-standard";
-          const { data, error } = await supabase.rpc("run_push_gift_recommendation", {
-            p_budget_tier: pushTier,
-            p_category: "mum-gifts-keepsakes",
-            p_timing: "no-specific-time",
-          });
+          // Gift path — run_gift_recommendation, keyed on the gift_moments
+          // moment she picked. The old run_push_gift_recommendation could
+          // only see 19 of 249 products and ignored its own timing argument,
+          // so it is no longer called anywhere.
+          const { data, error } = await (supabase as any).rpc("run_gift_recommendation", {
+            p_moment: giftSubcategory || "",
+            p_budget_amount: budget,
+            p_budget_tier: budgetTierFor(budget),
+            p_gender: gender ?? "neutral",
+            ...(excludeIds.length > 0 ? { p_exclude_product_ids: excludeIds } : {}),
+          } as any);
           if (cancelled) return;
           if (error) throw error;
-          // Push-gift returns a subset of RecommendationResult's shape —
-          // normalise so ResultProductCard can render each item unchanged.
           const raw = data as any;
           const normalised: RecommendationResult = {
-            budget_tier: raw?.budget_tier || pushTier,
-            scope: "hospital-bag+general",
-            stage: "newborn",
-            hospital_type: "public",
-            delivery_method: "vaginal",
-            multiples: 1,
-            gender,
-            first_baby: false,
-            product_count: raw?.product_count || 0,
-            target_count: raw?.product_count || 0,
-            engine_version: raw?.engine_version || "push-gift",
-            products: (raw?.products || []).map((p: any) => ({
-              product_id: p.product_id,
-              name: p.name,
-              slug: p.slug,
-              priority: p.priority,
-              category: p.category,
-              subcategory: p.subcategory ?? null,
-              quantity: p.quantity ?? 1,
-              selected_color: null,
-              why_included: p.why_included || "",
-              emoji: null,
-              image_url: null,
-              brand: p.brand ? {
-                id: p.brand.id,
-                brand_name: p.brand.brand_name,
-                price: p.brand.price,
-                tier: p.brand.tier,
-                image_url: p.brand.image_url ?? null,
-                in_stock: p.brand.in_stock ?? true,
-                logo_url: p.brand.logo_url ?? null,
-              } : null as any,
-            })),
-          };
+            ...(raw || {}),
+            products: Array.isArray(raw?.products) ? raw.products : [],
+          } as RecommendationResult;
           setResult(normalised);
+          void completeQuizSession({
+            sessionId,
+            resultTier: normalised.budget_tier || budgetTier,
+            resultProductIds: normalised.products
+              .map((prod) => prod.product_id)
+              .filter((id): id is string => !!id),
+            resultProductCount: normalised.products.length,
+            answers: buildAnswersSnapshot(budget, categories, gender, extras, giftSubcategory, excludeIds),
+            shopperType: shopperTypeFor(categories),
+            engineVersion: normalised.engine_version || null,
+          });
         } else {
           const scope = scopeFor(categories);
           const stage = stageFor(categories);
@@ -1555,6 +1582,10 @@ export default function HomeQuiz({
     // budget is raised to the fallback; QuizScreen re-validates against the
     // live quiz_min_budget before she can advance.
     const b = initialState?.budget ?? DEFAULT_BUDGET;
+    // Never raise a GIFT budget to the maternity floor — ₦30,000 is a normal
+    // gift, and QuizScreen validates it against quiz_min_budget_gift anyway.
+    const resumingGift = (initialState?.categories || []).includes("gift");
+    if (resumingGift) return b;
     return b > 0 && b < MIN_BUDGET_FALLBACK ? MIN_BUDGET_FALLBACK : b;
   });
   const [categories, setCategories] = useState<Set<Category>>(new Set(initialState?.categories || []));
@@ -1750,8 +1781,10 @@ export default function HomeQuiz({
     // entirely and route to the dedicated gift results page.
     if (categories.has("gift") && giftSubcategory) {
       const sp = new URLSearchParams({
-        category: giftSubcategory,
+        moment: giftSubcategory,
         budget: String(budget),
+        gender: gender ?? "neutral",
+        ...(excludeIds.length ? { exclude: excludeIds.join(",") } : {}),
       });
       navigateRoot(`/quiz/gift-results?${sp.toString()}`);
       return;

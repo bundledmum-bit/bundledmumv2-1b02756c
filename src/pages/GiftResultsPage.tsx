@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -9,44 +9,57 @@ import { useAllProducts } from "@/hooks/useSupabaseData";
 import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import ResultProductCard from "@/components/quiz/ResultProductCard";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import BundleCustomiser from "@/components/BundleCustomiser";
 import type { RecommendedProduct } from "@/components/quiz/types";
+import { getBudgetTier } from "@/lib/budgetTiers";
+import { completeQuizSession, currentQuizAttemptId } from "@/lib/quizSessionTracking";
 
 /**
  * Dedicated gift quiz results page. Visually identical to the general
  * quiz results screen (`ResultsScreen` inside HomeQuiz.tsx) — same
- * forest-green gradient hero, same coral CTA strip, same
- * "bg-coral text-white" section heading pills, same product grid, and
- * the same ResultProductCard. Only the heading copy and the data
- * source differ. RPC: get_gift_category_products.
+ * forest-green gradient hero, same coral CTA strip, same product grid and
+ * the same ResultProductCard. Only the heading copy and the data source
+ * differ. RPC: run_gift_recommendation, keyed on a gift_moments moment.
  */
 
-const CATEGORY_TITLE: Record<string, string> = {
-  postpartum_kits: "Postpartum Kits",
-  baby_shower_boxes: "Baby Shower Gift Boxes",
-  push_gifts: "Push Gifts",
-};
-
+// run_gift_recommendation's response. Same product shape as
+// run_quiz_recommendation, plus the moment metadata used in the hero.
 interface GiftResponse {
-  category: string;
+  moment: string;
+  moment_label: string;
+  moment_emoji: string | null;
+  timing_hint: string | null;
+  gift_focus: string | null;
+  allow_bulk: boolean;
+  budget_tier: string;
   budget_amount: number;
-  product_count: number;
-  bundles_count: number;
-  singles_count: number;
-  total_spend: number;
-  over_budget: boolean;
+  gender: string;
   engine_version: string;
-  products: (RecommendedProduct & { section?: "bundle" | "single" })[];
+  product_count: number;
+  list_total: number;
+  over_budget: boolean;
+  excluded_count: number;
+  products: RecommendedProduct[];
+  also_recommended?: RecommendedProduct[];
 }
+
+// Priority sections, in the order the shopper should read them. Labels match
+// the maternity results screen's treatment (emoji chip + heading + count).
+const PRIORITY_SECTIONS: Array<{ key: string; label: string; emoji: string }> = [
+  { key: "essential", label: "Gift essentials", emoji: "🎁" },
+  { key: "recommended", label: "Recommended additions", emoji: "💛" },
+  { key: "nice-to-have", label: "Convenience extras", emoji: "✨" },
+];
 
 export default function GiftResultsPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const category = searchParams.get("category") || "";
+  // `moment` is a gift_moments.key. `category` is read only so an old link
+  // from before the moment picker still lands somewhere sensible.
+  const moment = searchParams.get("moment") || searchParams.get("category") || "";
   const budget = Number(searchParams.get("budget") || 0) || 0;
-  const categoryLabel = CATEGORY_TITLE[category] || "Gift Suggestions";
-
-  useEffect(() => { document.title = `${categoryLabel} | BundledMum`; }, [categoryLabel]);
+  const gender = searchParams.get("gender") || "neutral";
+  const excludeIds = (searchParams.get("exclude") || "").split(",").filter(Boolean);
+  const excludeKey = excludeIds.join(",");
 
   const { cart, addToCart, setCart } = useCart();
   const variantReq = useVariantRequirements();
@@ -58,18 +71,52 @@ export default function GiftResultsPage() {
   }, [allProducts]);
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["gift-results", category, budget],
-    enabled: !!category,
+    queryKey: ["gift-results", moment, budget, gender, excludeKey],
+    enabled: !!moment,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .rpc("get_gift_category_products" as any, {
-          p_category: category,
+      const { data, error } = await (supabase as any)
+        .rpc("run_gift_recommendation", {
+          p_moment: moment,
           p_budget_amount: budget,
+          p_budget_tier: getBudgetTier(budget),
+          p_gender: gender || "neutral",
+          ...(excludeIds.length > 0 ? { p_exclude_product_ids: excludeIds } : {}),
         });
       if (error) throw error;
       return data as unknown as GiftResponse;
     },
   });
+
+  const momentLabel = data?.moment_label || "Gift Suggestions";
+  useEffect(() => { document.title = `${momentLabel} | BundledMum`; }, [momentLabel]);
+
+  // Close out the quiz session the moment the gift recommendation lands, the
+  // same way the maternity results screen does — gift sessions used to sit as
+  // abandoned forever. Not awaited: tracking never holds up the results.
+  const completedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!data || !data.product_count) return;
+    const key = `${moment}|${budget}`;
+    if (completedRef.current === key) return;
+    completedRef.current = key;
+    void completeQuizSession({
+      sessionId: currentQuizAttemptId(),
+      resultTier: data.budget_tier || null,
+      resultProductIds: (data.products || []).map((p) => p.product_id).filter(Boolean),
+      resultProductCount: data.product_count,
+      answers: {
+        budget,
+        budget_tier: data.budget_tier,
+        categories: ["gift"],
+        gender,
+        moment,
+        moment_label: data.moment_label,
+        already_owned_product_ids: excludeIds,
+      },
+      shopperType: "gift",
+      engineVersion: data.engine_version || null,
+    });
+  }, [data, moment, budget, gender, excludeKey]);
 
   // Same cart-add path the general ResultsScreen uses for each item.
   const handleAddProduct = (item: RecommendedProduct) => {
@@ -130,24 +177,6 @@ export default function GiftResultsPage() {
 
   const addedIds = new Set(cart.map(c => c.id));
 
-  // ── "What's Inside" modal state ────────────────────────────────────
-  // BundleCustomiser is the single source of truth for the interactive
-  // contents UI — same component the bundle product page uses, so the
-  // checkbox / brand / variant / colour / qty / add-search behaviour
-  // and the "Proceed to Checkout — ₦X" CTA are inherited verbatim.
-  const [modalBundle, setModalBundle] = useState<RecommendedProduct | null>(null);
-  const openBundleModal = (item: RecommendedProduct) => setModalBundle(item);
-  const closeBundleModal = () => setModalBundle(null);
-
-  // Escape key closes the "What's Inside" modal — matches the
-  // BundleCustomiser's own image-zoom shortcut so the keyboard
-  // affordance is consistent across both layers.
-  useEffect(() => {
-    if (!modalBundle) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeBundleModal(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [modalBundle]);
 
   // ── Loading state — matches the general results screen. ────────────
   if (isLoading) {
@@ -175,16 +204,21 @@ export default function GiftResultsPage() {
   }
 
   const products = data.products || [];
-  // Section 1 = engine-flagged bundles (gift-box packages); section 2
-  // = everything else. Items with no `section` value land in singles
-  // so a future engine change doesn't accidentally hide them.
-  const bundles = products.filter(p => p.section === "bundle");
-  const singles = products.filter(p => p.section !== "bundle");
+  // Grouped by the engine's own priority, in reading order. Anything with an
+  // unrecognised priority falls into the last group rather than vanishing.
+  const knownPriorities = new Set(PRIORITY_SECTIONS.map((sec) => sec.key));
+  const groupedByPriority = PRIORITY_SECTIONS.map((sec, i) => ({
+    ...sec,
+    rows: products.filter((p) =>
+      p.priority === sec.key ||
+      (i === PRIORITY_SECTIONS.length - 1 && !knownPriorities.has(String(p.priority)))),
+  })).filter((g) => g.rows.length > 0);
 
-  const grandTotal = data.total_spend;
+  const grandTotal = data.list_total ?? products.reduce(
+    (sum, p) => sum + (p.brand?.price ?? 0) * (p.quantity ?? 1), 0);
   const amount = `₦${budget.toLocaleString("en-NG")}`;
-  const heading = `A ${amount} ${categoryLabel} gift bundle`;
-  const subHeading = `Hand-picked from the ${categoryLabel} range to suit your budget. Swap or remove anything that doesn't fit before checkout.`;
+  const heading = `A ${amount} gift for ${data.moment_label?.toLowerCase() || "her"}`;
+  const subHeading = `Chosen for this exact moment. Swap or remove anything that doesn't fit before checkout.`;
 
   // "Get Gift Bundle" — adds every priced item to cart then routes to
   // the cart. Mirrors handleAddAll on the general results screen.
@@ -201,13 +235,13 @@ export default function GiftResultsPage() {
       const qty = r.quantity ?? 1;
       return `${qty > 1 ? `×${qty} ` : ""}${r.name} (${r.brand?.brand_name || "Standard"}) — ${fmt(price * qty)}`;
     }).join("\n");
-    const text = `My BundledMum ${categoryLabel}\n${"=".repeat(30)}\n\n${list}\n\nTotal: ${fmt(grandTotal)}\n\nBuild yours: https://bundledmum.com`;
+    const text = `My BundledMum gift list — ${data.moment_label}\n${"=".repeat(30)}\n\n${list}\n\nTotal: ${fmt(grandTotal)}\n\nBuild yours: https://bundledmum.com`;
     navigator.clipboard.writeText(text).then(() => toast.success("Checklist copied to clipboard!"));
   };
 
   const handleShare = () => {
     const url = window.location.href;
-    const shareText = `Check out my ${categoryLabel} gift bundle on BundledMum: ${url}`;
+    const shareText = `Check out my gift list on BundledMum: ${url}`;
     if (navigator.share) {
       navigator.share({ title: "BundledMum Gift Bundle", text: shareText, url }).catch(() => {});
     } else {
@@ -215,7 +249,7 @@ export default function GiftResultsPage() {
     }
   };
 
-  const renderCard = (item: RecommendedProduct & { section?: "bundle" | "single" }) => {
+  const renderCard = (item: RecommendedProduct) => {
     const card = (
       <ResultProductCard
         item={item}
@@ -231,21 +265,7 @@ export default function GiftResultsPage() {
         fullProduct={productMap.get(item.product_id)}
       />
     );
-    // Only bundle-section items get the secondary "What's Inside" CTA —
-    // singles are individual products with no inner contents to expand.
-    if (item.section !== "bundle") return <div key={item.product_id}>{card}</div>;
-    return (
-      <div key={item.product_id} className="flex flex-col gap-2">
-        {card}
-        <button
-          type="button"
-          onClick={() => openBundleModal(item)}
-          className="w-full rounded-pill border-2 border-forest text-forest text-xs font-semibold py-2 hover:bg-forest hover:text-primary-foreground transition-colors"
-        >
-          Click here to see what's inside
-        </button>
-      </div>
-    );
+    return <div key={item.product_id}>{card}</div>;
   };
 
   // ── Page shell — mirrors ResultsScreen markup top-to-bottom. ──────
@@ -253,22 +273,30 @@ export default function GiftResultsPage() {
     <div className="min-h-screen bg-background pt-[68px] pb-16 md:pb-0">
       <div style={{ background: "linear-gradient(135deg, #2D6A4F, #1E5C44)" }} className="px-4 md:px-10 py-8 md:py-14">
         <div className="max-w-[880px] mx-auto text-center">
-          {data.over_budget && (
-            <div className="bg-amber-500/20 border border-amber-500/40 rounded-lg px-4 py-2 mb-4 inline-block">
-              <p className="text-amber-200 text-xs">
-                The cheapest bundle in this category exceeds your budget — we've still included it because every gift should ship with at least one curated package.
-              </p>
-            </div>
-          )}
-          <div className="animate-fade-in inline-flex items-center gap-2 bg-coral/20 border border-coral/40 rounded-pill px-4 py-1.5 mb-3.5">
-            <span className="text-coral text-[13px] font-semibold">🎁 Perfect Gift Bundle Ready!</span>
+          {/* The moment this list was built for — the whole point of the
+              gift engine, so it leads. */}
+          <div className="animate-fade-in inline-flex items-center gap-2.5 bg-primary-foreground/10 border border-primary-foreground/20 rounded-pill px-4 py-2 mb-3.5">
+            <span className="text-lg leading-none">{data.moment_emoji || "🎁"}</span>
+            <span className="text-primary-foreground text-[13px] font-semibold">{data.moment_label}</span>
+            {data.timing_hint && (
+              <span className="text-primary-foreground/60 text-[12px] border-l border-primary-foreground/20 pl-2.5">
+                {data.timing_hint}
+              </span>
+            )}
           </div>
           <h1 className="pf text-2xl md:text-[40px] text-primary-foreground mb-3">{heading}</h1>
           <p className="text-primary-foreground/80 text-sm md:text-[15px] leading-[1.8] mb-4 max-w-[660px] mx-auto">{subHeading}</p>
 
+          {/* Quiet, honest note — never hidden, never a blocker. */}
+          {data.over_budget && (
+            <p className="text-primary-foreground/70 text-[12.5px] mb-4 max-w-[560px] mx-auto">
+              This list comes to a little over the {amount} you entered. Remove anything you don't need before checkout.
+            </p>
+          )}
+
           <div className="flex flex-wrap gap-2 justify-center mb-5">
             <Link to="/quiz" className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-pill px-3 py-1 text-primary-foreground/80 text-[11px] font-semibold hover:bg-primary-foreground/20 transition-colors">
-              🎁 {categoryLabel}
+              {data.moment_emoji || "🎁"} Change moment
             </Link>
             <Link to="/quiz" className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-pill px-3 py-1 text-primary-foreground/80 text-[11px] font-semibold hover:bg-primary-foreground/20 transition-colors">
               💰 {amount}
@@ -277,8 +305,7 @@ export default function GiftResultsPage() {
 
           {/* Item-count strip — hidden on mobile to reduce clutter */}
           <div className="hidden md:flex flex-wrap gap-3 justify-center text-primary-foreground/60 text-xs mb-5">
-            {data.bundles_count > 0 && <><span>🎁 {data.bundles_count} curated bundle{data.bundles_count === 1 ? "" : "s"}</span><span>·</span></>}
-            {data.singles_count > 0 && <><span>✨ {data.singles_count} individual gift{data.singles_count === 1 ? "" : "s"}</span><span>·</span></>}
+            {data.excluded_count > 0 && <><span>We left out {data.excluded_count} item{data.excluded_count === 1 ? "" : "s"} she already has</span><span>·</span></>}
             <span>Total: {data.product_count} items</span><span>·</span>
             <span className="text-coral font-bold">{fmt(grandTotal)}</span>
           </div>
@@ -310,42 +337,36 @@ export default function GiftResultsPage() {
       </div>
 
       <div id="quiz-results-items" className="max-w-[1000px] mx-auto px-4 md:px-10 py-8 md:py-10">
-        {/* SECTION 1 — Recommended Gift Bundles
-            Engine sets section="bundle" on every bundle product the
-            customer can buy as a packaged gift. Empty for categories
-            where the curator has no bundle output yet. */}
-        {bundles.length > 0 && (
-          <div className="mb-10">
-            <h2 className="pf inline-block bg-coral text-white text-base md:text-lg font-bold px-4 py-2 rounded-pill mb-4">
-              🎁 Recommended Gift Bundles
-            </h2>
+        {/* Priority sections — same treatment as the maternity results
+            screen: emoji chip, heading, count pill, two-column grid. */}
+        {groupedByPriority.map((g) => (
+          <div key={g.key} className="mb-10">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-coral/10 flex items-center justify-center text-lg flex-shrink-0">{g.emoji}</div>
+              <h2 className="pf text-lg md:text-xl font-bold text-foreground flex-1">{g.label}</h2>
+              <span className="text-xs font-bold text-muted-foreground bg-muted/60 border border-border rounded-pill px-2.5 py-0.5">{g.rows.length}</span>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-              {bundles.map(renderCard)}
+              {g.rows.map(renderCard)}
             </div>
           </div>
-        )}
+        ))}
 
-        {/* SECTION 2 — Other Products You Can Add
-            Visually distinct from the bundle row above: top divider,
-            outer heading + subtitle, then a soft-grey rounded panel
-            wrapping the grid so the eye reads it as a different layer
-            even when the bundle section is short. */}
-        {singles.length > 0 && (
-          <div className="mt-12 mb-10">
-            <div className="border-t border-border pt-10">
-              <h2 className="pf text-xl md:text-2xl font-bold text-foreground mb-1">
-                Other Products You Can Add
-              </h2>
-              <p className="text-text-med text-sm mb-6">
-                Add individual items alongside your chosen bundle.
-              </p>
-              <div className="bg-muted/40 rounded-2xl p-4 md:p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
-                  {singles.map(renderCard)}
-                </div>
+        {/* Engine's own "if you have more budget" list. */}
+        {Array.isArray(data.also_recommended) && data.also_recommended.length > 0 && (
+          <section className="mt-12 mb-10 border-t border-border pt-10">
+            <h2 className="pf text-xl md:text-2xl font-bold text-foreground mb-1">
+              Other gifts you could add
+            </h2>
+            <p className="text-text-med text-sm mb-6">
+              These suit the same moment but didn't make the main list.
+            </p>
+            <div className="bg-muted/40 rounded-2xl p-4 md:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 md:gap-3">
+                {data.also_recommended.map(renderCard)}
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
@@ -364,7 +385,7 @@ export default function GiftResultsPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <a
-              href={`https://wa.me/+2347040667424?text=${encodeURIComponent(`Hi BundledMum! I'm looking for a gift in the ${categoryLabel} category at ${amount}.`)}`}
+              href={`https://wa.me/+2347040667424?text=${encodeURIComponent(`Hi BundledMum! I'm looking for a gift for ${data.moment_label} at ${amount}.`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-pill bg-[#25D366] px-6 py-2.5 font-body font-semibold text-primary-foreground text-sm interactive"
@@ -378,50 +399,6 @@ export default function GiftResultsPage() {
         </div>
       </div>
 
-      {/* What's Inside modal — custom overlay (not shadcn Dialog) so
-          the close button can sit in a sticky modal-panel header
-          guaranteed to be visible above the site nav. z-9999 puts the
-          overlay above every other layer including the storefront
-          fixed header. BundleCustomiser inside owns the checkbox /
-          brand / variant / colour / qty controls; its Proceed-to-
-          Checkout CTA navigates away and dismisses the modal. */}
-      {modalBundle && (
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 max-md:items-end max-md:p-0"
-          onClick={closeBundleModal}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="relative max-w-2xl w-full bg-card rounded-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Sticky header — close button always visible regardless
-                of scroll position inside the modal body. */}
-            <div className="flex items-center justify-between gap-3 px-5 md:px-6 py-3 md:py-4 border-b border-border flex-shrink-0">
-              <h2 className="pf text-base md:text-lg font-bold truncate">
-                {modalBundle.name}
-              </h2>
-              <button
-                onClick={closeBundleModal}
-                aria-label="Close"
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-muted hover:bg-muted/80 text-text-med hover:text-foreground transition-colors flex-shrink-0"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto px-5 md:px-6 pb-5 md:pb-6">
-              <BundleCustomiser
-                productId={modalBundle.product_id}
-                productName={modalBundle.name}
-                bundleLabel={(modalBundle as any).bundle_label || null}
-                bundleSku={modalBundle.brand?.id ?? null}
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
