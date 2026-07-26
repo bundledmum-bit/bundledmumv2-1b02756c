@@ -183,6 +183,10 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   const { data: categories = [] } = useProductCategories();
 
   const contactEmail = settings?.contact_email || "";
+  // Label for the quiz CTAs, shared with the quiz itself and the homepage
+  // band. Unlike the band, this is persistent chrome: an empty or missing
+  // setting keeps the previous wording rather than rendering a bare button.
+  const quizCtaLabel = String(settings?.quiz_cta_label ?? "").trim() || "Build My Bundle";
   const showSubscribe = subSettings?.subscription_enabled === true;
 
   // Subcategories from DB, grouped by parent.
@@ -267,7 +271,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               to="/quiz"
               className="rounded-pill bg-coral text-white px-4 py-2 text-[13px] font-bold hover:bg-coral-dark transition-colors shrink-0 mr-1.5"
             >
-              Build My Bundle
+              {quizCtaLabel}
             </Link>
 
             {/* Shop mega-dropdown — all categories in one panel */}
@@ -486,7 +490,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               to="/quiz"
               className="block text-center rounded-pill bg-coral py-3.5 text-[15px] font-bold text-white hover:bg-coral-dark transition-colors"
             >
-              Build My Bundle →
+              {quizCtaLabel} →
             </Link>
           </div>
 

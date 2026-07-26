@@ -400,6 +400,10 @@ function CTABanner() {
 }
 
 function StickyMobileCTA() {
+  const { data: settings } = useSiteSettings();
+  // Same setting as the navbar and the quiz; same reason for keeping a
+  // fallback — this bar is chrome and must never show an empty button.
+  const quizCtaLabel = String((settings as any)?.quiz_cta_label ?? "").trim() || "Build My List";
   const [show, setShow] = useState(false);
   useEffect(() => {
     const handler = () => setShow(window.scrollY > 600);
@@ -410,7 +414,7 @@ function StickyMobileCTA() {
   if (!show) return null;
   return (
     <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-0 right-0 z-[80] bg-card border-t border-border p-3 md:hidden animate-slide-up">
-      <Link to="/quiz" className="block w-full rounded-pill bg-coral py-3.5 text-center font-body font-semibold text-primary-foreground text-sm">Build My List →</Link>
+      <Link to="/quiz" className="block w-full rounded-pill bg-coral py-3.5 text-center font-body font-semibold text-primary-foreground text-sm">{quizCtaLabel} →</Link>
     </div>
   );
 }
