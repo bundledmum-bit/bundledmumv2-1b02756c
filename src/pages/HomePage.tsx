@@ -440,7 +440,8 @@ function renderSection(s: HomepageSection) {
 }
 
 export default function HomePage() {
-  useEffect(() => { document.title = "BundledMum — ...making being a mum easier."; }, []);
+  // The title is set by <Seo> (Helmet) below. A second writer here raced it and
+  // could win, putting the old em-dash tagline back in the tab.
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -513,8 +514,8 @@ export default function HomePage() {
   return (
     <>
       <Seo
-        title="BundledMum — Hospital Bags & Baby Bundles for Nigerian Mums"
-        description="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos within 48 hours."
+        title="BundledMum: Hospital Bags & Baby Bundles for Nigerian Mums"
+        description="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos in 1 to 2 days."
         jsonLd={jsonLd}
       />
       <PrototypeHome />
