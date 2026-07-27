@@ -1,6 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import ProductImage from "@/components/ProductImage";
-import { fmt } from "@/lib/cart";
+import { fmt, useCart } from "@/lib/cart";
+import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import { isProductOOS, type Product } from "@/lib/supabaseAdapters";
 import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 
@@ -10,6 +12,9 @@ import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 // routes to the product group page where the shopper picks a brand. Single
 // brand products go straight to their standalone detail page.
 export default function ProductCard({ product, className = "", leadBrandId, brandChoiceLabel = false }: { product: Product; className?: string; leadBrandId?: string | null; brandChoiceLabel?: boolean }) {
+  const navigate = useNavigate();
+  const { addToCart } = useCart();
+  const variantReq = useVariantRequirements();
   const brands = product.brands || [];
   const inStockBrands = brands.filter((b) => b.inStock !== false);
   // Count of brands the shopper can actually pick (in_stock = true), used for the
@@ -70,10 +75,33 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
     null;
   const emoji = displayBrand?.img || product.baseImg;
 
+  // Exactly one brand she can buy, and nothing to choose on it, means the
+  // card can add straight to the cart. Anything with a size or colour axis
+  // still has to go to the product page — a button that says "Add to Cart"
+  // must actually add, not bounce her somewhere to make a choice first.
+  const soleBrand = inStockBrandCount === 1 ? brands.find((b) => b.inStock === true) ?? null : null;
+  const missingAxes = soleBrand ? variantReq.missingAxes(product.id) : [];
+  const canAddDirect = !!soleBrand && !oos && missingAxes.length === 0;
+
+  const handleAdd = () => {
+    if (!soleBrand) return;
+    const added = addToCart({
+      ...product,
+      selectedBrand: soleBrand,
+      price: soleBrand.price,
+      name: `${product.name} (${soleBrand.label || "Standard"})`,
+    });
+    if (added) toast.success(`${product.name} added to cart`);
+  };
+
   return (
+    // The Link no longer wraps the whole card: the Add button below is a real
+    // action, and interactive content nested inside an anchor is invalid and
+    // steals the anchor's click.
+    <div className={`group flex flex-col rounded-[14px] border border-border bg-card overflow-hidden card-hover ${className}`}>
     <Link
       to={`/products/${product.slug}`}
-      className={`group flex flex-col rounded-[14px] border border-border bg-card overflow-hidden card-hover ${className}`}
+      className="flex flex-col flex-1"
     >
       <div className="relative aspect-square bg-warm-cream overflow-hidden">
         <ProductImage
@@ -106,7 +134,7 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
           </span>
         )}
       </div>
-      <div className="p-3 flex flex-col gap-1 flex-1">
+      <div className="p-3 pb-0 flex flex-col gap-1 flex-1">
         <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
           {product.name}
         </p>
@@ -129,16 +157,40 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
             <span className="text-[12px] text-muted-foreground">See options</span>
           )}
         </div>
-        {/* Styled as a CTA but kept a span: the whole card is already a Link,
-            and a nested <button> would be invalid inside an anchor and would
-            compete with the card's own click. Tapping anywhere still opens
-            the product group page, which is where the brands are chosen. */}
-        {brandChoiceLabel && inStockBrandCount >= 2 && (
-          <span className="mt-1.5 w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-forest text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none">
-            Choose from {inStockBrandCount} {inStockBrandCount === 1 ? "Brand" : "Brands"}
-          </span>
-        )}
       </div>
     </Link>
+
+    {/* CTA row, outside the Link so the button is a real button. Multi-brand
+        sends her to the group page to pick; a single brand with nothing to
+        choose adds straight from here. */}
+    {brandChoiceLabel && (inStockBrandCount >= 2 || !!soleBrand) && (
+      <div className="px-3 pb-3 pt-1.5">
+        {inStockBrandCount >= 2 ? (
+          <Link
+            to={`/products/${product.slug}`}
+            className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-forest text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none"
+          >
+            Choose from {inStockBrandCount} Brands
+          </Link>
+        ) : canAddDirect ? (
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-coral text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none hover:bg-coral-dark transition-colors"
+          >
+            Add to Cart
+          </button>
+        ) : (
+          // Single brand, but a size or colour still has to be chosen.
+          <Link
+            to={`/products/${product.slug}`}
+            className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-forest text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none"
+          >
+            Choose Options
+          </Link>
+        )}
+      </div>
+    )}
+    </div>
   );
 }
