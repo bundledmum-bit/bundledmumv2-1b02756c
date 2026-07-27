@@ -1,7 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import ProductImage from "@/components/ProductImage";
-import { fmt, useCart } from "@/lib/cart";
+import { cartItemKey, fmt, useCart } from "@/lib/cart";
+import QtyControl from "@/components/QtyControl";
 import { useVariantRequirements } from "@/hooks/useVariantRequirements";
 import { isProductOOS, type Product } from "@/lib/supabaseAdapters";
 import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
@@ -13,7 +14,7 @@ import { useBrandPromo, useBrandPromoDisplay } from "@/hooks/useBrandPricing";
 // brand products go straight to their standalone detail page.
 export default function ProductCard({ product, className = "", leadBrandId, brandChoiceLabel = false }: { product: Product; className?: string; leadBrandId?: string | null; brandChoiceLabel?: boolean }) {
   const navigate = useNavigate();
-  const { addToCart } = useCart();
+  const { addToCart, cart, updateQty } = useCart();
   const variantReq = useVariantRequirements();
   const brands = product.brands || [];
   const inStockBrands = brands.filter((b) => b.inStock !== false);
@@ -82,6 +83,12 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
   const soleBrand = inStockBrandCount === 1 ? brands.find((b) => b.inStock === true) ?? null : null;
   const missingAxes = soleBrand ? variantReq.missingAxes(product.id) : [];
   const canAddDirect = !!soleBrand && !oos && missingAxes.length === 0;
+
+  // Same key addToCart() computes, so the card recognises its own line and
+  // swaps the button for a stepper once it is in the cart. No size or colour
+  // is in play here: the direct-add path only runs when neither is required.
+  const cartKey = soleBrand ? cartItemKey(product.id, soleBrand.id, null, null, null) : null;
+  const cartItem = cartKey ? cart.find((c) => c._key === cartKey) : undefined;
 
   const handleAdd = () => {
     if (!soleBrand) return;
@@ -173,13 +180,25 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
             Choose from {inStockBrandCount} Brands
           </Link>
         ) : canAddDirect ? (
-          <button
-            type="button"
-            onClick={handleAdd}
-            className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-coral text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none hover:bg-coral-dark transition-colors"
-          >
-            Add to Cart
-          </button>
+          cartItem ? (
+            // In the cart: the button becomes a stepper so she can adjust or
+            // remove without leaving the listing. 0 removes the line.
+            <div className="flex justify-center">
+              <QtyControl
+                qty={cartItem.qty}
+                onUpdate={(n) => updateQty(cartItem._key, n)}
+                maxQty={soleBrand?.stockQuantity ?? undefined}
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAdd}
+              className="w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-coral text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none hover:bg-coral-dark transition-colors"
+            >
+              Add to Cart
+            </button>
+          )
         ) : (
           // Single brand, but a size or colour still has to be chosen.
           <Link
