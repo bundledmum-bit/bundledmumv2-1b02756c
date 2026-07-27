@@ -110,9 +110,13 @@ export default function ProductCard({ product, className = "", leadBrandId, bran
         <p className="text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
           {product.name}
         </p>
+        {/* Styled as a CTA but kept a span: the whole card is already a Link,
+            and a nested <button> would be invalid inside an anchor and would
+            compete with the card's own click. Tapping anywhere still opens
+            the product group page, which is where the brands are chosen. */}
         {brandChoiceLabel && inStockBrandCount >= 2 && (
-          <span className="text-[11px] font-bold text-destructive leading-none">
-            Click to Choose from {inStockBrandCount} {inStockBrandCount === 1 ? "Brand" : "Brands"}
+          <span className="mt-0.5 w-full inline-flex items-center justify-center whitespace-nowrap rounded-pill bg-forest text-primary-foreground text-[11px] font-bold px-2 min-h-[32px] leading-none">
+            Choose from {inStockBrandCount} {inStockBrandCount === 1 ? "Brand" : "Brands"}
           </span>
         )}
         <div className="mt-auto pt-1.5 flex items-baseline gap-1.5">
