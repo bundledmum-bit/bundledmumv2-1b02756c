@@ -29,6 +29,8 @@ import ProductDetailDrawer from "@/components/ProductDetailDrawer";
 import ShareModal from "@/components/ShareModal";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { buildQuizStory } from "@/lib/quizStory";
+import { createQuizResultShare, shareUrlFor } from "@/hooks/useQuizResultShare";
+import { shareQuizListPdf } from "@/lib/quizListPdf";
 import {
   completeQuizSession,
   currentQuizAttemptId,
@@ -932,6 +934,11 @@ function ResultsScreen({
   const [error, setError] = useState<string | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
+  // Share link for this list. Created once the recommendation renders, and
+  // idempotent per session — re-rendering updates the same row rather than
+  // minting a second link.
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [sharingPdf, setSharingPdf] = useState(false);
 
   const answers = useMemo(() => toOldAnswers(budget, categories, gender, extras), [budget, categories, gender, extras]);
   // Stable primitives for the effect below — a fresh array/object identity on
@@ -1057,6 +1064,32 @@ function ResultsScreen({
           setResult(normalised);
           // Close out the session row. Not awaited — the results are already
           // on screen and tracking must never hold them up.
+          // Freeze the selection behind a share link. Prices stay live: the
+          // reader's page re-prices on open, which is why only the PDF
+          // carries a "prices correct as of" date.
+          void createQuizResultShare({
+            sessionId,
+            items: normalised.products
+              .filter((p) => p.brand?.id)
+              .map((p) => ({
+                product_id: p.product_id,
+                brand_id: p.brand?.id ?? null,
+                quantity: Math.max(1, p.quantity || 1),
+                size: sizeSelections[p.product_id] || p.selected_size?.label || null,
+                color: colorSelections[p.product_id] || p.selected_color || null,
+              })),
+            shopperType: shopperTypeFor(categories),
+            scope, stage,
+            budgetTier, budgetAmount: budget,
+            gender: gender === "unknown" ? "neutral" : gender,
+            multiples: multiplesFrom(extras),
+            firstBaby: firstBabyFrom(extras),
+            hospitalType: hospitalTypeFrom(extras),
+            deliveryMethod: deliveryMethodFrom(extras),
+            engineVersion: normalised.engine_version || null,
+            ownerLabel: null,
+          }).then((tok) => { if (tok) setShareToken(tok); });
+
           void completeQuizSession({
             sessionId,
             resultTier: normalised.budget_tier || budgetTier,
@@ -1483,6 +1516,38 @@ function ResultsScreen({
   };
 
   const handleShare = () => setShowShareModal(true);
+
+  // Link previews are broken sitewide (crawlers get the SPA shell), so a bare
+  // link looks like nothing in WhatsApp. Hand the OS share sheet the actual
+  // PDF instead, and fall back to a download where files can't be shared.
+  const handleSharePdf = async () => {
+    if (sharingPdf) return;
+    if (!shareToken) { toast("Still preparing your link — try again in a moment."); return; }
+    setSharingPdf(true);
+    try {
+      const how = await shareQuizListPdf({
+        items: results.filter(isPurchasable).map((r) => ({
+          name: r.name,
+          brand_name: r.brand?.brand_name ?? null,
+          size: sizeSelections[r.product_id] || r.selected_size?.label || null,
+          color: colorFor(r) || r.selected_color || null,
+          quantity: qtyFor(r),
+          unit_price: r.brand?.price ?? 0,
+          available: true,
+        })),
+        listTotal: recommendationTotal,
+        shareUrl: shareUrlFor(shareToken),
+        ownerLabel: null,
+        pricedAt: new Date(),
+      });
+      if (how === "downloaded") toast.success("List saved. Attach it to your WhatsApp chat.");
+    } catch (e) {
+      console.warn("[quiz] share pdf failed:", e);
+      toast.error("Could not prepare the list. Please try again.");
+    } finally {
+      setSharingPdf(false);
+    }
+  };
   const handleCopyChecklist = () => {
     const list = results.map(r => {
       if (!isPurchasable(r)) {
@@ -1643,7 +1708,7 @@ function ResultsScreen({
                 gets an invisible pad taking it to 44px tall. */}
             <div className="flex gap-5 justify-center mt-3">
               <button onClick={() => document.getElementById("quiz-results-items")?.scrollIntoView({ behavior: "smooth" })} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors">↓ See my items</button>
-              <button onClick={handleShare} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><Share2 className="h-3.5 w-3.5" /> Share</button>
+              <button onClick={handleSharePdf} disabled={sharingPdf} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors disabled:opacity-60"><Share2 className="h-3.5 w-3.5" /> {sharingPdf ? "Preparing…" : "Share"}</button>
               <button onClick={handleCopyChecklist} className="relative after:absolute after:content-[''] after:-inset-y-3.5 after:-inset-x-1.5 flex items-center gap-1.5 text-primary-foreground/80 text-[12.5px] font-semibold hover:text-primary-foreground transition-colors"><ClipboardCopy className="h-3.5 w-3.5" /> Copy</button>
             </div>
           </div>

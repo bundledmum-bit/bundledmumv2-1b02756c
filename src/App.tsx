@@ -54,6 +54,7 @@ import GiftResultsPage from "@/pages/GiftResultsPage";
 import CartPage from "@/pages/CartPage";
 import CheckoutPage from "@/pages/CheckoutPage";
 import QuotePage from "@/pages/QuotePage";
+import SharedListPage from "@/pages/SharedListPage";
 import PackagePage from "@/pages/PackagePage";
 import HospitalListPage from "@/pages/HospitalListPage";
 import OrderConfirmedPage from "@/pages/OrderConfirmedPage";
@@ -341,6 +342,9 @@ function StorefrontShell() {
           <Route path="/cart" element={<CartPage />} />
           <Route path="/checkout" element={<CheckoutPage />} />
           <Route path="/quote/:shareToken" element={<QuotePage />} />
+          {/* Someone else's quiz list, shared with them. Keeps the storefront
+              chrome so they can carry on shopping after buying it. */}
+          <Route path="/list/:token" element={<SharedListPage />} />
           <Route path="/package/:slug" element={<PackagePage />} />
           <Route path="/hospital-list" element={<HospitalListPage />} />
           <Route path="/order-confirmed" element={<OrderConfirmedPage />} />
