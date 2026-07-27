@@ -1544,6 +1544,10 @@ function ResultsScreen({
         onQtyUpdate={(key, qty) => {
           const c = cart.find(x => x._key === key);
           if (!c) return;
+          // Stepping to 0 removes the item, through the SAME path as the
+          // card's own remove action, so there is one removal behaviour and
+          // not two. Anything below 1 can never be written or displayed.
+          if (qty < 1) { handleRemoveProduct(item); return; }
           setCart(prev => prev.map(x => x._key === key ? { ...x, qty } : x));
         }}
         onAdd={(brand, size, color) => handleAddProduct(item, brand, size, qtyFor(item), color)}
@@ -1598,8 +1602,17 @@ function ResultsScreen({
                 {p.emoji} {p.label}
               </button>
             ))}
-            <button onClick={onBack} className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 rounded-pill border border-border px-3 py-1 text-text-med text-[12px] font-semibold hover:bg-muted/40 transition-colors">
-              ↺ Edit answers
+            {/* Starts a genuinely new attempt. A hard navigation rather than
+                a router push: sessionId has no setter, so only a fresh mount
+                mints a new attempt id (attemptIdFor(false) -> startQuizAttempt)
+                and drops every answer back to its default. A soft push would
+                leave this component mounted with her previous answers intact.
+                The answer pills beside this still edit the current list. */}
+            <button
+              onClick={() => { window.location.assign("/quiz"); }}
+              className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 rounded-pill bg-coral text-white px-3 py-1 text-[12px] font-semibold hover:bg-coral-dark transition-colors"
+            >
+              Build Another List
             </button>
           </div>
         </div>
