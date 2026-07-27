@@ -4,7 +4,7 @@ import Seo from "@/components/Seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import ArticleCard, { type ArticleCardData } from "@/components/article/ArticleCard";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
-import { SITE_URL, OG_FALLBACK_IMAGE } from "@/lib/seo";
+import { SITE_URL, OG_FALLBACK_IMAGE, buildAbsoluteUrl } from "@/lib/seo";
 
 const ARTICLES_DESCRIPTION =
   "Practical, mum-tested guides on pregnancy, delivery, and parenting in Nigeria. Hospital bag checklists, baby essentials, and more from BundledMum.";
@@ -54,7 +54,7 @@ export default function ArticlesIndexPage() {
         title="Articles for Nigerian Mums | Pregnancy & Parenting Guides | BundledMum"
         description={ARTICLES_DESCRIPTION}
         type="website"
-        image={indexHero?.url || OG_FALLBACK_IMAGE}
+        image={buildAbsoluteUrl(indexHero?.url) || OG_FALLBACK_IMAGE}
         jsonLd={COLLECTION_JSONLD}
       />
 

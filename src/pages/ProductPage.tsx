@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Seo from "@/components/Seo";
+import { buildAbsoluteUrl, OG_FALLBACK_IMAGE } from "@/lib/seo";
 import ImageZoomModal from "@/components/ImageZoomModal";
 import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -548,11 +549,21 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
     );
   }
 
-  const seoTitle = `${product.name} | BundledMum`.slice(0, 70);
-  const seoDescription = (product.description || `Shop ${product.name} on BundledMum — curated maternity and baby essentials delivered across Nigeria.`)
+  // No em dashes in any meta field, including copy composed from data.
+  const noEmDash = (s: string) => s.replace(/\s*—\s*/g, ", ");
+  const seoTitle = noEmDash(`${product.name} | BundledMum`).slice(0, 70);
+  const seoDescription = noEmDash(
+    product.description || `Shop ${product.name} on BundledMum: curated maternity and baby essentials delivered across Nigeria.`,
+  )
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 158);
+  // OG image is the product's own photo: stored copy first, then external, the
+  // same order the emails use. buildAbsoluteUrl guarantees an absolute URL and
+  // returns null for a missing/blank source, so we never emit a relative
+  // /images path or "undefined" — we fall back to the site-wide card instead.
+  const ogImage =
+    buildAbsoluteUrl(raw?.brands?.[0]?.stored_image_url || raw?.brands?.[0]?.image_url) || OG_FALLBACK_IMAGE;
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -626,7 +637,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
         title={seoTitle}
         description={seoDescription}
         type="product"
-        image={product.brands?.[0]?.imageUrl || undefined}
+        image={ogImage}
         jsonLd={productJsonLd}
       />
       {zoomImage && <ImageZoomModal src={zoomImage} alt={product.name} onClose={() => setZoomImage(null)} />}

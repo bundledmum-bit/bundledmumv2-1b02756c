@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Breadcrumb from "@/components/Breadcrumb";
+import Seo from "@/components/Seo";
+import { OG_FALLBACK_IMAGE } from "@/lib/seo";
 import { Search, Plus, Minus, X, Wallet, ShoppingBag, ChevronDown, MessageCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { supabase } from "@/integrations/supabase/client";
@@ -494,6 +496,14 @@ export default function HospitalListPage() {
 
   return (
     <div className="min-h-screen bg-background pt-[68px]">
+      {/* Title and description from the page's own config. No single
+          representative image, so it uses the site-wide card. Em dash in the
+          configured subheading is stripped, since no em dashes belong in meta. */}
+      <Seo
+        title={`${cfg.heading} | BundledMum`}
+        description={cfg.subheading.replace(/\s*—\s*/g, ", ")}
+        image={OG_FALLBACK_IMAGE}
+      />
       {/* Heading + helper */}
       <header className="px-4 pt-5 pb-3 max-w-screen-sm mx-auto">
         <Breadcrumb items={[{ label: "Hospital Lists" }]} className="mb-3" />

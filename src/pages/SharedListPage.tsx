@@ -5,6 +5,7 @@ import { ShoppingBag, Download, AlertCircle } from "lucide-react";
 import Seo from "@/components/Seo";
 import ProductImage from "@/components/ProductImage";
 import { useCart, fmt } from "@/lib/cart";
+import { OG_FALLBACK_IMAGE } from "@/lib/seo";
 import { useQuizResultShare, shareUrlFor, type SharedListItem } from "@/hooks/useQuizResultShare";
 import { shareQuizListPdf } from "@/lib/quizListPdf";
 
@@ -98,7 +99,7 @@ export default function SharedListPage() {
   if (!data || !data.found) {
     return (
       <>
-        <Seo title="List not found | BundledMum" description="This shared list is no longer available." />
+        <Seo title="List not found | BundledMum" description="This shared list is no longer available." image={OG_FALLBACK_IMAGE} />
         <div className="min-h-screen bg-background pt-24 px-4 flex items-start justify-center">
           <div className="max-w-[420px] w-full text-center">
             <p className="pf text-xl font-bold text-foreground mb-1.5">This list isn't available</p>
@@ -119,7 +120,18 @@ export default function SharedListPage() {
 
   return (
     <>
-      <Seo title={`${listTitle} | BundledMum`} description={`${data.item_count} items, ready to buy.`} />
+      {/* Owner-aware, but never the budget: that is hidden from recipients on
+          the page and must not leak through a meta tag either. Fallback image
+          only, never one composed from the products in the list. */}
+      <Seo
+        title={`${listTitle} | BundledMum`}
+        description={
+          ownerName
+            ? `${ownerName}'s BundledMum list, ${data.item_count} item${data.item_count === 1 ? "" : "s"} priced live today.`
+            : `A BundledMum list, ${data.item_count} item${data.item_count === 1 ? "" : "s"} priced live today.`
+        }
+        image={OG_FALLBACK_IMAGE}
+      />
       <div className="min-h-screen bg-background pt-20 md:pt-24 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         <div className="max-w-[640px] mx-auto px-4">
           {/* Written for the recipient. Never "your list". */}

@@ -11,6 +11,8 @@ import type { BundleItem } from "@/lib/supabaseAdapters";
 import ProductImage from "@/components/ProductImage";
 import BundleItemSwapPopup from "@/components/BundleItemSwapPopup";
 import ShareModal from "@/components/ShareModal";
+import Seo from "@/components/Seo";
+import { buildAbsoluteUrl, OG_FALLBACK_IMAGE } from "@/lib/seo";
 import { track as pixelTrack, moneyPayload as pixelMoney } from "@/lib/metaPixel";
 
 export default function BundleDetailPage() {
@@ -55,7 +57,8 @@ export default function BundleDetailPage() {
 
   useEffect(() => {
     if (bundle) {
-      document.title = `${bundle.name} | BundledMum`;
+      // Title is owned by <Seo> (Helmet) in the render below; a second writer
+      // here would race it, same trap HomePage had.
       pixelTrack("ViewContent", pixelMoney(Number((bundle as any).price ?? (bundle as any).total_price ?? 0), {
         content_ids: [bundle.id],
         content_name: bundle.name,
@@ -80,6 +83,20 @@ export default function BundleDetailPage() {
       </div>
     );
   }
+
+  // Share meta from the bundle's own data. No em dashes in any field. Image is
+  // the bundle's carton photo, made absolute; falls back to the site card if it
+  // has none, rather than composing one from the items inside.
+  const noEmDash = (s: string) => s.replace(/\s*—\s*/g, ", ");
+  const bundleShareName = bundle.displayName || bundle.name;
+  const seoTitle = noEmDash(`${bundleShareName} | BundledMum`).slice(0, 70);
+  const seoDescription = noEmDash(
+    bundle.description || `${bundleShareName}. A curated BundledMum bundle.`,
+  )
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 158);
+  const seoImage = buildAbsoluteUrl(bundle.imageUrl) || OG_FALLBACK_IMAGE;
 
   const babyItems = customBabyItems || bundle.babyItems;
   const mumItems = customMumItems || bundle.mumItems;
@@ -805,6 +822,7 @@ export default function BundleDetailPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24 md:pb-8">
+      <Seo title={seoTitle} description={seoDescription} type="product" image={seoImage} />
       {/* Attribute picker — change brand / size / colour for a bundle item */}
       {attrPicker && (
         <div
