@@ -31,6 +31,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { buildQuizStory } from "@/lib/quizStory";
 import { createQuizResultShare, shareUrlFor } from "@/hooks/useQuizResultShare";
 import { shareQuizListPdf } from "@/lib/quizListPdf";
+import ShareNamePrompt, { hasBeenAskedForOwnerLabel, storedOwnerLabel } from "@/components/quiz/ShareNamePrompt";
 import {
   completeQuizSession,
   currentQuizAttemptId,
@@ -939,6 +940,7 @@ function ResultsScreen({
   // minting a second link.
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [sharingPdf, setSharingPdf] = useState(false);
+  const [namePromptOpen, setNamePromptOpen] = useState(false);
 
   const answers = useMemo(() => toOldAnswers(budget, categories, gender, extras), [budget, categories, gender, extras]);
   // Stable primitives for the effect below — a fresh array/object identity on
@@ -1520,11 +1522,35 @@ function ResultsScreen({
   // Link previews are broken sitewide (crawlers get the SPA shell), so a bare
   // link looks like nothing in WhatsApp. Hand the OS share sheet the actual
   // PDF instead, and fall back to a download where files can't be shared.
-  const handleSharePdf = async () => {
+  // Tapping Share asks for her first name once, then shares. Skipping is a
+  // peer action that completes the share the same way — this is a service at
+  // the moment it helps, not a toll on the way out.
+  const handleSharePdf = () => {
     if (sharingPdf) return;
     if (!shareToken) { toast("Still preparing your link — try again in a moment."); return; }
+    if (!hasBeenAskedForOwnerLabel()) { setNamePromptOpen(true); return; }
+    void doSharePdf(storedOwnerLabel() || null);
+  };
+
+  const doSharePdf = async (ownerLabel: string | null) => {
     setSharingPdf(true);
     try {
+      // Re-stamp the share with her name. The RPC is idempotent per session
+      // and preserves an existing label when called with null, so the
+      // automatic create on re-render can never wipe it.
+      if (ownerLabel) {
+        void createQuizResultShare({
+          sessionId,
+          items: results.filter(isPurchasable).map((r) => ({
+            product_id: r.product_id,
+            brand_id: r.brand?.id ?? null,
+            quantity: qtyFor(r),
+            size: sizeSelections[r.product_id] || r.selected_size?.label || null,
+            color: colorFor(r) || r.selected_color || null,
+          })),
+          ownerLabel,
+        });
+      }
       const how = await shareQuizListPdf({
         items: results.filter(isPurchasable).map((r) => ({
           name: r.name,
@@ -1536,8 +1562,8 @@ function ResultsScreen({
           available: true,
         })),
         listTotal: recommendationTotal,
-        shareUrl: shareUrlFor(shareToken),
-        ownerLabel: null,
+        shareUrl: shareUrlFor(shareToken!),
+        ownerLabel,
         pricedAt: new Date(),
       });
       if (how === "downloaded") toast.success("List saved. Attach it to your WhatsApp chat.");
@@ -1849,6 +1875,12 @@ function ResultsScreen({
           <span aria-hidden="true">→</span>
         </button>
       </div>
+
+      {namePromptOpen && (
+        <ShareNamePrompt
+          onDone={(name) => { setNamePromptOpen(false); void doSharePdf(name); }}
+        />
+      )}
 
       {showShareModal && (
         <ShareModal
