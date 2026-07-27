@@ -1429,13 +1429,6 @@ function ResultsScreen({
 
   const subHeading = buildQuizStory(answers, { productCount: results.length });
 
-  const pillData = [
-    answers.gender && answers.gender !== "neutral" && answers.gender !== "unknown"
-      ? { emoji: answers.gender === "boy" ? "👦" : "👧", label: answers.gender === "boy" ? "Boy" : "Girl", step: "gender" }
-      : { emoji: "🌈", label: "Neutral", step: "gender" },
-    { emoji: answers.budget === "starter" ? "🌱" : answers.budget === "premium" ? "✨" : "🌿", label: budgetLabel, step: "budget" },
-  ];
-
   const handleAddAll = () => {
     // Skip null-brand "Coming soon" items — they have no purchasable
     // variant and would be rejected by the place-order edge function.
@@ -1593,21 +1586,25 @@ function ResultsScreen({
             </p>
           )}
 
-          {/* Answer pills — tap to edit. The pills stay visually compact but
-              carry an invisible touch pad so each one is a 44px target; the
-              row uses gap-y-3 so those pads never overlap when it wraps. */}
-          <div className="flex flex-wrap gap-x-2 gap-y-4 justify-center mb-5">
-            {pillData.map(p => (
-              <button key={p.step} onClick={onBack} className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 bg-card border border-border rounded-pill px-3 py-1 text-foreground text-[12px] font-semibold hover:border-forest transition-colors">
-                {p.emoji} {p.label}
-              </button>
-            ))}
+          {/* Two things only: the way back to her answers, and the way to
+              start over. The invisible touch pad keeps each a 44px target
+              and gap-y-4 stops those pads overlapping when the row wraps. */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-4 justify-center mb-5">
+            {/* Same typography as the link this replaces (text-text-med,
+                12px, semibold) — the pill's border and background are gone
+                so it reads as a text link beside the coral button. */}
+            <button
+              onClick={onBack}
+              className="relative after:absolute after:content-[''] after:-inset-y-2 after:-inset-x-1 text-text-med text-[12px] font-semibold hover:text-foreground transition-colors underline-offset-2 hover:underline"
+            >
+              Edit my answers
+            </button>
             {/* Starts a genuinely new attempt. A hard navigation rather than
                 a router push: sessionId has no setter, so only a fresh mount
                 mints a new attempt id (attemptIdFor(false) -> startQuizAttempt)
                 and drops every answer back to its default. A soft push would
                 leave this component mounted with her previous answers intact.
-                The answer pills beside this still edit the current list. */}
+                "Edit my answers" beside it is the route back to this list. */}
             <button
               onClick={() => { window.location.assign("/quiz"); }}
               className="relative after:absolute after:content-[''] after:-inset-y-2 after:inset-x-0 rounded-pill bg-coral text-white px-3 py-1 text-[12px] font-semibold hover:bg-coral-dark transition-colors"
