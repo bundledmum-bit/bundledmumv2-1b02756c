@@ -1,7 +1,7 @@
 {
   "name": "BundledMum Admin",
   "short_name": "BM Admin",
-  "description": "BundledMum admin panel — orders, picking, products and operations on the go.",
+  "description": "BundledMum admin panel: orders, picking, products and operations on the go.",
   "id": "/admin",
   "start_url": "/admin",
   "scope": "/admin",
