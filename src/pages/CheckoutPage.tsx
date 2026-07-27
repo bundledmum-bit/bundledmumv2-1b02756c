@@ -965,10 +965,24 @@ export default function CheckoutPage() {
     }
   };
 
-  // Delivery date estimate
-  const now = new Date();
-  const fromDate = new Date(now); fromDate.setDate(fromDate.getDate() + deliveryCalc.daysMin);
-  const toDate = new Date(now); toDate.setDate(toDate.getDate() + deliveryCalc.daysMax);
+  // Delivery date estimate. Mirrors computeDeliveryWindow in
+  // send-transactional-email exactly: advance calendar dates but count only
+  // working days, skipping Sundays and Sundays alone (Saturday delivers). This
+  // window is saved to the order below and the confirmation email reads it
+  // back, so the two must compute it the same way. Anchored to Africa/Lagos so
+  // the day-of-week is the customer's, not the device's.
+  const addWorkingDays = (from: Date, days: number): Date => {
+    const d = new Date(from);
+    let added = 0;
+    while (added < days) {
+      d.setDate(d.getDate() + 1);
+      if (d.getDay() !== 0) added++; // 0 = Sunday, the only day skipped
+    }
+    return d;
+  };
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Africa/Lagos" }));
+  const fromDate = addWorkingDays(now, deliveryCalc.daysMin);
+  const toDate = addWorkingDays(now, deliveryCalc.daysMax);
   const fmtDate = (d: Date) => d.toLocaleDateString("en-NG", { weekday: "short", month: "short", day: "numeric" });
 
   const applyCoupon = async () => {
@@ -2125,7 +2139,7 @@ export default function CheckoutPage() {
                           </span>
                         ) : (hasQuote && (deliveryCalc as any).bookingsNeeded) ? (
                           <span className="block text-[10px] text-text-light mt-0.5">
-                            ~{Number((deliveryCalc as any).weightKg).toFixed(1)}kg order · {(deliveryCalc as any).bookingsNeeded} booking{(deliveryCalc as any).bookingsNeeded === 1 ? "" : "s"} · {deliveryCalc.daysMin}–{deliveryCalc.daysMax} business days
+                            ~{Number((deliveryCalc as any).weightKg).toFixed(1)}kg order · {(deliveryCalc as any).bookingsNeeded} booking{(deliveryCalc as any).bookingsNeeded === 1 ? "" : "s"} · {deliveryCalc.daysMin}–{deliveryCalc.daysMax} working days
                           </span>
                         ) : null}
                       </span>
@@ -2736,7 +2750,7 @@ export default function CheckoutPage() {
                           </span>
                         ) : (hasQuote && (deliveryCalc as any).bookingsNeeded) ? (
                           <span className="block text-[10px] text-text-light mt-0.5">
-                            ~{Number((deliveryCalc as any).weightKg).toFixed(1)}kg order · {(deliveryCalc as any).bookingsNeeded} booking{(deliveryCalc as any).bookingsNeeded === 1 ? "" : "s"} · {deliveryCalc.daysMin}–{deliveryCalc.daysMax} business days
+                            ~{Number((deliveryCalc as any).weightKg).toFixed(1)}kg order · {(deliveryCalc as any).bookingsNeeded} booking{(deliveryCalc as any).bookingsNeeded === 1 ? "" : "s"} · {deliveryCalc.daysMin}–{deliveryCalc.daysMax} working days
                           </span>
                         ) : null}
                       </span>
@@ -2775,7 +2789,7 @@ export default function CheckoutPage() {
                   <span className="pf font-bold text-lg text-forest">{fmt(grand)}</span>
                 </div>
                 <div className="mt-2 bg-forest-light rounded-lg p-2.5">
-                  <p className="text-forest text-xs font-body font-semibold">🚚 Est. delivery: {fmtDate(fromDate)} – {fmtDate(toDate)} ({deliveryCalc.daysMin}–{deliveryCalc.daysMax} days)</p>
+                  <p className="text-forest text-xs font-body font-semibold">🚚 Est. delivery: {fmtDate(fromDate)} – {fmtDate(toDate)} ({deliveryCalc.daysMin}–{deliveryCalc.daysMax} working days)</p>
                 </div>
                 {!deliveryCalc.isFree && deliveryCalc.freeThreshold && (
                   <div className="mt-2 bg-warm-cream rounded-lg p-2 text-center">

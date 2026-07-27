@@ -2952,7 +2952,7 @@ function ExpressOrderCard({
       `To complete your order, please pay the delivery fee here:`,
       `[PAYSTACK LINK]`,
       ``,
-      `Once paid, we will ship your order within 24-48 hours.`,
+      `Once paid, delivery is 1 to 2 working days in Lagos and 3 to 5 outside Lagos.`,
       ``,
       `Thank you!`,
       `The BundledMum Team`,

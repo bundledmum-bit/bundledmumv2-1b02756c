@@ -414,7 +414,7 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
   );
   const cartItem = cart.find(c => c._key === currentVariantKey);
   const isInCart = !!cartItem;
-  const deliveryText = settings?.delivery_text || "Delivery: 1–3 business days";
+  const deliveryText = settings?.delivery_text || "Lagos: 1-2 days · Others: 3-5 days";
 
   const isOutOfStock = isProductOOS(product) || !selectedBrand?.inStock;
   const isLowStock = !isOutOfStock && selectedBrand?.stockQuantity != null && selectedBrand.stockQuantity > 0 && selectedBrand.stockQuantity <= 5;

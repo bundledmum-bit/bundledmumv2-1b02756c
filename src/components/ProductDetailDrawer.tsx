@@ -88,7 +88,7 @@ function DrawerInner({ product, defaultBudget, selectedBrandId, onClose }: { pro
   const cartItem = cart.find(c => c._key === currentVariantKey);
   const isInCart = !!cartItem;
 
-  const deliveryText = settings?.delivery_text || "Delivery: 1–3 business days";
+  const deliveryText = settings?.delivery_text || "Lagos: 1-2 days · Others: 3-5 days";
 
   useEffect(() => {
     trackEvent("product_viewed", { product_id: product.id, product_name: product.name });

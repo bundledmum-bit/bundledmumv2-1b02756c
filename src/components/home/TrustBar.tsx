@@ -11,8 +11,8 @@ export default function TrustBar({ title }: Props) {
 
     if (label === "Lagos Delivery") label = "Fast Delivery";
     if (label === "Brain Express & eFTD" || sublabel === "Brain Express & eFTD") {
-      if (label === "Brain Express & eFTD") label = "Same & next day delivery";
-      if (sublabel === "Brain Express & eFTD") sublabel = "Same & next day delivery";
+      if (label === "Brain Express & eFTD") label = "1–2 working days in Lagos";
+      if (sublabel === "Brain Express & eFTD") sublabel = "1–2 working days in Lagos";
     }
     if (sublabel === "Hassle-free within 7 days") sublabel = "Hassle-free within 7 days or less";
 
