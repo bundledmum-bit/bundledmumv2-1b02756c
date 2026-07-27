@@ -1098,6 +1098,26 @@ function ResultsScreen({
   // so the bulk "Add all" action can see which items still need a size
   // chosen. Keyed by product_id; value is the chosen size_label.
   const [sizeSelections, setSizeSelections] = useState<Record<string, string>>({});
+  // Seed from the engine's own pick (6.4 selected_size) once the result
+  // lands, so a size-bearing product no longer arrives blank and blocking.
+  // Only ever fills a product she has not touched: her choice always wins,
+  // and a null selected_size stays unset — the engine already considered
+  // the default and declined, so falling back to first/is_default here
+  // would reinstate exactly the guess it refused to make.
+  useEffect(() => {
+    const picks = (result?.products || [])
+      .filter((p) => p.selected_size?.label)
+      .map((p) => [p.product_id, p.selected_size!.label] as const);
+    if (!picks.length) return;
+    setSizeSelections((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [pid, label] of picks) {
+        if (!next[pid]) { next[pid] = label; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [result]);
   // Per-product colour, keyed by product_id, so changing one card never
   // touches another. Unset means "her first ticked colour".
   const [colorSelections, setColorSelections] = useState<Record<string, string>>({});

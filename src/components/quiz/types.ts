@@ -23,6 +23,16 @@ export interface RecommendedProduct {
     in_stock: boolean;
     is_default: boolean;
   }>;
+  // Engine 6.4: the size that fits the baby at the stage she chose, picked
+  // from available_sizes. null means the engine deliberately declined —
+  // the sizes are not age-based (bottle volumes, EU shoe sizes), so a due
+  // date cannot imply one. `reason` is for diagnosing a wrong pick and is
+  // never shown to the customer.
+  selected_size?: {
+    label: string;
+    code: string | null;
+    reason: string | null;
+  } | null;
   brand: {
     id: string;
     brand_name: string;
