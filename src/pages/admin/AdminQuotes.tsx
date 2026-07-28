@@ -1389,7 +1389,7 @@ function FreeItemsPromoBanner({
   // is a smaller gift set with delivery untouched.
   const banner = offeredTier === "tier_500k"
     ? {
-        text: "This quote qualifies for the free items promo. Add nightgown, disposable underwear, hospital slippers, and maternity pads free, plus free nationwide delivery, for 24 hours after the customer first opens this quote.",
+        text: "This quote qualifies for the free items promo. Add nightgown, nursing bra, disposable underwear, hospital slippers, and maternity pads free, plus free nationwide delivery, for 24 hours after the customer first opens this quote.",
         button: "Apply free items promo (₦500k tier)",
       }
     : {
