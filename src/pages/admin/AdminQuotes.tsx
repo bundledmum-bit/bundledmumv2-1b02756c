@@ -802,6 +802,11 @@ function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null
         <ProfitRow k="Cost (COGS)" v={fmtN(data.cogs)} />
         <ProfitRow k="Service Fee" v={fmtN(data.service_fee)} />
         <ProfitRow k="Discount Applied" v={fmtN(data.discount_amount)} />
+        {/* net_profit / total_revenue already account for this server-side; shown
+            so the deduction is visible, not silently baked into Net Profit. */}
+        {Number(data.free_items_promo_discount) > 0 && (
+          <ProfitRow k="Free items promo" v={`−${fmtN(data.free_items_promo_discount)}`} />
+        )}
         {Number(data.other_cost) > 0 && (
           <div>
             <ProfitRow k="Other Cost" v={`−${fmtN(data.other_cost)}`} />
@@ -1577,7 +1582,16 @@ function QuoteEditor({
   // include it in the live total so the editor reflects the persisted DB
   // total without a refetch round-trip after toggling.
   const giftWrapFeeNum = Number(((quoteData as any)?.gift_wrap_fee) || 0);
-  const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum + giftWrapFeeNum - discountNum);
+  // Free-items promo discount is baked into quotes.total by a DB trigger (the
+  // gift items sit in subtotal at full price, then this value is subtracted).
+  // The live preview must mirror that or GRAND TOTAL diverges from the saved
+  // DB total. Only counts while the promo is contributing (applied/active);
+  // 'expired' reverts the gift items, so nothing is subtracted then.
+  const promoStatus: "applied" | "active" | "expired" | null = (quoteData as any)?.free_items_promo_status ?? null;
+  const promoDiscountNum = (promoStatus === "applied" || promoStatus === "active")
+    ? (Number((quoteData as any)?.free_items_promo_discount) || 0)
+    : 0;
+  const liveTotal = Math.max(0, liveSubtotal + serviceFeeNum + deliveryFeeNum + giftWrapFeeNum - discountNum - promoDiscountNum);
 
   // Debounced signature of the customer fields — feeds the Klump payment-link
   // eligibility check. Debounced 900ms (> the 500ms autosave) so the RPC reads
@@ -2367,6 +2381,15 @@ function QuoteEditor({
                 <input type="date" value={form.expires_at} onChange={(e) => update({ expires_at: e.target.value })} className={inputCls} disabled={!canEdit} />
                 <p className="text-[10px] text-text-light mt-1">Quote auto-expires after this date.</p>
               </div>
+              {/* Free-items promo deduction — informational, so the gap between
+                  subtotal and GRAND TOTAL is legible. Separate from the manual
+                  Discount input above; never merged into discount_amount. */}
+              {promoDiscountNum > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-text-med">Free items promo</span>
+                  <span className="font-semibold text-red-600">−{fmtN(promoDiscountNum)}</span>
+                </div>
+              )}
               <div className="border-t border-border pt-3 flex justify-between items-baseline">
                 <span className="font-bold text-forest">GRAND TOTAL</span>
                 <span className="text-xl font-bold text-forest">{fmtN(liveTotal)}</span>
