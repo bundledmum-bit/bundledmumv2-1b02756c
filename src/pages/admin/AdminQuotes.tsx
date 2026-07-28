@@ -9,7 +9,7 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import {
   FileText, Plus, Search, Download, Edit2, Trash2, X, ArrowLeft, Send, Archive,
   Copy as CopyIcon, ExternalLink, ShoppingCart, XCircle, Loader2,
-  Files, Workflow, Link2, AlertTriangle, Mail, RefreshCw,
+  Files, Workflow, Link2, AlertTriangle, Mail, RefreshCw, Gift, CheckCircle2,
 } from "lucide-react";
 import AdminQuoteCard from "@/components/admin/AdminQuoteCard";
 import PackageItemsBuilder, { fmtN } from "@/components/admin/PackageItemsBuilder";
@@ -1275,6 +1275,125 @@ function QuotePaymentLinkCard({
   );
 }
 
+/**
+ * Free-items promo control for the quote editor.
+ *
+ * The real, non-gift subtotal is summed client-side from the loaded line items
+ * (line_total where is_promo_gift is false); before the promo is applied there
+ * are no gift rows, so this equals the full subtotal. The server RPC is the real
+ * gate — it re-checks the 500k threshold and throws a human-readable message we
+ * surface verbatim, never reworded.
+ */
+function FreeItemsPromoBanner({
+  quote,
+  canEdit,
+  onApplied,
+}: {
+  quote: any;
+  canEdit: boolean;
+  onApplied: () => void;
+}) {
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const status: "applied" | "active" | "expired" | null = quote?.free_items_promo_status ?? null;
+  const lineItems: any[] = Array.isArray(quote?.quote_items) ? quote.quote_items : [];
+  const realSubtotal = lineItems
+    .filter((it) => it?.is_promo_gift !== true)
+    .reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
+  const THRESHOLD = 500_000;
+
+  const fmtExpiry = (ts: string | null | undefined) =>
+    ts
+      ? new Date(ts).toLocaleString("en-NG", {
+          weekday: "short", day: "numeric", month: "short",
+          hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos",
+        })
+      : "";
+
+  // Applied: waiting for the customer to open the link and start the timer.
+  if (status === "applied") {
+    return (
+      <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
+        <p className="text-sm text-green-900">
+          Free items promo applied. Timer starts when the customer opens the quote link.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === "active") {
+    return (
+      <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
+        <p className="text-sm text-green-900">
+          Free items promo active, expires {fmtExpiry(quote?.free_items_promo_expires_at)}.
+        </p>
+      </div>
+    );
+  }
+
+  if (status === "expired") {
+    return (
+      <div className="bg-muted border border-border rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <AlertTriangle className="w-5 h-5 text-text-med mt-0.5 flex-shrink-0" />
+        <p className="text-sm text-text-med">Free items promo expired, gift items reverted.</p>
+      </div>
+    );
+  }
+
+  // status is null → offer the promo only when the real subtotal qualifies.
+  if (realSubtotal < THRESHOLD) return null;
+
+  const apply = async () => {
+    if (applying) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const { error: rpcError } = await (supabase as any).rpc("apply_free_items_promo", {
+        p_quote_id: quote.id,
+      });
+      if (rpcError) throw rpcError;
+      onApplied(); // refetch: total drops, override → 0, gift rows appear
+    } catch (e: any) {
+      // Surface the server's message directly, do not reword or swallow it.
+      setError(e?.message || "Could not apply the free items promo.");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3.5">
+      <div className="flex items-start gap-2.5">
+        <Gift className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-amber-900">
+            This quote qualifies for the free items promo. Add nightgown, nursing bra,
+            hospital slippers, maternity pads and disposable underwear free, plus free
+            nationwide delivery, for 24 hours after the customer first opens this quote.
+          </p>
+          <button
+            type="button"
+            onClick={apply}
+            disabled={!canEdit || applying}
+            className="mt-3 inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
+            Apply free items promo
+          </button>
+          {error && (
+            <p className="mt-2 text-xs font-semibold text-destructive flex items-start gap-1.5">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> {error}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuoteEditor({
   quoteId,
   onClose,
@@ -1947,6 +2066,11 @@ function QuoteEditor({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left column — customer + items + notes */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Free-items promo — qualifies / applied / active / expired. Only for
+              a saved quote (needs an id and its persisted line items). */}
+          {currentId && quoteData && (
+            <FreeItemsPromoBanner quote={quoteData} canEdit={canEdit} onApplied={() => refetchQuote()} />
+          )}
           {/* Section A — Customer Details */}
           <section className="bg-card border border-border rounded-xl p-4">
             <h2 className="text-sm font-bold mb-1">Customer Details</h2>

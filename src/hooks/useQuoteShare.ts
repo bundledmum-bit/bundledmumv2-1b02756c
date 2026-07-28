@@ -21,6 +21,11 @@ export type QuoteFromShare = {
   expires_at: string | null;
   is_expired: boolean;
   created_at: string;
+  // Free-items promo (nullable; only populated once an admin applies it).
+  // Status is the DB lifecycle: null | 'applied' | 'active' | 'expired'.
+  free_items_promo_status: "applied" | "active" | "expired" | null;
+  free_items_promo_expires_at: string | null;
+  free_items_promo_discount: number | null;
 };
 
 export type QuoteShareItem = {
@@ -38,6 +43,7 @@ export type QuoteShareItem = {
   current_image_url: string | null;
   current_in_stock: boolean;
   section: string | null; // 'baby'|'mother'|'hospital'|null — returned by the RPC (last column)
+  is_promo_gift: boolean; // true for the free-items promo line items
 };
 
 export function useQuoteByShareToken(shareToken: string | undefined) {

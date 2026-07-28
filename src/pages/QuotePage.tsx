@@ -18,6 +18,8 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { downloadQuotePdf } from "@/lib/quotePdf";
 import QuoteItemsCard from "@/components/quote/QuoteItemsCard";
 import QuoteTotalsCard from "@/components/quote/QuoteTotalsCard";
+import QuotePromoCountdown from "@/components/quote/QuotePromoCountdown";
+import { Gift } from "lucide-react";
 import ShareRow from "@/components/ShareRow";
 // Coral logo — matches the local-import convention used on every other
 // public/customer-facing surface (PaymentReceivedPage, AccountLoginPage,
@@ -47,6 +49,13 @@ export default function QuotePage() {
   const itemsQ = useQuoteItemsByShareToken(shareToken);
   const quote = quoteQ.data;
   const items: QuoteShareItem[] = itemsQ.data || [];
+
+  // Free-items promo is live only while the DB says 'active'. Everything promo-
+  // related (countdown, struck gift prices, free-delivery banner) hangs off this
+  // one flag; 'applied', 'expired' and null all render the page normally.
+  const promoActive = quote?.free_items_promo_status === "active";
+  // Free nationwide delivery is tied to the actual override being 0, not assumed.
+  const promoFreeDelivery = promoActive && quote?.delivery_fee_override === 0;
 
   // Generate the same branded PDF the admin produces (coral logo + section
   // grouping), reusing src/lib/quotePdf.ts — no browser-print dependency.
@@ -294,6 +303,20 @@ export default function QuotePage() {
       </header>
 
       <div className="max-w-[820px] mx-auto">
+        {/* Free-items promo — countdown + free delivery, above everything.
+            Only while the promo is active; hidden otherwise. */}
+        {promoActive && quote.free_items_promo_expires_at && (
+          <QuotePromoCountdown expiresAt={quote.free_items_promo_expires_at} />
+        )}
+        {promoFreeDelivery && (
+          <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 mb-4 flex items-center gap-2.5">
+            <Gift className="w-5 h-5 text-green-700 flex-shrink-0" />
+            <p className="text-green-900 text-sm">
+              <strong>Free nationwide delivery</strong> is included on this quote while your free-items offer is active.
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-end justify-between flex-wrap gap-3 mb-6">
           <div>
@@ -383,6 +406,9 @@ export default function QuotePage() {
             display_order: it.display_order,
             image_url: it.current_image_url ?? null,
             in_stock: it.current_in_stock !== false,
+            // Only strike the price when the promo is live; an applied-but-not-
+            // -started or expired promo must render items normally.
+            is_promo_gift: promoActive && it.is_promo_gift === true,
           }))}
         />
 

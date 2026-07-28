@@ -22,6 +22,9 @@ export interface QuoteViewItem {
   display_order?: number | null;
   image_url?: string | null;
   in_stock?: boolean;
+  // True for a free-items promo gift. When set, the read-only row shows the
+  // normal price struck through with a short "free" note, rather than ₦0.
+  is_promo_gift?: boolean;
 }
 
 // Canonical section order/labels. Exported so the package page can build its
@@ -79,8 +82,20 @@ function ReadOnlyRow({ it }: { it: QuoteViewItem }) {
         )}
       </div>
       <div className="text-right flex-shrink-0">
-        <p className="text-xs text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
-        <p className="text-sm font-bold">{fmt(it.line_total)}</p>
+        {it.is_promo_gift ? (
+          // Promo gift: show the real price struck through so the value is
+          // clear, then a short free note. Never render this as a ₦0 product.
+          <>
+            <p className="text-xs text-text-med line-through">{it.quantity} × {fmt(it.unit_price)}</p>
+            <p className="text-sm font-bold text-red-600 line-through">{fmt(it.line_total)}</p>
+            <p className="text-[11px] font-semibold text-red-600 leading-tight mt-0.5">Free for you, 24 hours only</p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
+            <p className="text-sm font-bold">{fmt(it.line_total)}</p>
+          </>
+        )}
       </div>
     </div>
   );
