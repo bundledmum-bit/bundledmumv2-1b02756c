@@ -1306,7 +1306,21 @@ function FreeItemsPromoBanner({
   const realSubtotal = lineItems
     .filter((it) => it?.is_promo_gift !== true)
     .reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
-  const THRESHOLD = 500_000;
+
+  // Two tiers. The higher threshold wins when both would match (a 600k quote is
+  // a tier_500k quote, never both), so only one banner is ever offered.
+  const TIER_500K = 500_000;
+  const TIER_300K = 300_000;
+  const offeredTier: "tier_500k" | "tier_300k" | null =
+    realSubtotal >= TIER_500K ? "tier_500k"
+      : realSubtotal >= TIER_300K ? "tier_300k"
+        : null;
+
+  // Label for the applied/active/expired status lines, read from the tier the
+  // promo was actually applied at (not a recompute of the current subtotal).
+  const tierLabel = (t: string | null | undefined) =>
+    t === "tier_300k" ? "₦300k tier" : "₦500k tier";
+  const appliedTierLabel = tierLabel(quote?.free_items_promo_tier);
 
   const fmtExpiry = (ts: string | null | undefined) =>
     ts
@@ -1322,7 +1336,7 @@ function FreeItemsPromoBanner({
       <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
         <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
         <p className="text-sm text-green-900">
-          Free items promo applied. Timer starts when the customer opens the quote link.
+          Free items promo applied ({appliedTierLabel}). Timer starts when the customer opens the quote link.
         </p>
       </div>
     );
@@ -1333,7 +1347,7 @@ function FreeItemsPromoBanner({
       <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
         <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
         <p className="text-sm text-green-900">
-          Free items promo active, expires {fmtExpiry(quote?.free_items_promo_expires_at)}.
+          Free items promo active ({appliedTierLabel}), expires {fmtExpiry(quote?.free_items_promo_expires_at)}.
         </p>
       </div>
     );
@@ -1343,24 +1357,26 @@ function FreeItemsPromoBanner({
     return (
       <div className="bg-muted border border-border rounded-xl px-4 py-3 flex items-start gap-2.5">
         <AlertTriangle className="w-5 h-5 text-text-med mt-0.5 flex-shrink-0" />
-        <p className="text-sm text-text-med">Free items promo expired, gift items reverted.</p>
+        <p className="text-sm text-text-med">Free items promo expired ({appliedTierLabel}), gift items reverted.</p>
       </div>
     );
   }
 
-  // status is null → offer the promo only when the real subtotal qualifies.
-  if (realSubtotal < THRESHOLD) return null;
+  // status is null → offer a tier only when the real subtotal qualifies.
+  if (!offeredTier) return null;
 
-  const apply = async () => {
+  const apply = async (tier: "tier_500k" | "tier_300k") => {
     if (applying) return;
     setApplying(true);
     setError(null);
     try {
+      // Always pass p_tier explicitly so the applied tier is unambiguous.
       const { error: rpcError } = await (supabase as any).rpc("apply_free_items_promo", {
         p_quote_id: quote.id,
+        p_tier: tier,
       });
       if (rpcError) throw rpcError;
-      onApplied(); // refetch: total drops, override → 0, gift rows appear
+      onApplied(); // refetch: total drops, gift rows appear (override → 0 for tier_500k only)
     } catch (e: any) {
       // Surface the server's message directly, do not reword or swallow it.
       setError(e?.message || "Could not apply the free items promo.");
@@ -1369,24 +1385,32 @@ function FreeItemsPromoBanner({
     }
   };
 
+  // Copy differs by tier: tier_500k includes free nationwide delivery, tier_300k
+  // is a smaller gift set with delivery untouched.
+  const banner = offeredTier === "tier_500k"
+    ? {
+        text: "This quote qualifies for the free items promo. Add nightgown, disposable underwear, hospital slippers, and maternity pads free, plus free nationwide delivery, for 24 hours after the customer first opens this quote.",
+        button: "Apply free items promo (₦500k tier)",
+      }
+    : {
+        text: "This quote qualifies for the smaller free items promo. Add disposable underwear, hospital slippers, and maternity pads free for 24 hours after the customer first opens this quote. No free delivery on this tier.",
+        button: "Apply free items promo (₦300k tier)",
+      };
+
   return (
     <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3.5">
       <div className="flex items-start gap-2.5">
         <Gift className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-amber-900">
-            This quote qualifies for the free items promo. Add nightgown, nursing bra,
-            hospital slippers, maternity pads and disposable underwear free, plus free
-            nationwide delivery, for 24 hours after the customer first opens this quote.
-          </p>
+          <p className="text-sm text-amber-900">{banner.text}</p>
           <button
             type="button"
-            onClick={apply}
+            onClick={() => apply(offeredTier)}
             disabled={!canEdit || applying}
             className="mt-3 inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-            Apply free items promo
+            {banner.button}
           </button>
           {error && (
             <p className="mt-2 text-xs font-semibold text-destructive flex items-start gap-1.5">
