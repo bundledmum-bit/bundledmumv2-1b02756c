@@ -1605,7 +1605,14 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 <LineItemThumb src={getBrandImage(item.brand)} alt={item.product_name} className="w-10 h-10" />
                 <div className="min-w-0">
                 {item.bundle_name && <div className="text-[10px] font-bold text-coral mb-0.5">📦 {item.bundle_name}</div>}
-                <div className="font-semibold">{item.product_name} <span className="font-normal text-muted-foreground">× {item.quantity}</span></div>
+                <div className="font-semibold">
+                  {item.product_name} <span className="font-normal text-muted-foreground">× {item.quantity}</span>
+                  {item.is_promo_gift && (
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide align-middle">
+                      Free gift
+                    </span>
+                  )}
+                </div>
                 <div className="text-[10px] text-muted-foreground flex flex-wrap gap-x-2">
                   {item.brand_name && <span>Brand: {item.brand_name}</span>}
                   {item.size && <span>Size / Age: {item.size}</span>}
@@ -1613,7 +1620,11 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 </div>
                 </div>
               </div>
-              {showFinance && <span className="font-semibold flex-shrink-0 ml-2">{fmt(item.line_total || 0)}</span>}
+              {showFinance && (
+                item.is_promo_gift && Number(item.line_total) > 0
+                  ? <span className="font-semibold flex-shrink-0 ml-2 text-red-600 line-through">{fmt(item.line_total || 0)}</span>
+                  : <span className="font-semibold flex-shrink-0 ml-2">{fmt(item.line_total || 0)}</span>
+              )}
             </div>
           ))}
         </div>
@@ -1631,6 +1642,12 @@ function OrderDetailPage({ order: o, adminUser, can, isSuperAdmin, onBack, onPri
                 ? <div className="flex justify-between text-coral"><span>Discount</span><span>−{fmt(discountValue)}</span></div>
                 : null;
             })()}
+            {Number(o.free_items_promo_discount) > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span>Free items promo{o.free_items_promo_delivery_granted ? " (includes free delivery)" : ""}</span>
+                <span>−{fmt(o.free_items_promo_discount)}</span>
+              </div>
+            )}
             {(o.spend_discount_amount || 0) > 0 && <div className="flex justify-between text-green-600"><span>Spend Discount ({o.spend_discount_percent}%)</span><span>-{fmt(o.spend_discount_amount)}</span></div>}
             <div className="flex justify-between font-bold text-sm pt-2 border-t border-border"><span>Total</span><span>{fmt(o.total || 0)}</span></div>
           </div>

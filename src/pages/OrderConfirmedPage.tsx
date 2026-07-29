@@ -524,7 +524,19 @@ export default function OrderConfirmedPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm font-bold flex-shrink-0">{fmt(item.line_total)}</div>
+                  {item.is_promo_gift ? (
+                    // Gift line: strike the real price (guarded so a 0 is never
+                    // struck) and label it free. No timer — an order's promo is
+                    // permanent. Mirrors the quote page's gift treatment.
+                    <div className="text-right flex-shrink-0">
+                      {Number(item.line_total) > 0 && (
+                        <div className="text-sm font-bold text-red-600 line-through">{fmt(item.line_total)}</div>
+                      )}
+                      <div className="text-[11px] font-bold text-red-600 uppercase tracking-wide">Free gift</div>
+                    </div>
+                  ) : (
+                    <div className="text-sm font-bold flex-shrink-0">{fmt(item.line_total)}</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -541,6 +553,12 @@ export default function OrderConfirmedPage() {
               <div className="flex justify-between"><span className="text-text-med">Service & Packaging</span><span>{fmt(order.service_fee)}</span></div>
               {order.gift_wrapping && (
                 <div className="flex justify-between"><span className="text-text-med">Gift wrapping</span><span>{fmt(order.gift_wrap_fee || 0)}</span></div>
+              )}
+              {Number(order.free_items_promo_discount) > 0 && (
+                <div className="flex justify-between text-red-600">
+                  <span>Free items promo</span>
+                  <span>−{fmt(order.free_items_promo_discount)}</span>
+                </div>
               )}
               <div className="flex justify-between pt-2 border-t border-border font-bold text-base"><span>Total</span><span className="text-forest">{fmt(order.total)}</span></div>
             </div>
