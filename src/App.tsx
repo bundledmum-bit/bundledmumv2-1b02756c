@@ -120,6 +120,7 @@ import AdminPromotions from "@/pages/admin/AdminPromotions";
 import AdminQuizLeads from "@/pages/admin/AdminQuizLeads";
 import AdminQuotes from "@/pages/admin/AdminQuotes";
 import QuotePipeline from "@/pages/admin/QuotePipeline";
+import QuotePromoAdmin from "@/pages/admin/QuotePromoAdmin";
 import AdminFollowups from "@/pages/admin/AdminFollowups";
 import AdminImageImprovement from "@/pages/admin/AdminImageImprovement";
 import AdminQuizEngine from "@/pages/admin/AdminQuizEngine";
@@ -440,6 +441,7 @@ const App = () => (
                 <Route path="shipping-zones" element={<PermissionGate module="delivery" action="view"><AdminShippingZones /></PermissionGate>} />
                 <Route path="quotes" element={<PermissionGate module="quotes" action="view"><AdminQuotes /></PermissionGate>} />
                 <Route path="hospital-list" element={<PermissionGate module="products" action="edit"><AdminHospitalList /></PermissionGate>} />
+                <Route path="quote-promo" element={<PermissionGate module="quotes" action="edit"><QuotePromoAdmin /></PermissionGate>} />
                 <Route path="quotes/pipeline" element={<PermissionGate module="quotes" action="view"><QuotePipeline /></PermissionGate>} />
                 <Route path="followups" element={<PermissionGate module="quotes" action="view"><AdminFollowups /></PermissionGate>} />
                 <Route path="image-improvement" element={<PermissionGate module="products" action="edit"><AdminImageImprovement /></PermissionGate>} />
