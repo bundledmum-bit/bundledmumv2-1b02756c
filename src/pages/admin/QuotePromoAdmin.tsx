@@ -100,6 +100,7 @@ export default function QuotePromoAdmin() {
       <StatsSection />
       <TierConfigSection canEdit={canEdit} />
       <LivePromosSection canEdit={canEdit} />
+      <LandingPageAssignmentSection canEdit={canEdit} />
     </div>
   );
 }
@@ -827,5 +828,145 @@ function MiniCountdown({ expiresAt }: { expiresAt: string }) {
     <span className="text-xs font-mono font-bold tabular-nums text-forest">
       {pad(h)}:{pad(m)}:{pad(s)}
     </span>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SECTION 4 — LANDING PAGE ASSIGNMENT
+// ════════════════════════════════════════════════════════════════════
+interface LandingPageRow {
+  id: string;
+  slug: string | null;
+  title: string | null;
+  is_active: boolean;
+  promo_enabled: boolean;
+  promo_label: string | null;
+  free_items_promo_tier: string | null;
+}
+
+function LandingPageAssignmentSection({ canEdit }: { canEdit: boolean }) {
+  const qc = useQueryClient();
+
+  const { data: pages = [], isLoading } = useQuery({
+    queryKey: ["fip-landing-pages"],
+    queryFn: async (): Promise<LandingPageRow[]> => {
+      const { data, error } = await (supabase as any)
+        .from("landing_pages")
+        .select("id, slug, title, is_active, promo_enabled, promo_label, free_items_promo_tier")
+        .order("title", { ascending: true });
+      if (error) throw error;
+      return (data || []) as LandingPageRow[];
+    },
+  });
+
+  // Reuses the same query key as the tier config section, so react-query serves
+  // it from cache — the picker options are the configured tiers.
+  const { data: tiers = [] } = useQuery({
+    queryKey: ["fip-tier-summary"],
+    queryFn: async (): Promise<TierSummary[]> => {
+      const { data, error } = await (supabase as any)
+        .from("free_items_promo_tier_summary")
+        .select("*")
+        .order("threshold", { ascending: false });
+      if (error) throw error;
+      return (data || []) as TierSummary[];
+    },
+  });
+
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const setTier = async (row: LandingPageRow, value: string | null) => {
+    setSavingId(row.id);
+    // No client-side permission pre-check: landing_pages writes need
+    // promotions.edit (this page is gated on quotes.edit), so an admin without
+    // it hits an RLS error — which we surface verbatim rather than guessing.
+    const { error } = await (supabase as any)
+      .from("landing_pages")
+      .update({ free_items_promo_tier: value })
+      .eq("id", row.id);
+    setSavingId(null);
+    if (error) { toast.error(errMsg(error, "Could not update landing page.")); return; }
+    toast.success(value ? `Assigned ${value} to ${row.title || row.slug || "page"}.` : "Free items promo removed from page.");
+    qc.invalidateQueries({ queryKey: ["fip-landing-pages"] });
+  };
+
+  return (
+    <section className="mb-8">
+      <h2 className="text-sm font-bold uppercase tracking-widest text-text-med mb-3">Landing page assignment</h2>
+      <p className="text-xs text-text-med mb-3">
+        Pick which free-items tier auto-applies on each landing page. “None” leaves
+        the page’s own behaviour untouched.
+      </p>
+
+      {isLoading ? (
+        <div className="text-sm text-text-med">Loading landing pages…</div>
+      ) : pages.length === 0 ? (
+        <div className="bg-card border border-border rounded-xl p-6 text-center text-sm text-text-med">
+          No landing pages found.
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-text-med">
+                  <th className="px-3 py-2 font-semibold">Landing page</th>
+                  <th className="px-3 py-2 font-semibold">Status</th>
+                  <th className="px-3 py-2 font-semibold">Free items tier</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pages.map((p) => {
+                  const bothOn = !!p.free_items_promo_tier && p.promo_enabled;
+                  return (
+                    <tr key={p.id} className="align-top">
+                      <td className="px-3 py-2">
+                        <div className="font-semibold">{p.title || "—"}</div>
+                        <div className="text-[11px] text-text-med font-mono">/{p.slug || ""}</div>
+                        {bothOn && (
+                          <div className="mt-1.5 rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-1.5 text-[11px] text-amber-800 flex items-start gap-1.5 max-w-[420px]">
+                            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <span>
+                              Old cash promo (promo_enabled) is also on for this page. It is ignored
+                              while a free items tier is assigned — consider turning it off to avoid confusion.
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {p.is_active ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-green-100 text-green-800 border border-green-300">Active</span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-muted text-text-med border border-border" title="The promo won't run until the page is active">Inactive</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <select
+                            className={`${inputCls} max-w-[220px]`}
+                            value={p.free_items_promo_tier ?? ""}
+                            disabled={!canEdit || savingId === p.id}
+                            onChange={(e) => setTier(p, e.target.value || null)}
+                          >
+                            <option value="">None</option>
+                            {tiers.map((t) => (
+                              <option key={t.tier_key} value={t.tier_key}>{t.label}</option>
+                            ))}
+                          </select>
+                          {savingId === p.id && <Loader2 className="w-4 h-4 animate-spin text-text-med" />}
+                        </div>
+                        {!p.is_active && p.free_items_promo_tier && (
+                          <p className="text-[10px] text-text-light mt-1">Won’t run until this page is active.</p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
