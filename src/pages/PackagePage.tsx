@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { MessageCircle, ShoppingBag, AlertCircle, Search, X, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useCart, fmt, cartItemKey, type CartItem } from "@/lib/cart";
 import { useSiteSettings } from "@/hooks/useSupabaseData";
 import { getBrandImage } from "@/lib/brandImage";
-import { setLandingOrigin } from "@/lib/landingOrigin";
+import { setLandingOrigin, getSessionKey } from "@/lib/landingOrigin";
+import { useQuoteByShareToken, useQuoteItemsByShareToken } from "@/hooks/useQuoteShare";
+import QuotePromoCountdown from "@/components/quote/QuotePromoCountdown";
 import { trackCheckoutInitiated } from "@/lib/checkoutTracking";
 import { trackCartItemsAdded } from "@/lib/trackAddToCart";
 import QuoteItemsCard, { QUOTE_ITEM_SECTIONS } from "@/components/quote/QuoteItemsCard";
@@ -334,6 +336,81 @@ export default function PackagePage() {
   // The RPC enforces the time window and returns the exact discount (integer
   // naira) for the current subtotal. Recomputed whenever the subtotal changes.
   const promoSubtotal = useMemo(() => workItems.reduce((s, it) => s + it.line_total, 0), [workItems]);
+
+  // ── Free-items promo (live while browsing) ─────────────────────────
+  // Only start a real quote once the cart is substantial (₦150k), to avoid
+  // spawning a quote row for every casual browser. Reuses the SAME session key
+  // CheckoutPage uses (localStorage bm-session-key), so the quote started here
+  // is the one checkout later updates — not a second, orphaned row. Below the
+  // gate nothing fires and the page behaves exactly as before.
+  const FIP_GATE = 150_000;
+  const fipQueryClient = useQueryClient();
+  const [fipShareToken, setFipShareToken] = useState<string | null>(null);
+  const fipLastSigRef = useRef<string>("");
+  useEffect(() => {
+    if (!page?.id) return;
+    const subtotal = workItems.reduce((s, it) => s + it.line_total, 0);
+    if (subtotal < FIP_GATE) return; // gate: no quote, no promo below ₦150k
+    const p_items = workItems
+      .filter((it) => it.product_id)
+      .map((it, idx) => ({
+        product_id: it.product_id,
+        brand_id: it.brand_id,
+        product_name: it.product_name,
+        brand_name: it.brand_name,
+        size: it.size,
+        color: it.color,
+        quantity: Math.max(1, Number(it.quantity) || 1),
+        unit_price: Number(it.unit_price) || 0,
+        line_total: Number(it.line_total) || 0,
+        display_order: idx,
+        section: it.section,
+      }));
+    if (p_items.length === 0) return;
+    const sessionKey = getSessionKey();
+    // Skip redundant upserts when the cart hasn't changed since the last one.
+    const sig = JSON.stringify({ lp: page.id, items: p_items });
+    if (sig === fipLastSigRef.current) return;
+    // Debounced (800ms, same as CheckoutPage) so quantity spinning doesn't spam.
+    const t = setTimeout(async () => {
+      fipLastSigRef.current = sig;
+      try {
+        const { error } = await (supabase as any).rpc("upsert_landing_page_quote", {
+          p_session_key: sessionKey,
+          p_landing_page_id: page.id,
+          p_customer_name: null,
+          p_customer_phone: null,
+          p_customer_email: null,
+          p_items,
+          p_delivery_address: null,
+          p_delivery_city: null,
+          p_delivery_state: null,
+        });
+        if (error) { fipLastSigRef.current = ""; return; }
+        // Resolve the share token and refresh the promo state — gifts / free
+        // delivery are re-evaluated server-side on every upsert.
+        const { data: tok } = await (supabase as any).rpc("get_landing_page_share_token", {
+          p_session_key: sessionKey,
+        });
+        const token = tok ? String(tok) : null;
+        setFipShareToken(token);
+        if (token) {
+          fipQueryClient.invalidateQueries({ queryKey: ["quote_share", "header", token] });
+          fipQueryClient.invalidateQueries({ queryKey: ["quote_share", "items", token] });
+        }
+      } catch { fipLastSigRef.current = ""; /* non-fatal: page renders without promo */ }
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workItems, page?.id]);
+
+  const fipQuoteQ = useQuoteByShareToken(fipShareToken ?? undefined);
+  const fipItemsQ = useQuoteItemsByShareToken(fipShareToken ?? undefined);
+  const fipActive = fipQuoteQ.data?.free_items_promo_status === "active";
+  const fipGiftItems = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
+  const fipDiscount = fipActive ? (fipQuoteQ.data?.free_items_promo_discount || 0) : 0;
+  const fipExpiresAt = fipActive ? (fipQuoteQ.data?.free_items_promo_expires_at || null) : null;
+
   const promoQ = useQuery({
     queryKey: ["landing-promo", page?.id, promoSubtotal],
     enabled: !!page?.id,
@@ -685,6 +762,13 @@ export default function PackagePage() {
           )}
         </div>
 
+        {/* Free-items promo countdown — only while active and unexpired. */}
+        {fipActive && fipExpiresAt && new Date(fipExpiresAt).getTime() > Date.now() && (
+          <div className="mb-4">
+            <QuotePromoCountdown expiresAt={fipExpiresAt} />
+          </div>
+        )}
+
         {/* Items (editable working copy) */}
         <QuoteItemsCard
           items={viewItems}
@@ -696,6 +780,35 @@ export default function PackagePage() {
           onRemove={removeItem}
           onAddToSection={openPicker}
         />
+
+        {/* Free bonus items from the promo — sourced from the fetched quote_items
+            (is_promo_gift), NOT the editable workItems, which have no gift
+            concept. Shown as free extras; their value is informational and is
+            never subtracted from the total (they aren't in this page's subtotal). */}
+        {fipActive && fipGiftItems.length > 0 && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h3 className="text-sm font-bold text-red-700">🎁 Free bonus items</h3>
+              {fipDiscount > 0 && (
+                <span className="text-[11px] font-semibold text-red-600">{fmt(fipDiscount)} of gifts, free</span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {fipGiftItems.map((g) => (
+                <div key={`fip-gift-${g.id}`} className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide flex-shrink-0">Free</span>
+                    <span className="text-sm truncate">{g.product_name}{g.quantity > 1 ? ` × ${g.quantity}` : ""}</span>
+                  </div>
+                  <span className="text-sm font-bold flex-shrink-0 flex items-center gap-1.5">
+                    {g.unit_price > 0 && <span className="line-through text-red-600">{fmt(g.line_total)}</span>}
+                    <span className="text-red-600 uppercase text-[10px]">Free</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Totals — recompute live from the working copy */}
         <QuoteTotalsCard
