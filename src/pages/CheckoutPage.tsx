@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
 import { isCartLandingSourced } from "@/lib/landingOrigin";
@@ -15,7 +15,8 @@ import { useShippingZones, calculateDeliveryFee, type ShippingZone } from "@/hoo
 import { useDeliverableStates } from "@/hooks/useDeliverableStates";
 import { useSiteSettings, useAllProducts } from "@/hooks/useSupabaseData";
 import WhatsAppRecoveryModal, { type RecoveryContext } from "@/components/checkout/WhatsAppRecoveryModal";
-import { linkOrderToQuote, PENDING_QUOTE_TOKEN_KEY } from "@/hooks/useQuoteShare";
+import { linkOrderToQuote, PENDING_QUOTE_TOKEN_KEY, useQuoteByShareToken, useQuoteItemsByShareToken } from "@/hooks/useQuoteShare";
+import QuotePromoCountdown from "@/components/quote/QuotePromoCountdown";
 import { useFreeDeliveryThresholds } from "@/hooks/useFreeDeliveryThresholds";
 import { FreeDeliveryNudgeBanner } from "@/components/FreeDeliveryNudgeBanner";
 import SkipGiftWrapConfirmModal from "@/components/checkout/SkipGiftWrapConfirmModal";
@@ -814,7 +815,30 @@ export default function CheckoutPage() {
       toast.success("You now qualify for free delivery — Express Order turned off.");
     }
   }, [isExpressOrder, alreadyHasFreeDelivery]);
-  const delivery = isExpressOrder ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery;
+  // ── Free-items promo (landing carts only) ──────────────────────────
+  // After the background upsert persists/refreshes the funnel quote, we resolve
+  // its share token (set in saveLandingQuote) and read the LIVE promo state via
+  // the same anon RPCs QuotePage uses. Null token = no quote yet = no promo.
+  const [landingShareToken, setLandingShareToken] = useState<string | null>(null);
+  const fipQueryClient = useQueryClient();
+  const fipQuoteQ = useQuoteByShareToken(landingShareToken ?? undefined);
+  const fipItemsQ = useQuoteItemsByShareToken(landingShareToken ?? undefined);
+  const fipActive = fipQuoteQ.data?.free_items_promo_status === "active";
+  const fipGiftItems = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
+  const fipDiscount = fipActive ? (fipQuoteQ.data?.free_items_promo_discount || 0) : 0;
+  const fipExpiresAt = fipActive ? (fipQuoteQ.data?.free_items_promo_expires_at || null) : null;
+  // Free delivery is the ONLY promo effect that changes what the customer pays.
+  // The gift items are free extras that are NOT in this page's cart/subtotal, so
+  // their value (fipDiscount) is shown informationally and never subtracted from
+  // the payable — doing so would discount the customer's OWN items and
+  // undercharge. delivery_fee_override === 0 means the promo granted free
+  // delivery on this quote.
+  const fipFreeDelivery = fipActive && fipQuoteQ.data?.delivery_fee_override === 0;
+
+  // Free-items free delivery folds into `delivery` (and therefore grandWith and
+  // the charged Paystack amount + stored order.total together), so the charge
+  // stays consistent with what verify-payment checks against.
+  const delivery = isExpressOrder ? 0 : (fipFreeDelivery ? 0 : qualifiesForNationwideFree ? 0 : computedDelivery);
   const notDeliverable = !isExpressOrder && deliveryReady && courierQuote != null && courierQuote.deliverable === false;
 
   // Spend threshold discount
@@ -868,6 +892,37 @@ export default function CheckoutPage() {
   const giftWrapFee = effectiveGiftWrap ? giftWrapPrice : 0;
   const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo);
   const grand = grandWith(promoDiscount);
+
+  // ── Free-items promo display nodes (shared by both summary layouts) ──
+  // Countdown while the promo is active and unexpired. Gift items render as
+  // free extras (struck price + red "Free gift") from the fetched quote_items,
+  // NOT from local cart state. The value line is informational: it never
+  // changes `grand` (the gifts are not in this page's subtotal).
+  const fipCountdownNode = (fipExpiresAt && new Date(fipExpiresAt).getTime() > Date.now())
+    ? <div className="mb-3"><QuotePromoCountdown expiresAt={fipExpiresAt} /></div>
+    : null;
+  const fipGiftRowsNode = fipGiftItems.length > 0 ? (
+    <>
+      {fipGiftItems.map((g) => (
+        <div key={`fip-gift-${g.id}`} className="flex items-center justify-between gap-2 py-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide flex-shrink-0">Free gift</span>
+            <span className="text-xs truncate">{g.product_name}{g.quantity > 1 ? ` × ${g.quantity}` : ""}</span>
+          </div>
+          <span className="text-xs font-bold flex-shrink-0 flex items-center gap-1.5">
+            {g.unit_price > 0 && <span className="line-through text-red-600">{fmt(g.line_total)}</span>}
+            <span className="text-red-600 uppercase text-[10px]">Free</span>
+          </span>
+        </div>
+      ))}
+    </>
+  ) : null;
+  const fipInfoLineNode = fipDiscount > 0 ? (
+    <div className="flex justify-between text-red-600">
+      <span>Free items promo</span>
+      <span>{fmt(fipDiscount)} of gifts, free</span>
+    </div>
+  ) : null;
 
   // ── Progressive cart capture (best-effort, non-blocking) ─────────────
   // Once the visitor has entered an email OR phone on checkout, upsert a
@@ -1270,6 +1325,21 @@ export default function CheckoutPage() {
       } else if (data) {
         // The RPC returns the funnel quote id; keep it to convert on order placed.
         landingQuoteIdRef.current = String(data);
+        // Resolve the quote's share token so we can read the live free-items
+        // promo state back down, and refresh it — gift items and free delivery
+        // are re-evaluated server-side on every upsert, so the display must
+        // reflect the CURRENT state, not a one-time snapshot.
+        try {
+          const { data: tok } = await (supabase as any).rpc("get_landing_page_share_token", {
+            p_session_key: origin.sessionKey,
+          });
+          const token = tok ? String(tok) : null;
+          setLandingShareToken(token);
+          if (token) {
+            fipQueryClient.invalidateQueries({ queryKey: ["quote_share", "header", token] });
+            fipQueryClient.invalidateQueries({ queryKey: ["quote_share", "items", token] });
+          }
+        } catch { /* non-fatal: page just renders without promo */ }
       }
     } catch (e) {
       console.warn("[landing-quote] upsert threw", e);
@@ -2087,6 +2157,7 @@ export default function CheckoutPage() {
           </button>
           {mobileOrderOpen && (
             <div className="bg-card rounded-b-card shadow-card p-4 -mt-1 animate-fade-in space-y-2">
+              {fipCountdownNode}
               {/* Bundle lines are flattened into independent rows — each bundle
                   item is its own line, visually identical to a normal item
                   (name × qty + its per-item price). No bundle name/header. */}
@@ -2111,6 +2182,7 @@ export default function CheckoutPage() {
                   <span className="font-bold flex-shrink-0">{fmt(row.lineTotal)}</span>
                 </div>
               ))}
+              {fipGiftRowsNode}
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
                 {isExpressOrder ? (
@@ -2173,6 +2245,7 @@ export default function CheckoutPage() {
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span>🏷️ Coupon ({appliedCoupon?.code})</span><span>-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span>🎁 Referral ({appliedReferral?.code})</span><span>-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span>🎉 Spend Discount</span><span>-{fmt(spendDiscount)}</span></div>}
+                {fipInfoLineNode}
                 <div className="flex justify-between font-bold text-sm pt-1"><span>Total</span><span className="text-forest">{fmt(grand)}</span></div>
                 <div className="text-[10px] text-text-light mt-1">🚚 Est. {fmtDate(fromDate)} – {fmtDate(toDate)}</div>
               </div>
@@ -2682,6 +2755,7 @@ export default function CheckoutPage() {
           <div className="hidden lg:block">
             <div className="bg-card rounded-card shadow-card p-6 sticky top-24">
               <h2 className="pf text-lg mb-4">Order Summary</h2>
+              {fipCountdownNode}
               <div className="max-h-[260px] overflow-y-auto mb-4 space-y-3">
                 {/* Bundle lines flattened into independent rows — each bundle
                     item is its own line (name · Qty + its per-item price),
@@ -2721,6 +2795,7 @@ export default function CheckoutPage() {
                     <div className="font-bold text-[13px] flex-shrink-0">{g.giftLineTotal === 0 ? "FREE" : fmt(g.giftLineTotal)}</div>
                   </div>
                 ))}
+                {fipGiftRowsNode}
               </div>
               <div className="space-y-2 font-body text-[13px]">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal ({totalItems} items)</span><span>{fmt(subtotal)}</span></div>
@@ -2784,6 +2859,7 @@ export default function CheckoutPage() {
                 {couponDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🏷️ Coupon ({appliedCoupon?.code})</span><span className="font-bold">-{fmt(couponDiscount)}</span></div>}
                 {referralDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎁 Referral ({appliedReferral?.code})</span><span className="font-bold">-{fmt(referralDiscount)}</span></div>}
                 {spendDiscount > 0 && <div className="flex justify-between text-forest"><span className="font-semibold">🎉 Spend Discount ({spendPrompt?.currentDiscount?.discount_percent}%)</span><span className="font-bold">-{fmt(spendDiscount)}</span></div>}
+                {fipInfoLineNode}
                 <div className="flex justify-between pt-2.5 border-t-2 border-border mt-0.5">
                   <span className="pf font-semibold">Total</span>
                   <span className="pf font-bold text-lg text-forest">{fmt(grand)}</span>
