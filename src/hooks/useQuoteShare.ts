@@ -44,6 +44,10 @@ export type QuoteShareItem = {
   current_in_stock: boolean;
   section: string | null; // 'baby'|'mother'|'hospital'|null — returned by the RPC (last column)
   is_promo_gift: boolean; // true for the free-items promo line items
+  // false = a CONVERTED existing cart item (its line_total must be subtracted
+  // from the client's cart-based payable). true = a genuinely ADDED bonus item
+  // that was never in the customer's cart (never subtracted, purely additive).
+  added_for_promo: boolean;
 };
 
 export function useQuoteByShareToken(shareToken: string | undefined) {

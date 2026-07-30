@@ -407,8 +407,16 @@ export default function PackagePage() {
   const fipQuoteQ = useQuoteByShareToken(fipShareToken ?? undefined);
   const fipItemsQ = useQuoteItemsByShareToken(fipShareToken ?? undefined);
   const fipActive = fipQuoteQ.data?.free_items_promo_status === "active";
-  const fipGiftItems = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
-  const fipDiscount = fipActive ? (fipQuoteQ.data?.free_items_promo_discount || 0) : 0;
+  const fipGifts = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
+  // CONVERTED gifts (added_for_promo=false): existing cart items the server
+  // flagged free. Their value IS already in this page's cart-based subtotal, so
+  // it must be subtracted from the payable — the client was charging for them.
+  const fipConverted = fipGifts.filter((i) => !i.added_for_promo);
+  const fipConvertedTotal = fipConverted.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
+  // ADDED gifts (added_for_promo=true): genuine bonus items never in the cart.
+  // Purely additive/informational — never subtracted (they were never counted).
+  const fipAdded = fipGifts.filter((i) => i.added_for_promo);
+  const fipAddedValue = fipAdded.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
   const fipExpiresAt = fipActive ? (fipQuoteQ.data?.free_items_promo_expires_at || null) : null;
 
   const promoQ = useQuery({
@@ -697,7 +705,11 @@ export default function PackagePage() {
   const deliveryFee = page.estimated_delivery_fee;
   const hasDeliveryFee = deliveryFee != null && deliveryFee > 0;
   // Total = subtotal - promo discount + service fee + (delivery when a real fee is set).
-  const liveTotal = Math.max(0, liveSubtotal - promoDiscount + effectiveServiceFee + (hasDeliveryFee ? deliveryFee : 0));
+  // fipConvertedTotal removes the value of existing cart items the promo turned
+  // free — they are still in liveSubtotal, so subtracting here is what stops the
+  // page charging for them. ADDED gifts are never in liveSubtotal, so they are
+  // never subtracted.
+  const liveTotal = Math.max(0, liveSubtotal - promoDiscount - fipConvertedTotal + effectiveServiceFee + (hasDeliveryFee ? deliveryFee : 0));
 
   return (
     <div className="min-h-screen bg-background pt-[84px] pb-8 px-4">
@@ -781,20 +793,34 @@ export default function PackagePage() {
           onAddToSection={openPicker}
         />
 
-        {/* Free bonus items from the promo — sourced from the fetched quote_items
-            (is_promo_gift), NOT the editable workItems, which have no gift
-            concept. Shown as free extras; their value is informational and is
-            never subtracted from the total (they aren't in this page's subtotal). */}
-        {fipActive && fipGiftItems.length > 0 && (
+        {/* CONVERTED items — existing cart lines the promo turned free. Their
+            value is subtracted from the total above, so we show it as a real
+            deduction here. We do NOT annotate the item rows individually: those
+            render through the shared (read-only-to-us) QuoteItemsCard editable
+            row, which has no gift treatment, so the deduction line + reduced
+            total is how the saving is surfaced (never a duplicate bonus entry). */}
+        {fipActive && fipConvertedTotal > 0 && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-red-700">
+              🎁 Free items promo — {fipConverted.length} item{fipConverted.length === 1 ? "" : "s"} in your cart, now free
+            </span>
+            <span className="text-sm font-bold text-red-600 whitespace-nowrap">−{fmt(fipConvertedTotal)}</span>
+          </div>
+        )}
+
+        {/* ADDED bonus items — genuine extras never in the cart, purely additive.
+            Sourced from the fetched quote_items (added_for_promo), NOT workItems.
+            Their value is informational and is never subtracted. */}
+        {fipActive && fipAdded.length > 0 && (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50/50 p-4">
             <div className="flex items-center justify-between gap-2 mb-2">
               <h3 className="text-sm font-bold text-red-700">🎁 Free bonus items</h3>
-              {fipDiscount > 0 && (
-                <span className="text-[11px] font-semibold text-red-600">{fmt(fipDiscount)} of gifts, free</span>
+              {fipAddedValue > 0 && (
+                <span className="text-[11px] font-semibold text-red-600">{fmt(fipAddedValue)} of gifts, free</span>
               )}
             </div>
             <div className="space-y-2">
-              {fipGiftItems.map((g) => (
+              {fipAdded.map((g) => (
                 <div key={`fip-gift-${g.id}`} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide flex-shrink-0">Free</span>

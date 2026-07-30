@@ -824,15 +824,30 @@ export default function CheckoutPage() {
   const fipQuoteQ = useQuoteByShareToken(landingShareToken ?? undefined);
   const fipItemsQ = useQuoteItemsByShareToken(landingShareToken ?? undefined);
   const fipActive = fipQuoteQ.data?.free_items_promo_status === "active";
-  const fipGiftItems = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
-  const fipDiscount = fipActive ? (fipQuoteQ.data?.free_items_promo_discount || 0) : 0;
+  const fipGifts = fipActive ? (fipItemsQ.data || []).filter((i) => i.is_promo_gift) : [];
+  // CONVERTED gifts (added_for_promo=false): existing cart items the server
+  // flagged free. Their value IS in this page's subtotal, so it MUST be
+  // subtracted from grandWith — otherwise the customer is charged (Paystack) for
+  // items the DB records as free.
+  const fipConverted = fipGifts.filter((i) => !i.added_for_promo);
+  const fipConvertedTotal = fipConverted.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
+  // Per-brand free quantity/value, so a converted cart row can be annotated in
+  // place (whole line free, or "N free" when the cart holds more than the gift).
+  const fipConvertedByBrand = new Map<string, { qty: number; lineTotal: number }>();
+  for (const g of fipConverted) {
+    if (!g.brand_id) continue;
+    const prev = fipConvertedByBrand.get(g.brand_id) || { qty: 0, lineTotal: 0 };
+    fipConvertedByBrand.set(g.brand_id, {
+      qty: prev.qty + (Number(g.quantity) || 0),
+      lineTotal: prev.lineTotal + (Number(g.line_total) || 0),
+    });
+  }
+  // ADDED gifts (added_for_promo=true): genuine bonus items never in the cart —
+  // additive/informational only, never subtracted.
+  const fipAdded = fipGifts.filter((i) => i.added_for_promo);
+  const fipAddedValue = fipAdded.reduce((s, i) => s + (Number(i.line_total) || 0), 0);
   const fipExpiresAt = fipActive ? (fipQuoteQ.data?.free_items_promo_expires_at || null) : null;
-  // Free delivery is the ONLY promo effect that changes what the customer pays.
-  // The gift items are free extras that are NOT in this page's cart/subtotal, so
-  // their value (fipDiscount) is shown informationally and never subtracted from
-  // the payable — doing so would discount the customer's OWN items and
-  // undercharge. delivery_fee_override === 0 means the promo granted free
-  // delivery on this quote.
+  // delivery_fee_override === 0 means the promo granted free delivery.
   const fipFreeDelivery = fipActive && fipQuoteQ.data?.delivery_fee_override === 0;
 
   // Free-items free delivery folds into `delivery` (and therefore grandWith and
@@ -890,20 +905,25 @@ export default function CheckoutPage() {
   };
 
   const giftWrapFee = effectiveGiftWrap ? giftWrapPrice : 0;
-  const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo);
+  // fipConvertedTotal removes existing cart items the promo turned free. It is
+  // inside grandWith, so it flows to the displayed total, the Paystack charge
+  // (chargeTotal = grandWith(...)), and the stored order.total together — they
+  // stay equal, so verify-payment (paid >= order.total) still matches. ADDED
+  // gifts are never in `subtotal`, so they are never part of this subtraction.
+  const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo - fipConvertedTotal);
   const grand = grandWith(promoDiscount);
 
   // ── Free-items promo display nodes (shared by both summary layouts) ──
-  // Countdown while the promo is active and unexpired. Gift items render as
-  // free extras (struck price + red "Free gift") from the fetched quote_items,
-  // NOT from local cart state. The value line is informational: it never
-  // changes `grand` (the gifts are not in this page's subtotal).
+  // Countdown while active/unexpired. The bonus block lists ONLY genuinely ADDED
+  // gifts (added_for_promo) — converted items appear once, annotated on their own
+  // cart row (see fipRowGift below), never duplicated here. The deduction line is
+  // a REAL subtraction: converted items' value has been removed from grand.
   const fipCountdownNode = (fipExpiresAt && new Date(fipExpiresAt).getTime() > Date.now())
     ? <div className="mb-3"><QuotePromoCountdown expiresAt={fipExpiresAt} /></div>
     : null;
-  const fipGiftRowsNode = fipGiftItems.length > 0 ? (
+  const fipGiftRowsNode = fipAdded.length > 0 ? (
     <>
-      {fipGiftItems.map((g) => (
+      {fipAdded.map((g) => (
         <div key={`fip-gift-${g.id}`} className="flex items-center justify-between gap-2 py-1">
           <div className="flex items-center gap-2 min-w-0">
             <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide flex-shrink-0">Free gift</span>
@@ -917,12 +937,27 @@ export default function CheckoutPage() {
       ))}
     </>
   ) : null;
-  const fipInfoLineNode = fipDiscount > 0 ? (
+  const fipInfoLineNode = fipConvertedTotal > 0 ? (
     <div className="flex justify-between text-red-600">
       <span>Free items promo</span>
-      <span>{fmt(fipDiscount)} of gifts, free</span>
+      <span>-{fmt(fipConvertedTotal)}</span>
     </div>
   ) : null;
+
+  // Per-cart-row gift annotation for a CONVERTED brand: returns the free-portion
+  // markup for a summary row, given its brand_id and cart quantity. Whole line
+  // free when the gift covers the full quantity; "N free" otherwise.
+  const fipRowGift = (brandId: string | null | undefined, rowQty: number) => {
+    if (!fipActive || !brandId) return null;
+    const c = fipConvertedByBrand.get(brandId);
+    if (!c || c.qty <= 0) return null;
+    const freeQty = Math.min(c.qty, rowQty);
+    return (
+      <span className="ml-2 inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+        {freeQty >= rowQty ? "Free" : `${freeQty} free`}
+      </span>
+    );
+  };
 
   // ── Progressive cart capture (best-effort, non-blocking) ─────────────
   // Once the visitor has entered an email OR phone on checkout, upsert a
@@ -2166,22 +2201,27 @@ export default function CheckoutPage() {
                   return item.bundleItems.map((bi: any, i: number) => ({
                     key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
                     qty: Number(bi.quantity) || 1, lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1),
-                    img: bi.imageUrl || null, flagged: false,
+                    img: bi.imageUrl || null, flagged: false, brandId: bi.brandId || null,
                   }));
                 }
                 const url = cartItemImage(item);
                 const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : null);
-                return [{ key: item._key, name: item.name, qty: item.qty, lineTotal: item.price * item.qty, img, flagged: cartItemHasIssue(item, stockIssues) }];
-              }).map((row: any) => (
+                return [{ key: item._key, name: item.name, qty: item.qty, lineTotal: item.price * item.qty, img, flagged: cartItemHasIssue(item, stockIssues), brandId: item.selectedBrand?.id || null }];
+              }).map((row: any) => {
+                const gc = fipActive ? fipConvertedByBrand.get(row.brandId) : null;
+                const fullyFree = !!gc && Math.min(gc.qty, row.qty) >= row.qty;
+                return (
                 <div key={row.key} className={`flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs ${row.flagged ? "border border-destructive/40 bg-destructive/5 rounded-md p-1.5" : ""}`}>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <LineItemThumb src={row.img} alt={row.name} className="w-12 h-12" />
                     <span className="truncate">{row.name} ×{row.qty}</span>
+                    {fipRowGift(row.brandId, row.qty)}
                     {row.flagged && <span className="text-[10px] font-semibold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-pill flex-shrink-0">Out of stock</span>}
                   </div>
-                  <span className="font-bold flex-shrink-0">{fmt(row.lineTotal)}</span>
+                  <span className={`font-bold flex-shrink-0 ${fullyFree ? "line-through text-red-600" : ""}`}>{fmt(row.lineTotal)}</span>
                 </div>
-              ))}
+                );
+              })}
               {fipGiftRowsNode}
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
@@ -2766,21 +2806,26 @@ export default function CheckoutPage() {
                       key: `${item._key}-${i}`, name: bi.productName || bi.name || "Item",
                       brand: bi.brandName || null, qty: Number(bi.quantity) || 1,
                       lineTotal: (Number(bi.price) || 0) * (Number(bi.quantity) || 1), img: bi.imageUrl || null,
+                      brandId: bi.brandId || null,
                     }));
                   }
                   const url = cartItemImage(item);
                   const img = url !== "/placeholder.svg" ? url : (item.img && item.img.startsWith("http") ? item.img : null);
-                  return [{ key: item._key, name: item.name, brand: item.selectedBrand?.label || null, qty: item.qty, lineTotal: item.price * item.qty, img }];
-                }).map((row: any) => (
+                  return [{ key: item._key, name: item.name, brand: item.selectedBrand?.label || null, qty: item.qty, lineTotal: item.price * item.qty, img, brandId: item.selectedBrand?.id || null }];
+                }).map((row: any) => {
+                  const gc = fipActive ? fipConvertedByBrand.get(row.brandId) : null;
+                  const fullyFree = !!gc && Math.min(gc.qty, row.qty) >= row.qty;
+                  return (
                   <div key={row.key} className="flex items-center gap-3 pb-3 border-b border-border/50">
                     <LineItemThumb src={row.img} alt={row.name} className="w-12 h-12" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold leading-tight truncate">{row.name}</div>
+                      <div className="text-xs font-semibold leading-tight truncate flex items-center">{row.name}{fipRowGift(row.brandId, row.qty)}</div>
                       <div className="text-forest text-[10px] mt-0.5">{row.brand ? `${row.brand} · ` : ""}Qty {row.qty}</div>
                     </div>
-                    <div className="font-bold text-[13px] flex-shrink-0">{fmt(row.lineTotal)}</div>
+                    <div className={`font-bold text-[13px] flex-shrink-0 ${fullyFree ? "line-through text-red-600" : ""}`}>{fmt(row.lineTotal)}</div>
                   </div>
-                ))}
+                  );
+                })}
                 {/* Auto-added gift lines — derived, priced by the RPC (free = ₦0). */}
                 {gifts.map(g => (
                   <div key={g.key} className="flex items-center gap-3 pb-3 border-b border-border/50">
