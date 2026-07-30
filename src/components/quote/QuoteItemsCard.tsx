@@ -25,6 +25,11 @@ export interface QuoteViewItem {
   // True for a free-items promo gift. When set, the read-only row shows the
   // normal price struck through with a short "free" note, rather than ₦0.
   is_promo_gift?: boolean;
+  // Editable rows only: how many units of THIS row are free (a converted
+  // promo gift). 0/undefined = fully normal (unchanged default). >= quantity =
+  // whole line free; between 1 and quantity-1 = partial ("N free"). ReadOnlyRow
+  // ignores this and keeps using is_promo_gift, so QuotePage is unaffected.
+  freeQuantity?: number;
 }
 
 // Canonical section order/labels. Exported so the package page can build its
@@ -180,10 +185,32 @@ function EditableRow({ it, h }: { it: QuoteViewItem; h: EditHandlers }) {
                 <Plus className="w-4 h-4" />
               </button>
             </div>
-            <div className="text-right">
-              <p className="text-[11px] text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
-              <p className="text-sm font-bold">{fmt(it.line_total)}</p>
-            </div>
+            {(() => {
+              // Converted-gift treatment, layered on top of the unchanged qty
+              // stepper. Full line free = struck + the same red label ReadOnlyRow
+              // uses; partial = normal price + a "N free" pill (same wording as
+              // CheckoutPage). Money is netted in the totals deduction line, so
+              // the partial row price is not itself reduced here.
+              const freeQty = Math.max(0, Math.min(Number(it.freeQuantity) || 0, it.quantity));
+              if (freeQty >= it.quantity && it.quantity > 0) {
+                return (
+                  <div className="text-right">
+                    <p className="text-[11px] text-text-med line-through">{it.quantity} × {fmt(it.unit_price)}</p>
+                    <p className="text-sm font-bold text-red-600 line-through">{fmt(it.line_total)}</p>
+                    <p className="text-[11px] font-semibold text-red-600 leading-tight mt-0.5">Free for you, 24 hours only</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="text-right">
+                  <p className="text-[11px] text-text-med">{it.quantity} × {fmt(it.unit_price)}</p>
+                  <p className="text-sm font-bold">{fmt(it.line_total)}</p>
+                  {freeQty > 0 && (
+                    <span className="mt-0.5 inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{freeQty} free</span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

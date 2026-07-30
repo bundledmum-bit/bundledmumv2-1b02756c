@@ -681,20 +681,40 @@ export default function PackagePage() {
     );
   }
 
-  const viewItems = workItems.map((it) => ({
-    id: it.key,
-    product_id: it.product_id,
-    product_name: it.product_name,
-    brand_name: it.brand_name,
-    size: it.size,
-    color: it.color,
-    quantity: it.quantity,
-    unit_price: it.unit_price,
-    line_total: it.line_total,
-    section: it.section,
-    display_order: it.display_order,
-    image_url: it.image_url ?? imageForIds(it.product_id, it.brand_id),
-  }));
+  // Per-brand free quantity from the converted gifts (reuses fipConverted).
+  // Each converted quote_items row's quantity is exactly how many units of that
+  // brand are free (backend-capped at the tier amount). We then distribute those
+  // free units across the matching cart rows below, so a converted item's own
+  // row shows the free portion — matching QuotePage's per-item treatment.
+  const fipFreeQtyByBrand = new Map<string, number>();
+  for (const g of fipConverted) {
+    if (!g.brand_id) continue;
+    fipFreeQtyByBrand.set(g.brand_id, (fipFreeQtyByBrand.get(g.brand_id) || 0) + (Number(g.quantity) || 0));
+  }
+  const fipRemainingFree = new Map(fipFreeQtyByBrand); // mutable: spend free units row by row
+  const viewItems = workItems.map((it) => {
+    let freeQuantity = 0;
+    if (it.brand_id) {
+      const rem = fipRemainingFree.get(it.brand_id) || 0;
+      freeQuantity = Math.min(rem, it.quantity);
+      if (freeQuantity > 0) fipRemainingFree.set(it.brand_id, rem - freeQuantity);
+    }
+    return {
+      id: it.key,
+      product_id: it.product_id,
+      product_name: it.product_name,
+      brand_name: it.brand_name,
+      size: it.size,
+      color: it.color,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      line_total: it.line_total,
+      section: it.section,
+      display_order: it.display_order,
+      image_url: it.image_url ?? imageForIds(it.product_id, it.brand_id),
+      freeQuantity,
+    };
+  });
 
   // Live totals from the edited working copy. Service fee: use the per-page fee
   // when the admin set one (> 0), otherwise fall back to the global default.
