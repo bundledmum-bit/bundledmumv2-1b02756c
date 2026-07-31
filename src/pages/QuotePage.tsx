@@ -45,8 +45,17 @@ export default function QuotePage() {
   // Klump CTA below. Carried through to /checkout?pay=klump to preselect Klump.
   const urlPayKlump = searchParams.get("pay") === "klump";
 
-  const quoteQ = useQuoteByShareToken(shareToken);
-  const itemsQ = useQuoteItemsByShareToken(shareToken);
+  // Sequence the view flip before the read. record_quote_view moves an 'applied'
+  // promo to 'active' and stamps free_items_promo_expires_at; running the quote
+  // query in parallel reads the pre-view state, so the countdown / free items
+  // don't appear until a manual refresh. We hold the read (queries disabled)
+  // until record_quote_view has settled, then fetch the current state directly —
+  // the skeleton shows meanwhile, so there's no flash of the pre-view state.
+  const viewedRef = useRef(false);
+  const [viewSettled, setViewSettled] = useState(false);
+
+  const quoteQ = useQuoteByShareToken(viewSettled ? shareToken : undefined);
+  const itemsQ = useQuoteItemsByShareToken(viewSettled ? shareToken : undefined);
   const quote = quoteQ.data;
   const items: QuoteShareItem[] = itemsQ.data || [];
 
@@ -105,12 +114,14 @@ export default function QuotePage() {
     }
   };
 
-  // Record one view per mount even under React 18 StrictMode's double-fire.
-  const viewedRef = useRef(false);
+  // Record one view per mount even under React 18 StrictMode's double-fire, then
+  // release the read. recordQuoteView swallows its own errors (never throws), so
+  // .finally always runs — on RPC failure we still enable the query rather than
+  // hang on the skeleton.
   useEffect(() => {
     if (!shareToken || viewedRef.current) return;
     viewedRef.current = true;
-    void recordQuoteView(shareToken);
+    recordQuoteView(shareToken).finally(() => setViewSettled(true));
   }, [shareToken]);
 
   useEffect(() => {
@@ -211,7 +222,10 @@ export default function QuotePage() {
   };
 
   // ── Loading / not-found ────────────────────────────────────────
-  if (quoteQ.isLoading || itemsQ.isLoading) {
+  // While the view is being recorded (queries still disabled) show the skeleton,
+  // not the not-found state — a disabled react-query reports isLoading === false.
+  // The `shareToken &&` guard keeps a missing token falling through to not-found.
+  if ((shareToken && !viewSettled) || quoteQ.isLoading || itemsQ.isLoading) {
     return (
       <div className="min-h-screen bg-background py-10 px-4">
         <div className="max-w-[820px] mx-auto">

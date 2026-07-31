@@ -38,6 +38,26 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## QuotePage: countdown now appears on first open (BUG FIXED)
+- Bug: on first load of a shared quote, the countdown/free-item display only
+  appeared after a manual refresh. Cause was SEQUENCING: the quote data queries
+  (useQuoteByShareToken/ItemsByShareToken) fired on mount IN PARALLEL with the
+  fire-and-forget `recordQuoteView`, so they read the pre-view state ('applied',
+  no expires_at) before record_quote_view flipped it to 'active'. Refresh worked
+  only because the prior load had already flipped the DB.
+- Fix (QuotePage.tsx only): gate the queries on a new `viewSettled` flag — pass
+  `undefined` (query disabled) until `recordQuoteView(shareToken).finally(() =>
+  setViewSettled(true))` resolves, then fetch the current (post-view) state. Also
+  extended the loading gate to `(shareToken && !viewSettled) || isLoading` because
+  a DISABLED react-query reports isLoading===false and would otherwise fall
+  through to "Quote not found" during the wait. record_quote_view's own
+  logic/signature is UNCHANGED — only its relationship to the fetch.
+- No flash: the existing skeleton shows during the ~1-RPC wait, then the correct
+  active state renders directly. DO NOT reintroduce a parallel mount-time quote
+  fetch on this page — it must stay gated behind record_quote_view settling.
+- Verified live on an 'applied' quote (BMQ-20260730-005): countdown shown on
+  first load, no refresh; DB flipped applied→active with expiry set.
+
 ## QuoteProfitPanel: combined "Discount Applied" (BUILT)
 - The panel's "Discount Applied" row now shows discount_amount +
   free_items_promo_discount as one figure; the separate "Free items promo" row
