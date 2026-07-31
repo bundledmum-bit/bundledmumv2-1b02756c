@@ -802,6 +802,9 @@ export default function AdminOrders() {
                     ) : !o.is_subscription_order && (
                       <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-500">Direct</span>
                     )}
+                    {Number(o.free_items_promo_discount) > 0 && (
+                      <span title="Includes free items promo" className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-100 text-red-700">🎁 Free items</span>
+                    )}
                     {o.is_subscription_order && (() => {
                       const dd = subDeliveryDate(o);
                       return dd ? <div className="mt-0.5 text-[10px] font-bold text-coral whitespace-nowrap">Deliver: {fmtDeliverLabel(dd)}</div> : null;

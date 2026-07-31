@@ -38,6 +38,51 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## Gift-display coverage — both admin gaps CLOSED (BUILT)
+- **Gap 1 (quote editor main list)**: `QuoteLineItemCard` in
+  `PackageItemsBuilder.tsx` now strikes the line total (`text-red-600
+  line-through`) + shows the existing red "Free gift" pill
+  (`bg-red-100 text-red-700 border border-red-300 … text-[9px] uppercase`, same
+  as AdminOrders detail) when `it.is_promo_gift` is true. Purely additive: it
+  reads an OPTIONAL field on the raw item; the other mount
+  (AdminLandingPages.tsx:350) feeds `landing_page_items`, which has NO
+  is_promo_gift column (verified in DB) → undefined → byte-identical rendering.
+  PasteListMatcher only imports helpers, not a mount.
+- **Gap 2 (orders list)**: `get_admin_orders` now returns
+  free_items_promo_tier/discount/delivery_granted per row + is_promo_gift per
+  item (verified live — was absent before). Added a "🎁 Free items" pill on any
+  row where `free_items_promo_discount > 0`, on both the desktop table
+  (AdminOrders.tsx Status cell, `bg-red-100 text-red-700` matching the
+  Quiz/Direct/PICKED pills) and the mobile `AdminOrderCard` bottom badge row
+  (same style, `text-[10px]`). List-level only; the detail view/query untouched.
+
+### Gift-display coverage audit (original diagnostic — now resolved above)
+Two genuine gaps found for admin-side gift visibility (customer/order/email
+surfaces are known-good and unchanged):
+1. **Quote editor MAIN item list = GAP.** The editor's full item list renders
+   via `PackageItemsBuilder` (mounted AdminQuotes.tsx:2329; `items` memo at
+   AdminQuotes.tsx:1750 passes ALL quote_items unfiltered, gifts included).
+   `PackageItemsBuilder` has NO `is_promo_gift` awareness — `LineItemCard` shows
+   `line_total` at full price (PackageItemsBuilder.tsx:314); the only
+   `line-through` is for out-of-stock size options (line 92), the only "gift" is
+   the "Gift Items" SECTION label. So a gift row (is_promo_gift=true, full
+   line_total, e.g. ₦23,100) looks like a normal paid line; the ONLY free-ness
+   cue is the separate FreeItemsPromoBanner box. An admin scanning the main list
+   can't tell which lines are free without cross-referencing the banner.
+2. **Orders LIST page = GAP, and data not even available.** The orders table
+   (desktop AdminOrders.tsx:753-810 + mobile AdminOrderCard) has badges for
+   Express/PICKED/Subscription/Quiz/Direct and gift-WRAPPING (🎀, separate
+   feature) but NO free-items-promo/gift indicator. The list is powered by the
+   `get_admin_orders` RPC, which does NOT return free_items_promo_discount /
+   free_items_promo_status / is_promo_gift (verified) — so a per-row badge would
+   need that RPC extended (DB change), not just frontend.
+   The promo display exists ONLY in the single-order DETAIL expansion
+   (gift badge on items AdminOrders.tsx:1610, struck price 1624, "Free items
+   promo" totals line 1645-1648, via the detail query at :430) — known-good,
+   reads is_promo_gift/free_items_promo_discount generically, unaffected by the
+   switch to manual picking (assumption confirmed).
+Nothing built this turn; awaiting decision on whether to close either gap.
+
 ## Admin promo — dynamic tier eligibility (BUILT — bug fix)
 - **Bug**: `FreeItemsPromoBanner` (AdminQuotes.tsx) hardcoded eligibility to
   tier_500k/tier_300k and hardcoded the tier label the same way, so a new

@@ -121,6 +121,9 @@ export default function AdminOrderCard({
           >
             {o.payment_status}
           </span>
+          {Number(o.free_items_promo_discount) > 0 && (
+            <span title="Includes free items promo" className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700">🎁 Free items</span>
+          )}
         </div>
 
         <DropdownMenu>

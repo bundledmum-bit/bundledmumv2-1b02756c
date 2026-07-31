@@ -311,7 +311,18 @@ export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPendin
                 <span className="font-semibold text-foreground">{fmtN(it.unit_price)}</span>
               )}
             </div>
-            <div className="ml-auto text-sm font-bold text-forest">{fmtN(it.line_total)}</div>
+            {/* Promo gift lines (is_promo_gift on quote_items) strike the price
+                and show the same red "Free gift" pill used on the order detail
+                view. Purely additive: consumers whose items have no is_promo_gift
+                field (e.g. the landing-page builder) render exactly as before. */}
+            {it.is_promo_gift ? (
+              <div className="ml-auto text-right">
+                <div className="text-sm font-bold text-red-600 line-through">{fmtN(it.line_total)}</div>
+                <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 border border-red-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">Free gift</span>
+              </div>
+            ) : (
+              <div className="ml-auto text-sm font-bold text-forest">{fmtN(it.line_total)}</div>
+            )}
           </div>
         </div>
       </div>
