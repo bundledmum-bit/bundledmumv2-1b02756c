@@ -38,6 +38,24 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## Quote editor: mark items free inline (BUILT)
+- `QuoteLineItemCard` (PackageItemsBuilder) now shows an optional "Mark free" /
+  "Unmark free" text button per row (matches the existing Remove text-button
+  style), via a new OPTIONAL `giftControl` prop. Mark → `add_free_items_promo_item`
+  with the row's brand_id + FULL current quantity (RPC converts an existing paid
+  line); unmark → `remove_free_items_promo_item` by quote_items.id. Cap/threshold
+  rejections shown verbatim; refetch on success updates the row + banner cap.
+- Eligibility is single-source: extracted `useActiveFipTiers()` hook +
+  `offeredTierFor()` / `giftMarkingTier()` helpers in AdminQuotes.tsx. The banner
+  now uses them (behavior-identical) and QuoteEditor uses them for the row
+  control (`rowGiftControl`), so both derive the tier from the same query+ladder.
+  Control appears only when `canEdit && giftMarkingTier(...) != null` (applied/
+  active → started tier; null → offered tier; expired/cancelled → none) and the
+  row has a brand_id or is already a gift.
+- Additive-safe: AdminLandingPages' PackageItemsBuilder mount passes no
+  giftControl → undefined → no toggle → unchanged (landing items also have no
+  is_promo_gift column). FreeItemsPromoBanner picker unchanged.
+
 ## Gift-display coverage — both admin gaps CLOSED (BUILT)
 - **Gap 1 (quote editor main list)**: `QuoteLineItemCard` in
   `PackageItemsBuilder.tsx` now strikes the line total (`text-red-600

@@ -46,6 +46,7 @@ interface LineItemCardProps {
   onUpdate: (patch: Record<string, any>) => void;
   onRemove: () => void;
   onZoom: (src: string) => void;
+  giftControl?: { busy: boolean; onToggle: (item: any) => void };
 }
 
 // Per-item add dialog: prompts size (when the product has sizes) + quantity in
@@ -140,7 +141,7 @@ export function AddItemDialog({ product, onCancel, onConfirm }: {
   );
 }
 
-export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom }: LineItemCardProps) {
+export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPending, onUpdate, onRemove, onZoom, giftControl }: LineItemCardProps) {
   const currentBrand = brands.find((b: any) => b.id === it.brand_id) ?? null;
   // A line for a size-bearing product with no size yet. Allowed while the
   // quote is being built (the size is often unknown at that point), but it
@@ -335,9 +336,22 @@ export function QuoteLineItemCard({ it, canEdit, brands, sizes, colors, isPendin
         </div>
       )}
 
-      {/* Remove */}
+      {/* Row actions — gift toggle (when the quote is promo-eligible) + Remove.
+          Text buttons, matching the existing Remove control. giftControl is only
+          shown for a row that can actually be gifted (already a gift → removable,
+          or has a brand_id → convertible). */}
       {canEdit && (
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex justify-end items-center gap-3">
+          {giftControl && (it.is_promo_gift || it.brand_id) && (
+            <button
+              type="button"
+              disabled={giftControl.busy}
+              onClick={() => giftControl.onToggle(it)}
+              className="text-xs text-red-600 hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {it.is_promo_gift ? "Unmark free" : "Mark free"}
+            </button>
+          )}
           <button
             type="button"
             onClick={onRemove}
@@ -375,6 +389,11 @@ export interface PackageItemsBuilderProps {
   onAddItem: (payload: AddItemPayload) => void;
   onUpdateItem: (id: string, patch: Record<string, any>) => void;
   onRemoveItem: (id: string) => void;
+  // Optional free-items promo control. When supplied (only the quote editor
+  // does), each eligible row gets a "Mark free" / "Unmark free" toggle. Absent
+  // for every other consumer (e.g. the landing-page builder), which then renders
+  // exactly as before.
+  giftControl?: { busy: boolean; onToggle: (item: any) => void };
 }
 
 export default function PackageItemsBuilder({
@@ -386,6 +405,7 @@ export default function PackageItemsBuilder({
   onAddItem,
   onUpdateItem,
   onRemoveItem,
+  giftControl,
 }: PackageItemsBuilderProps) {
   const [productSearch, setProductSearch] = useState("");
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -708,6 +728,7 @@ export default function PackageItemsBuilder({
             onUpdate={(patch) => onUpdateItem(it.id, patch)}
             onRemove={() => onRemoveItem(it.id)}
             onZoom={setZoomSrc}
+            giftControl={giftControl}
           />
         );
         if (!filteredItems.some((it: any) => !!it.section)) {

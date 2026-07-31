@@ -1384,6 +1384,43 @@ function GiftItemPicker({ onPick, disabled }: { onPick: (brandId: string, qty: n
   );
 }
 
+// ─── Free-items promo eligibility (single source) ───────────────────
+// Shared by the banner AND the item-list row "Mark free" control, so both
+// derive the tier from exactly the same active-tiers query + ladder.
+type FipTier = { tier_key: string; label: string; cap: number; threshold: number };
+
+function useActiveFipTiers() {
+  return useQuery({
+    queryKey: ["fip-active-tiers"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<FipTier[]> => {
+      const { data, error } = await (supabase as any)
+        .from("free_items_promo_tiers")
+        .select("tier_key, label, cap, threshold")
+        .eq("is_active", true)
+        .order("threshold", { ascending: false });
+      if (error) throw error;
+      return (data || []) as FipTier[];
+    },
+  });
+}
+
+// Highest-threshold active tier the real (non-gift) subtotal meets; rows are
+// sorted descending, so the first match is the best tier. None → null.
+function offeredTierFor(activeTiers: FipTier[], realSubtotal: number): string | null {
+  return activeTiers.find((t) => realSubtotal >= (Number(t.threshold) || 0))?.tier_key ?? null;
+}
+
+// The tier to gift a specific item at, matching the banner's own gating exactly:
+// while started (applied/active) use the started tier; not yet started (null) use
+// the offered tier; expired/cancelled → no gifting. null means "no control".
+function giftMarkingTier(quote: any, activeTiers: FipTier[], realSubtotal: number): string | null {
+  const status = quote?.free_items_promo_status ?? null;
+  if (status === "applied" || status === "active") return quote?.free_items_promo_tier ?? null;
+  if (status === null) return offeredTierFor(activeTiers, realSubtotal);
+  return null;
+}
+
 /**
  * Free-items promo — admin manually gifts catalog items up to the tier cap.
  * The old one-click apply (fixed SKU list) is retired; add/remove now go through
@@ -1412,28 +1449,13 @@ function FreeItemsPromoBanner({
   const giftItems = lineItems.filter((it) => it?.is_promo_gift === true);
   const giftUsed = giftItems.reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
 
-  // Every active tier, highest threshold first. This drives eligibility, the
-  // labels, and the offer-line cap — fully dynamic, so any tier configured on
-  // the Quote Promo admin page works with zero code change. Never gate on
-  // offeredTier (it is derived from this) and never special-case a tier key.
-  const { data: activeTiers = [] } = useQuery({
-    queryKey: ["fip-active-tiers"],
-    staleTime: 5 * 60 * 1000,
-    queryFn: async (): Promise<Array<{ tier_key: string; label: string; cap: number; threshold: number }>> => {
-      const { data, error } = await (supabase as any)
-        .from("free_items_promo_tiers")
-        .select("tier_key, label, cap, threshold")
-        .eq("is_active", true)
-        .order("threshold", { ascending: false });
-      if (error) throw error;
-      return (data || []) as Array<{ tier_key: string; label: string; cap: number; threshold: number }>;
-    },
-  });
+  // Every active tier, highest threshold first (shared hook + helpers below, so
+  // the row-mark control in the item list derives eligibility from the SAME
+  // value, never a second copy of the ladder).
+  const { data: activeTiers = [] } = useActiveFipTiers();
 
-  // The highest-threshold active tier the real (non-gift) subtotal meets. Rows
-  // are sorted descending, so the first match is the best tier; none → null.
-  const offeredTier: string | null =
-    activeTiers.find((t) => realSubtotal >= (Number(t.threshold) || 0))?.tier_key ?? null;
+  // The highest-threshold active tier the real (non-gift) subtotal meets.
+  const offeredTier: string | null = offeredTierFor(activeTiers, realSubtotal);
 
   // Label from the fetched tiers (never hardcoded). Falls back to the raw key
   // for a tier that isn't in the active set (e.g. a since-deactivated tier still
@@ -1751,6 +1773,48 @@ function QuoteEditor({
     () => (quoteData?.quote_items || []).slice().sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0)),
     [quoteData],
   );
+
+  // Free-items promo: let the admin mark an existing line free straight from the
+  // item list. Reuses the SAME eligibility the banner uses (shared active-tiers
+  // query + ladder), so the control appears under exactly the banner's gating.
+  const { data: activeFipTiers = [] } = useActiveFipTiers();
+  const fipRealSubtotal = items
+    .filter((it) => it?.is_promo_gift !== true)
+    .reduce((s, it) => s + (Number(it?.line_total) || 0), 0);
+  const fipGiftTier = giftMarkingTier(quoteData, activeFipTiers, fipRealSubtotal);
+  const [rowGiftBusy, setRowGiftBusy] = useState(false);
+  const toggleRowGift = async (item: any) => {
+    if (rowGiftBusy || !currentId) return;
+    setRowGiftBusy(true);
+    try {
+      if (item?.is_promo_gift) {
+        const { error } = await (supabase as any).rpc("remove_free_items_promo_item", {
+          p_quote_id: currentId,
+          p_item_id: item.id,
+        });
+        if (error) throw error;
+        toast.success("Item is no longer free.");
+      } else {
+        // Convert the whole current line: full quantity, tier resolved above.
+        const { error } = await (supabase as any).rpc("add_free_items_promo_item", {
+          p_quote_id: currentId,
+          p_tier: fipGiftTier,
+          p_brand_id: item.brand_id,
+          p_quantity: Math.max(1, Number(item.quantity) || 1),
+        });
+        if (error) throw error;
+        toast.success("Item marked free.");
+      }
+      await refetchQuote(); // row display + banner cap total both refresh
+    } catch (e: any) {
+      // Verbatim RPC message (cap/threshold/stock) — the source of truth.
+      toast.error(e?.message || "Could not update the gift item.");
+    } finally {
+      setRowGiftBusy(false);
+    }
+  };
+  const rowGiftControl =
+    canEdit && !!fipGiftTier ? { busy: rowGiftBusy, onToggle: toggleRowGift } : undefined;
 
   const liveSubtotal = items.reduce((s, it) => s + (it.line_total || 0), 0);
   const serviceFeeNum = parseInt(form.service_fee, 10) || 0;
@@ -2335,6 +2399,7 @@ function QuoteEditor({
             onAddItem={(payload) => addItem.mutate(payload)}
             onUpdateItem={(id, patch) => updateItem.mutate({ id, patch })}
             onRemoveItem={(id) => removeItem.mutate(id)}
+            giftControl={rowGiftControl}
           />
 
           {/* Section D — Notes */}
