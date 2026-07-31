@@ -38,6 +38,30 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## Admin promo — manual item-gifting (BUILT this turn)
+- **Model change**: the one-click "Apply free items promo" (fixed SKU list) is
+  retired; `apply_free_items_promo` is **dropped from the DB**. Admins now gift
+  catalog items one at a time up to the tier cap.
+- **File**: `FreeItemsPromoBanner` in `src/pages/admin/AdminQuotes.tsx` (only
+  file changed). Added a local `GiftItemPicker` (replicates the products search
+  from PackageItemsBuilder / QuotePromoAdmin's AddItemSearch).
+- **RPCs**: `add_free_items_promo_item(p_quote_id,p_tier,p_brand_id,p_quantity=1)`
+  (first call starts the promo: validates threshold, snapshots cap/timer, grants
+  delivery if the tier does, then adds; enforces cap; converts-vs-adds server-side)
+  and `remove_free_items_promo_item(p_quote_id,p_item_id)` (clears promo if it was
+  the last gift). Both messages shown **verbatim** on failure (no client-side cap
+  pre-validation).
+- **States**: null+eligible → "qualifies for up to ₦{cap} ({tier})" + picker
+  (first add starts it). applied/active → **unchanged status line** + "₦X of ₦Y
+  used" + gift list with per-row remove + picker to add more (same tier).
+  expired/cancelled → muted reverted line (cancelled was previously unhandled →
+  now covered). Quantity: a picker input (default 1) → `p_quantity`.
+- **Refetch**: every add/remove calls `onApplied()` (refetchQuote), so summary,
+  list and the totals discount line / QuoteProfitPanel (unchanged, read
+  `free_items_promo_discount` generically) all update.
+- Tiers: `tier_500k` cap ₦50,000 / `tier_300k` cap ₦17,000 (`free_items_promo_tiers`).
+- Not browser-verified (admin is auth-gated); RPCs confirmed live, tsc/lint/build pass.
+
 ## Quiz suggested-budget — BUILT (this turn)
 - **What changed**: `src/hooks/useBudgetSuggestions.ts` now overrides the three
   budget-card AMOUNTS with engine-accurate values. Labels, sub-copy, ordering,

@@ -1289,6 +1289,109 @@ function QuotePaymentLinkCard({
  * gate — it re-checks the 500k threshold and throws a human-readable message we
  * surface verbatim, never reworded.
  */
+// Catalog item picker for gifting — replicates the products search used
+// elsewhere in this admin (PackageItemsBuilder / QuotePromoAdmin's AddItemSearch).
+// Picks a brand_id + quantity; the parent calls add_free_items_promo_item. A
+// quantity input (default 1) lets the admin gift multiples in one add, since the
+// RPC accepts p_quantity.
+function GiftItemPicker({ onPick, disabled }: { onPick: (brandId: string, qty: number) => void; disabled?: boolean }) {
+  const [term, setTerm] = useState("");
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState(1);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const trimmed = term.trim();
+
+  const { data: results = [] } = useQuery({
+    queryKey: ["fip-gift-product-search", trimmed],
+    enabled: trimmed.length >= 2,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("products")
+        .select("id, name, brands!brands_product_id_fkey!inner(id, brand_name, price, in_stock)")
+        .eq("is_active", true)
+        .eq("brands.in_stock", true)
+        .gt("brands.price", 0)
+        .ilike("name", `%${trimmed}%`)
+        .limit(15);
+      if (error) throw error;
+      const rows: Array<{ brandId: string; productName: string; brandName: string; price: number }> = [];
+      (data || []).forEach((p: any) =>
+        (p.brands || []).forEach((b: any) =>
+          rows.push({ brandId: b.id, productName: p.name, brandName: b.brand_name, price: b.price }),
+        ),
+      );
+      return rows;
+    },
+  });
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  return (
+    <div ref={boxRef} className="relative">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 border border-dashed border-forest/50 rounded-lg px-3 py-2 flex-1 min-w-0">
+          <Search className="w-4 h-4 text-text-light flex-shrink-0" />
+          <input
+            value={term}
+            onChange={(e) => { setTerm(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder="Gift an item — search products…"
+            disabled={disabled}
+            className="flex-1 bg-transparent text-sm outline-none min-w-0"
+          />
+          {term && (
+            <button type="button" onClick={() => { setTerm(""); setOpen(false); }} aria-label="Clear">
+              <X className="w-4 h-4 text-text-light" />
+            </button>
+          )}
+        </div>
+        <input
+          type="number" min={1} value={qty} disabled={disabled}
+          onChange={(e) => setQty(Math.max(1, parseInt(e.target.value, 10) || 1))}
+          aria-label="Quantity to gift" title="Quantity to gift"
+          className="w-16 border border-input rounded-lg px-2 py-2 text-sm bg-background text-center"
+        />
+      </div>
+      {open && trimmed.length >= 2 && (
+        <div className="absolute z-20 mt-1 w-full bg-card border border-border rounded-lg shadow-lg max-h-72 overflow-auto">
+          {results.length === 0 ? (
+            <p className="px-3 py-3 text-sm text-text-med">No matches.</p>
+          ) : (
+            results.map((r) => (
+              <button
+                key={r.brandId}
+                type="button"
+                onClick={() => { onPick(r.brandId, qty); setTerm(""); setOpen(false); }}
+                disabled={disabled}
+                className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-3 disabled:opacity-50"
+              >
+                <span className="min-w-0">
+                  <span className="text-sm font-semibold block truncate">{r.productName}</span>
+                  <span className="text-[11px] text-text-med">{r.brandName}</span>
+                </span>
+                <span className="text-xs tabular-nums text-text-med flex-shrink-0">{fmtN(r.price)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Free-items promo — admin manually gifts catalog items up to the tier cap.
+ * The old one-click apply (fixed SKU list) is retired; add/remove now go through
+ * add_free_items_promo_item / remove_free_items_promo_item, which handle
+ * threshold, cap, convert-vs-add and delivery server-side. The RPC is the source
+ * of truth for the cap — we never pre-validate it, we just surface its verbatim
+ * rejection.
+ */
 function FreeItemsPromoBanner({
   quote,
   canEdit,
@@ -1298,17 +1401,19 @@ function FreeItemsPromoBanner({
   canEdit: boolean;
   onApplied: () => void;
 }) {
-  const [applying, setApplying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const status: "applied" | "active" | "expired" | null = quote?.free_items_promo_status ?? null;
+  const status: "applied" | "active" | "expired" | "cancelled" | null = quote?.free_items_promo_status ?? null;
+  const quoteId: string | undefined = quote?.id;
   const lineItems: any[] = Array.isArray(quote?.quote_items) ? quote.quote_items : [];
   const realSubtotal = lineItems
     .filter((it) => it?.is_promo_gift !== true)
     .reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
+  const giftItems = lineItems.filter((it) => it?.is_promo_gift === true);
+  const giftUsed = giftItems.reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
 
   // Two tiers. The higher threshold wins when both would match (a 600k quote is
-  // a tier_500k quote, never both), so only one banner is ever offered.
+  // a tier_500k quote, never both), so only one tier is ever offered.
   const TIER_500K = 500_000;
   const TIER_300K = 300_000;
   const offeredTier: "tier_500k" | "tier_300k" | null =
@@ -1316,8 +1421,6 @@ function FreeItemsPromoBanner({
       : realSubtotal >= TIER_300K ? "tier_300k"
         : null;
 
-  // Label for the applied/active/expired status lines, read from the tier the
-  // promo was actually applied at (not a recompute of the current subtotal).
   const tierLabel = (t: string | null | undefined) =>
     t === "tier_300k" ? "₦300k tier" : "₦500k tier";
   const appliedTierLabel = tierLabel(quote?.free_items_promo_tier);
@@ -1330,92 +1433,144 @@ function FreeItemsPromoBanner({
         })
       : "";
 
-  // Applied: waiting for the customer to open the link and start the timer.
-  if (status === "applied") {
-    return (
-      <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
-        <p className="text-sm text-green-900">
-          Free items promo applied ({appliedTierLabel}). Timer starts when the customer opens the quote link.
-        </p>
-      </div>
-    );
-  }
+  // Tier caps for the not-yet-started offer line (the started state reads the
+  // snapshot cap off the quote). Cheap, cached, and only fetched when needed.
+  const { data: tierRows } = useQuery({
+    queryKey: ["fip-tier-caps"],
+    enabled: status === null && !!offeredTier,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<Array<{ tier_key: string; cap: number }>> => {
+      const { data, error } = await (supabase as any)
+        .from("free_items_promo_tiers")
+        .select("tier_key, cap");
+      if (error) throw error;
+      return (data || []) as Array<{ tier_key: string; cap: number }>;
+    },
+  });
+  const capForTier = (t: string) => tierRows?.find((r) => r.tier_key === t)?.cap ?? null;
 
-  if (status === "active") {
-    return (
-      <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
-        <p className="text-sm text-green-900">
-          Free items promo active ({appliedTierLabel}), expires {fmtExpiry(quote?.free_items_promo_expires_at)}.
-        </p>
-      </div>
-    );
-  }
-
-  if (status === "expired") {
-    return (
-      <div className="bg-muted border border-border rounded-xl px-4 py-3 flex items-start gap-2.5">
-        <AlertTriangle className="w-5 h-5 text-text-med mt-0.5 flex-shrink-0" />
-        <p className="text-sm text-text-med">Free items promo expired ({appliedTierLabel}), gift items reverted.</p>
-      </div>
-    );
-  }
-
-  // status is null → offer a tier only when the real subtotal qualifies.
-  if (!offeredTier) return null;
-
-  const apply = async (tier: "tier_500k" | "tier_300k") => {
-    if (applying) return;
-    setApplying(true);
-    setError(null);
+  const addGift = async (brandId: string, tier: string, quantity: number) => {
+    if (busy || !quoteId) return;
+    setBusy(true);
     try {
-      // Always pass p_tier explicitly so the applied tier is unambiguous.
-      const { error: rpcError } = await (supabase as any).rpc("apply_free_items_promo", {
-        p_quote_id: quote.id,
+      const { error } = await (supabase as any).rpc("add_free_items_promo_item", {
+        p_quote_id: quoteId,
         p_tier: tier,
+        p_brand_id: brandId,
+        p_quantity: quantity,
       });
-      if (rpcError) throw rpcError;
-      onApplied(); // refetch: total drops, gift rows appear (override → 0 for tier_500k only)
+      if (error) throw error;
+      toast.success("Gift item added.");
+      onApplied(); // refetch: summary, item list, and the totals discount line update
     } catch (e: any) {
-      // Surface the server's message directly, do not reword or swallow it.
-      setError(e?.message || "Could not apply the free items promo.");
+      // Verbatim — the RPC's cap/threshold/stock message is the source of truth.
+      toast.error(e?.message || "Could not add the gift item.");
     } finally {
-      setApplying(false);
+      setBusy(false);
     }
   };
 
-  // Copy differs by tier: tier_500k includes free nationwide delivery, tier_300k
-  // is a smaller gift set with delivery untouched.
-  const banner = offeredTier === "tier_500k"
-    ? {
-        text: "This quote qualifies for the free items promo. Add nightgown, nursing bra, disposable underwear, hospital slippers, and maternity pads free, plus free nationwide delivery, for 24 hours after the customer first opens this quote.",
-        button: "Apply free items promo (₦500k tier)",
-      }
-    : {
-        text: "This quote qualifies for the smaller free items promo. Add disposable underwear, hospital slippers, and maternity pads free for 24 hours after the customer first opens this quote. No free delivery on this tier.",
-        button: "Apply free items promo (₦300k tier)",
-      };
+  const removeGift = async (itemId: string) => {
+    if (busy || !quoteId) return;
+    setBusy(true);
+    try {
+      const { error } = await (supabase as any).rpc("remove_free_items_promo_item", {
+        p_quote_id: quoteId,
+        p_item_id: itemId,
+      });
+      if (error) throw error;
+      toast.success("Gift item removed.");
+      onApplied();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not remove the gift item.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
+  // STARTED — status line (unchanged copy) + item management.
+  if (status === "applied" || status === "active") {
+    const cap = Number(quote?.free_items_promo_cap) || 0;
+    return (
+      <div className="bg-green-50 border border-green-300 rounded-xl px-4 py-3.5">
+        <div className="flex items-start gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-green-700 mt-0.5 flex-shrink-0" />
+          <p className="text-sm text-green-900">
+            {status === "applied"
+              ? <>Free items promo applied ({appliedTierLabel}). Timer starts when the customer opens the quote link.</>
+              : <>Free items promo active ({appliedTierLabel}), expires {fmtExpiry(quote?.free_items_promo_expires_at)}.</>}
+          </p>
+        </div>
+
+        {/* Running cap usage (X = sum of gift line_totals, Y = snapshot cap). */}
+        <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+          <span className="font-semibold text-green-900">{fmtN(giftUsed)} of {fmtN(cap)} used</span>
+          <span className="text-[11px] text-green-800">{fmtN(Math.max(0, cap - giftUsed))} left</span>
+        </div>
+
+        {giftItems.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {giftItems.map((g) => (
+              <div key={g.id} className="flex items-center justify-between gap-2 bg-card border border-border rounded-lg px-2.5 py-1.5">
+                <span className="text-sm min-w-0 truncate">
+                  {g.product_name}{Number(g.quantity) > 1 ? ` ×${g.quantity}` : ""}
+                </span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs font-semibold tabular-nums text-text-med">{fmtN(g.line_total)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeGift(g.id)}
+                    disabled={!canEdit || busy}
+                    aria-label={`Remove ${g.product_name}`}
+                    className="text-red-600 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add more, same tier the promo was started at. Cap enforced by the RPC. */}
+        {canEdit && quote?.free_items_promo_tier && (
+          <div className="mt-2.5">
+            <GiftItemPicker disabled={busy} onPick={(brandId, q) => addGift(brandId, quote.free_items_promo_tier, q)} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // EXPIRED / CANCELLED — muted status line, no item management.
+  if (status === "expired" || status === "cancelled") {
+    return (
+      <div className="bg-muted border border-border rounded-xl px-4 py-3 flex items-start gap-2.5">
+        <AlertTriangle className="w-5 h-5 text-text-med mt-0.5 flex-shrink-0" />
+        <p className="text-sm text-text-med">
+          Free items promo {status} ({appliedTierLabel}), gift items reverted.
+        </p>
+      </div>
+    );
+  }
+
+  // NOT STARTED (status null) — offer only when the real subtotal qualifies.
+  if (!offeredTier) return null;
+  const offeredCap = capForTier(offeredTier);
   return (
     <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3.5">
       <div className="flex items-start gap-2.5">
         <Gift className="w-5 h-5 text-amber-700 mt-0.5 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-amber-900">{banner.text}</p>
-          <button
-            type="button"
-            onClick={() => apply(offeredTier)}
-            disabled={!canEdit || applying}
-            className="mt-3 inline-flex items-center gap-1.5 bg-forest text-primary-foreground px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
-            {banner.button}
-          </button>
-          {error && (
-            <p className="mt-2 text-xs font-semibold text-destructive flex items-start gap-1.5">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" /> {error}
-            </p>
+          <p className="text-sm text-amber-900">
+            This quote qualifies for{" "}
+            {offeredCap != null ? <>up to <strong>{fmtN(offeredCap)}</strong> in free items</> : "the free items promo"}{" "}
+            ({tierLabel(offeredTier)}). Pick catalog items to gift, one at a time, up to the cap.
+          </p>
+          {canEdit && (
+            <div className="mt-3">
+              <GiftItemPicker disabled={busy} onPick={(brandId, q) => addGift(brandId, offeredTier, q)} />
+            </div>
           )}
         </div>
       </div>
