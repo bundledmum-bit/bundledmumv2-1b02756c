@@ -38,6 +38,18 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## QuotePage: loading state now uses the standard loading screen (VISUAL)
+- Swapped the line-skeleton placeholder inside QuotePage's loading branch for the
+  site-standard `BMLoadingAnimation` (`src/components/BMLoadingAnimation.tsx`, the
+  heart-logo loader used on ComingSoon/Checkout/GiftResults/HomeQuiz/AdminLayout),
+  centered full-screen, size 180, no message.
+- The loading CONDITION is unchanged — still
+  `(shareToken && !viewSettled) || quoteQ.isLoading || itemsQ.isLoading` (the prior
+  session's timing fix). Only the JSX inside it changed. record_quote_view /
+  viewSettled / query-enabling untouched.
+- Verified live: sampled the loader mid-wait (loading_screen_was_shown=true) then
+  the quote rendered; on a real full-page load the countdown still appears (3dea).
+
 ## QuotePage: countdown now appears on first open (BUG FIXED)
 - Bug: on first load of a shared quote, the countdown/free-item display only
   appeared after a manual refresh. Cause was SEQUENCING: the quote data queries

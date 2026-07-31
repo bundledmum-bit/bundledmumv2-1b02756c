@@ -27,6 +27,7 @@ import ShareRow from "@/components/ShareRow";
 // email exists, but importing the bundled SVG avoids a cross-origin
 // hop and stays in step with the rest of the codebase.
 import bmLogoCoral from "@/assets/logos/BM-LOGO-CORAL.svg";
+import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 
 /** Public customer-facing quote viewer at /quote/:shareToken. */
 export default function QuotePage() {
@@ -226,17 +227,12 @@ export default function QuotePage() {
   // not the not-found state — a disabled react-query reports isLoading === false.
   // The `shareToken &&` guard keeps a missing token falling through to not-found.
   if ((shareToken && !viewSettled) || quoteQ.isLoading || itemsQ.isLoading) {
+    // Site-standard loading screen (BMLoadingAnimation), same as ComingSoon /
+    // Checkout / GiftResults use. The CONDITION above is unchanged — this only
+    // swaps what renders inside it.
     return (
-      <div className="min-h-screen bg-background py-10 px-4">
-        <div className="max-w-[820px] mx-auto">
-          <div className="h-8 w-48 bg-muted rounded animate-pulse mb-3" />
-          <div className="h-4 w-72 bg-muted rounded animate-pulse mb-10" />
-          <div className="bg-card border border-border rounded-xl p-6 space-y-3">
-            <div className="h-5 w-1/2 bg-muted rounded animate-pulse" />
-            <div className="h-5 w-2/3 bg-muted rounded animate-pulse" />
-            <div className="h-5 w-1/3 bg-muted rounded animate-pulse" />
-          </div>
-        </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BMLoadingAnimation size={180} />
       </div>
     );
   }
