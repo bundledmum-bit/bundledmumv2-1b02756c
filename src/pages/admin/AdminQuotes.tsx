@@ -1412,18 +1412,36 @@ function FreeItemsPromoBanner({
   const giftItems = lineItems.filter((it) => it?.is_promo_gift === true);
   const giftUsed = giftItems.reduce((sum, it) => sum + (Number(it?.line_total) || 0), 0);
 
-  // Two tiers. The higher threshold wins when both would match (a 600k quote is
-  // a tier_500k quote, never both), so only one tier is ever offered.
-  const TIER_500K = 500_000;
-  const TIER_300K = 300_000;
-  const offeredTier: "tier_500k" | "tier_300k" | null =
-    realSubtotal >= TIER_500K ? "tier_500k"
-      : realSubtotal >= TIER_300K ? "tier_300k"
-        : null;
+  // Every active tier, highest threshold first. This drives eligibility, the
+  // labels, and the offer-line cap — fully dynamic, so any tier configured on
+  // the Quote Promo admin page works with zero code change. Never gate on
+  // offeredTier (it is derived from this) and never special-case a tier key.
+  const { data: activeTiers = [] } = useQuery({
+    queryKey: ["fip-active-tiers"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<Array<{ tier_key: string; label: string; cap: number; threshold: number }>> => {
+      const { data, error } = await (supabase as any)
+        .from("free_items_promo_tiers")
+        .select("tier_key, label, cap, threshold")
+        .eq("is_active", true)
+        .order("threshold", { ascending: false });
+      if (error) throw error;
+      return (data || []) as Array<{ tier_key: string; label: string; cap: number; threshold: number }>;
+    },
+  });
 
-  const tierLabel = (t: string | null | undefined) =>
-    t === "tier_300k" ? "₦300k tier" : "₦500k tier";
-  const appliedTierLabel = tierLabel(quote?.free_items_promo_tier);
+  // The highest-threshold active tier the real (non-gift) subtotal meets. Rows
+  // are sorted descending, so the first match is the best tier; none → null.
+  const offeredTier: string | null =
+    activeTiers.find((t) => realSubtotal >= (Number(t.threshold) || 0))?.tier_key ?? null;
+
+  // Label from the fetched tiers (never hardcoded). Falls back to the raw key
+  // for a tier that isn't in the active set (e.g. a since-deactivated tier still
+  // attached to a live quote) rather than mislabelling it.
+  const labelForTier = (key: string | null | undefined) =>
+    (key ? activeTiers.find((t) => t.tier_key === key)?.label : null) || key || "";
+  const appliedTierLabel = labelForTier(quote?.free_items_promo_tier);
+  const capForTier = (key: string) => activeTiers.find((t) => t.tier_key === key)?.cap ?? null;
 
   const fmtExpiry = (ts: string | null | undefined) =>
     ts
@@ -1432,22 +1450,6 @@ function FreeItemsPromoBanner({
           hour: "2-digit", minute: "2-digit", timeZone: "Africa/Lagos",
         })
       : "";
-
-  // Tier caps for the not-yet-started offer line (the started state reads the
-  // snapshot cap off the quote). Cheap, cached, and only fetched when needed.
-  const { data: tierRows } = useQuery({
-    queryKey: ["fip-tier-caps"],
-    enabled: status === null && !!offeredTier,
-    staleTime: 5 * 60 * 1000,
-    queryFn: async (): Promise<Array<{ tier_key: string; cap: number }>> => {
-      const { data, error } = await (supabase as any)
-        .from("free_items_promo_tiers")
-        .select("tier_key, cap");
-      if (error) throw error;
-      return (data || []) as Array<{ tier_key: string; cap: number }>;
-    },
-  });
-  const capForTier = (t: string) => tierRows?.find((r) => r.tier_key === t)?.cap ?? null;
 
   const addGift = async (brandId: string, tier: string, quantity: number) => {
     if (busy || !quoteId) return;
@@ -1565,7 +1567,7 @@ function FreeItemsPromoBanner({
           <p className="text-sm text-amber-900">
             This quote qualifies for{" "}
             {offeredCap != null ? <>up to <strong>{fmtN(offeredCap)}</strong> in free items</> : "the free items promo"}{" "}
-            ({tierLabel(offeredTier)}). Pick catalog items to gift, one at a time, up to the cap.
+            ({labelForTier(offeredTier)}). Pick catalog items to gift, one at a time, up to the cap.
           </p>
           {canEdit && (
             <div className="mt-3">

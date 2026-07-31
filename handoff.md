@@ -38,7 +38,25 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
-## Admin promo — manual item-gifting (BUILT this turn)
+## Admin promo — dynamic tier eligibility (BUILT — bug fix)
+- **Bug**: `FreeItemsPromoBanner` (AdminQuotes.tsx) hardcoded eligibility to
+  tier_500k/tier_300k and hardcoded the tier label the same way, so a new
+  `tier_100k` (and any future tier from the "New tier" button) never showed.
+- **Fix (fully generic, no tier-key special-casing anywhere)**: one query for
+  `free_items_promo_tiers` where `is_active=true` ordered by `threshold` desc
+  (`select tier_key,label,cap,threshold`). `offeredTier` = first row whose
+  threshold `realSubtotal` meets (highest qualifying); none → no banner.
+  `labelForTier(key)` and `capForTier(key)` look up the fetched rows (label
+  falls back to the raw key for a since-deactivated tier). Verified vs live DB:
+  500k/300k/100k all resolve; ₦120k subtotal now offers tier_100k.
+- **Confirmed already generic (unchanged)**: the picker / cap / add / remove
+  flow passes whatever tier string is offered (`offeredTier` or
+  `quote.free_items_promo_tier`) to `add_free_items_promo_item`; remove uses only
+  `p_item_id`; started-state cap reads `quote.free_items_promo_cap`.
+- **Rule for next time**: never hardcode tier keys/thresholds/labels in the
+  banner — always read `free_items_promo_tiers`.
+
+## Admin promo — manual item-gifting (BUILT prior turn)
 - **Model change**: the one-click "Apply free items promo" (fixed SKU list) is
   retired; `apply_free_items_promo` is **dropped from the DB**. Admins now gift
   catalog items one at a time up to the tier cap.
