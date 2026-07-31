@@ -38,6 +38,16 @@ Backend (already live, do not modify): `upsert_landing_page_quote`,
 ## Failed attempts
 - None this turn. (Earlier: point-3 "subtract discount like QuotePage" was rejected because CheckoutPage/PackagePage subtotals exclude gifts; resolved via the converted-vs-added distinction.)
 
+## QuoteProfitPanel: combined "Discount Applied" (BUILT)
+- The panel's "Discount Applied" row now shows discount_amount +
+  free_items_promo_discount as one figure; the separate "Free items promo" row
+  (added earlier) is removed. A subtitle "includes ₦X free items promo" shows
+  when the promo portion > 0 (mirrors the Other Cost note pattern).
+- Display only: net_profit and margin_pct are unchanged (straight from
+  get_quote_profit, which already subtracts both server-side). No backend change.
+  The Klump ceiling's netProfit0 (net_profit + discount_amount) was left as-is —
+  it's a separate zero-discount-basis calc, not the display.
+
 ## Quote editor: mark items free inline (BUILT)
 - `QuoteLineItemCard` (PackageItemsBuilder) now shows an optional "Mark free" /
   "Unmark free" text button per row (matches the existing Remove text-button

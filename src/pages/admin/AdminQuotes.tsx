@@ -757,6 +757,11 @@ function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null
 
   const netPositive = Number(data.net_profit) > 0;
   const missingCost = (Number(data.total_items) || 0) - (Number(data.items_costed) || 0);
+  // "Discount Applied" combines the manual discount and the free-items promo
+  // value into one figure. Both are already subtracted from net_profit /
+  // total_revenue server-side (unchanged) — this only merges how they display.
+  const fipPromoDiscount = Number(data.free_items_promo_discount) || 0;
+  const discountApplied = (Number(data.discount_amount) || 0) + fipPromoDiscount;
 
   // Klump BNPL commission preview. Rate + on/off from site_settings (default 3%
   // if missing/invalid). Computed off the LIVE (possibly discounted) quote total
@@ -801,11 +806,16 @@ function QuoteProfitPanel({ quoteId, role, liveTotal }: { quoteId: string | null
         <ProfitRow k="Product Revenue" v={fmtN(data.product_revenue)} />
         <ProfitRow k="Cost (COGS)" v={fmtN(data.cogs)} />
         <ProfitRow k="Service Fee" v={fmtN(data.service_fee)} />
-        <ProfitRow k="Discount Applied" v={fmtN(data.discount_amount)} />
-        {/* net_profit / total_revenue already account for this server-side; shown
-            so the deduction is visible, not silently baked into Net Profit. */}
-        {Number(data.free_items_promo_discount) > 0 && (
-          <ProfitRow k="Free items promo" v={`−${fmtN(data.free_items_promo_discount)}`} />
+        {/* Manual discount + free-items promo, combined into one figure (both
+            already in net_profit server-side). Subtitle breaks out the promo
+            portion when there is one, mirroring the Other Cost note pattern. */}
+        {fipPromoDiscount > 0 ? (
+          <div>
+            <ProfitRow k="Discount Applied" v={fmtN(discountApplied)} />
+            <p className="text-[11px] text-text-light">includes {fmtN(fipPromoDiscount)} free items promo</p>
+          </div>
+        ) : (
+          <ProfitRow k="Discount Applied" v={fmtN(discountApplied)} />
         )}
         {Number(data.other_cost) > 0 && (
           <div>
