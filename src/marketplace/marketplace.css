@@ -1,0 +1,129 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Lato:wght@400;700&display=swap');
+
+/*
+ * Marketplace-scoped styling. Everything is nested under .mkt so it never
+ * touches the storefront (which keeps DM Sans / Playfair). Brand palette matches
+ * bundledmum.com but the marketplace gets its own cleaner, image-forward layout.
+ */
+
+.mkt {
+  --mkt-coral: #F4845F;
+  --mkt-coral-dark: #D4613C;
+  --mkt-coral-light: #FDE8DF;
+  --mkt-green: #2D6A4F;
+  --mkt-green-dark: #1A4A33;
+  --mkt-green-light: #D8EFE5;
+  --mkt-cream: #FFF8F4;
+  --mkt-black: #1A1A1A;
+  --mkt-grey: #6B6B6B;
+
+  font-family: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--mkt-black);
+  background: var(--mkt-cream);
+  min-height: 100vh;
+}
+
+.mkt h1,
+.mkt h2,
+.mkt h3,
+.mkt .mkt-price {
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Layout ------------------------------------------------------------------ */
+.mkt-shell { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+
+.mkt-header { padding: 1rem 0 0.5rem; }
+.mkt-header h1 { font-size: 1.5rem; font-weight: 900; margin: 0; }
+.mkt-header p { margin: 0.25rem 0 0; color: var(--mkt-grey); font-size: 0.9rem; }
+
+/* Controls --------------------------------------------------------------- */
+.mkt-controls { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0 1rem; }
+.mkt-search {
+  width: 100%; box-sizing: border-box; padding: 0.7rem 0.9rem;
+  border: 1px solid #EADFD7; border-radius: 0.75rem; background: #fff;
+  font-family: inherit; font-size: 0.95rem; color: var(--mkt-black);
+}
+.mkt-search::placeholder { color: #A99E96; }
+.mkt-search:focus { outline: none; border-color: var(--mkt-coral); box-shadow: 0 0 0 3px var(--mkt-coral-light); }
+.mkt-filters { display: flex; gap: 0.5rem; }
+.mkt-select {
+  flex: 1; min-width: 0; padding: 0.6rem 0.7rem;
+  border: 1px solid #EADFD7; border-radius: 0.75rem; background: #fff;
+  font-family: inherit; font-size: 0.9rem; color: var(--mkt-black);
+}
+.mkt-select:focus { outline: none; border-color: var(--mkt-coral); }
+
+/* Grid ------------------------------------------------------------------- */
+.mkt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+@media (min-width: 700px) { .mkt-grid { grid-template-columns: repeat(3, 1fr); gap: 1rem; } }
+@media (min-width: 980px) { .mkt-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* Card ------------------------------------------------------------------- */
+.mkt-card {
+  display: flex; flex-direction: column; background: #fff;
+  border: 1px solid #F0E6DF; border-radius: 0.9rem; overflow: hidden;
+  text-decoration: none; color: inherit; cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.mkt-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(26,26,26,0.08); }
+.mkt-card-imgwrap { position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--mkt-coral-light); }
+.mkt-card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-card-body { padding: 0.6rem 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.mkt-price { font-size: 1.05rem; font-weight: 800; color: var(--mkt-black); }
+.mkt-card-title {
+  font-size: 0.85rem; line-height: 1.25; color: var(--mkt-black);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mkt-trust { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.5rem; margin-top: 0.15rem; }
+.mkt-meta { font-size: 0.72rem; color: var(--mkt-grey); }
+
+/* Verified badge --------------------------------------------------------- */
+.mkt-verified {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  font-size: 0.68rem; font-weight: 700; color: var(--mkt-green);
+  background: var(--mkt-green-light); border-radius: 999px; padding: 0.1rem 0.45rem;
+}
+.mkt-condition {
+  display: inline-flex; align-items: center; font-size: 0.68rem; font-weight: 600;
+  color: var(--mkt-coral-dark); background: var(--mkt-coral-light);
+  border-radius: 999px; padding: 0.1rem 0.45rem;
+}
+
+/* States ----------------------------------------------------------------- */
+.mkt-center { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 0.5rem; padding: 2rem 1rem; }
+.mkt-empty-title { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1.15rem; }
+.mkt-empty-sub { color: var(--mkt-grey); font-size: 0.9rem; max-width: 22rem; }
+
+/* Detail ----------------------------------------------------------------- */
+.mkt-back {
+  display: inline-flex; align-items: center; gap: 0.35rem; background: none; border: none;
+  color: var(--mkt-green-dark); font-family: inherit; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer; padding: 0.5rem 0; margin-top: 0.25rem;
+}
+.mkt-detail { display: flex; flex-direction: column; gap: 1rem; padding-bottom: 3rem; }
+.mkt-detail-hero { width: 100%; aspect-ratio: 4 / 3; background: var(--mkt-coral-light); border-radius: 1rem; overflow: hidden; }
+.mkt-detail-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-thumbs { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 0.25rem; }
+.mkt-thumb { width: 72px; height: 72px; flex: 0 0 auto; border-radius: 0.6rem; overflow: hidden; border: 1px solid #F0E6DF; background: #fff; padding: 0; cursor: pointer; }
+.mkt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-detail h1 { font-size: 1.35rem; font-weight: 900; margin: 0; }
+.mkt-detail-price { font-family: 'Nunito', sans-serif; font-size: 1.6rem; font-weight: 900; color: var(--mkt-black); }
+.mkt-section-label { font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.95rem; margin: 0 0 0.25rem; }
+.mkt-detail-text { color: #333; font-size: 0.95rem; line-height: 1.5; white-space: pre-line; }
+.mkt-detail-meta { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; color: var(--mkt-grey); font-size: 0.85rem; }
+.mkt-seller-line { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem; background: var(--mkt-green-light); border-radius: 0.75rem; font-size: 0.9rem; font-weight: 700; color: var(--mkt-green-dark); }
+
+/* CTA -------------------------------------------------------------------- */
+.mkt-buy {
+  width: 100%; padding: 0.95rem 1rem; border: none; border-radius: 0.85rem;
+  background: var(--mkt-coral); color: #fff; font-family: 'Nunito', sans-serif;
+  font-weight: 800; font-size: 1.05rem; cursor: pointer; transition: background 0.12s ease;
+}
+.mkt-buy:hover { background: var(--mkt-coral-dark); }
+.mkt-buy-note {
+  margin-top: 0.6rem; padding: 0.75rem 0.9rem; background: var(--mkt-cream);
+  border: 1px dashed var(--mkt-coral); border-radius: 0.75rem; color: var(--mkt-coral-dark);
+  font-size: 0.88rem; text-align: center;
+}

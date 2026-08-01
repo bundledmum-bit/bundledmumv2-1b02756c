@@ -50,13 +50,37 @@ dashboards, or checkout yet.
   (fallback = site-standard `BMLoadingAnimation`). Build output confirms the
   storefront stays its own ~5 MB chunk, loaded only when not on `/marketplace`.
 - **Auth session storage: cookie storage RETAINED (not reverted).** See §5.
-- **Verified in preview (localhost:8081):**
-  - `/marketplace` → "BundledMum Marketplace / Coming soon" placeholder.
-  - `/` → storefront homepage renders as before.
-  - `/?view=marketplace` → now renders the **storefront** (the old query
-    override was dropped — see §4).
-  - Only console noise is Vite's HMR websocket warning (sandbox artifact, not
-    app code). Production `npm run build` passes.
+- **First real screens are live: BROWSE + LISTING DETAIL** (public, read-only),
+  replacing the "Coming soon" placeholder at `/marketplace`.
+  - `/marketplace` → the browse grid (the marketplace front door). 2-up on
+    mobile, image-forward cards (image, `final_price_naira` as ₦, one-line title,
+    trust signals: verified badge / location / short condition tag). Search
+    (title) + category filter + location filter, all client-side over the fetched
+    live listings.
+  - `/marketplace/listing/:id` → detail: hero image + gallery thumbs, title,
+    price, full condition, full description, category, location, a seller line
+    (generic label + verified badge only, NO name/contact), and a single
+    "Buy now" CTA that reveals a "checkout coming soon" note (no payment, no
+    contact reveal).
+  - Reads `public.marketplace_listings` directly with the existing anon client;
+    only `status='live'` is fetched (enforced client-side AND by RLS).
+- **Verified in preview (localhost:8081):** `/marketplace` shows the live grid
+  (23 seeded live listings), a card taps through to detail, Buy now shows the
+  coming-soon note, `/` still renders the storefront unchanged. Only console
+  noise is Vite's HMR websocket warning (sandbox artifact). `npm run build`
+  passes.
+
+### ⚠️ Open blocker: verified badge is dormant (RLS on marketplace_sellers)
+The verified badge cannot show for the public yet. `marketplace_sellers` has NO
+anon/public SELECT policy (only "Admin manage sellers" and "Seller reads own
+row"), so the anon embed `seller:marketplace_sellers!..._seller_id_fkey(
+verification_tier)` returns `null` for every listing → the badge never renders
+(the card/detail degrade gracefully to no-badge, not an error; all 23 listings
+still load). The frontend code is correct and will light up automatically once
+the DB grants anon read of `verification_tier`. This needs a **DB-side change**
+(a narrow public-read policy on `marketplace_sellers.verification_tier`, or a
+safe view/RPC exposing only that column) — which is an explicit non-goal here
+("no Supabase migrations, DB handled separately"), so it is flagged, not fixed.
 
 ## 3. Active files
 - `src/App.tsx` — thin top-level shell; picks the tree via `isMarketplace()`,
@@ -64,8 +88,24 @@ dashboards, or checkout yet.
   selection logic unchanged.)
 - `src/lib/isMarketplace.ts` — the single path-based boolean. (This pass:
   switched from hostname+`?view` to `/marketplace` path.)
-- `src/marketplace/MarketplaceApp.tsx` — minimal router + `/` placeholder. (This
-  pass: added `basename="/marketplace"`.)
+- `src/marketplace/MarketplaceApp.tsx` — router (basename `/marketplace`) + its
+  OWN `QueryClientProvider`; routes `/`→Browse, `/listing/:id`→Detail; imports
+  `marketplace.css`; wraps everything in a `.mkt` div for scoped styling.
+- `src/marketplace/marketplace.css` — **NEW**; Nunito/Lato `@import` + brand
+  tokens (coral/green/cream) + component classes, all scoped under `.mkt` so the
+  storefront (DM Sans/Playfair) is untouched.
+- `src/marketplace/types.ts` — **NEW**; local row interfaces for the
+  marketplace_* tables (they are NOT in the generated `types.ts`). `price_naira`
+  is deliberately omitted so it can never leak to buyers.
+- `src/marketplace/lib/format.ts` — **NEW**; `formatNaira` (₦ + thousands),
+  `conditionLabel` (short derive, fallback "Used"), `locationLabel`,
+  `isVerifiedSeller`.
+- `src/marketplace/data/mdb.ts` — **NEW**; untyped anon client handle +
+  `LISTING_SELECT` (FK-hinted embeds for category name + seller verification_tier).
+- `src/marketplace/data/useListings.ts` — **NEW**; react-query hooks
+  `useLiveListings()` and `useListing(id)` (both scoped to `status='live'`).
+- `src/marketplace/components/{ListingCard,VerifiedBadge}.tsx` — **NEW**.
+- `src/marketplace/pages/{BrowsePage,ListingDetailPage}.tsx` — **NEW**.
 - `src/StorefrontApp.tsx` — the previous `App.tsx` body moved verbatim
   (storefront + admin + employee-portal). Untouched this pass.
 - `src/integrations/supabase/authStorage.ts` — builds the Supabase client with
@@ -98,7 +138,27 @@ dashboards, or checkout yet.
   would truncate and break login. Used `@supabase/ssr` (chunks correctly).
 - No approaches were built and reverted during implementation.
 
-## 5. Changes made (this pass)
+## 5. Changes made
+
+### This pass — browse + listing detail (first real customer screens)
+- Built the public, read-only BROWSE grid and LISTING DETAIL page (see §2), all
+  new files under `src/marketplace/` (see §3). No storefront/admin/auth changes.
+- **Data conventions (important for the next dev):**
+  - `final_price_naira` is the ONLY buyer-facing price (already includes markup).
+    `price_naira` must NEVER be shown to buyers — it is not even modelled in the
+    local types.
+  - `image_url` holds a Supabase-stored URL in production; the current TEST data
+    uses external URLs. We render whatever is in the field. (In the sandbox
+    preview some external test URLs fail to load and show alt text — expected,
+    not a bug; production Supabase-hosted images will load.)
+  - Reads use the existing anon `supabase` client via an untyped handle
+    (`data/mdb.ts`), because the marketplace_* tables are absent from the
+    generated `types.ts` and that file is left untouched.
+- **Open item — pricing not yet rounded.** `final_price_naira` is the raw
+  markup result (price + 10%), so prices can look unrounded (e.g. ₦8,250). This
+  is a later pricing/presentation decision, not handled here. Flagged.
+
+### Prior pass — subdomain → path split
 - **Split signal switched from hostname to path** (`isMarketplace.ts`), marketplace
   router mounted under `basename="/marketplace"` (`MarketplaceApp.tsx`), App/comment
   updates. Lazy split and storefront/admin behaviour unchanged.
@@ -131,15 +191,22 @@ all storage logic lives in `authStorage.ts`; recovery is re-adding one import +
 call in `client.ts`.
 
 ## 6. Next steps
-1. Build the real marketplace UI in `src/marketplace/` (replace the placeholder):
-   landings, listing cards, listing detail, seller flows — per later prompts.
-   Add routes as children under the `basename="/marketplace"` router.
-2. Decide the marketplace's own provider needs (it currently shares nothing with
-   the storefront). Add a QueryClient / cart / theme as those screens require.
-3. Confirm on live that `bundledmum.com/marketplace` serves the placeholder and
-   the storefront is unaffected, once this branch is merged + deployed.
-4. **Auth tidy (optional, later):** if desired, revert to `localStorage` default
+1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
+   real buying (Paystack, seller subaccount, contact reveal post-payment) where
+   that button is in `ListingDetailPage.tsx`. Not started.
+2. **Verified badge RLS (blocker, DB-side).** Grant anon read of
+   `marketplace_sellers.verification_tier` (narrow policy, or a view/RPC exposing
+   only that column) so the badge lights up. Frontend is already wired. See §2.
+3. **Seller onboarding** — seller signup, listing creation/submission, the
+   pending_review → live workflow. Not started.
+4. **Admin** — marketplace moderation (approve/reject listings, manage sellers,
+   categories). Not started.
+5. **Pricing presentation** — decide rounding for `final_price_naira` (currently
+   raw price + 10% markup, so unrounded figures show). See §5 open item.
+6. Confirm on live that `bundledmum.com/marketplace` serves the grid and the
+   storefront is unaffected, once this branch is merged + deployed.
+7. **Auth tidy (optional, later):** if desired, revert to `localStorage` default
    in a dedicated pass — but expect a one-time logout of cookie-session users, so
    only do it deliberately (e.g. alongside comms), not as a drive-by cleanup.
    Also refresh the now-stale "cross-subdomain" comments in `authStorage.ts`.
-5. Watch the `client.ts` regeneration risk above after any Lovable-side change.
+8. Watch the `client.ts` regeneration risk above after any Lovable-side change.
