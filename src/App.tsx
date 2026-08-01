@@ -3,19 +3,22 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { isMarketplace } from "@/lib/isMarketplace";
 
 /**
- * Top-level hostname split. Both bundledmum.com (storefront/admin) and
- * marketplace.bundledmum.com (secondhand marketplace) serve THIS SAME build.
- * We resolve which experience to render once, here, then lazy-load only that
- * route tree so a visitor on one host does not download the other's bundle.
+ * Top-level path split. The storefront/admin experience and the secondhand
+ * marketplace live on the SAME origin (bundledmum.com) and serve THIS SAME
+ * build. We resolve which experience to render once, here, then lazy-load only
+ * that route tree so a visitor of one does not download the other's bundle.
  *
  *  - Storefront/admin tree  → src/StorefrontApp.tsx (the previous App body,
- *    moved verbatim; behaviour + appearance unchanged).
+ *    moved verbatim; behaviour + appearance unchanged). Owns every path except
+ *    /marketplace.
  *  - Marketplace tree       → src/marketplace/MarketplaceApp.tsx (placeholder
- *    for now).
+ *    for now), mounted under the /marketplace base path.
  *
- * isMarketplace() is true when the hostname starts with "marketplace." OR the
- * URL carries ?view=marketplace (preview override for dev + the Lovable
- * preview host, where the real subdomain does not resolve).
+ * isMarketplace() is true when the URL path is "/marketplace" or beneath it.
+ * (The marketplace was originally going to live on the subdomain
+ * marketplace.bundledmum.com, but Lovable hosting only allows one primary custom
+ * domain and redirects all others to it, so it moved to a path on the main
+ * domain — which also removes the cross-origin auth problem entirely.)
  */
 
 const StorefrontApp = lazy(() => import("@/StorefrontApp"));

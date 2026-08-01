@@ -1,126 +1,145 @@
 # BundledMum Marketplace — Handoff
 
-This handoff covers the BundledMum **MARKETPLACE** (marketplace.bundledmum.com),
-the secondhand classifieds marketplace. It is a **separate surface** from the
-main storefront (bundledmum.com), which is documented in `handoff.md`. The two
-share one repo and one build but are different products with different routes,
-and **must not be conflated**.
+This handoff covers the BundledMum **MARKETPLACE** (now at
+**bundledmum.com/marketplace**), the secondhand classifieds marketplace. It is a
+**separate surface** from the main storefront (the rest of bundledmum.com), which
+is documented in `handoff.md`. The two share one repo, one build, and — as of the
+path move below — **one origin**, but they are different products with different
+routes and **must not be conflated**.
+
+> **Routing model changed (subdomain → path).** The marketplace was originally
+> built to live on the subdomain `marketplace.bundledmum.com`, selected at
+> runtime by a hostname check. That is blocked: **Lovable hosting allows only one
+> primary custom domain and redirects all other connected domains to it**, so the
+> subdomain cannot serve the app independently. The marketplace now lives on the
+> **`/marketplace` path** of the main domain. Same project, repo, deploy, origin.
+> This also removes the cross-origin auth problem entirely (see §5 auth note).
 
 ---
 
 ## 1. Goal
-Stand up the runtime plumbing that lets one build serve two experiences from two
-hostnames:
-- `bundledmum.com` → existing storefront + admin (unchanged).
-- `marketplace.bundledmum.com` → the new secondhand marketplace.
+Stand up the runtime plumbing that lets one build serve two experiences from one
+origin, split by URL path:
+- `bundledmum.com/*` (everything except `/marketplace`) → existing storefront +
+  admin (unchanged).
+- `bundledmum.com/marketplace` → the new secondhand marketplace.
 
-This first pass is **plumbing only**: the marketplace host renders a throwaway
-"Coming soon" placeholder confirming the split works. It also fixes cross-
-subdomain auth so a customer logged in on one host is recognised on the other.
-No marketplace screens, listings, seller dashboards, or checkout in this pass.
+This pass is **plumbing only**: `/marketplace` renders a throwaway "Coming soon"
+placeholder confirming the split works. No marketplace screens, listings, seller
+dashboards, or checkout yet.
 
 ## 2. Current state (what's wired now)
-- **Hostname split at the router root.** `src/App.tsx` is now a thin shell that
-  resolves `isMarketplace()` once and lazy-loads exactly one route tree.
-  - `isMarketplace()` is `true` when `window.location.hostname` starts with
-    `"marketplace."` **OR** the URL contains `?view=marketplace` (preview
-    override for dev + the Lovable preview host, where the real subdomain does
-    not resolve). Single boolean, computed once at the top level.
-  - Storefront/admin tree → `src/StorefrontApp.tsx` (the previous `App.tsx`
-    body, moved **verbatim** — behaviour + appearance unchanged).
-  - Marketplace tree → `src/marketplace/MarketplaceApp.tsx` (placeholder).
-- **Code splitting.** Both trees are `React.lazy()` + `<Suspense>` (fallback =
-  site-standard `BMLoadingAnimation`). Verified in the build output: the
-  marketplace chunk is ~0.57 kB vs the storefront chunk at ~5 MB, so a visitor
-  on one host does not download the other's bundle.
-- **Cross-subdomain auth session.** The Supabase session is now persisted in a
-  cookie scoped to `.bundledmum.com` (shared across the root domain and all
-  subdomains) — but **only on real bundledmum.com hosts**. On localhost and
-  `*.lovable.app` it falls back to the previous default `localStorage` client,
-  so dev + preview auth are unchanged. Implemented with `@supabase/ssr`'s
-  browser client (it chunks the >4KB session cookie correctly).
+- **Path split at the router root.** `src/App.tsx` is a thin shell that resolves
+  `isMarketplace()` once and lazy-loads exactly one route tree.
+  - `isMarketplace()` is `true` when `window.location.pathname` is `"/marketplace"`
+    or starts with `"/marketplace/"`. Exact-or-prefix so sibling paths like
+    `/marketplace-anything` are NOT captured. Single boolean, computed once at the
+    top level.
+  - Storefront/admin tree → `src/StorefrontApp.tsx` (the previous `App.tsx` body,
+    moved **verbatim** — behaviour + appearance unchanged). Owns every path except
+    `/marketplace`.
+  - Marketplace tree → `src/marketplace/MarketplaceApp.tsx` (placeholder),
+    mounted with `<BrowserRouter basename="/marketplace">` so its internal routes
+    are relative to the base (placeholder `"/"` → `/marketplace`; a future
+    `"/listings"` → `/marketplace/listings`) without hardcoding the prefix.
+  - The two trees are **mutually exclusive** at the top level, so the storefront
+    catch-all (`*`→NotFound) never sees `/marketplace`, and `/marketplace` never
+    leaks into storefront routing. No storefront route begins with `/marketplace`
+    (verified), so there is no collision.
+- **Code splitting (unchanged).** Both trees are `React.lazy()` + `<Suspense>`
+  (fallback = site-standard `BMLoadingAnimation`). Build output confirms the
+  storefront stays its own ~5 MB chunk, loaded only when not on `/marketplace`.
+- **Auth session storage: cookie storage RETAINED (not reverted).** See §5.
 - **Verified in preview (localhost:8081):**
-  - `/` (no param) → storefront homepage renders as before.
-  - `/?view=marketplace` → "BundledMum Marketplace / Coming soon" placeholder.
+  - `/marketplace` → "BundledMum Marketplace / Coming soon" placeholder.
+  - `/` → storefront homepage renders as before.
+  - `/?view=marketplace` → now renders the **storefront** (the old query
+    override was dropped — see §4).
   - Only console noise is Vite's HMR websocket warning (sandbox artifact, not
     app code). Production `npm run build` passes.
 
 ## 3. Active files
 - `src/App.tsx` — thin top-level shell; picks the tree via `isMarketplace()`,
-  lazy-loads it inside `<Suspense>`.
-- `src/lib/isMarketplace.ts` — the single hostname-or-`?view` boolean.
-- `src/StorefrontApp.tsx` — **NEW**; the entire previous `App.tsx` body moved
-  verbatim (all providers, `BrowserRouter`, storefront + admin + employee-portal
-  routes). Only the component/default-export name changed (`App` →
-  `StorefrontApp`). Storefront/admin logic untouched.
-- `src/marketplace/MarketplaceApp.tsx` — **NEW**; minimal `BrowserRouter` with a
-  single `/` placeholder route. This is throwaway — replaced by real marketplace
-  screens next.
-- `src/integrations/supabase/authStorage.ts` — **NEW**; builds the Supabase
-  client with the correct session storage for the current host (cookie on
-  `.bundledmum.com` in prod, `localStorage` fallback elsewhere). Lives outside
-  the auto-generated `client.ts` on purpose.
-- `src/integrations/supabase/client.ts` — auto-generated file; edited to a
-  **one-line delegation** to `createBundledmumSupabaseClient(...)`. Kept minimal
-  so a regeneration costs at most this one import swap.
-- `package.json` / lockfile — added `@supabase/ssr@^0.12.4`.
+  lazy-loads it inside `<Suspense>`. (This pass: comments updated hostname→path;
+  selection logic unchanged.)
+- `src/lib/isMarketplace.ts` — the single path-based boolean. (This pass:
+  switched from hostname+`?view` to `/marketplace` path.)
+- `src/marketplace/MarketplaceApp.tsx` — minimal router + `/` placeholder. (This
+  pass: added `basename="/marketplace"`.)
+- `src/StorefrontApp.tsx` — the previous `App.tsx` body moved verbatim
+  (storefront + admin + employee-portal). Untouched this pass.
+- `src/integrations/supabase/authStorage.ts` — builds the Supabase client with
+  cookie storage on bundledmum hosts, `localStorage` elsewhere. **Untouched this
+  pass** (see §5). NOTE: its doc comments still say "cross-subdomain" /
+  "marketplace.bundledmum.com"; those are now stale (single origin) but left
+  as-is to avoid any risk to working auth — tidy in a later dedicated pass.
+- `src/integrations/supabase/client.ts` — auto-generated; one-line delegation to
+  `createBundledmumSupabaseClient(...)`. Untouched this pass.
+- `package.json` / lockfile — `@supabase/ssr@^0.12.4` (added in the prior pass;
+  still used by the retained cookie storage).
 
 ## 4. Failed attempts (with WHY)
-- **Hand-rolled `document.cookie` storage adapter — rejected before building.**
-  A Supabase session (access JWT + refresh token + user object) routinely
-  exceeds the ~4KB per-cookie limit, so a naive adapter would silently truncate
-  and break login. Chose `@supabase/ssr` instead, which chunks cookies
-  correctly and is Supabase-maintained. (Decision made in the audit phase; no
-  code was written for the rejected path.)
+- **True subdomain `marketplace.bundledmum.com` — BLOCKED by Lovable hosting.**
+  The original design served the marketplace from its own subdomain, chosen by a
+  `window.location.hostname` check. Lovable only allows one primary custom domain
+  and 301-redirects every other connected domain to it, so the subdomain can
+  never serve the app independently — it just bounces to the primary. Replaced
+  with the `/marketplace` path on the main domain (this pass). The hostname check
+  and its `?view=marketplace` dev override were removed with it.
+- **`?view=marketplace` query override — dropped, not kept.** The prompt allowed
+  keeping it "if cheap"; it is not. With the marketplace router now on
+  `basename="/marketplace"`, triggering marketplace mode at a non-`/marketplace`
+  URL would mount a basename router on a mismatched path → React Router renders
+  blank. It is also now redundant: `/marketplace` resolves directly in dev,
+  preview, and prod (all one origin), which was the only reason the override
+  existed (the subdomain didn't resolve in dev).
+- **Hand-rolled `document.cookie` storage adapter — rejected in the prior pass.**
+  Supabase sessions routinely exceed the ~4KB per-cookie limit; a naive adapter
+  would truncate and break login. Used `@supabase/ssr` (chunks correctly).
 - No approaches were built and reverted during implementation.
 
-## 5. Changes made
-- Added the hostname split + lazy route trees (files in §3).
-- Added `@supabase/ssr` and switched session storage to a parent-domain cookie
-  on bundledmum hosts, with `localStorage` fallback on localhost/preview.
-- **localStorage session reads:** audited every `supabase.auth.*` call site
-  (App.tsx, AuthAnalyticsListener, IdleTimeoutGuard, useAdmin, useCustomerAuth,
-  useHR, useIdleTimeout, useOrderPicking, AccountLoginPage, AccountPage,
-  ResetPassword, AdminApprovals, AdminLogin, AdminPermissions,
-  AdminPickingHistory, AdminSetPassword, EmployeePortalLayout,
-  EmployeePortalLogin). **Every session access goes through the SDK — ZERO code
-  reads the Supabase session directly from `localStorage`.** So switching the
-  storage mechanism is transparent to all consumers; nothing needed a rewrite.
-  (The only raw `localStorage` uses touching "session"/"token" — metaPixel,
-  quizSessionTracking, CheckoutPage's `bm_quiz_session_id`, PackagePage's
-  `bm-session-key` comment — are non-auth and untouched.)
-- **Not changed (deliberately):** auth logic, redirect URLs, magic-link flow,
-  `emailRedirectTo`. Only the session storage mechanism changed.
-- A second, throwaway Supabase client in
-  `src/pages/admin/hr/AdminHREmployees.tsx:418` (`persistSession:false`) is
-  irrelevant to the cookie switch and was left as-is.
+## 5. Changes made (this pass)
+- **Split signal switched from hostname to path** (`isMarketplace.ts`), marketplace
+  router mounted under `basename="/marketplace"` (`MarketplaceApp.tsx`), App/comment
+  updates. Lazy split and storefront/admin behaviour unchanged.
 
-### Risk / open note on the auto-generated client
-`src/integrations/supabase/client.ts` is marked "automatically generated. Do not
-edit it directly." Git history shows it has only **3 commits ever** while its
-schema-driven sibling `types.ts` has 8+ and they coincided only once — strong
-evidence `client.ts` is regenerated **rarely** (on explicit auth/client changes),
-**not** per-build or per-schema-change. I could not confirm Lovable's exact
-regeneration trigger from inside the repo. **Risk:** if Lovable ever regenerates
-`client.ts`, the one-line delegation to `authStorage` is lost and the client
-reverts to plain `localStorage` (cross-subdomain sharing silently stops; nothing
-crashes). Mitigation already in place: all cookie logic lives in the separate
-`authStorage.ts`, so recovery is re-applying a single import + call in
-`client.ts`. If it recurs, consider having Lovable's client config point at the
-adapter, or move the client construction out of the generated file entirely.
+### Auth storage decision — cookie storage RETAINED (deliberately not reverted)
+The prompt's preferred cleanup was to revert session storage to the plain
+`localStorage` default now that everything is same-origin. **I did NOT revert**,
+because reverting would log people out:
+- **Existing live sessions are in cookies.** Since the cookie change shipped
+  (merge `b92a181`), everyone who logged in on `bundledmum.com` has their session
+  in `sb-*` cookies on `.bundledmum.com`, not in `localStorage`.
+- **Reverting → forced logout wave.** A `localStorage`-backed client reads
+  `localStorage`, finds nothing, and treats them as logged out — a one-time
+  re-login for the whole active cohort. No data loss, but real disruption for
+  zero functional gain.
+- **Cookie storage is harmless same-origin.** A `.bundledmum.com` cookie is sent
+  on `bundledmum.com/marketplace` (same origin); login works today (verified live
+  after `b92a181`). Per the prompt: *"Auth working is more important than auth
+  being tidy… leaving the working cookie storage in place is acceptable."*
+- **Net:** `authStorage.ts` and `client.ts` are untouched this pass. Only their
+  comments are now stale (they describe the old cross-subdomain rationale).
+
+### Risk / open note on the auto-generated client (still stands)
+`client.ts` is marked auto-generated. History: only 3 commits ever vs 8+ for its
+schema-driven sibling `types.ts` — evidence it's regenerated rarely, not per
+build/schema-change; exact Lovable trigger unconfirmed. **Risk:** a regeneration
+would drop the one-line delegation and revert the client to plain `localStorage`
+(cookie sessions become invisible → logout wave; nothing crashes). Mitigation:
+all storage logic lives in `authStorage.ts`; recovery is re-adding one import +
+call in `client.ts`.
 
 ## 6. Next steps
-1. Build the real marketplace UI in `src/marketplace/` (replace the placeholder
-   `MarketplaceApp` route tree): landings, listing cards, listing detail,
-   seller flows, etc. — per the later prompts.
+1. Build the real marketplace UI in `src/marketplace/` (replace the placeholder):
+   landings, listing cards, listing detail, seller flows — per later prompts.
+   Add routes as children under the `basename="/marketplace"` router.
 2. Decide the marketplace's own provider needs (it currently shares nothing with
    the storefront). Add a QueryClient / cart / theme as those screens require.
-3. Confirm on the real subdomain once DNS is live that the `.bundledmum.com`
-   cookie is actually set and the session is shared bundledmum.com ⇄
-   marketplace.bundledmum.com (the domain branch only activates on a real
-   bundledmum host, so it cannot be end-to-end verified from localhost/preview).
-4. **Separate decision, not done here:** whether `emailRedirectTo` / the
-   magic-link flow needs to change for the marketplace subdomain (e.g. so a
-   login initiated on marketplace.bundledmum.com returns there). Flagged in the
-   audit and intentionally left untouched.
+3. Confirm on live that `bundledmum.com/marketplace` serves the placeholder and
+   the storefront is unaffected, once this branch is merged + deployed.
+4. **Auth tidy (optional, later):** if desired, revert to `localStorage` default
+   in a dedicated pass — but expect a one-time logout of cookie-session users, so
+   only do it deliberately (e.g. alongside comms), not as a drive-by cleanup.
+   Also refresh the now-stale "cross-subdomain" comments in `authStorage.ts`.
 5. Watch the `client.ts` regeneration risk above after any Lovable-side change.

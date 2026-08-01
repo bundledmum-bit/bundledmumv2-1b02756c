@@ -1,16 +1,16 @@
 /**
- * Resolves whether the app should render the MARKETPLACE experience
- * (marketplace.bundledmum.com) rather than the main storefront
- * (bundledmum.com). Both hosts serve this same build from this same repo; the
- * split happens here, at runtime, in the browser.
+ * Resolves whether the app should render the MARKETPLACE experience rather than
+ * the main storefront. Both live on the SAME origin now: the marketplace is
+ * mounted at the path bundledmum.com/marketplace and the storefront owns every
+ * other path. (Originally the marketplace was going to live on the subdomain
+ * marketplace.bundledmum.com, but Lovable hosting only allows one primary custom
+ * domain and redirects all other connected domains to it, so the subdomain
+ * cannot serve the app independently — hence the move to a path.)
  *
- * Two inputs feed one boolean:
- *  1. Hostname — treated as marketplace when it starts with "marketplace."
- *     (e.g. marketplace.bundledmum.com).
- *  2. Preview override — "?view=marketplace" anywhere in the query string
- *     forces marketplace mode regardless of hostname. The real subdomain does
- *     not resolve during local dev or on the Lovable preview URL, so this lets
- *     us preview the marketplace experience before DNS is live.
+ * Marketplace mode is entered when the URL path is "/marketplace" or anything
+ * beneath it ("/marketplace/listings", ...). The check is exact on "/marketplace"
+ * and prefix on "/marketplace/" so sibling storefront paths like
+ * "/marketplace-anything" are NOT captured.
  *
  * Computed once from window.location at call time (App resolves it a single
  * time at the top level and picks the route tree from the result).
@@ -18,9 +18,6 @@
 export function isMarketplace(): boolean {
   if (typeof window === "undefined") return false;
 
-  const host = window.location.hostname.toLowerCase();
-  if (host.startsWith("marketplace.")) return true;
-
-  const view = new URLSearchParams(window.location.search).get("view");
-  return view === "marketplace";
+  const path = window.location.pathname;
+  return path === "/marketplace" || path.startsWith("/marketplace/");
 }
