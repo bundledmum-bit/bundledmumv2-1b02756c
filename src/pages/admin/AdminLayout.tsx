@@ -11,7 +11,7 @@ import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
-  Smartphone,
+  Smartphone, Banknote, Gavel, Coins, ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
@@ -63,6 +63,37 @@ function AdminLayoutInner() {
   
   const isSuperAdmin = adminUser?.role === "super_admin";
   const { data: pendingApprovalsCount } = usePendingApprovalsCount(isSuperAdmin);
+
+  // Context switcher: two worlds, one login. The marketplace world is only
+  // offered to admins who can manage the marketplace, and the active world is
+  // derived from the path so the nav swaps as soon as you enter a marketplace
+  // route. The storefront world is unchanged for everyone.
+  const canMarketplace = can("marketplace", "manage");
+  const world: "bundledmum" | "marketplace" =
+    location.pathname.startsWith("/admin/marketplace") ? "marketplace" : "bundledmum";
+  const { data: mktPendingCount } = useQuery({
+    queryKey: ["mkt-pending-review-count"],
+    queryFn: async () => {
+      const { count } = await (supabase as unknown as { from: (t: string) => any })
+        .from("marketplace_listings")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending_review");
+      return count ?? 0;
+    },
+    enabled: canMarketplace,
+    staleTime: 30000,
+  });
+  const MARKETPLACE_NAV: Array<{ label: string; to: string; icon: LucideIcon; exact?: boolean; badge?: number }> = [
+    { label: "Dashboard", to: "/admin/marketplace", icon: LayoutDashboard, exact: true },
+    { label: "Payout queue", to: "/admin/marketplace/payouts", icon: Banknote },
+    { label: "Review queue", to: "/admin/marketplace/review", icon: ClipboardCheck, badge: mktPendingCount },
+    { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
+    { label: "Sellers", to: "/admin/marketplace/sellers", icon: Users },
+    { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
+    { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
+    { label: "Money owed", to: "/admin/marketplace/money-owed", icon: Coins },
+    { label: "Settings", to: "/admin/marketplace/settings", icon: Settings },
+  ];
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -356,11 +387,28 @@ function AdminLayoutInner() {
           </button>
         </div>
 
+        {canMarketplace && (
+          <div className="px-3 pt-3">
+            <div className="flex rounded-xl p-1 gap-1" style={{ background: "rgba(255,248,244,0.12)" }}>
+              <button type="button" onClick={() => navigate("/admin")}
+                className="flex-1 text-[12.5px] font-heading font-extrabold py-2 rounded-lg transition"
+                style={world === "bundledmum" ? { background: "#FFF8F4", color: "#1A4A33" } : { color: "rgba(255,255,255,0.6)" }}>
+                BundledMum
+              </button>
+              <button type="button" onClick={() => navigate("/admin/marketplace/review")}
+                className="flex-1 text-[12.5px] font-heading font-extrabold py-2 rounded-lg transition"
+                style={world === "marketplace" ? { background: "#D8EFE5", color: "#1A4A33" } : { color: "rgba(255,255,255,0.6)" }}>
+                Marketplace
+              </button>
+            </div>
+          </div>
+        )}
+
         <nav className="flex-1 py-3 overflow-y-auto">
           <div className="px-4 mb-2">
-            <span className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">Menu</span>
+            <span className="text-[10px] font-bold text-white/30 uppercase tracking-[2px]">{world === "marketplace" ? "Marketplace" : "Menu"}</span>
           </div>
-          {navTree.map(item => {
+          {world === "bundledmum" && navTree.map(item => {
             const isActiveSelf = item.exact
               ? location.pathname === item.to
               : location.pathname.startsWith(item.to) && item.to !== "/admin";
@@ -435,6 +483,28 @@ function AdminLayoutInner() {
                   </div>
                 )}
               </div>
+            );
+          })}
+
+          {world === "marketplace" && MARKETPLACE_NAV.map((m) => {
+            const active = m.exact
+              ? location.pathname === m.to
+              : location.pathname === m.to || location.pathname.startsWith(m.to + "/");
+            return (
+              <Link key={m.to} to={m.to}
+                className={`flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
+                  active
+                    ? "bg-white/15 text-white font-semibold shadow-sm"
+                    : "text-white/60 hover:bg-white/8 hover:text-white/90"
+                }`}>
+                <m.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
+                {m.label}
+                {m.badge ? (
+                  <span className="ml-auto text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "#F4845F" }}>{m.badge}</span>
+                ) : active ? (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />
+                ) : null}
+              </Link>
             );
           })}
         </nav>

@@ -158,6 +158,9 @@ import EmployeeLeave from "@/pages/employee-portal/EmployeeLeave";
 import EmployeeProfile from "@/pages/employee-portal/EmployeeProfile";
 import EmployeeTasks from "@/pages/employee-portal/EmployeeTasks";
 import PermissionGate from "@/components/admin/PermissionGate";
+import MarketplaceReview from "@/pages/admin/marketplace/MarketplaceReview";
+import MarketplaceSettings from "@/pages/admin/marketplace/MarketplaceSettings";
+import MarketplaceComingSoon from "@/pages/admin/marketplace/MarketplaceComingSoon";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -478,6 +481,19 @@ const StorefrontApp = () => (
                   <Route path="documents" element={<AdminHRDocuments />} />
                   <Route path="departments" element={<AdminHRDepartments />} />
                 </Route>
+
+                {/* Marketplace admin section, gated by marketplace/manage.
+                    Only Review queue and Settings are functional in this phase,
+                    the rest render a coming soon placeholder in the same shell. */}
+                <Route path="marketplace" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Dashboard" /></PermissionGate>} />
+                <Route path="marketplace/payouts" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Payout queue" /></PermissionGate>} />
+                <Route path="marketplace/review" element={<PermissionGate module="marketplace" action="manage"><MarketplaceReview /></PermissionGate>} />
+                <Route path="marketplace/disputes" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Disputes" /></PermissionGate>} />
+                <Route path="marketplace/sellers" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Sellers" /></PermissionGate>} />
+                <Route path="marketplace/listings" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Listings" /></PermissionGate>} />
+                <Route path="marketplace/orders" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Orders" /></PermissionGate>} />
+                <Route path="marketplace/money-owed" element={<PermissionGate module="marketplace" action="manage"><MarketplaceComingSoon title="Money owed" /></PermissionGate>} />
+                <Route path="marketplace/settings" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSettings /></PermissionGate>} />
               </Route>
 
               {/* Employee portal — separate from admin + storefront shells.

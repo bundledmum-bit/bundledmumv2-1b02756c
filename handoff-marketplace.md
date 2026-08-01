@@ -149,7 +149,56 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — seller identity from the public-safe view
+### This pass — minimum operator admin (context switcher, review queue, settings)
+- **Context switcher** added to the admin sidebar (`AdminLayout.tsx`): two tabs,
+  BundledMum and Marketplace, shown ONLY to admins where
+  `can("marketplace","manage")` is true (admin + super_admin bypass; other roles
+  resolve false, so they never see it). The active world is derived from the path
+  (`/admin/marketplace*` = marketplace) and swaps the ENTIRE left nav. The
+  storefront nav render is untouched, just wrapped in a `world === "bundledmum"`
+  guard, so the storefront admin is byte-identical for everyone.
+- **Marketplace nav** (green rail, coral accents), in order: Dashboard, Payout
+  queue, Review queue, Disputes, Sellers, Listings, Orders, Money owed, Settings.
+  Review queue carries a live coral count badge of `status='pending_review'`
+  listings. Only Review queue and Settings are functional this phase; the rest
+  render a `MarketplaceComingSoon` placeholder in the same shell (visible, not
+  hidden).
+- **Review queue** (`/admin/marketplace/review`): lists pending_review listings
+  one at a time with "N of M" progress; shows photo + gallery, title, category,
+  location, condition notes, description, seller display_name (from the
+  `marketplace_sellers_public` view, safe), and BOTH prices (Seller asking =
+  price_naira, admin facing only; Buyer sees with X% markup = final_price_naira,
+  X read from `marketplace_markup_percent`). Approve sets status='live', Reject
+  requires a written reason and sets status='rejected'; both record `reviewed_by`
+  (admin_users.id) and `reviewed_at`.
+- **Contact leak warning (anti-leakage control):** the review queue scans
+  description + condition_notes and shows a coral warning when a phone-number
+  pattern (7+ digits with separators), a +234 prefix, or the words whatsapp /
+  call me / dm me appear, so sellers cannot route buyers off platform. Verified
+  it fires on phone/WhatsApp/+234 and not on clean text or short prices.
+- **Settings** (`/admin/marketplace/settings`): reads and writes the
+  `marketplace_*` keys in `public.site_settings` (markup percent, service fee,
+  dispute window, payout digest email, and the checkout bank name / account name
+  / account number), each edited and saved behind a confirm step because they
+  affect live buyers and sellers. Category management lists
+  `marketplace_categories`, adds a category, and toggles `is_allowed` (also
+  behind confirm); disabled categories render greyed with a "disabled" label
+  (the seeded Car seats category shows disabled). Disabling removes a category
+  from the customer marketplace, this is how banned categories are kept out.
+- All marketplace admin routes are gated by
+  `<PermissionGate module="marketplace" action="manage">`. Reads/writes go
+  through the authenticated client (admin RLS policies already exist). Only
+  seller display_name is surfaced, no sensitive seller field.
+- **Note on permissions:** there is no `admin_permission_definitions` row for
+  module `marketplace`, but gating is correct anyway: admin + super_admin bypass
+  the permission map (see `useAdminPermissionsContext` and `usePagePermission`)
+  and all other roles resolve `marketplace/manage` to false. Not adding a DB row
+  (no migrations this phase).
+- Files: new `src/pages/admin/marketplace/{MarketplaceReview,MarketplaceSettings,
+  MarketplaceComingSoon}.tsx` + `data.ts`; edited `AdminLayout.tsx` (switcher +
+  nav + badge) and `StorefrontApp.tsx` (routes). Storefront admin unchanged.
+
+### Earlier this branch line — seller identity from the public-safe view
 - Seller data now reads from `public.marketplace_sellers_public` (id,
   display_name, verification_tier, status, created_at only), via a separate
   query joined client-side by `seller_id`. Removed the base-table embed from
@@ -252,8 +301,12 @@ call in `client.ts`.
    that button is in `ListingDetailPage.tsx`. Not started.
 2. **Seller onboarding** — seller signup, listing creation/submission, the
    pending_review → live workflow. Not started.
-4. **Admin** — marketplace moderation (approve/reject listings, manage sellers,
-   categories). Not started.
+3. **Admin, remaining surfaces.** Built this phase: context switcher, review
+   queue, settings (with category management). Still placeholders, to build next:
+   marketplace dashboard (held funds and the daily counts), payout queue,
+   disputes arbitration, sellers management, listings management, marketplace
+   orders, money owed out. The approved design for all of these is in the admin
+   design mockup.
 5. **Pricing presentation** — decide rounding for `final_price_naira` (currently
    raw price + 10% markup, so unrounded figures show). See §5 open item.
 6. Confirm on live that `bundledmum.com/marketplace` serves the grid and the
