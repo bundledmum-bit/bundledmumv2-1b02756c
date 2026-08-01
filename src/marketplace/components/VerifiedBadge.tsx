@@ -1,21 +1,13 @@
 /**
- * Verified-seller badge. Green because it means "checked by us". Only rendered
- * by callers when the seller's verification_tier is 'verified'.
+ * Verified-seller badge. Green means "checked by us". Only rendered by callers
+ * when the seller's verification_tier is 'verified'. Pass size="lg" for the
+ * larger variant used on the listing-detail seller row.
  */
-export default function VerifiedBadge() {
+export default function VerifiedBadge({ size }: { size?: "lg" }) {
   return (
-    <span className="mkt-verified">
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M9 12.5l2 2 4-4.5"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
-      </svg>
-      Verified
+    <span className={size === "lg" ? "mkt-verified lg" : "mkt-verified"}>
+      <span className="mkt-verified-tick">✓</span>
+      <span>Verified</span>
     </span>
   );
 }

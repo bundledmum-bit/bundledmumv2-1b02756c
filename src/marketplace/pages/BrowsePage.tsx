@@ -4,9 +4,10 @@ import { useLiveListings } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 
 /**
- * BROWSE, the marketplace front door. The listing grid IS the home. Search and
- * the two filters run client-side against the fetched live listings (volume is
- * low), so typing and filtering stay instant.
+ * BROWSE, the marketplace front door, reskinned to the design: a green header
+ * carrying the brand, search, and the two filter pills, then the 2-up card grid.
+ * Search and both filters run client-side over the fetched live listings, so
+ * typing and filtering stay instant. All data plumbing is unchanged.
  */
 export default function BrowsePage() {
   const { data, isLoading, isError } = useLiveListings();
@@ -45,71 +46,82 @@ export default function BrowsePage() {
     });
   }, [listings, search, category, state]);
 
+  const header = (
+    <div className="mkt-topbar">
+      <div className="mkt-brand">
+        BundledMum <small>Marketplace</small>
+      </div>
+      <input
+        className="mkt-search"
+        type="search"
+        placeholder="Search prams, cots, maternity wear"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        aria-label="Search items by title"
+      />
+      <div className="mkt-filters">
+        <select
+          className="mkt-select"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          aria-label="Filter by category"
+        >
+          <option value="">All categories</option>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          className="mkt-select"
+          value={state}
+          onChange={(e) => setState(e.target.value)}
+          aria-label="Filter by location"
+        >
+          <option value="">All locations</option>
+          {states.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="mkt-center">
-        <BMLoadingAnimation size={160} />
-      </div>
+      <>
+        {header}
+        <div className="mkt-center">
+          <BMLoadingAnimation size={160} />
+        </div>
+      </>
     );
   }
 
   if (isError) {
     return (
-      <div className="mkt-center">
-        <div className="mkt-empty-title">We could not load the marketplace</div>
-        <div className="mkt-empty-sub">
-          Please check your connection and try again in a moment.
+      <>
+        {header}
+        <div className="mkt-center">
+          <div className="mkt-empty-title">We could not load the marketplace</div>
+          <div className="mkt-empty-sub">
+            Please check your connection and try again in a moment.
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="mkt-shell">
-      <header className="mkt-header">
-        <h1>BundledMum Marketplace</h1>
-        <p>Preloved baby and mum items, trusted quality from real Nigerian mums.</p>
-      </header>
-
-      <div className="mkt-controls">
-        <input
-          className="mkt-search"
-          type="search"
-          placeholder="Search items"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          aria-label="Search items by title"
-        />
-        <div className="mkt-filters">
-          <select
-            className="mkt-select"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select
-            className="mkt-select"
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            aria-label="Filter by location"
-          >
-            <option value="">All locations</option>
-            {states.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
+    <>
+      {header}
+      <div className="mkt-count">
+        {filtered.length} {filtered.length === 1 ? "item" : "items"}, trusted
+        quality, checked by our team
       </div>
-
       {filtered.length === 0 ? (
         <div className="mkt-center">
           <div className="mkt-empty-title">Nothing here just yet</div>
@@ -125,6 +137,6 @@ export default function BrowsePage() {
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }

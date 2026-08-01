@@ -140,7 +140,36 @@ safe view/RPC exposing only that column) — which is an explicit non-goal here
 
 ## 5. Changes made
 
-### This pass — browse + listing detail (first real customer screens)
+### This pass — visual reskin to the approved Claude Design
+- Browse + listing detail were reskinned to the approved Claude Design mockup
+  (project `0afda8cc`, `BundledMum Marketplace.dc.html`) visual language: green
+  header carrying brand + search + the two filter pills, cream surfaces, Nunito/
+  Lato type scale, the design card anatomy (photo, price, one-line title, three
+  trust signals), detail layout (hero + back + thumbnails, price, title, tag
+  chips, seller row, condition + description, escrow reassurance note, sticky
+  Buy now bar).
+- **VISUAL ONLY. Every Supabase connection preserved and untouched:** the data
+  layer (`data/useListings.ts`, `data/mdb.ts`, `types.ts`, `lib/format.ts`) was
+  not modified. Still: `status='live'` only, `final_price_naira` shown (never
+  `price_naira`), category + location filter dropdowns (kept as dropdowns,
+  restyled), title search, `isVerifiedSeller` badge logic, card→detail nav, Buy
+  now → coming-soon placeholder. Files changed were only `marketplace.css`,
+  `pages/{BrowsePage,ListingDetailPage}.tsx`,
+  `components/{ListingCard,VerifiedBadge}.tsx`.
+- **Design-to-real-data adaptations (design implied fields we do not have):**
+  - Seller name / "since 2025" / avatar initials in the mockup → we render a
+    generic "BundledMum seller" line + verified badge only (no name/date/contact
+    columns exist; verification is still RLS-dormant, see §2 blocker).
+  - Detail footer "Total from" with service/Paystack fees → shows the real
+    `final_price_naira` + Buy now (fees are a checkout concern, not built).
+  - Bottom tab bar (Browse/Orders/Sell/Account) and header "Sell" link →
+    omitted, they point to screens that do not exist yet (no dead nav).
+  - Category chips in the mockup → kept as the existing dropdown (restyled), per
+    the instruction to preserve both filter dropdowns.
+- Verified live in preview: grid reads 23 listings, category filter narrows to 3
+  strollers, card taps through to the reskinned detail, storefront unchanged.
+
+### Earlier this branch line — browse + listing detail (first real customer screens)
 - Built the public, read-only BROWSE grid and LISTING DETAIL page (see §2), all
   new files under `src/marketplace/` (see §3). No storefront/admin/auth changes.
 - **Data conventions (important for the next dev):**
