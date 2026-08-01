@@ -33,3 +33,40 @@ export function conditionLabel(notes: string | null | undefined): string {
 export function isVerifiedSeller(listing: MarketplaceListing): boolean {
   return listing.seller?.verification_tier === "verified";
 }
+
+/**
+ * Seller display name for the DETAIL page only (never shown on the browse card).
+ * Falls back to a generic label when the seller has no public display name, so
+ * we never render an empty line or the word "null".
+ */
+export function sellerDisplayName(listing: MarketplaceListing): string {
+  const name = listing.seller?.display_name?.trim();
+  return name ? name : "BundledMum seller";
+}
+
+/**
+ * Short tenure line from the seller's created_at, year only (e.g. "Selling
+ * since 2026"). Returns null when created_at is missing or unparseable, so the
+ * caller can omit the line rather than show a broken string.
+ */
+export function sellerTenure(listing: MarketplaceListing): string | null {
+  const created = listing.seller?.created_at;
+  if (!created) return null;
+  const year = new Date(created).getFullYear();
+  if (!Number.isFinite(year)) return null;
+  return `Selling since ${year}`;
+}
+
+/** Avatar initials from the seller display name, e.g. "Amaka O." to "AO".
+ * Falls back to "BM" when there is no name. */
+export function sellerInitials(listing: MarketplaceListing): string {
+  const name = listing.seller?.display_name?.trim();
+  if (!name) return "BM";
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return initials || "BM";
+}

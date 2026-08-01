@@ -2,7 +2,15 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useListing } from "../data/useListings";
-import { formatNaira, locationLabel, conditionLabel, isVerifiedSeller } from "../lib/format";
+import {
+  formatNaira,
+  locationLabel,
+  conditionLabel,
+  isVerifiedSeller,
+  sellerDisplayName,
+  sellerTenure,
+  sellerInitials,
+} from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
 
 /**
@@ -46,6 +54,7 @@ export default function ListingDetailPage() {
   const images = [listing.image_url, ...gallery].filter(Boolean) as string[];
   const hero = activeImage ?? listing.image_url ?? images[0] ?? null;
   const verified = isVerifiedSeller(listing);
+  const tenure = sellerTenure(listing);
 
   return (
     <div className="mkt-detail">
@@ -86,12 +95,10 @@ export default function ListingDetailPage() {
         </div>
 
         <div className="mkt-seller">
-          <div className="mkt-seller-avatar">BM</div>
+          <div className="mkt-seller-avatar">{sellerInitials(listing)}</div>
           <div className="mkt-seller-text">
-            <div className="mkt-seller-name">BundledMum seller</div>
-            <div className="mkt-seller-sub">
-              {verified ? "Seller checked by BundledMum" : "Selling on BundledMum"}
-            </div>
+            <div className="mkt-seller-name">{sellerDisplayName(listing)}</div>
+            {tenure ? <div className="mkt-seller-sub">{tenure}</div> : null}
           </div>
           {verified ? <VerifiedBadge size="lg" /> : null}
         </div>

@@ -7,9 +7,17 @@
 
 export type VerificationTier = "basic" | "verified";
 
-export interface MarketplaceSellerEmbed {
+/**
+ * Seller identity as exposed by the public-safe view marketplace_sellers_public.
+ * These are the ONLY seller fields that exist for buyers: nothing sensitive
+ * (bank status, debit, strikes, customer_id, contact) is here or fetched
+ * anywhere else. Attached to each listing client-side by seller_id.
+ */
+export interface MarketplaceSellerPublic {
+  display_name: string | null;
   verification_tier: VerificationTier | null;
   status: string | null;
+  created_at: string | null;
 }
 
 export interface MarketplaceCategoryEmbed {
@@ -30,5 +38,5 @@ export interface MarketplaceListing {
   category_id: string;
   seller_id: string;
   category: MarketplaceCategoryEmbed | null;
-  seller: MarketplaceSellerEmbed | null;
+  seller: MarketplaceSellerPublic | null;
 }

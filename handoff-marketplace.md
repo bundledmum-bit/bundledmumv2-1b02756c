@@ -70,17 +70,26 @@ dashboards, or checkout yet.
   noise is Vite's HMR websocket warning (sandbox artifact). `npm run build`
   passes.
 
-### ⚠️ Open blocker: verified badge is dormant (RLS on marketplace_sellers)
-The verified badge cannot show for the public yet. `marketplace_sellers` has NO
-anon/public SELECT policy (only "Admin manage sellers" and "Seller reads own
-row"), so the anon embed `seller:marketplace_sellers!..._seller_id_fkey(
-verification_tier)` returns `null` for every listing → the badge never renders
-(the card/detail degrade gracefully to no-badge, not an error; all 23 listings
-still load). The frontend code is correct and will light up automatically once
-the DB grants anon read of `verification_tier`. This needs a **DB-side change**
-(a narrow public-read policy on `marketplace_sellers.verification_tier`, or a
-safe view/RPC exposing only that column) — which is an explicit non-goal here
-("no Supabase migrations, DB handled separately"), so it is flagged, not fixed.
+### ✅ Verified badge + seller identity are now LIVE (resolved)
+The earlier badge blocker is fixed on the DB side by a public-safe view,
+`public.marketplace_sellers_public`, granted SELECT to anon/authenticated. It
+exposes EXACTLY five columns: `id, display_name, verification_tier, status,
+created_at`. The base `marketplace_sellers` table stays locked for anon by design
+(it holds bank flags, debit, strike counts, customer_id) and is never queried by
+the app.
+
+Seller identity is no longer embedded from the base table. The listing select no
+longer embeds a seller; instead the hooks fetch sellers from the view for the
+listings' `seller_id`s and join client-side (PostgREST cannot embed a view via
+the base table's FK). Result, now verified live:
+- The verified badge renders on every browse card and on the detail seller row
+  when `verification_tier = 'verified'`.
+- The detail page shows the real `display_name` (fallback "BundledMum seller"
+  when null) plus a year-only tenure line ("Selling since 2026", omitted when
+  `created_at` is missing) and initials-based avatar.
+- The browse CARD still shows only its three trust signals (badge, location,
+  condition), never the seller name.
+- No sensitive seller field is fetched or shown anywhere; no contact reveal.
 
 ## 3. Active files
 - `src/App.tsx` — thin top-level shell; picks the tree via `isMarketplace()`,
@@ -140,7 +149,25 @@ safe view/RPC exposing only that column) — which is an explicit non-goal here
 
 ## 5. Changes made
 
-### This pass — visual reskin to the approved Claude Design
+### This pass — seller identity from the public-safe view
+- Seller data now reads from `public.marketplace_sellers_public` (id,
+  display_name, verification_tier, status, created_at only), via a separate
+  query joined client-side by `seller_id`. Removed the base-table embed from
+  `LISTING_SELECT`; the base `marketplace_sellers` table is never queried by the
+  app (stays locked for anon by design). Files: `data/mdb.ts`,
+  `data/useListings.ts`, `types.ts`, `lib/format.ts`,
+  `pages/ListingDetailPage.tsx`. `ListingCard.tsx` unchanged (badge already read
+  `isVerifiedSeller`).
+- Verified badge now renders on cards + detail; detail shows real `display_name`
+  (fallback "BundledMum seller"), year-only tenure ("Selling since 2026", omitted
+  if `created_at` missing), and initials avatar. Card shows NO seller name.
+- Only the 5 view columns are ever read; no sensitive field, no contact.
+  All existing plumbing preserved (status='live', final_price_naira,
+  category/location dropdowns, search, card-to-detail nav). Verified live: 23
+  listings load, all show the badge, detail shows "Amaka O." / "Chioma E." plus
+  tenure.
+
+### Earlier this branch line — visual reskin to the approved Claude Design
 - Browse + listing detail were reskinned to the approved Claude Design mockup
   (project `0afda8cc`, `BundledMum Marketplace.dc.html`) visual language: green
   header carrying brand + search + the two filter pills, cream surfaces, Nunito/
@@ -223,10 +250,7 @@ call in `client.ts`.
 1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
    real buying (Paystack, seller subaccount, contact reveal post-payment) where
    that button is in `ListingDetailPage.tsx`. Not started.
-2. **Verified badge RLS (blocker, DB-side).** Grant anon read of
-   `marketplace_sellers.verification_tier` (narrow policy, or a view/RPC exposing
-   only that column) so the badge lights up. Frontend is already wired. See §2.
-3. **Seller onboarding** — seller signup, listing creation/submission, the
+2. **Seller onboarding** — seller signup, listing creation/submission, the
    pending_review → live workflow. Not started.
 4. **Admin** — marketplace moderation (approve/reject listings, manage sellers,
    categories). Not started.

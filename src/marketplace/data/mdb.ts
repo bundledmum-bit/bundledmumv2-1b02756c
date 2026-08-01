@@ -10,9 +10,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export const mdb = supabase as unknown as SupabaseClient;
 
-/** Columns selected for a listing, with explicit FK-hinted embeds to avoid any
- * PostgREST ambiguity (each embed names the exact foreign-key constraint). */
+/** Columns selected for a listing. The category name is embedded via an explicit
+ * FK-hinted embed. The SELLER is NOT embedded here: seller identity comes from
+ * the public view marketplace_sellers_public (the base marketplace_sellers table
+ * stays locked for anon by design), and PostgREST cannot embed a view via the
+ * base table's FK, so sellers are fetched separately and joined client-side by
+ * seller_id (see useListings). */
 export const LISTING_SELECT =
   "id, title, description, condition_notes, final_price_naira, location_state, location_city, status, image_url, gallery_urls, category_id, seller_id, " +
-  "category:marketplace_categories!marketplace_listings_category_id_fkey(name), " +
-  "seller:marketplace_sellers!marketplace_listings_seller_id_fkey(verification_tier, status)";
+  "category:marketplace_categories!marketplace_listings_category_id_fkey(name)";
+
+/** The ONLY seller columns anyone may read. This is the full column list of the
+ * public-safe view; no other seller field (bank status, debit, strikes,
+ * customer_id, contact) exists in it or may be fetched from anywhere else. */
+export const SELLER_PUBLIC_SELECT =
+  "id, display_name, verification_tier, status, created_at";
