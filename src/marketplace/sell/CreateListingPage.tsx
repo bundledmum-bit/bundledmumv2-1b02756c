@@ -11,11 +11,11 @@ interface PhotoDraft { file: File; url: string }
 const CONDITIONS = ["Like new", "Good", "Fair"];
 
 /**
- * Create listing, guided so a seller does not stall on a blank form. Photos
- * upload to the marketplace-listings storage bucket, the first becomes image_url
- * and the rest gallery_urls. final_price_naira is computed by a DB trigger, we
- * never write it. Description and condition notes are checked for contact
- * details before submit, the same anti-leakage control the admin review uses.
+ * Create listing, reskinned to the design (green header with progress, photo
+ * grid, condition chips, live price card). Photos upload to the
+ * marketplace-listings bucket, first becomes image_url and the rest gallery_urls.
+ * final_price_naira and markup_percent are DB trigger owned, never written here.
+ * Description and condition notes are blocked for contact details before submit.
  */
 export default function CreateListingPage() {
   const { loading, isLoggedIn, seller } = useSeller();
@@ -32,6 +32,7 @@ export default function CreateListingPage() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -62,18 +63,18 @@ export default function CreateListingPage() {
 
   const priceNum = Number(price);
   const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
+  const filled = [photos.length > 0, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
+  const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
   function addPhotos(files: FileList | null) {
     if (!files) return;
     const next = Array.from(files).slice(0, 8 - photos.length).map((file) => ({ file, url: URL.createObjectURL(file) }));
     setPhotos((p) => [...p, ...next]);
   }
-  function removePhoto(i: number) {
-    setPhotos((p) => p.filter((_, idx) => idx !== i));
-  }
+  function removePhoto(i: number) { setPhotos((p) => p.filter((_, idx) => idx !== i)); }
 
   async function submit() {
-    setError(null);
+    setError(null); setContactBlocked(false);
     if (!seller) return;
     if (photos.length < 1) { setError("Add at least one photo so buyers can see the item."); return; }
     if (!title.trim()) { setError("Give your listing a title."); return; }
@@ -82,15 +83,10 @@ export default function CreateListingPage() {
     if (!conditionNotes.trim()) { setError("Add condition notes. Mention any flaw, buyers cannot ask questions before buying."); return; }
     if (!description.trim()) { setError("Add a description."); return; }
     if (!isFinite(priceNum) || priceNum <= 0) { setError("Enter your asking price."); return; }
-    // Anti-leakage: no contact details in the buyer-visible text.
-    if (hasContactLeak(description, conditionNotes)) {
-      setError("Listings must not contain contact details like a phone number, WhatsApp or a request to call. Buyers and sellers connect after payment.");
-      return;
-    }
+    if (hasContactLeak(description, conditionNotes)) { setContactBlocked(true); return; }
 
     setBusy(true);
     try {
-      // Upload photos to the public marketplace-listings bucket.
       const urls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
         const f = photos[i].file;
@@ -101,9 +97,7 @@ export default function CreateListingPage() {
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);
         urls.push(pub.publicUrl);
       }
-
       const composedNotes = condition ? `${condition}. ${conditionNotes.trim()}` : conditionNotes.trim();
-      // Note: final_price_naira and markup_percent are set by the DB trigger.
       const { error: insErr } = await sdb.from("marketplace_listings").insert({
         seller_id: seller.id,
         category_id: categoryId,
@@ -118,8 +112,7 @@ export default function CreateListingPage() {
         status: "pending_review",
       });
       if (insErr) throw insErr;
-      setBusy(false);
-      setDone(true);
+      setBusy(false); setDone(true);
     } catch (e) {
       setBusy(false);
       setError((e as { message?: string })?.message || "Something went wrong. Please try again.");
@@ -128,100 +121,138 @@ export default function CreateListingPage() {
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
+  // S3c awaiting review
   if (done) {
     return (
-      <div className="mkt-page">
-        <div className="mkt-banner info" style={{ padding: 20 }}>
-          <div style={{ fontFamily: "Nunito, sans-serif", fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Sent for review</div>
-          Your listing is with our team now. It is not live yet, we check every listing before it appears
-          on the marketplace. You will see it move to live on your dashboard once it is approved.
+      <div className="mkt-success">
+        <div className="inner">
+          <div className="check">✓</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <h1>Well done, it is with our team</h1>
+            <p>Your item is not live yet. Someone from BundledMum is checking the photos and details, usually within a few hours. We will let you know the moment it is approved.</p>
+          </div>
+          <div className="mkt-timeline">
+            <div className="mkt-tl"><span className="d done">✓</span><span>Listing received</span></div>
+            <div className="mkt-tl"><span className="d now"></span><span>Being reviewed now</span></div>
+            <div className="mkt-tl"><span className="d todo"></span><span className="todo">Live in the marketplace</span></div>
+          </div>
+          <div className="listing">
+            <div style={{ width: 48, height: 48, flex: "0 0 48px", borderRadius: 9, overflow: "hidden" }}>
+              {photos[0] && <img src={photos[0].url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ font: "400 13px/1.3 Lato, sans-serif" }}>{title}</div>
+              <div style={{ font: "400 11px/1.4 Lato, sans-serif", color: "var(--mkt-muted)" }}>Buyers see {formatNaira(preview)}</div>
+            </div>
+            <span className="mkt-st pending">Pending</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <button className="mkt-primary" onClick={() => window.location.reload()}>List another item</button>
+            <button className="mkt-outline-light" onClick={() => navigate("/sell/dashboard")}>Go to my dashboard</button>
+          </div>
         </div>
-        <button className="mkt-primary" style={{ marginTop: 16 }} onClick={() => navigate("/sell/dashboard")}>Go to my dashboard</button>
-        <button className="mkt-secondary" style={{ marginTop: 10 }} onClick={() => window.location.reload()}>List another item</button>
       </div>
     );
   }
 
   return (
-    <div className="mkt-page">
-      <button className="mkt-linkback" onClick={() => navigate("/sell/dashboard")}>‹ Back</button>
-      <h1>New listing</h1>
-      <p className="lede">A full, honest listing sells faster. Buyers cannot ask questions before buying, so tell them everything here.</p>
+    <>
+      <div className="mkt-sell-head">
+        <div className="inner">
+          <div className="row">
+            <button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button>
+            <h1 style={{ flex: 1 }}>List an item</h1>
+          </div>
+          <div className="mkt-prog"><i style={{ width: `${progress}%` }} /></div>
+          <p className="sub">Buyers cannot ask questions, so tell them everything here.</p>
+        </div>
+      </div>
 
-      <div className="mkt-form">
+      <div className="mkt-sell-body">
         <div className="mkt-field">
-          <label>Photos</label>
+          <div className="mkt-field-head"><span className="lbl">Photos</span><span className="mkt-help">At least one, add a few angles to sell faster</span></div>
           <div className="mkt-photos">
             {photos.map((p, i) => (
               <div className="mkt-photo" key={p.url}>
                 <img src={p.url} alt="" />
-                {i === 0 && <span className="first">Main</span>}
+                {i === 0 && <span className="main">Main</span>}
                 <button type="button" className="rm" onClick={() => removePhoto(i)} aria-label="Remove photo">×</button>
               </div>
             ))}
-            {photos.length < 8 && (
-              <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} aria-label="Add photo">+</button>
-            )}
+            {photos.length < 8 && <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} aria-label="Add photo">+</button>}
           </div>
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-          <span className="mkt-help">At least one photo. The first is the main photo buyers see. Add a few more to sell faster.</span>
+          <div className="mkt-help">The first is the main photo buyers see. Front, back, sides, a close up of any wear, and the label.</div>
         </div>
 
         <div className="mkt-field">
-          <label>Title</label>
+          <span className="mkt-uplabel">Title</span>
           <input className="mkt-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chicco Bravo stroller, folds flat" />
         </div>
 
-        <div className="mkt-field">
-          <label>Category</label>
-          <select className="mkt-native-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">Choose a category</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-
-        <div className="mkt-field">
-          <label>Location</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input className="mkt-input" value={state} onChange={(e) => setState(e.target.value)} placeholder="State, e.g. Lagos" />
-            <input className="mkt-input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Area, e.g. Lekki" />
+        <div style={{ display: "flex", gap: 9 }}>
+          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
+            <span className="mkt-uplabel">Category</span>
+            <select className="mkt-native-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">Choose</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
+            <span className="mkt-uplabel">State</span>
+            <input className="mkt-input" value={state} onChange={(e) => setState(e.target.value)} placeholder="Lagos" />
+          </div>
+          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
+            <span className="mkt-uplabel">Area</span>
+            <input className="mkt-input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lekki" />
           </div>
         </div>
 
         <div className="mkt-field">
-          <label>Condition</label>
-          <div className="mkt-choices">
+          <span className="mkt-uplabel">Condition and description</span>
+          <div className="mkt-chips">
             {CONDITIONS.map((c) => (
-              <button type="button" key={c} className={condition === c ? "mkt-choice on" : "mkt-choice"} onClick={() => setCondition(c)}>{c}</button>
+              <button type="button" key={c} className={condition === c ? "mkt-chip on" : "mkt-chip"} onClick={() => setCondition(c)}>{c}</button>
             ))}
           </div>
           <textarea className="mkt-textarea" value={conditionNotes} onChange={(e) => setConditionNotes(e.target.value)}
             placeholder="Describe the condition honestly. Mention any scuff, stain or missing part, and what is included." />
-          <span className="mkt-help">Do not add phone numbers or ways to contact you. Buyers and sellers connect after payment.</span>
+          <div className="mkt-help">Mention any scuff or missing part, honesty prevents disputes. Do not add a phone number or way to contact you.</div>
         </div>
 
         <div className="mkt-field">
-          <label>Description</label>
-          <textarea className="mkt-textarea" value={description} onChange={(e) => setDescription(e.target.value)}
+          <span className="mkt-uplabel">Description</span>
+          <textarea className={contactBlocked ? "mkt-textarea error" : "mkt-textarea"} value={description} onChange={(e) => { setDescription(e.target.value); if (contactBlocked) setContactBlocked(false); }}
             placeholder="What it is, size or age range, how long you used it, why you are selling." />
         </div>
 
-        <div className="mkt-field">
-          <label>Your asking price</label>
-          <input className="mkt-input" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 45000" inputMode="numeric" />
-          <div className="mkt-price-preview">
-            <div className="big tnum">{preview > 0 ? `Buyers will see ${formatNaira(preview)}` : "Buyers will see your price plus our markup"}</div>
-            <div className="sub">You keep your full asking price. BundledMum adds a {markupPct}% markup, shown to the buyer.</div>
+        {contactBlocked && (
+          <div className="mkt-errbox">
+            <span className="m">!</span>
+            <div><b>Please take out your contact details</b><span>Listings cannot carry a phone number, WhatsApp, or a request to call. Your buyer gets your details automatically once they have paid, and that is what keeps your money protected.</span></div>
           </div>
+        )}
+        {error && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
+
+        <div className="mkt-pricecard">
+          <div className="cols">
+            <div style={{ flex: 1 }}>
+              <div className="lbl">Your asking price</div>
+              <div className="askbox">₦&nbsp;<input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^0-9]/g, ""))} placeholder="45,000" inputMode="numeric" /></div>
+            </div>
+            <div>
+              <div className="lbl">Buyers see</div>
+              <div className="see">{preview > 0 ? formatNaira(preview) : "₦0"}</div>
+            </div>
+          </div>
+          <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)}. BundledMum adds a {markupPct}% markup on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
         </div>
-
-        {error && <div className="mkt-banner warn">{error}</div>}
-
-        <button className="mkt-primary" onClick={submit} disabled={busy}>
-          {busy ? "Sending for review..." : "Submit for review"}
-        </button>
-        <p className="mkt-help" style={{ textAlign: "center" }}>Every listing is checked by our team before it goes live.</p>
       </div>
-    </div>
+
+      <div className="mkt-sell-foot">
+        <button className="mkt-primary" onClick={submit} disabled={busy}>{busy ? "Sending for review..." : "Send for review"}</button>
+        <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : "Our team checks every listing before it goes live"}</div>
+      </div>
+    </>
   );
 }

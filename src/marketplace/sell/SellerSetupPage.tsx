@@ -5,13 +5,12 @@ import { useSeller } from "./useSeller";
 import { sdb, validateDisplayName } from "./sellData";
 
 /**
- * Seller setup, creates the marketplace_sellers row (status active, tier basic,
- * self serve, no approval gate). Collects the public display name plus the
- * private phone and bank details, which are never rendered anywhere public.
+ * Seller setup, reskinned to the design. Creates the marketplace_sellers row
+ * (status active, tier basic, self serve). Display name is public and validated
+ * (no digits, @ or URL); phone and bank details are private and never public.
  *
- * NOTE: marketplace_sellers currently has no INSERT policy, so the insert will
- * be rejected by RLS until that policy is added on the DB side. The form is
- * complete and will work the moment the policy lands. See handoff.
+ * NOTE: marketplace_sellers has no INSERT policy yet, so the insert is rejected
+ * by RLS until that policy is added on the DB side. See handoff.
  */
 export default function SellerSetupPage() {
   const { user, isLoggedIn, loading, customerId, seller, refresh } = useSeller();
@@ -43,15 +42,10 @@ export default function SellerSetupPage() {
     }
     setBusy(true);
 
-    // Ensure a customers row keyed to this auth user exists (the seller RLS and
-    // FK both key off it). Open insert policy allows this client side.
     let cid = customerId;
     if (!cid && user) {
       const { data: created, error: cErr } = await sdb
-        .from("customers")
-        .insert({ auth_user_id: user.id, email: user.email })
-        .select("id")
-        .maybeSingle();
+        .from("customers").insert({ auth_user_id: user.id, email: user.email }).select("id").maybeSingle();
       if (cErr) { setBusy(false); setError(cErr.message); return; }
       cid = (created as { id: string } | null)?.id ?? null;
     }
@@ -75,52 +69,65 @@ export default function SellerSetupPage() {
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
+  const nameBlocked = !!nameErr;
+
   return (
-    <div className="mkt-page">
-      <button className="mkt-linkback" onClick={() => navigate("/sell")}>‹ Back</button>
-      <h1>Set up your seller account</h1>
-      <p className="lede">A few details and you can start listing. This takes about four minutes.</p>
+    <>
+      <div className="mkt-sell-head">
+        <div className="inner">
+          <div className="row">
+            <button className="mkt-sell-back" onClick={() => navigate("/sell")} aria-label="Back">‹</button>
+          </div>
+          <h1>Set up your seller account</h1>
+          <p className="sub">Two minutes. We ask for your bank details now so your money can move the moment a sale is confirmed.</p>
+        </div>
+      </div>
 
-      <div className="mkt-form">
+      <div className="mkt-sell-body">
         <div className="mkt-field">
-          <label>Display name</label>
-          <input className="mkt-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Amaka O." />
-          <span className="mkt-help">This is the public name buyers see. No numbers, no email, no links.</span>
-          {nameErr && <span className="mkt-err">{nameErr}</span>}
+          <div className="mkt-field-head"><span className="lbl">Display name</span><span className="mkt-tag public">Public</span></div>
+          <input className={nameBlocked ? "mkt-input error" : "mkt-input"} value={displayName}
+            onChange={(e) => { setDisplayName(e.target.value); if (nameErr) setNameErr(null); }} placeholder="e.g. Amaka O." />
+          {nameBlocked ? (
+            <div className="mkt-errbox"><span className="m">!</span><span>{nameErr}</span></div>
+          ) : (
+            <div className="mkt-help">This is the name buyers see on your listings. No numbers, no @ and no links, first name and an initial works best.</div>
+          )}
         </div>
 
         <div className="mkt-field">
-          <label>Phone number</label>
-          <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="080..." inputMode="tel" />
-          <span className="mkt-help">For BundledMum to reach you. This is never shown to buyers.</span>
+          <div className="mkt-field-head"><span className="lbl">Phone number</span><span className="mkt-tag private">Private</span></div>
+          <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803..." inputMode="tel" />
+          <div className="mkt-help">For BundledMum only, so we can reach you about a sale. Buyers never see this number.</div>
         </div>
 
-        <div className="mkt-fieldgroup">
-          <div className="mkt-group-label">Bank account for payouts</div>
-          <p className="mkt-help" style={{ margin: 0 }}>
-            BundledMum pays out to this account after a buyer confirms their item arrived. These details
-            stay private, only you and our team can see them.
-          </p>
-          <div className="mkt-field">
-            <label>Bank name</label>
-            <input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. GTBank" />
+        <div className="mkt-bankcard">
+          <div className="mkt-bankcard-head">
+            <div className="ic">₦</div>
+            <div><b>Where we send your money</b><small>Kept private, and never shown to buyers</small></div>
           </div>
           <div className="mkt-field">
-            <label>Account name</label>
-            <input className="mkt-input" value={bankAcctName} onChange={(e) => setBankAcctName(e.target.value)} placeholder="Name on the account" />
+            <span className="mkt-uplabel">Bank</span>
+            <input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="e.g. Guaranty Trust Bank" />
           </div>
           <div className="mkt-field">
-            <label>Account number</label>
+            <span className="mkt-uplabel">Account number</span>
             <input className="mkt-input" value={bankAcctNumber} onChange={(e) => setBankAcctNumber(e.target.value)} placeholder="10 digit number" inputMode="numeric" />
           </div>
+          <div className="mkt-field">
+            <span className="mkt-uplabel">Account name</span>
+            <input className="mkt-input" value={bankAcctName} onChange={(e) => setBankAcctName(e.target.value)} placeholder="Name on the account" />
+            <div className="mkt-help">Must match the name on the account, otherwise your transfer will bounce back.</div>
+          </div>
         </div>
 
-        {error && <div className="mkt-banner warn">{error}</div>}
-
-        <button className="mkt-primary" onClick={submit} disabled={busy}>
-          {busy ? "Creating your account..." : "Create seller account"}
-        </button>
+        {error && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
       </div>
-    </div>
+
+      <div className="mkt-sell-foot">
+        <button className="mkt-primary" onClick={submit} disabled={busy}>{busy ? "Creating your account..." : "Save and continue"}</button>
+        <div className="helper">You can change these details any time</div>
+      </div>
+    </>
   );
 }

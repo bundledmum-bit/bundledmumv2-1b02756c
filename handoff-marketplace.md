@@ -149,7 +149,35 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — sell side (seller onboarding + listing creation)
+### This pass — sell screens reskinned to the approved Claude Design
+- Applied the approved design (project `0afda8cc`, "Sell flow, four screens":
+  S1 become a seller, S2 setup + S2b validation, S3 create listing + S3b contact
+  block + S3c awaiting review, S4 dashboard + S4b orders empty) to the existing
+  working sell components. Visual only. Files changed: `marketplace.css` (sell
+  block) and `sell/{BecomeSellerPage,SellerSetupPage,CreateListingPage,
+  SellerDashboardPage}.tsx`. Data files `useSeller.ts` and `sellData.ts` are
+  untouched.
+- **Every data connection and validation preserved:** display_name rejects
+  digits/@/URL (now shown in the design's red error box + red field border);
+  description + condition_notes contact-detail block (design red block + footer
+  message); at least one photo required (design shows six, our real rule is one,
+  kept as one, styled to match, first photo is MAIN); buyer-price preview
+  (asking x (1 + markup/100) from marketplace_markup_percent); photo upload to
+  the `marketplace-listings` bucket with first->image_url, rest->gallery_urls;
+  final_price_naira and markup_percent left to the DB trigger; status stays
+  pending_review; bank details masked to last 4 and never public.
+- Design-to-real-data adaptations reported: "6 photos required" kept as "at
+  least one"; "Save draft" and the "Remove it for me" auto-fix button omitted (no
+  such behaviour); dashboard "views" omitted (no field), showing the seller's
+  take (price_naira) as "You get". The design's semantic error red (#C0392B) is
+  used only for validation and rejected states; coral stays the action accent.
+- Verified live: become-a-seller matches the design; setup renders and the
+  display-name validation fires with the new styling; contact-leak and price
+  logic confirmed. Create listing and dashboard still require a seller row (DB
+  blocked, see below), so they are build + code verified. Browse, listing detail,
+  admin and storefront unchanged.
+
+### Earlier this branch line — sell side (seller onboarding + listing creation)
 - Self-serve model: any logged-in BundledMum customer can become a seller and
   immediately create listings. Seller row is created with status='active',
   verification_tier='basic', no approval gate. Every listing still goes to admin

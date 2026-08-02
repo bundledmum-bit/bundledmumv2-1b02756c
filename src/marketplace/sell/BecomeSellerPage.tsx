@@ -2,11 +2,13 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
+import { formatNaira } from "./sellData";
 
 /**
- * Become a seller, the public entry and value screen. Anyone can read it. The
- * CTA routes a logged out visitor through the existing storefront login (with a
- * returnTo back here), and an existing seller straight to their dashboard.
+ * Become a seller, the public entry and value screen, reskinned to the approved
+ * design (green hero, five step payment card, coral primary). Anyone can read
+ * it. The CTA routes a logged out visitor through the existing storefront login
+ * with a returnTo back here, and an existing seller straight to the dashboard.
  */
 export default function BecomeSellerPage() {
   const { isLoggedIn, loading, seller } = useSeller();
@@ -17,10 +19,11 @@ export default function BecomeSellerPage() {
   }, [loading, seller, navigate]);
 
   const steps = [
-    { n: "1", t: "You list it", s: "Add clear photos and an honest description. It goes live once our team has checked it." },
-    { n: "2", t: "A buyer pays BundledMum", s: "We hold the money safely, the buyer is protected and so are you." },
-    { n: "3", t: "You ship it", s: "We share the buyer's delivery details after payment, then you send the item." },
-    { n: "4", t: "We pay you", s: "Once the buyer confirms it arrived, we pay your bank account. Simple." },
+    "Buyer pays BundledMum, not you",
+    "We hold the money safely while you send the item",
+    "You ship, and share the details with your buyer",
+    "Buyer confirms it arrived as described",
+    "We transfer your money to your bank account",
   ];
 
   const startCta = () => {
@@ -33,45 +36,52 @@ export default function BecomeSellerPage() {
   };
 
   return (
-    <div className="mkt-page">
-      <button className="mkt-linkback" onClick={() => navigate("/")}>‹ Back to marketplace</button>
-      <h1>Turn outgrown baby things into cash</h1>
-      <p className="lede">
-        List the pram, the cot, the maternity dresses you will not wear again. We handle the payment
-        and hold it safe for both sides, so selling here is calm, not stressful.
-      </p>
+    <>
+      <div className="mkt-sell-head">
+        <div className="inner">
+          <button className="mkt-sell-back" onClick={() => navigate("/")} aria-label="Back to marketplace">‹</button>
+          <div className="mkt-sell-brand">BundledMum <small>Marketplace</small></div>
+          <div className="hero">Sell your baby things without the wahala</div>
+          <p className="sub">No haggling in your DMs, no meeting a stranger hoping they have the cash. We hold the money until your buyer confirms, then send it straight to your bank.</p>
+        </div>
+      </div>
 
-      <div className="mkt-value">
-        {steps.map((st) => (
-          <div className="mkt-value-step" key={st.n}>
-            <div className="mkt-value-num">{st.n}</div>
-            <div>
-              <b>{st.t}</b>
-              <span>{st.s}</span>
+      <div className="mkt-sell-body">
+        <div className="mkt-card2">
+          <div className="mkt-card2-label">How you get paid</div>
+          {steps.map((s, i) => (
+            <div className="mkt-step" key={i}>
+              <div className={i === steps.length - 1 ? "mkt-step-num final" : "mkt-step-num"}>{i + 1}</div>
+              <span>{s}</span>
             </div>
+          ))}
+        </div>
+
+        <div className="mkt-statrow">
+          <div className="mkt-stat green">
+            <div className="n">{formatNaira(0)}</div>
+            <div className="t">to list. We add our markup on top of your price, so you keep exactly what you ask for.</div>
           </div>
-        ))}
+          <div className="mkt-stat coral">
+            <div className="n">{formatNaira(750)}</div>
+            <div className="t">service fee, paid by the buyer at checkout. Never taken from you.</div>
+          </div>
+        </div>
+
+        <div className="mkt-info">
+          <div className="tick">✓</div>
+          <div className="txt"><b style={{ fontWeight: 700 }}>Every listing is reviewed by our team</b> before it goes live, usually within a few hours. That check is why buyers trust what they find here, trusted quality every time.</div>
+        </div>
       </div>
 
-      <div className="mkt-fieldgroup" style={{ marginTop: 20 }}>
-        <div className="mkt-group-label">What you need</div>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55 }}>
-          A phone number we can reach you on, a bank account in your name for payouts, and clear photos
-          of what you are selling. It takes about four minutes, and listing is free. We add a small
-          markup for the buyer, so you keep your full asking price.
-        </p>
+      <div className="mkt-sell-foot">
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "6px 0" }}><BMLoadingAnimation size={80} /></div>
+        ) : (
+          <button className="mkt-primary" onClick={startCta}>{isLoggedIn ? "Start selling" : "Log in to start selling"}</button>
+        )}
+        <div className="helper">Takes about four minutes to set up</div>
       </div>
-
-      {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}><BMLoadingAnimation size={90} /></div>
-      ) : (
-        <button className="mkt-primary" style={{ marginTop: 18 }} onClick={startCta}>
-          {isLoggedIn ? "Start selling" : "Log in to start selling"}
-        </button>
-      )}
-      <p className="mkt-help" style={{ textAlign: "center", marginTop: 10 }}>
-        Free to list, trusted quality, checked by our team.
-      </p>
-    </div>
+    </>
   );
 }

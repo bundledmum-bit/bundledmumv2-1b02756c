@@ -15,30 +15,24 @@ interface MyListing {
   rejection_reason: string | null;
 }
 
-const GROUPS: Array<{ key: string; label: string }> = [
-  { key: "pending_review", label: "Pending review" },
-  { key: "live", label: "Live" },
-  { key: "sold", label: "Sold" },
-  { key: "rejected", label: "Rejected" },
+const GROUPS: Array<{ key: string; label: string; pill: string }> = [
+  { key: "pending_review", label: "Pending review", pill: "pending" },
+  { key: "live", label: "Live", pill: "live" },
+  { key: "rejected", label: "Rejected", pill: "rejected" },
+  { key: "sold", label: "Sold", pill: "sold" },
 ];
 
-const STATUS_PILL: Record<string, string> = {
-  pending_review: "mkt-condition",
-  live: "mkt-verified",
-  sold: "note-tag",
-  rejected: "mkt-condition",
-};
-
 /**
- * Seller dashboard. Their listings grouped by status (rejection reason shown so
- * they can fix and relist), an honest empty orders state until checkout exists,
- * masked payout details, and the entry to create another listing or edit their
- * profile. Bank and phone are only ever shown to the seller here, never public.
+ * Seller dashboard, reskinned to the design (green header, payout card, tabs).
+ * Listings grouped by status with rejection reasons; an honest empty orders
+ * state; payout account masked to the last 4 digits. Bank and phone are only
+ * ever shown to the seller here, never public.
  */
 export default function SellerDashboardPage() {
   const { loading, isLoggedIn, seller, refresh } = useSeller();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
+  const [tab, setTab] = useState<"listings" | "orders">("listings");
 
   useEffect(() => {
     if (loading) return;
@@ -62,81 +56,102 @@ export default function SellerDashboardPage() {
   if (loading || !seller) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
   const debit = Number(seller.outstanding_debit_naira || 0);
+  const firstName = (seller.display_name || "there").split(/\s+/)[0];
 
   return (
-    <div className="mkt-page">
-      <div className="rowline">
-        <div>
-          <h1>Your seller dashboard</h1>
-          <p className="lede" style={{ marginTop: 4 }}>{seller.display_name}</p>
+    <>
+      <div className="mkt-sell-head">
+        <div className="inner">
+          <div className="row">
+            <h1>Hi {firstName}</h1>
+            <button className="link" onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit profile"}</button>
+          </div>
+          <div className="mkt-payout">
+            <div style={{ flex: 1 }}>
+              <div className="lbl">Payouts go to</div>
+              <div className="acct">{seller.bank_name || "Bank not set"} {maskAccount(seller.bank_account_number)}</div>
+            </div>
+            <button className="mkt-outline-light" style={{ width: "auto", padding: "8px 11px", fontSize: 12 }} onClick={() => setEditing(true)}>Change</button>
+          </div>
         </div>
-        {seller.verification_tier === "verified"
-          ? <span className="mkt-verified lg"><span className="mkt-verified-tick">✓</span><span>Verified</span></span>
-          : <span className="mkt-condition">Basic</span>}
       </div>
 
-      <button className="mkt-primary" style={{ marginTop: 16 }} onClick={() => navigate("/sell/new")}>List an item</button>
+      <div className="mkt-sell-body">
+        {editing && <EditProfile seller={seller} onDone={async () => { setEditing(false); await refresh(); }} onCancel={() => setEditing(false)} />}
 
-      {debit > 0 && (
-        <div className="mkt-banner warn" style={{ marginTop: 14 }}>
-          You owe BundledMum {formatNaira(debit)}. New listings are paused until this is cleared.
+        {debit > 0 && (
+          <div className="mkt-debit">
+            <span className="m">!</span>
+            <span>You owe {formatNaira(debit)} from a refunded order. We will take it off your next payout. New listings are paused until it clears.</span>
+          </div>
+        )}
+
+        <div className="mkt-tabs">
+          <button className={tab === "listings" ? "mkt-tab on" : "mkt-tab"} onClick={() => setTab("listings")}>Listings <span className="c">{listings.length}</span></button>
+          <button className={tab === "orders" ? "mkt-tab on" : "mkt-tab"} onClick={() => setTab("orders")}>Orders <span className="c">0</span></button>
         </div>
-      )}
 
-      {/* listings by status */}
-      {listingsLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}><BMLoadingAnimation size={90} /></div>
-      ) : listings.length === 0 ? (
-        <div className="mkt-dash-empty" style={{ marginTop: 18 }}>No listings yet. Tap list an item to add your first one.</div>
-      ) : (
-        GROUPS.map((g) => {
-          const rows = listings.filter((l) => l.status === g.key);
-          if (rows.length === 0) return null;
-          return (
-            <div key={g.key}>
-              <div className="mkt-group-title">{g.label} ({rows.length})</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {rows.map((l) => (
-                  <div className="mkt-dash-card" key={l.id} style={{ flexWrap: "wrap" }}>
-                    <div className="thumb-sq">{l.image_url && <img src={l.image_url} alt="" />}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: "Nunito, sans-serif", fontWeight: 800, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
-                      <div className="mini tnum">{formatNaira(l.final_price_naira ?? l.price_naira)}</div>
-                    </div>
-                    <span className={STATUS_PILL[l.status] || "note-tag"}>{g.label}</span>
-                    {l.status === "rejected" && l.rejection_reason && (
-                      <div className="mkt-banner warn" style={{ flexBasis: "100%", marginTop: 4 }}>
-                        <b>Why it was rejected:</b> {l.rejection_reason}. Fix this and list it again.
+        {tab === "listings" ? (
+          listingsLoading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}><BMLoadingAnimation size={90} /></div>
+          ) : listings.length === 0 ? (
+            <div className="mkt-empty"><div className="box"></div><h3>No listings yet</h3><p>Tap list an item to add your first one. Every listing is checked by our team before it goes live.</p></div>
+          ) : (
+            GROUPS.map((g) => {
+              const rows = listings.filter((l) => l.status === g.key);
+              if (rows.length === 0) return null;
+              return (
+                <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {rows.map((l) => (
+                    l.status === "rejected" ? (
+                      <div className="mkt-lrow col" key={l.id}>
+                        <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                          <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                            <div className="meta">You get {formatNaira(l.price_naira)}</div>
+                          </div>
+                          <span className="mkt-st rejected">Rejected</span>
+                        </div>
+                        {l.rejection_reason && <div className="mkt-reject">{l.rejection_reason}. Fix this and send it back to us.</div>}
+                        <button className="mkt-secondary" onClick={() => navigate("/sell/new")}>Fix and resend</button>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                    ) : (
+                      <div className={g.key === "sold" ? "mkt-lrow dim" : "mkt-lrow"} key={l.id}>
+                        <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                          <div className="meta">You get {formatNaira(l.price_naira)}</div>
+                        </div>
+                        <span className={`mkt-st ${g.pill}`}>{g.label}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              );
+            })
+          )
+        ) : (
+          <>
+            <div className="mkt-empty">
+              <div className="box"></div>
+              <h3>No sales yet</h3>
+              <p>Your live listings are out there being seen. When someone buys, the order lands here with everything you need to send it off.</p>
             </div>
-          );
-        })
-      )}
+            <div className="mkt-card2">
+              <div className="mkt-card2-label">What happens when you sell</div>
+              <div className="mkt-step"><div className="mkt-step-num">1</div><span>We hold the buyer's payment and tell you straight away</span></div>
+              <div className="mkt-step"><div className="mkt-step-num">2</div><span>You send the item and mark it on this screen</span></div>
+              <div className="mkt-step"><div className="mkt-step-num final">3</div><span>Buyer confirms, we transfer to {seller.bank_name || "your bank"} {maskAccount(seller.bank_account_number)}</span></div>
+            </div>
+          </>
+        )}
+      </div>
 
-      {/* orders, empty for now */}
-      <div className="mkt-group-title">Your orders</div>
-      <div className="mkt-dash-empty">No orders yet. When a buyer purchases one of your items, it will show here with what to do next.</div>
-
-      {/* payout details */}
-      <div className="mkt-group-title">Payout details</div>
-      {editing ? (
-        <EditProfile seller={seller} onDone={async () => { setEditing(false); await refresh(); }} onCancel={() => setEditing(false)} />
-      ) : (
-        <div className="mkt-fieldgroup">
-          <div className="rowline"><span className="mkt-group-label">Display name</span><b className="nun">{seller.display_name}</b></div>
-          <div className="divider"></div>
-          <div className="rowline"><span className="mkt-group-label">Bank</span><b className="nun">{seller.bank_name || "Not set"}</b></div>
-          <div className="rowline"><span className="mkt-group-label">Account name</span><b className="nun">{seller.bank_account_name || "Not set"}</b></div>
-          <div className="rowline"><span className="mkt-group-label">Account number</span><b className="nun tnum">{maskAccount(seller.bank_account_number)}</b></div>
-          <p className="mkt-help" style={{ margin: 0 }}>We pay out here after a buyer confirms their item arrived. Only you and our team can see this.</p>
-          <button className="mkt-secondary" onClick={() => setEditing(true)}>Edit display name and bank details</button>
-        </div>
-      )}
-    </div>
+      <div className="mkt-sell-foot">
+        <button className="mkt-primary" onClick={() => navigate("/sell/new")}>List another item</button>
+      </div>
+    </>
   );
 }
 
@@ -165,12 +180,15 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
   }
 
   return (
-    <div className="mkt-fieldgroup">
-      <div className="mkt-field"><label>Display name</label><input className="mkt-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></div>
-      <div className="mkt-field"><label>Bank name</label><input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></div>
-      <div className="mkt-field"><label>Account name</label><input className="mkt-input" value={bankAcctName} onChange={(e) => setBankAcctName(e.target.value)} /></div>
-      <div className="mkt-field"><label>Account number</label><input className="mkt-input tnum" value={bankAcctNumber} onChange={(e) => setBankAcctNumber(e.target.value)} inputMode="numeric" /></div>
-      {err && <div className="mkt-err">{err}</div>}
+    <div className="mkt-bankcard">
+      <div className="mkt-field">
+        <div className="mkt-field-head"><span className="lbl">Display name</span><span className="mkt-tag public">Public</span></div>
+        <input className="mkt-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+      </div>
+      <div className="mkt-field"><span className="mkt-uplabel">Bank</span><input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></div>
+      <div className="mkt-field"><span className="mkt-uplabel">Account number</span><input className="mkt-input" value={bankAcctNumber} onChange={(e) => setBankAcctNumber(e.target.value)} inputMode="numeric" /></div>
+      <div className="mkt-field"><span className="mkt-uplabel">Account name</span><input className="mkt-input" value={bankAcctName} onChange={(e) => setBankAcctName(e.target.value)} /></div>
+      {err && <div className="mkt-errbox"><span className="m">!</span><span>{err}</span></div>}
       <div style={{ display: "flex", gap: 8 }}>
         <button className="mkt-secondary" style={{ flex: 1 }} onClick={onCancel} disabled={busy}>Cancel</button>
         <button className="mkt-primary" style={{ flex: 1 }} onClick={save} disabled={busy}>{busy ? "Saving..." : "Save"}</button>
