@@ -160,7 +160,72 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — checkout collects buyer NAME + PHONE + email (seller needs to reach the buyer)
+### This pass — ADMIN marketplace operations (payouts, disputes, sellers, listings, orders, money owed, dashboard)
+Completes the operator side so the transaction can close: money can be released to
+sellers and disputes resolved. Money moves MANUALLY (a person sends the bank
+transfer, then records it here); nothing in this UI moves money by itself. All
+seven screens replace the `MarketplaceComingSoon` placeholders and sit behind
+`PermissionGate module="marketplace" action="manage"` (super_admin + admin only).
+Built to design 9a ("Admin: marketplace operations") and 10a ("Admin money states
+and friction").
+- **New files** under `src/pages/admin/marketplace/`: `opsData.ts` (types, RPC
+  wrappers, `STRIKE_THRESHOLD = 3`, `orderMoneyState`), `opsUi.tsx` (StatusPill,
+  CopyField, ConfirmDialog, OpsHeader/Empty/Card), and one page each:
+  `MarketplaceDashboard`, `MarketplacePayouts`, `MarketplaceDisputes`,
+  `MarketplaceSellers`, `MarketplaceListings`, `MarketplaceOrders`,
+  `MarketplaceMoneyOwed`. Routes wired in `StorefrontApp.tsx`; `MarketplaceComingSoon`
+  removed. Reuses `adb`/`formatNaira` from `./data`.
+- **Payout queue view** `public.marketplace_payout_queue` (security_invoker, admin
+  readable): order_id, order_reference, seller_share_naira, settlement_status,
+  payout_released_at, payout_failed_reason, dispatch_confirmed_at, buyer_confirmed_at,
+  order_status, listing_title, seller_id, seller_name, bank_name, bank_account_name,
+  bank_account_number, outstanding_debit_naira, eligible_via ('buyer_confirmed' |
+  'timeout_sweep'), is_eligible. Eligibility (paid, not settled, not disputed, buyer
+  confirmed or window elapsed) is encoded in the view; the client filters on
+  `is_eligible` and never reimplements it.
+- **The four admin RPCs (deployed, boolean, raise 'Not permitted' for non-admins):**
+  1. `admin_mark_payout_released({ p_order_id, p_note })` → settlement_status 'settled'.
+  2. `admin_mark_payout_failed({ p_order_id, p_reason })` (reason required) →
+     settlement_status 'payout_failed'; the row shows red and never reads as pending.
+  3. `admin_resolve_dispute({ p_dispute_id, p_outcome, p_notes, p_return_required,
+     p_return_shipping_payer })` — p_outcome ∈ 'rejected' | 'full_refund' |
+     'courier_fault'; p_notes >= 5 chars.
+  4. `admin_mark_refund_paid({ p_order_id })` — records a refund actually transferred.
+- **The three dispute outcomes and consequences (shown before commit):**
+  - `rejected` → claim not upheld, order completed, settlement unblocked, seller
+    paid, NO strike.
+  - `full_refund` → seller at fault, order refunded, payout blocked, seller gets a
+    STRIKE.
+  - `courier_fault` → nobody at fault, order refunded, payout blocked, NO strike.
+- **Held funds** (dashboard hero, and the reconciliation on money-owed) = Σ
+  amount_naira for orders `payment_status='paid'` AND `settlement_status != 'settled'`
+  (settlement_status is NOT NULL, default 'unsettled', so the filter is exact). It is
+  buyer money, never labelled with a seller figure. **Refunds pending** = orders
+  `order_status='refunded'` AND `settlement_status != 'settled'`. **Money owed out**
+  = payouts pending (Σ seller_share of eligible unsettled rows) + refunds pending;
+  reconciles against held funds with a buffer line.
+- **Order money-state pill** (`orderMoneyState`): disputed → Disputed; refunded →
+  Refunded; settled → Payout released; payout_failed → Payout failed; paid → Funds
+  held; else Awaiting payment.
+- **Sellers**: strike threshold is 3 (no site_settings key exists); strike_count >= 2
+  shows the red risk stripe + negative pill. Suspend/reinstate/mark-verified are
+  direct `marketplace_sellers` updates under the "Admin manage" RLS, each behind a
+  confirm. NOTE: suspend sets status only; it does not itself pull the seller's live
+  listings, so the confirm asks the operator to review and delist them from Listings.
+- **Assumptions / notes:** buyer refund bank details are not stored (customers has no
+  bank columns), so the money-owed refund row shows buyer + amount + order, not a
+  buyer account. Admin reads `customers` (buyer names) via
+  `has_admin_permission('orders','view')`; a marketplace-only operator without it
+  degrades to "Buyer" gracefully. Every irreversible action (release, refund paid,
+  suspend, delist, dispute ruling) sits behind a ConfirmDialog restating amount,
+  recipient and destination account.
+- Verified: build passes; the admin app mounts with all seven screens and no console
+  errors; `/admin/marketplace` redirects unauthenticated users to `/admin/login`
+  (gate works). The authed screens could not be live-rendered here (admin is
+  password-gated), so they were verified by build + parity with the working Review
+  screen + code review; with zero paid orders every screen shows its empty state.
+
+### Earlier this branch line — checkout collects buyer NAME + PHONE + email (seller needs to reach the buyer)
 Guest checkout previously collected only an email, so the seller order screens
 (get_marketplace_seller_order_contact) got an empty buyer_name/buyer_phone and the
 seller could not arrange delivery. In this marketplace the two parties coordinate
