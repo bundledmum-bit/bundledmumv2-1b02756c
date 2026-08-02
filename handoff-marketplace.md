@@ -160,7 +160,36 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — seller pitch rebuilt, compact footer, home line, photo standard (design 11a)
+### This pass — central scroll reset on forward nav, restore on back/forward
+Marketplace routes did not open at the top: client-side navigation kept the
+previous page's scroll (open an item from mid-grid, land mid-detail). Fixed ONCE,
+centrally, no per-screen scroll code.
+- **`MarketplaceScrollManager`** (new, `src/marketplace/MarketplaceScrollManager.tsx`,
+  returns null) is rendered once inside `<BrowserRouter>` in `MarketplaceApp.tsx`,
+  so it covers every marketplace route.
+- **Forward navigation (PUSH / REPLACE) opens at the top**; **browser back/forward
+  (POP) RESTORES** the scroll position for that entry, so returning from an item to
+  the browse grid keeps the buyer's place.
+- **Detection:** react-router v6 `useNavigationType()` returns "POP" for back/forward
+  and "PUSH"/"REPLACE" for new navigations. This tree uses a non-data
+  `<BrowserRouter>`, so the data-router `<ScrollRestoration>` is not available and a
+  custom manager is used instead.
+- **Manual restoration:** `main.tsx` sets `history.scrollRestoration="manual"`
+  globally (browser never auto-restores), so the manager records `window.scrollY`
+  per `location.key` on scroll and puts it back on POP (re-applied once on rAF for
+  cached content that lays out just after commit). The window is the scroller (`.mkt`
+  is a plain min-height:100vh block), so window.scrollTo is correct and sticky bars
+  are untouched.
+- **Hash-only navigations are skipped** (same pathname+search) so in-page anchors
+  keep working; the marketplace has none today, this is a safeguard.
+- Verified live (mobile): browse scrolled to 1400 → open item lands at 0 → back
+  restores browse to 1400 → forward restores the item; a PUSH link to /sell opens at
+  0. No console errors; sticky topbar, Buy-now bar, header and footer unaffected.
+- **Storefront** already resets to top on every navigation via its own `ScrollToTop`
+  (it does NOT preserve scroll on back, by its own design), so it does not have this
+  bug and was left untouched.
+
+### Earlier this branch line — seller pitch rebuilt, compact footer, home line, photo standard (design 11a)
 - **Become a seller (`BecomeSellerPage`, /marketplace/sell):** rebuilt to R1. Removed
   the ₦750 service fee and the markup explanation entirely, that fee is the BUYER's
   and showing it here put sellers off a cost they never pay. It now leads with the
