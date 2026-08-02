@@ -128,6 +128,17 @@ the base table's FK). Result, now verified live:
   still used by the retained cookie storage).
 
 ## 4. Failed attempts (with WHY)
+- **Stale "DB-blocked" claim repeated across three sessions — corrected.** This
+  file long stated the seller flow was blocked by a missing
+  `marketplace_sellers` INSERT policy and a missing `marketplace-listings`
+  bucket. Both were resolved on Supabase well before, but the claim kept getting
+  inherited and repeated, which made the create-listing and dashboard screens get
+  reported as unreachable when they were not. WHY it persisted: Claude Code
+  cannot see database state from a git diff, so a stale assertion written into
+  the handoff was trusted as fact each session. **Going forward, treat any
+  DB-state claim in this file as needing verification against Supabase (list the
+  policy, bucket, trigger or table) before repeating it, not as established
+  fact.**
 - **True subdomain `marketplace.bundledmum.com` — BLOCKED by Lovable hosting.**
   The original design served the marketplace from its own subdomain, chosen by a
   `window.location.hostname` check. Lovable only allows one primary custom domain
@@ -287,20 +298,40 @@ Functional changes to `/marketplace/sell/new` plus a new admin Locations section
   dependencies that once gated them are now resolved (see the resolved note
   below); a human end-to-end walkthrough is still outstanding.
 
-### ✅ DB dependencies for the sell side, now RESOLVED (done on Supabase)
-The two items that previously blocked the sell side are live, plus a guard:
+### ✅ DB state for the sell side, RESOLVED and verified live in Supabase
+The items once described here as "blocking" the sell side are DONE. The sell side
+is NOT DB-blocked. (See §4 for why that stale claim persisted across sessions.)
+
 1. **`marketplace_sellers` INSERT policy exists** ("Customer creates own seller
-   row"), so a customer can create their own seller row from the client in a safe
-   initial state.
-2. **The `marketplace-listings` public bucket exists** with per-user-folder
-   upload policies (authenticated upload/update/delete own listing photos) and
-   public read, so sellers can upload listing photos.
-3. **A trigger guards protected seller fields** (`trg_guard_seller_protected_fields`):
+   row"): a logged-in customer can create their OWN seller row, constrained to a
+   safe initial state (status active, verification_tier basic, strike_count 0,
+   outstanding_debit_naira 0, bank_account_verified false). Alongside "Seller
+   reads own row" (SELECT), "Seller updates own row" (UPDATE) and "Admin manage
+   sellers" (ALL).
+2. **`marketplace-listings` public bucket exists**, with these storage.objects
+   policies: "Authenticated upload own listing photos" (INSERT, scoped so a user
+   can only write into a folder named after their own auth uid), "Authenticated
+   update own listing photos" (UPDATE) and "Authenticated delete own listing
+   photos" (DELETE) with the same per-user-folder scoping, and "Public read
+   listing photos" (SELECT) so photos are publicly viewable, which browse needs.
+3. **Seller protected-fields trigger** (BEFORE UPDATE on `marketplace_sellers`):
    a seller cannot change their own `verification_tier`, `status`,
-   `strike_count`, `outstanding_debit_naira` or `bank_account_verified`.
-All three verified present in the DB. The sell side is therefore no longer
-DB-blocked. It has NOT yet been walked through end to end by a human, see Next
-steps.
+   `strike_count`, `outstanding_debit_naira` or `bank_account_verified`; admins
+   bypass it. So a seller cannot grant themselves a verified badge or clear their
+   own strikes or debt.
+4. **Location tables** `marketplace_states` and `marketplace_areas`, admin
+   controlled, public read of allowed rows. Lagos is open with 164 areas, FCT is
+   open with 33; the other 35 states exist but are disabled.
+5. **Sold-listing lifecycle**: a `sold_at` timestamp set by trigger, plus three
+   scheduled jobs, `purge-sold-listing-images` (30 days after sale, deletes the
+   photos), `compress-old-sold-listings` (90 days, strips description and
+   condition_notes while keeping title, prices, category and sold_at forever),
+   and `purge-orphaned-listing-photos` (sweeps unreferenced uploads after 48
+   hours).
+6. **Marketplace settings** live in `site_settings` under `marketplace_*` keys.
+
+The sell side is therefore fully DB-backed. What remains is a human end-to-end
+walkthrough, still outstanding (see Next steps).
 
 ### Earlier this branch line — minimum operator admin (context switcher, review queue, settings)
 - **Context switcher** added to the admin sidebar (`AdminLayout.tsx`): two tabs,
@@ -452,21 +483,27 @@ call in `client.ts`.
 1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
    real buying (Paystack, seller subaccount, contact reveal post-payment) where
    that button is in `ListingDetailPage.tsx`. Not started.
-2. **Seller flow, human end-to-end verification (outstanding).** The UI is built
-   and the DB dependencies are now resolved (INSERT policy, storage bucket +
-   policies, protected-fields trigger, see §5). No one has yet walked the full
-   flow live: become a seller, create the seller row, upload photos, submit a
-   listing as pending_review, then approve it in the admin review queue and see
-   it appear on browse. This should be done and confirmed before relying on it.
+2. **THE SELLER FLOW HAS NOT YET BEEN WALKED THROUGH END TO END BY A HUMAN.**
+   The UI is built and the DB dependencies are all resolved (INSERT policy,
+   storage bucket + policies, protected-fields trigger, see §5). But nobody has
+   completed the full path live: complete seller setup, create a real listing
+   with photos, approve it in the admin review queue, and confirm it appears on
+   browse. That verification is outstanding and should happen before further
+   phases. Do not report these screens as "done" until it has.
 3. **Admin, remaining surfaces.** Built this phase: context switcher, review
    queue, settings (with category management). Still placeholders, to build next:
    marketplace dashboard (held funds and the daily counts), payout queue,
    disputes arbitration, sellers management, listings management, marketplace
    orders, money owed out. The approved design for all of these is in the admin
    design mockup.
-5. **Pricing presentation** — decide rounding for `final_price_naira` (currently
-   raw price + 10% markup, so unrounded figures show). See §5 open item.
-6. Confirm on live that `bundledmum.com/marketplace` serves the grid and the
+5. **Pricing presentation, not rounded (open).** `final_price_naira` is the raw
+   markup result, so buyers see awkward figures like ₦17,600, unlike the main
+   catalogue which rounds to clean values like ₦25. Decide a presentation
+   rounding rule for the buyer price.
+6. **Admin negative/error states predate the error red #C0392B (open).** Some
+   admin negative or error states were built before #C0392B was adopted, so they
+   may be visually inconsistent with the newer error-red styling. Worth a sweep.
+7. Confirm on live that `bundledmum.com/marketplace` serves the grid and the
    storefront is unaffected, once this branch is merged + deployed.
 7. **Auth tidy (optional, later):** if desired, revert to `localStorage` default
    in a dedicated pass — but expect a one-time logout of cookie-session users, so
