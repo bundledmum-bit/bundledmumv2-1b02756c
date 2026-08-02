@@ -152,6 +152,9 @@ export default function CheckoutPage() {
   const itemPrice = Number(listing?.final_price_naira ?? 0);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
+  // Paystack adds its own fee at payment time (dashboard fee-passing is on), so the
+  // fee and total are estimates. When it is off, the total is exact.
+  const feeAdded = payQ.data ? payQ.data.fee_added_by_paystack !== false : true;
   const transferTotal = itemPrice + serviceFee;
 
   async function copy(text: string, tag: string) {
@@ -222,13 +225,37 @@ export default function CheckoutPage() {
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
               <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
               {showDetailsForm ? (
-                <div className="line"><div><span>Payment fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
+                <>
+                  <div className="line"><div><span>Payment fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
+                  <div className="rule" />
+                  <div className="total"><span>Total</span><b>...</b></div>
+                </>
+              ) : !payQ.data ? (
+                <>
+                  <div className="line"><div><span>Payment fee</span><div className="sub">Working it out</div></div><b>...</b></div>
+                  <div className="rule" />
+                  <div className="total"><span>Total</span><b>...</b></div>
+                </>
+              ) : feeAdded ? (
+                <>
+                  <div className="line"><div><span>Payment fee</span><div className="sub">Estimated, added by Paystack</div></div><b>about {formatNaira(paymentFee)}</b></div>
+                  <div className="rule" />
+                  <div className="total"><span>You will be charged</span><b>about {formatNaira(paystackTotal)}</b></div>
+                </>
               ) : (
-                <div className="line"><div><span>Payment fee</span><div className="sub">Paystack's charge for the payment</div></div><b>{payQ.data ? formatNaira(paymentFee) : "..."}</b></div>
+                <>
+                  <div className="rule" />
+                  <div className="total"><span>Total</span><b>{formatNaira(paystackTotal)}</b></div>
+                </>
               )}
-              <div className="rule" />
-              <div className="total"><span>Total</span><b>{showDetailsForm ? "..." : (payQ.data ? formatNaira(paystackTotal) : "...")}</b></div>
             </div>
+
+            {!showDetailsForm && payQ.data && feeAdded && (
+              <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
+                <span>ℹ️</span>
+                <span>Paystack adds its fee at the point of payment, so the amount on the next page may differ by a naira or two. That is normal.</span>
+              </div>
+            )}
 
             {/* Buyer details, required before we create the order and take payment.
                 The seller arranges delivery directly, so they need name + phone. */}
@@ -340,7 +367,7 @@ export default function CheckoutPage() {
         <div className="mkt-sell-foot">
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
-            {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
+            {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${feeAdded ? "about " : ""}${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
           </button>
           <div className="helper">Card, transfer or USSD on Paystack</div>
         </div>

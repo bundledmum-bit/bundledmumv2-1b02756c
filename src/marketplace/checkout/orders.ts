@@ -93,17 +93,24 @@ export async function resendOrderConfirmation(orderId: string): Promise<boolean>
 export interface InitPayment {
   authorization_url: string;
   reference: string;
-  amount_naira: number;
+  /** What we actually send to Paystack: item price plus the service fee. */
+  subtotal_naira: number;
+  /** ESTIMATE of the fee Paystack will add. Can be about a naira off their rounding. */
   paystack_fee_naira: number;
+  /** subtotal plus the estimated fee, i.e. roughly what the buyer will be charged. */
+  amount_naira: number;
+  /** True when Paystack is adding its fee on top (dashboard fee-passing is on). */
+  fee_added_by_paystack: boolean;
 }
 
 /**
- * Initialises the Paystack transaction server-side and returns the hosted
- * payment page URL plus the authoritative fee and total. The client shows those
- * figures (so client and server never disagree) and redirects the browser to
- * authorization_url. Errors: 'This is not your order' (403), 'This order is
- * already paid' (409), 'This item is no longer available' (409), 'Payment is not
- * configured' (500).
+ * Initialises the Paystack transaction server-side (v5) and returns the hosted
+ * payment page URL plus the money figures. Because Paystack's "pass transaction
+ * fee to customer" is ON, we send only subtotal_naira and Paystack adds its fee
+ * at the point of payment, so paystack_fee_naira and amount_naira are ESTIMATES,
+ * presented as such in the UI, never computed client side. Errors: 'This is not
+ * your order' (403), 'This order is already paid' (409), 'This item is no longer
+ * available' (409), 'Payment is not configured' (500).
  */
 export async function initializePayment(input: { orderId: string; callbackUrl: string }): Promise<InitPayment> {
   const { data, error } = await cdb.functions.invoke("marketplace-initialize-payment", {

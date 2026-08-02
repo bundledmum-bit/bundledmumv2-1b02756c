@@ -160,7 +160,34 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — ADMIN marketplace operations (payouts, disputes, sellers, listings, orders, money owed, dashboard)
+### This pass — checkout shows Paystack fee as an ESTIMATE (dashboard fee-passing is on)
+Paystack's "pass transaction fee to customer" is ON, so Paystack adds its own fee
+to whatever we send. We now send only the subtotal (item price + service fee) and
+Paystack adds its fee at the point of payment, so the fee and total shown at
+checkout are estimates and are labelled as such. Buyers seeing a slightly
+different number on the Paystack page must not think something is wrong.
+- **marketplace-initialize-payment is v5.** INPUT `{ order_id, callback_url }` →
+  `{ authorization_url, reference, subtotal_naira, paystack_fee_naira, amount_naira,
+  fee_added_by_paystack }`. subtotal_naira = what we send to Paystack (item +
+  service fee); paystack_fee_naira = ESTIMATE of what Paystack adds (can be ~a
+  naira off their rounding); amount_naira = subtotal + estimate; fee_added_by_paystack
+  is true when Paystack adds the fee. ALL figures come from this response, none are
+  computed client side. `InitPayment` in `checkout/orders.ts` was widened to match.
+- **Breakdown (`checkout/CheckoutPage.tsx`), four lines:** Item price · Service fee
+  (non refundable) · Payment fee "Estimated, added by Paystack" shown as "about
+  ₦X" · total labelled "You will be charged" "about ₦X". A note reads "Paystack
+  adds its fee at the point of payment, so the amount on the next page may differ
+  by a naira or two. That is normal." The Pay button says "Pay about ₦X". When
+  `fee_added_by_paystack` is false, the payment-fee line and note are hidden and
+  the total is exact ("Total", "Pay ₦X"). Verified live: with fee-passing on the
+  breakdown reads Item ₦49,500 · Service ₦1,000 · Payment fee about ₦867 · "You
+  will be charged about ₦51,117" and the button "Pay about ₦51,117".
+- Everything else in checkout is unchanged: the Pay redirect to authorization_url,
+  the held-funds box, listing-unavailable / payments-unavailable / own-listing
+  states, the reduced header, guest-no-login, the transfer fallback, and the
+  ownerless-order guard.
+
+### Earlier this branch line — ADMIN marketplace operations (payouts, disputes, sellers, listings, orders, money owed, dashboard)
 Completes the operator side so the transaction can close: money can be released to
 sellers and disputes resolved. Money moves MANUALLY (a person sends the bank
 transfer, then records it here); nothing in this UI moves money by itself. All
