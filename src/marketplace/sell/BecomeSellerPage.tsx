@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { formatNaira } from "./sellData";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Become a seller, the public entry and value screen, reskinned to the approved
@@ -29,7 +30,7 @@ export default function BecomeSellerPage() {
   const startCta = () => {
     if (loading) return;
     if (!isLoggedIn) {
-      window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell"));
+      sendToMarketplaceLogin("/sell");
       return;
     }
     navigate("/sell/setup");

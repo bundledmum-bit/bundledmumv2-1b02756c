@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { sdb, LISTING_BUCKET, compressImage } from "../sell/sellData";
 import { fetchBuyerOrder, raiseDispute } from "./buyerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 const CATEGORIES = [
   "It never arrived",
@@ -38,7 +39,7 @@ export default function BuyerDisputePage() {
   const [touched, setTouched] = useState(false);
 
   if (!authLoading && !isLoggedIn) {
-    window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/orders/${orderId}/problem`));
+    sendToMarketplaceLogin(`/orders/${orderId}/problem`);
   }
 
   const { data: order, isLoading } = useQuery({

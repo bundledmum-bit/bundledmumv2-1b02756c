@@ -6,6 +6,7 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -28,7 +29,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/${listingId}`));
+    if (!isLoggedIn) sendToMarketplaceLogin(`/checkout/${listingId}`);
   }, [authLoading, isLoggedIn, listingId]);
 
   const { data: settings } = useQuery({
@@ -85,7 +86,7 @@ export default function CheckoutPage() {
       navigate(`/checkout/return?reference=${encodeURIComponent(order.paystack_transaction_reference)}`, { replace: true });
     }
     if (createCode === "Not authenticated" || payCode === "Not authenticated") {
-      window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/${listingId}`));
+      sendToMarketplaceLogin(`/checkout/${listingId}`);
     }
   }, [payCode, createCode, order, navigate, listingId]);
 

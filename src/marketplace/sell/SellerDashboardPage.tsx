@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, formatNaira, maskAccount, validateDisplayName } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 interface MyListing {
   id: string;
@@ -53,7 +54,7 @@ export default function SellerDashboardPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) { window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell")); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 

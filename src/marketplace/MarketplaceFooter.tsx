@@ -33,7 +33,8 @@ export default function MarketplaceFooter() {
   const onCheckout = pathname.startsWith("/checkout");
   const onDispatch = /^\/sell\/orders\/[^/]+\/dispatch$/.test(pathname);
   const onOrderAction = /^\/orders\/[^/]+/.test(pathname);
-  if (onCheckout || onDispatch || onOrderAction) return null;
+  const onLogin = pathname === "/login";
+  if (onCheckout || onDispatch || onOrderAction || onLogin) return null;
 
   // Listing detail carries a position:fixed Buy now bar; clear it.
   const hasFixedBar = pathname.startsWith("/listing/");

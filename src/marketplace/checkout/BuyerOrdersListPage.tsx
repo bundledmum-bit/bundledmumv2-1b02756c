@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { formatNaira } from "./orders";
 import { fetchBuyerOrders, groupBuyerOrders, type BuyerOrder } from "./buyerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * My orders (design H2 menu link + the buyer order flow). Grouped by what the
@@ -17,7 +18,7 @@ export default function BuyerOrdersListPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/orders"));
+    if (!isLoggedIn) sendToMarketplaceLogin("/orders");
   }, [loading, isLoggedIn]);
 
   const { data: orders = [], isLoading } = useQuery({

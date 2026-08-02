@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, validateDisplayName } from "./sellData";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Seller setup, reskinned to the design. Creates the marketplace_sellers row
@@ -27,7 +28,7 @@ export default function SellerSetupPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) { window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell")); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
     if (seller) navigate("/sell/dashboard", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 

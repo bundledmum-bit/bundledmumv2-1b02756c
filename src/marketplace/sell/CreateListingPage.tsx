@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, compressImage } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
@@ -44,7 +45,7 @@ export default function CreateListingPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) { window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell")); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 

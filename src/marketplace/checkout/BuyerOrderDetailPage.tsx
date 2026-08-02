@@ -6,6 +6,7 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { formatNaira, getOrderContact, sellerWhatsAppLink, sellerCallLink } from "./orders";
 import { fetchBuyerOrder, getDisputeWindowDays, confirmDeadline, daysLeft, confirmReceipt } from "./buyerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Buyer order detail (design T3/T3b tracking + T4 confirm-or-dispute + T4c
@@ -26,7 +27,7 @@ export default function BuyerOrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   if (!authLoading && !isLoggedIn) {
-    window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/orders/${orderId}`));
+    sendToMarketplaceLogin(`/orders/${orderId}`);
   }
 
   const { data: order, isLoading } = useQuery({

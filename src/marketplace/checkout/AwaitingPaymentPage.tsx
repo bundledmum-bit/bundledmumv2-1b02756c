@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira } from "./orders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 interface OrderRow { id: string; amount_naira: number; order_status: string; payment_status: string; created_at: string; paystack_transaction_reference: string; listing_id: string }
 
@@ -21,7 +22,7 @@ export default function AwaitingPaymentPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/awaiting/${reference}`));
+    if (!isLoggedIn) sendToMarketplaceLogin(`/checkout/awaiting/${reference}`);
   }, [authLoading, isLoggedIn, reference]);
 
   const { data, isLoading } = useQuery({

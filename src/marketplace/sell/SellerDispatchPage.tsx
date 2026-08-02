@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, compressImage } from "./sellData";
 import { fetchSellerOrder, markDispatched } from "./sellerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Mark as dispatched, with a required proof photo (design O3 + confirm O3b). The
@@ -26,7 +27,7 @@ export default function SellerDispatchPage() {
 
   useEffect(() => {
     if (sellerLoading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/sell/orders/${orderId}/dispatch`));
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}/dispatch`);
   }, [sellerLoading, isLoggedIn, orderId]);
 
   const { data: order, isLoading } = useQuery({

@@ -160,7 +160,50 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — BUYER ORDER screens (my orders, detail, confirm receipt, dispute)
+### This pass — MARKETPLACE login (magic link, in-marketplace), fixes the stranded-buyer bug
+A logged-out marketplace visitor was handed to the STOREFRONT login
+(/account/login), whose magic link landed on the storefront /account (a 404), so
+they never got back to the item they were buying. Now the marketplace has its own
+passwordless login inside /marketplace and the round trip returns them where they
+left off.
+- **New route `/marketplace/login`** (`src/marketplace/auth/MarketplaceLoginPage.tsx`),
+  rendered inside the `.mkt` shell with the marketplace header. Passwordless magic
+  link ONLY, using the SAME shared Supabase client and `useCustomerAuth` (no second
+  client, no password, no signup, no reset). Idle / sent / error states; an
+  already-logged-in visitor (or one whose magic link just established the session)
+  is auto-forwarded, never shown the form. Footer is suppressed on /login.
+- **emailRedirectTo (the thing that broke):**
+  `https://bundledmum.com/marketplace/login?returnTo=<url-encoded marketplace-relative path>`.
+  The base is hardcoded (never window.location.origin, per the storefront's
+  Lovable-preview note). The link lands back on the marketplace login; the shared
+  client's detectSessionInUrl establishes the session and the page forwards to
+  returnTo (default `/` browse, never the storefront). returnTo is sanitised to a
+  single-leading-slash path (no `//` or absolute URLs) to prevent open redirects.
+- **returnTo is marketplace-RELATIVE** (no /marketplace prefix) because the login
+  forwards with react-router `navigate()` under basename="/marketplace"; a full
+  `/marketplace/...` path would double-prefix.
+- **⚠️ SUPABASE ALLOW-LIST REQUIREMENT (cannot be set from the repo):** the pattern
+  **`https://bundledmum.com/marketplace/**`** MUST be added to Supabase Auth → URL
+  Configuration → Redirect URLs. Without it Supabase silently falls back to the
+  Site URL and the bug persists. Keep the existing storefront entries too.
+- **Every marketplace auth gate repointed** at the new login via one helper,
+  `src/marketplace/auth/marketplaceLogin.ts` (`sendToMarketplaceLogin(returnToRel)`,
+  full-page nav to `/marketplace/login?returnTo=...`, same mechanism the gates used
+  before). Gates: CheckoutPage (x2), AwaitingPaymentPage, BuyerOrdersListPage,
+  BuyerOrderDetailPage, BuyerDisputePage, BecomeSellerPage, SellerSetupPage,
+  CreateListingPage, SellerDashboardPage, SellerPayoutsPage, SellerOrderDetailPage,
+  SellerDispatchPage, and the shared header "Log in" (now a react-router `Link` to
+  `/login`, desktop nav + mobile menu). No `/account/login` reference remains in the
+  marketplace tree.
+- **Untouched:** the storefront login (`src/pages/AccountLoginPage.tsx`) and its
+  flow, the shared Supabase cookie session, and browse + listing detail staying
+  public (verified: logged-out listing detail still shows the Buy now bar and does
+  not redirect).
+- Files: new `auth/MarketplaceLoginPage.tsx`, `auth/marketplaceLogin.ts`; edited
+  `MarketplaceApp.tsx` (route), `MarketplaceHeader.tsx` (Log in link),
+  `MarketplaceFooter.tsx` (suppress on /login), and the 12 gate files above.
+
+### Earlier this branch line — BUYER ORDER screens (my orders, detail, confirm receipt, dispute)
 Closes the loop after payment (design T3/T3b tracking, T4 confirm-or-dispute, T4b
 dispute form, T4c confirmed). A buyer can now find their orders, talk to the
 seller, confirm receipt (which releases the payout) or report a problem (which

@@ -46,7 +46,6 @@ export default function MarketplaceHeader() {
     );
   }
 
-  const loginHref = "/account/login?returnTo=" + encodeURIComponent("/marketplace");
   const initials = (user?.email || "?").slice(0, 2).toUpperCase();
 
   async function signOut() {
@@ -68,7 +67,7 @@ export default function MarketplaceHeader() {
           {seller && <Link to="/sell/dashboard" className="mkt-hdr-link">Seller dashboard</Link>}
           {isLoggedIn
             ? <button className="mkt-hdr-account" onClick={() => setOpen(true)}><span className="av">{initials}</span>Account</button>
-            : <a className="mkt-hdr-link" href={loginHref}>Log in</a>}
+            : <Link className="mkt-hdr-link" to="/login">Log in</Link>}
         </nav>
 
         {/* Mobile hamburger */}
@@ -98,7 +97,7 @@ export default function MarketplaceHeader() {
                 <button className="signout" onClick={signOut}>Sign out</button>
               </div>
             ) : (
-              <a className="mkt-primary" href={loginHref}>Log in</a>
+              <Link className="mkt-primary" to="/login">Log in</Link>
             )}
             <a className="mkt-wa" href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Help on WhatsApp</a>
           </div>

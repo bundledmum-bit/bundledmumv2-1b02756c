@@ -7,6 +7,7 @@ import { useSeller } from "./useSeller";
 import { formatNaira, maskAccount } from "./sellData";
 import { sellerWhatsAppLink, sellerCallLink } from "../checkout/orders";
 import { fetchSellerOrder, getSellerOrderContact } from "./sellerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Seller order detail. Shows only the seller's payout (seller_share_naira),
@@ -21,7 +22,7 @@ export default function SellerOrderDetailPage() {
 
   useEffect(() => {
     if (sellerLoading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/sell/orders/${orderId}`));
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}`);
   }, [sellerLoading, isLoggedIn, orderId]);
 
   const { data: order, isLoading } = useQuery({

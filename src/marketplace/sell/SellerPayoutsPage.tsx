@@ -6,6 +6,7 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./useSeller";
 import { formatNaira, maskAccount } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Payouts (design O5). Shows only the seller's own payout figures
@@ -19,7 +20,7 @@ export default function SellerPayoutsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell/payouts"));
+    if (!isLoggedIn) sendToMarketplaceLogin("/sell/payouts");
   }, [loading, isLoggedIn]);
 
   const { data: orders = [], isLoading } = useQuery({
