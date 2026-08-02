@@ -7,10 +7,13 @@ import {
   useBrowseListings,
   useBrowseCount,
   useAllowedCategories,
+  useCategoryGroups,
   useAllowedStates,
   useAreasForState,
   type BrowseFilters,
   type BrowseSort,
+  type CategoryOption,
+  type CategoryGroup,
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 import AreaCombobox from "../sell/AreaCombobox";
@@ -37,7 +40,17 @@ const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", city: "", 
 const CATEGORY_FALLBACK_ICON = "🏷️";
 const ALL_CATEGORIES_ICON = "🛒";
 
-type CategoryOpt = { id: string; name: string; icon: string | null };
+/** Categories ordered into their groups, for the accordion and the home tiles.
+ * Groups follow group.sort_order; categories within a group follow the category's
+ * own sort_order then name. Any allowed category with no group_id (none today, but
+ * defended against) is collected into `ungrouped` so it is never hidden. */
+function groupCategories(categories: CategoryOption[], groups: CategoryGroup[]) {
+  const grouped = groups
+    .map((g) => ({ group: g, items: categories.filter((c) => c.group_id === g.id) }))
+    .filter((x) => x.items.length > 0);
+  const ungrouped = categories.filter((c) => !c.group_id || !groups.some((g) => g.id === c.group_id));
+  return { grouped, ungrouped };
+}
 
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
 
@@ -55,6 +68,7 @@ export default function BrowsePage() {
 
   const { data, isLoading, isError } = useBrowseListings(filters);
   const { data: categories = [] } = useAllowedCategories();
+  const { data: groups = [] } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
 
   const listings = data?.listings ?? [];
@@ -63,6 +77,10 @@ export default function BrowsePage() {
   const anyFilter = !!(filters.categoryId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 
   const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
+
+  // Flat list in group display order, for the six home tiles (their design is
+  // unchanged; only the source order now follows the groups).
+  const tileCats = useMemo(() => groupCategories(categories, groups).grouped.flatMap((x) => x.items), [categories, groups]);
 
   function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 
@@ -124,7 +142,7 @@ export default function BrowsePage() {
           fixed brand-palette rotation by index, not a per-category value. */}
       {!anyFilter && categories.length > 0 && (
         <div className="mkt-cats">
-          {categories.slice(0, 6).map((c, i) => (
+          {tileCats.slice(0, 6).map((c, i) => (
             <button key={c.id} className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
               <span className="ic" aria-hidden style={{ background: i % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
               <span className="nm">{c.name}</span>
@@ -161,7 +179,7 @@ export default function BrowsePage() {
       <div className="mkt-browse">
         {/* Desktop persistent panel */}
         <aside className="mkt-fpanel">
-          <FilterControls value={filters} onChange={setFilters} categories={categories} showCategory />
+          <FilterControls value={filters} onChange={setFilters} categories={categories} groups={groups} showCategory />
         </aside>
 
         <div className="mkt-browse-main">
@@ -191,6 +209,7 @@ export default function BrowsePage() {
         <FilterSheet
           filters={filters}
           categories={categories}
+          groups={groups}
           onApply={(next) => { setFilters(next); setSheetOpen(false); }}
           onClose={() => setSheetOpen(false)}
           onClearAll={() => { clearAll(); setSheetOpen(false); }}
@@ -202,25 +221,18 @@ export default function BrowsePage() {
 
 /** The filter controls, shared by the desktop panel and the mobile sheet. Location
  * is NOT here, it lives beside the search bar in its own state-then-city control. */
-function FilterControls({ value, onChange, categories, showCategory }: {
+function FilterControls({ value, onChange, categories, groups, showCategory }: {
   value: BrowseFilters;
   onChange: (next: BrowseFilters) => void;
-  categories: CategoryOpt[];
+  categories: CategoryOption[];
+  groups: CategoryGroup[];
   showCategory?: boolean;
 }) {
   const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
   const toggleCond = (c: string) => set({ conditions: value.conditions.includes(c) ? value.conditions.filter((x) => x !== c) : [...value.conditions, c] });
   return (
     <div className="mkt-fgroups">
-      {showCategory && (
-        <div className="mkt-fgroup">
-          <div className="mkt-fgroup-h">Category</div>
-          <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}><span className="fopt-ic" aria-hidden>{ALL_CATEGORIES_ICON}</span>All categories</button>
-          {categories.map((c) => (
-            <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}><span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>{c.name}</button>
-          ))}
-        </div>
-      )}
+      {showCategory && <CategoryFilter value={value} onChange={onChange} categories={categories} groups={groups} />}
 
       <div className="mkt-fgroup">
         <div className="mkt-fgroup-h">Price</div>
@@ -243,6 +255,85 @@ function FilterControls({ value, onChange, categories, showCategory }: {
             <button key={o.value} className={value.conditions.includes(o.value) ? "mkt-chip on" : "mkt-chip"} onClick={() => toggleCond(o.value)}>{o.label}</button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Category filter, grouped into the 7 collapsible groups (design decision, see the
+ * PR/handoff): "All categories" stays always visible on top, then each group is an
+ * accordion header (name + live count + chevron) that reveals its category chips.
+ *
+ * Default state: every group COLLAPSED, identical on mobile and desktop, so the 7
+ * headers act as a scannable index over the ~37 categories. The group that holds the
+ * current selection is force-opened (a real entry in the open set, added on mount and
+ * whenever the selection moves into it) so the buyer never loses their pick; that
+ * group also shows a coral count as a breadcrumb even if they later collapse it.
+ * Headers are 48px tall (thumb sized); the chevron rotates and the body fades in,
+ * both stilled under prefers-reduced-motion (see marketplace.css).
+ */
+function CategoryFilter({ value, onChange, categories, groups }: {
+  value: BrowseFilters;
+  onChange: (next: BrowseFilters) => void;
+  categories: CategoryOption[];
+  groups: CategoryGroup[];
+}) {
+  const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
+  const { grouped, ungrouped } = useMemo(() => groupCategories(categories, groups), [categories, groups]);
+  const selectedGroupId = useMemo(
+    () => categories.find((c) => c.id === value.categoryId)?.group_id ?? null,
+    [categories, value.categoryId],
+  );
+
+  const [open, setOpen] = useState<Set<string>>(() => new Set(selectedGroupId ? [selectedGroupId] : []));
+  // Force the group holding the active selection open (on mount via the initialiser,
+  // and here whenever the selection moves into a different group). Never auto-closes
+  // a group the buyer opened, so it only ever adds.
+  useEffect(() => {
+    if (selectedGroupId) setOpen((prev) => (prev.has(selectedGroupId) ? prev : new Set(prev).add(selectedGroupId)));
+  }, [selectedGroupId]);
+
+  const toggle = (id: string) =>
+    setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  const catBtn = (c: CategoryOption) => (
+    <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}>
+      <span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>{c.name}
+    </button>
+  );
+
+  return (
+    <div className="mkt-fgroup">
+      <div className="mkt-fgroup-h">Category</div>
+      <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}>
+        <span className="fopt-ic" aria-hidden>{ALL_CATEGORIES_ICON}</span>All categories
+      </button>
+
+      <div className="mkt-catgroups">
+        {grouped.map(({ group, items }) => {
+          const isOpen = open.has(group.id);
+          const hasActive = group.id === selectedGroupId;
+          const bodyId = `catg-${group.id}`;
+          return (
+            <div className="mkt-catgroup" key={group.id}>
+              <button
+                type="button"
+                className={hasActive ? "mkt-catgroup-h has-active" : "mkt-catgroup-h"}
+                aria-expanded={isOpen}
+                aria-controls={bodyId}
+                onClick={() => toggle(group.id)}
+              >
+                <span className="nm">{group.name}</span>
+                <span className="ct">{items.length}</span>
+                <span className={isOpen ? "chev open" : "chev"} aria-hidden>▾</span>
+              </button>
+              {isOpen && <div className="mkt-catgroup-body" id={bodyId}>{items.map(catBtn)}</div>}
+            </div>
+          );
+        })}
+        {/* Defensive: any allowed category with no known group shows loose, never hidden. */}
+        {ungrouped.map(catBtn)}
       </div>
     </div>
   );
@@ -304,9 +395,10 @@ function LocationControl({ filters, onChange, states }: {
 }
 
 /** Mobile bottom sheet: edits a draft, previews the live count, applies on Show. */
-function FilterSheet({ filters, categories, onApply, onClose, onClearAll }: {
+function FilterSheet({ filters, categories, groups, onApply, onClose, onClearAll }: {
   filters: BrowseFilters;
-  categories: CategoryOpt[];
+  categories: CategoryOption[];
+  groups: CategoryGroup[];
   onApply: (next: BrowseFilters) => void;
   onClose: () => void;
   onClearAll: () => void;
@@ -331,7 +423,7 @@ function FilterSheet({ filters, categories, onApply, onClose, onClearAll }: {
               ))}
             </div>
           </div>
-          <FilterControls value={draft} onChange={setDraft} categories={categories} showCategory />
+          <FilterControls value={draft} onChange={setDraft} categories={categories} groups={groups} showCategory />
         </div>
 
         <div className="mkt-fsheet-foot">

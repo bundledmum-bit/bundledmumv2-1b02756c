@@ -123,15 +123,32 @@ export function useBrowseCount(filters: BrowseFilters, enabled: boolean) {
   });
 }
 
-/** Allowed categories (with a live-listing count each) for the tiles and panel. */
+export interface CategoryOption { id: string; name: string; icon: string | null; group_id: string | null; sort_order: number; }
+export interface CategoryGroup { id: string; name: string; sort_order: number; }
+
+/** Allowed categories for the tiles and grouped filter. Ordered by the category's
+ * own sort_order then name; grouping/ordering into the 7 groups is done client side
+ * against useCategoryGroups (see BrowsePage). icon and group_id are read live so a
+ * category added or regrouped by an admin renders with no deploy, no hardcoded map. */
 export function useAllowedCategories() {
   return useQuery({
     queryKey: ["marketplace", "allowed-categories"],
-    queryFn: async (): Promise<Array<{ id: string; name: string; icon: string | null }>> => {
-      // icon is a single emoji per category, admin-editable, read live. Never a
-      // hardcoded name->icon map, so a category added later renders with no deploy.
-      const { data } = await mdb.from("marketplace_categories").select("id, name, icon").eq("is_allowed", true).order("name");
-      return (data ?? []) as Array<{ id: string; name: string; icon: string | null }>;
+    queryFn: async (): Promise<CategoryOption[]> => {
+      const { data } = await mdb.from("marketplace_categories").select("id, name, icon, group_id, sort_order").eq("is_allowed", true).order("sort_order").order("name");
+      return (data ?? []) as CategoryOption[];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** The 7 category groups (Clothing and shoes, Feeding, ...), ordered for display.
+ * Public-readable; a category's group_id points here. */
+export function useCategoryGroups() {
+  return useQuery({
+    queryKey: ["marketplace", "category-groups"],
+    queryFn: async (): Promise<CategoryGroup[]> => {
+      const { data } = await mdb.from("marketplace_category_groups").select("id, name, sort_order").order("sort_order");
+      return (data ?? []) as CategoryGroup[];
     },
     staleTime: 5 * 60 * 1000,
   });

@@ -794,8 +794,31 @@
 .mkt-fgroups { display: flex; flex-direction: column; gap: 18px; }
 .mkt-fgroup { display: flex; flex-direction: column; gap: 8px; }
 .mkt-fgroup-h { font: 800 11px/1 'Nunito', sans-serif; letter-spacing: 0.09em; text-transform: uppercase; color: var(--mkt-muted); }
-.mkt-fopt { text-align: left; border: none; background: none; padding: 7px 2px; font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-black); cursor: pointer; border-radius: 8px; }
+.mkt-fopt { text-align: left; border: none; background: none; padding: 7px 2px; min-height: 40px; font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-black); cursor: pointer; border-radius: 8px; }
 .mkt-fopt.on { font-weight: 800; color: var(--mkt-green-dark); }
+
+/* ── Grouped, collapsible category filter (accordion), design decision B-cat ──
+   All groups collapsed by default (mobile + desktop); the group holding the active
+   selection is force-opened and its count turns coral as a breadcrumb. */
+.mkt-catgroups { display: flex; flex-direction: column; }
+.mkt-catgroup { border-top: 1px solid var(--mkt-border); }
+.mkt-catgroup:first-child { border-top: none; }
+.mkt-catgroup-h { width: 100%; box-sizing: border-box; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 6px 2px; background: none; border: none; text-align: left; cursor: pointer; }
+.mkt-catgroup-h .nm { flex: 1; font: 800 14px/1.2 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-catgroup-h .ct { flex: 0 0 auto; min-width: 22px; box-sizing: border-box; text-align: center; font: 800 11px/1 'Nunito', sans-serif; color: var(--mkt-green-dark); background: var(--mkt-green-light); border-radius: 999px; padding: 4px 8px; }
+.mkt-catgroup-h.has-active .ct { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); }
+.mkt-catgroup-h .chev { flex: 0 0 auto; color: var(--mkt-muted); font-size: 12px; transition: transform 0.2s ease; }
+.mkt-catgroup-h .chev.open { transform: rotate(180deg); }
+.mkt-catgroup-h:hover .nm { color: var(--mkt-green-dark); }
+.mkt-catgroup-body { display: flex; flex-direction: column; padding: 2px 0 8px 10px; animation: mkt-catg-in 0.18s ease; }
+@keyframes mkt-catg-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* Thumb-sized targets in the mobile drawer. */
+.mkt-fsheet .mkt-catgroup-h { min-height: 52px; }
+.mkt-fsheet .mkt-fopt { min-height: 44px; }
+@media (prefers-reduced-motion: reduce) {
+  .mkt-catgroup-h .chev { transition: none; }
+  .mkt-catgroup-body { animation: none; }
+}
 .mkt-price-row { display: flex; align-items: center; gap: 8px; }
 .mkt-price-box { flex: 1; display: flex; align-items: center; border: 1px solid var(--mkt-input-border); border-radius: 10px; padding: 0 10px; background: #fff; font: 400 14px/1 'Lato', sans-serif; }
 .mkt-price-box input { width: 100%; border: none; outline: none; padding: 11px 0; font: 400 14px/1 'Lato', sans-serif; background: transparent; }
