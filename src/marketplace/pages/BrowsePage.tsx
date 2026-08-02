@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useLiveListings } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
@@ -46,6 +47,15 @@ export default function BrowsePage() {
     });
   }, [listings, search, category, state]);
 
+  // Home header line, browse only, sitting where the old greeting was so nothing
+  // below it moves. Shares its row with the Sell link (design R3).
+  const homeLine = (
+    <div className="mkt-home-line">
+      <h1>Buy or sell used baby and toddler items</h1>
+      <Link to="/sell" className="mkt-home-sell">Sell</Link>
+    </div>
+  );
+
   const header = (
     <div className="mkt-topbar">
       <input
@@ -90,6 +100,7 @@ export default function BrowsePage() {
   if (isLoading) {
     return (
       <>
+        {homeLine}
         {header}
         <div className="mkt-center">
           <BMLoadingAnimation size={160} />
@@ -101,6 +112,7 @@ export default function BrowsePage() {
   if (isError) {
     return (
       <>
+        {homeLine}
         {header}
         <div className="mkt-center">
           <div className="mkt-empty-title">We could not load the marketplace</div>
@@ -114,6 +126,7 @@ export default function BrowsePage() {
 
   return (
     <>
+      {homeLine}
       {header}
       <div className="mkt-count">
         {filtered.length} {filtered.length === 1 ? "item" : "items"}, trusted

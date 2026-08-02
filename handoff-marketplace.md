@@ -160,7 +160,55 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — Settings: internal alert recipients (multiple, comma separated)
+### This pass — seller pitch rebuilt, compact footer, home line, photo standard (design 11a)
+- **Become a seller (`BecomeSellerPage`, /marketplace/sell):** rebuilt to R1. Removed
+  the ₦750 service fee and the markup explanation entirely, that fee is the BUYER's
+  and showing it here put sellers off a cost they never pay. It now leads with the
+  one true promise ("you get exactly the price you asked for, we take nothing from
+  it"), then the four-step protection story (buyer pays BundledMum, we hold, buyer
+  confirms, we transfer to your bank), free-to-list, and the every-listing-checked
+  line. No calculator, earnings estimator, markup explanation or invented stats. CTA
+  behaviour unchanged: logged out routes through the marketplace login and back;
+  existing sellers redirect to the dashboard.
+- **Compact footer (`MarketplaceFooter` + `.mkt-ftr*` in marketplace.css):** rebuilt
+  to R2/R2b, about a third of the old height (measured ~162px on mobile vs ~560px).
+  Removed the brand tagline paragraph, the held-payment paragraph and the WhatsApp
+  CTA. New single protection line "Sellers checked, listings reviewed, and your
+  money held until you confirm the item arrived." replaces the old Paystack line;
+  copyright is "© 2026 BundledMum Ltd, Lagos." Links kept to real destinations only:
+  Browse, Sell, My orders, Seller dashboard (seller only), bundledmum.com. Help,
+  Terms and Privacy omitted (no pages). Suppression rules (/checkout*, dispatch,
+  /orders/:id*, /login) and the listing-detail clear-bar clearance are unchanged and
+  verified (copyright clears the fixed Buy now bar).
+- **Home header line (`BrowsePage`, R3):** added "Buy or sell used baby and toddler
+  items" (Nunito 900, 22px mobile / 26px desktop) on the BROWSE home only, on a
+  compact row above the search with a coral "Sell" pill (→ /sell), sitting where the
+  old greeting was so the grid is not pushed down. It renders only on browse, not on
+  every route. Placement note: the design puts it inline in the green bar on desktop;
+  it is placed above the search row on both breakpoints to avoid restructuring the
+  shared header's two variants.
+- **Listing photo standard + watermark (`processListingImage` in sellData.ts, used by
+  `CreateListingPage`):** every NEWLY uploaded listing photo is normalised in ONE
+  canvas pass to a 1:1 square (1200x1200), cropped to fill and centre-weighted, on a
+  cream #FFF8F4 backdrop (the design's pad colour), and has the "Uploaded on
+  BundledMum" watermark burned in: a lozenge bottom-left, inset 5% of width, height
+  ~8%, Nunito 800 cream text, with a luminance-adaptive scrim (black 30% on light
+  corners, cream 22% on dark) chosen from the measured corner brightness so it reads
+  on both light and dark photos. Applied on photo ADD, so the seller sees the exact
+  stored result in the preview and the same blob is uploaded (one pass). Typical
+  output is ~150 to 250KB (measured ~170KB). Applied to LISTING photos only, NOT
+  dispatch or dispute photos (those keep plain compressImage, since proof photos are
+  not shown in the grid and cropping could cut the waybill). ONLY affects photos
+  uploaded from now on; the 24 seeded listings keep their images, no backfill. The
+  optional per-photo crop-nudge / auto-pad in the design was not built (needs a
+  cropping UI); the default crop-to-fill is used.
+- Preserve verified: 4-photo minimum, camera/gallery chooser, compression,
+  display-name validation, contact-leak block, searchable area select, buyer price
+  preview, auth-uid upload path, first→image_url rest→gallery_urls, pending_review;
+  browse / listing detail / checkout / return / order screens / header / admin /
+  storefront untouched.
+
+### Earlier this branch line — Settings: internal alert recipients (multiple, comma separated)
 `site_settings.marketplace_payout_digest_email` now drives ALL SEVEN internal
 alerts, not just the payout digest: the daily payout digest, a new sale, a new
 dispute, a new seller registering, a seller auto suspended, a payment amount

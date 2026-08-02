@@ -49,6 +49,99 @@ export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): 
   }
 }
 
+/**
+ * Listing photo standard (design R1 photo spec). In ONE canvas pass this:
+ *  - normalises to a 1:1 square, cropped to fill and centre-weighted, so tall and
+ *    wide phone photos sit consistently in the grid and on detail. The backdrop is
+ *    cream #FFF8F4 (the design's pad colour), never white or black.
+ *  - burns in the "Uploaded on BundledMum" watermark: a lozenge bottom-left, inset
+ *    5% of width, height ~8%, Nunito 800 text in cream, with an adaptive scrim
+ *    (black 30% on light corners, cream 22% on dark) chosen from the measured
+ *    corner luminance, so it stays legible on a white cot sheet and a navy pram.
+ *  - exports a moderate-quality JPEG.
+ * Baked into the stored file permanently, and only ever called for NEW listing
+ * uploads. Dispatch and dispute photos keep the plain compressImage. Falls back to
+ * the original file if anything fails so an upload is never lost.
+ */
+export async function processListingImage(file: File, size = 1200, quality = 0.82): Promise<Blob> {
+  try {
+    if (typeof createImageBitmap !== "function") return compressImage(file);
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions)
+      .catch(() => createImageBitmap(file));
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return compressImage(file);
+
+    // Cream backdrop, then square crop-to-fill, centre-weighted.
+    ctx.fillStyle = "#FFF8F4";
+    ctx.fillRect(0, 0, size, size);
+    const edge = Math.min(bitmap.width, bitmap.height);
+    const sx = Math.round((bitmap.width - edge) / 2);
+    const sy = Math.round((bitmap.height - edge) / 2);
+    ctx.drawImage(bitmap, sx, sy, edge, edge, 0, 0, size, size);
+    if (typeof bitmap.close === "function") bitmap.close();
+
+    drawWatermark(ctx, size);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    return blob && blob.size > 0 ? blob : compressImage(file);
+  } catch {
+    return compressImage(file);
+  }
+}
+
+/** Rounded-rect path, with a manual fallback for older canvas engines. */
+function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.min(r, w / 2, h / 2);
+  if (typeof (ctx as unknown as { roundRect?: unknown }).roundRect === "function") {
+    ctx.beginPath();
+    (ctx as CanvasRenderingContext2D & { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(x, y, w, h, rr);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+/** The "Uploaded on BundledMum" lozenge, bottom-left, with a luminance-adaptive
+ * scrim so cream text reads on both light and dark photos. */
+function drawWatermark(ctx: CanvasRenderingContext2D, size: number) {
+  const text = "Uploaded on BundledMum";
+  const inset = Math.round(size * 0.05);
+  const fontSize = Math.max(7, Math.round(size * 0.045));
+  ctx.font = `800 ${fontSize}px Nunito, "Helvetica Neue", Arial, sans-serif`;
+  ctx.textBaseline = "middle";
+  const padX = Math.round(fontSize * 0.9);
+  const textW = Math.ceil(ctx.measureText(text).width);
+  const lozH = Math.max(Math.round(size * 0.08), fontSize + Math.round(fontSize * 0.9));
+  const lozW = textW + padX * 2;
+  const x = inset;
+  const y = size - inset - lozH;
+
+  // Measure average luminance of the corner the lozenge covers, to pick the scrim.
+  let dark = false;
+  try {
+    const rw = Math.max(1, Math.min(lozW, size - x));
+    const region = ctx.getImageData(x, y, rw, lozH).data;
+    let sum = 0;
+    for (let i = 0; i < region.length; i += 4) sum += 0.2126 * region[i] + 0.7152 * region[i + 1] + 0.0722 * region[i + 2];
+    dark = sum / (region.length / 4) / 255 < 0.5;
+  } catch { /* if the canvas is ever tainted, fall back to the light-photo scrim */ }
+
+  ctx.fillStyle = dark ? "rgba(255,248,244,0.22)" : "rgba(0,0,0,0.30)";
+  roundRectPath(ctx, x, y, lozW, lozH, Math.round(lozH * 0.3));
+  ctx.fill();
+
+  ctx.fillStyle = "#FFF8F4"; // cream text and mark, always
+  ctx.fillText(text, x + padX, y + lozH / 2 + Math.round(fontSize * 0.06));
+}
+
 /** Buyer price from the seller asking price and the current markup percent. */
 export function buyerPrice(askingNaira: number, markupPct: number): number {
   if (!isFinite(askingNaira) || askingNaira <= 0) return 0;

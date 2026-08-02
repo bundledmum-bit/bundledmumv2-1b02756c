@@ -3,13 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, compressImage } from "./sellData";
+import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
-interface PhotoDraft { file: File; url: string }
+// The blob is the processed photo (square, watermarked, compressed). We process
+// on add so the seller sees exactly what will be stored, and upload the same blob.
+interface PhotoDraft { blob: Blob; url: string }
 
 const CONDITIONS = ["Almost new", "Good", "Fair"];
 const MIN_PHOTOS = 4;
@@ -30,6 +32,7 @@ export default function CreateListingPage() {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [stateId, setStateId] = useState("");
@@ -94,12 +97,31 @@ export default function CreateListingPage() {
   const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
   const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
-  function addPhotos(files: FileList | null) {
+  async function addPhotos(files: FileList | null) {
     if (!files) return;
-    const next = Array.from(files).slice(0, MAX_PHOTOS - photos.length).map((file) => ({ file, url: URL.createObjectURL(file) }));
-    setPhotos((p) => [...p, ...next]);
+    const chosen = Array.from(files).slice(0, MAX_PHOTOS - photos.length);
+    if (chosen.length === 0) return;
+    setPhotoBusy(true);
+    try {
+      // Process each photo now (square crop to fill + watermark + compress) so the
+      // preview shows exactly what gets stored, and the same blob is uploaded.
+      const next: PhotoDraft[] = [];
+      for (const file of chosen) {
+        const blob = await processListingImage(file);
+        next.push({ blob, url: URL.createObjectURL(blob) });
+      }
+      setPhotos((p) => [...p, ...next]);
+    } finally {
+      setPhotoBusy(false);
+    }
   }
-  function removePhoto(i: number) { setPhotos((p) => p.filter((_, idx) => idx !== i)); }
+  function removePhoto(i: number) {
+    setPhotos((p) => {
+      const target = p[i];
+      if (target) URL.revokeObjectURL(target.url);
+      return p.filter((_, idx) => idx !== i);
+    });
+  }
 
   async function submit() {
     setError(null); setContactBlocked(false);
@@ -120,7 +142,8 @@ export default function CreateListingPage() {
     try {
       const urls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
-        const blob = await compressImage(photos[i].file);
+        // Already processed on add (square, watermarked, compressed) — upload as is.
+        const blob = photos[i].blob;
         const path = `${user.id}/${Date.now()}-${i}.jpg`;
         const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
         if (upErr) throw upErr;
@@ -213,7 +236,7 @@ export default function CreateListingPage() {
                 <button type="button" className="rm" onClick={() => removePhoto(i)} aria-label="Remove photo">×</button>
               </div>
             ))}
-            {photos.length < MAX_PHOTOS && <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} aria-label="Add photo">+</button>}
+            {photos.length < MAX_PHOTOS && <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} disabled={photoBusy} aria-label="Add photo">{photoBusy ? "…" : "+"}</button>}
           </div>
           {/* No capture attribute, so the phone offers camera or gallery each tap. */}
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
@@ -287,7 +310,7 @@ export default function CreateListingPage() {
       </div>
 
       <div className="mkt-sell-foot">
-        <button className="mkt-primary" onClick={submit} disabled={busy}>{busy ? "Sending for review..." : "Send for review"}</button>
+        <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : "Send for review"}</button>
         <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : "Our team checks every listing before it goes live"}</div>
       </div>
     </>

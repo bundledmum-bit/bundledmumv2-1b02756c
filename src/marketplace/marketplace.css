@@ -671,34 +671,33 @@
 .mkt-dispatch-preview img { width: 100%; display: block; }
 .mkt-dispatch-preview .retake { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
 
-/* ── Shared sitewide footer (design 7a) ── */
-.mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 26px 16px 30px; display: flex; flex-direction: column; gap: 18px; }
-.mkt-ftr.clear-bar { padding-bottom: 104px; } /* clear the fixed Buy now bar on listing detail */
-.mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; }
+/* ── Shared sitewide footer (design R2/R2b, compact) ── */
+.mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 18px 16px 22px; display: flex; flex-direction: column; gap: 12px; }
+.mkt-ftr.clear-bar { padding-bottom: 96px; } /* clear the fixed Buy now bar on listing detail, every breakpoint */
+.mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
 
-.mkt-ftr-brandcol { display: flex; flex-direction: column; gap: 14px; }
 .mkt-ftr-lockup { display: flex; align-items: center; gap: 8px; }
-.mkt-ftr-logo { height: 26px; width: auto; display: block; }
+.mkt-ftr-logo { height: 22px; width: auto; display: block; }
 .mkt-ftr-market { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
-.mkt-ftr-tag { margin: 0; font: 300 13px/1.6 'Lato', sans-serif; color: var(--mkt-green-light); max-width: 320px; }
-.mkt-ftr-wa { align-self: flex-start; }
 
-.mkt-ftr-col { display: flex; flex-direction: column; gap: 11px; }
-.mkt-ftr-h { font: 800 11px/1 'Nunito', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9DBFAF; }
-.mkt-ftr-link { font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-cream); text-decoration: none; }
-.mkt-ftr-link:hover { color: var(--mkt-cream); text-decoration: underline; }
+.mkt-ftr-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.mkt-ftr-link { font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-cream); text-decoration: none; }
+.mkt-ftr-link:hover { text-decoration: underline; }
 
-.mkt-ftr-held { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; background: var(--mkt-green); border-radius: 14px; padding: 15px; display: flex; align-items: flex-start; gap: 12px; }
-.mkt-ftr-held .tick { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 13px/22px 'Lato', sans-serif; text-align: center; }
-.mkt-ftr-held span:last-child { flex: 1; font: 400 13px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); }
-
-.mkt-ftr-legal { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; border-top: 1px solid var(--mkt-green); padding-top: 16px; display: flex; flex-direction: column; gap: 5px; font: 400 12px/1.5 'Lato', sans-serif; color: #9DBFAF; }
+.mkt-ftr-protect { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); }
+.mkt-ftr-legal { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; font: 400 11px/1.4 'Lato', sans-serif; color: #9DBFAF; }
 
 @media (min-width: 720px) {
-  .mkt-ftr { padding: 34px 24px 26px; }
-  .mkt-ftr.clear-bar { padding-bottom: 104px; } /* fixed Buy now bar spans full width at every breakpoint */
-  .mkt-ftr-inner { flex-direction: row; gap: 28px; }
-  .mkt-ftr-brandcol { flex: 1.5; }
-  .mkt-ftr-col { flex: 1; }
-  .mkt-ftr-legal { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+  .mkt-ftr { padding: 22px 24px; }
+  .mkt-ftr-inner { flex-direction: row; align-items: center; justify-content: space-between; gap: 24px; }
+  .mkt-ftr-links { justify-content: flex-end; }
+}
+
+/* ── Home header line, browse only (design R3) ── */
+.mkt-home-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 12px 4px; max-width: 1180px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.mkt-home-line h1 { font: 900 22px/1.12 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-green-dark); margin: 0; max-width: 15ch; text-wrap: balance; }
+.mkt-home-sell { flex: 0 0 auto; align-self: center; font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-cream); background: var(--mkt-coral); border-radius: 999px; padding: 9px 16px; text-decoration: none; }
+.mkt-home-sell:hover { background: var(--mkt-coral-dark); color: var(--mkt-cream); }
+@media (min-width: 720px) {
+  .mkt-home-line h1 { font-size: 26px; max-width: none; }
 }

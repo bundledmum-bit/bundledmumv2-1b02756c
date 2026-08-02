@@ -2,14 +2,17 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { formatNaira } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
- * Become a seller, the public entry and value screen, reskinned to the approved
- * design (green hero, five step payment card, coral primary). Anyone can read
- * it. The CTA routes a logged out visitor through the existing storefront login
- * with a returnTo back here, and an existing seller straight to the dashboard.
+ * Become a seller, /marketplace/sell (design R1). Leads with the one true promise,
+ * the seller gets exactly the price they ask for and BundledMum takes nothing out
+ * of it, then the protection story. It carries NO buyer-side cost, no service fee,
+ * no markup explanation, no calculator or invented stats, since the ₦750 fee is
+ * the buyer's and showing it here put sellers off a cost they never pay.
+ *
+ * The CTA behaviour is unchanged: a logged out visitor routes through the
+ * marketplace login and returns here; an existing seller goes to the dashboard.
  */
 export default function BecomeSellerPage() {
   const { isLoggedIn, loading, seller } = useSeller();
@@ -20,19 +23,15 @@ export default function BecomeSellerPage() {
   }, [loading, seller, navigate]);
 
   const steps = [
-    "Buyer pays BundledMum, not you",
-    "We hold the money safely while you send the item",
-    "You ship, and share the details with your buyer",
-    "Buyer confirms it arrived as described",
-    "We transfer your money to your bank account",
+    "The buyer pays BundledMum, never you directly",
+    "We hold that money while you send the item",
+    "The buyer confirms it arrived",
+    "We transfer your money to your bank",
   ];
 
   const startCta = () => {
     if (loading) return;
-    if (!isLoggedIn) {
-      sendToMarketplaceLogin("/sell");
-      return;
-    }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
     navigate("/sell/setup");
   };
 
@@ -42,36 +41,30 @@ export default function BecomeSellerPage() {
         <div className="inner">
           <button className="mkt-sell-back" onClick={() => navigate("/")} aria-label="Back to marketplace">‹</button>
           <div className="mkt-sell-brand">BundledMum <small>Marketplace</small></div>
-          <div className="hero">Sell your baby things without the wahala</div>
-          <p className="sub">No haggling in your DMs, no meeting a stranger hoping they have the cash. We hold the money until your buyer confirms, then send it straight to your bank.</p>
+          <div className="hero">Sell your used baby and toddler items without wahala</div>
+          <p className="sub">No more "is it still available?" that leads nowhere, and no dragging your baby to meet a stranger who says he will transfer and never does. You get exactly the price you asked for, we take nothing from it.</p>
         </div>
       </div>
 
       <div className="mkt-sell-body">
         <div className="mkt-card2">
-          <div className="mkt-card2-label">How you get paid</div>
+          <div className="mkt-card2-label">Nobody can run off with your item</div>
           {steps.map((s, i) => (
             <div className="mkt-step" key={i}>
               <div className={i === steps.length - 1 ? "mkt-step-num final" : "mkt-step-num"}>{i + 1}</div>
               <span>{s}</span>
             </div>
           ))}
-        </div>
-
-        <div className="mkt-statrow">
-          <div className="mkt-stat green">
-            <div className="n">{formatNaira(0)}</div>
-            <div className="t">to list. We add our markup on top of your price, so you keep exactly what you ask for.</div>
-          </div>
-          <div className="mkt-stat coral">
-            <div className="n">{formatNaira(750)}</div>
-            <div className="t">service fee, paid by the buyer at checkout. Never taken from you.</div>
-          </div>
+          <p style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)", margin: "4px 2px 0" }}>
+            No one takes your item and disappears, and no one can claim they paid you when they did not. This is what a WhatsApp group cannot give you.
+          </p>
         </div>
 
         <div className="mkt-info">
           <div className="tick">✓</div>
-          <div className="txt"><b style={{ fontWeight: 700 }}>Every listing is reviewed by our team</b> before it goes live, usually within a few hours. That check is why buyers trust what they find here, trusted quality every time.</div>
+          <div className="txt">
+            <b style={{ fontWeight: 700 }}>Free to list, however many things you have.</b> About four minutes to set up, just your phone and bank details. Every listing is checked before it goes live, and that is what keeps buyers coming here.
+          </div>
         </div>
       </div>
 
