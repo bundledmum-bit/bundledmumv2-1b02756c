@@ -495,3 +495,22 @@
 .mkt-debit { background: var(--mkt-coral-light); border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 11px; }
 .mkt-debit .m { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-coral-dark); color: var(--mkt-cream); font: 800 12px/20px 'Nunito', sans-serif; text-align: center; }
 .mkt-debit span { font: 400 12px/1.45 'Lato', sans-serif; }
+
+/* Searchable area combobox (create listing) */
+.mkt-combo { position: relative; }
+.mkt-combo-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  max-height: 220px; overflow-y: auto; background: #fff;
+  border: 1px solid var(--mkt-input-border); border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(26, 26, 26, 0.12); padding: 4px;
+}
+.mkt-combo-item {
+  display: flex; align-items: center; min-height: 44px; padding: 10px 12px;
+  border-radius: 9px; font: 400 15px/1.2 'Lato', sans-serif; color: var(--mkt-black);
+  cursor: pointer; user-select: none;
+}
+.mkt-combo-item[data-selected="true"], .mkt-combo-item:hover { background: var(--mkt-green-light); color: var(--mkt-green-dark); }
+.mkt-combo-empty { padding: 12px; font: 400 13px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-combo-empty a { color: var(--mkt-coral-dark); font-weight: 700; }
+.mkt-combo-note { font: 400 11px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-combo-note a { color: var(--mkt-coral-dark); font-weight: 700; }

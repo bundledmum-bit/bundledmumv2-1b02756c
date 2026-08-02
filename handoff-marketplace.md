@@ -149,7 +149,37 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — create-listing changes + admin location management
+### This pass — searchable area select on create listing
+- The area field on `/marketplace/sell/new` is now a searchable type-ahead
+  combobox (`sell/AreaCombobox.tsx`), because the allowed area lists have grown:
+  **Lagos has 164 allowed areas, FCT has 33, both states open.** A 164-option
+  plain select was unusable on a phone.
+- Matching is case-insensitive and matches anywhere in the name (verified live:
+  "gud" surfaces Aguda, Ogudu and Ogudu GRA; "lekki" surfaces Ibeju-Lekki, Lekki
+  Free Trade Zone, Lekki Phase 1 and Lekki Phase 2). Keyboard arrow/enter and
+  touch friendly, capped-height scrollable list.
+- The seller must pick from the list: only a real selection commits to the
+  value; typed text that matches nothing shows an empty state with a WhatsApp
+  invite (existing `WHATSAPP_BASE`) and reverts on blur, it is never stored.
+  Disabled until a state is chosen; keyed by stateId so changing state clears the
+  area and the search. The chosen NAMES are still written to `location_state` and
+  `location_city`, schema unchanged.
+- **Implementation note:** the repo has `cmdk` (and a shadcn `command.tsx`), and
+  it was tried first, but importing cmdk into the marketplace tree threw an
+  "invalid hook call / more than one copy of React" runtime error in this app's
+  Vite setup. Rather than add config or a dependency, the combobox is hand-rolled
+  with plain React in the scoped `.mkt` styling. No new dependency.
+- **Browse location filter left unchanged (audited):** it is a plain select of
+  distinct `location_state` values from live listings (state level, a handful of
+  options), not areas, so it is not unwieldy and did not need converting.
+- Preserved and unchanged: 4-photo minimum + camera-or-gallery + compression,
+  display_name validation, contact-detail block, buyer-price preview, upload to
+  marketplace-listings (first->image_url), no writing final_price_naira /
+  markup_percent, status pending_review, the "Almost new" label. Files:
+  `sell/AreaCombobox.tsx` (new), `sell/CreateListingPage.tsx` (area field swap),
+  `marketplace.css` (combobox styles).
+
+### Earlier this branch line — create-listing changes + admin location management
 Functional changes to `/marketplace/sell/new` plus a new admin Locations section.
 - **Minimum 4 photos, camera or gallery, compressed.** Submission is blocked
   below 4 with encouraging copy (buyers cannot ask questions, so angles explain).

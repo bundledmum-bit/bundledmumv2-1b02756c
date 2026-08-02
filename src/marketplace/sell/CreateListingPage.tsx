@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, compressImage } from "./sellData";
+import AreaCombobox from "./AreaCombobox";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
@@ -231,21 +232,16 @@ export default function CreateListingPage() {
           </select>
         </div>
 
-        <div style={{ display: "flex", gap: 9 }}>
-          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
-            <span className="mkt-uplabel">State</span>
-            <select className="mkt-native-select" value={stateId} onChange={(e) => { setStateId(e.target.value); setAreaName(""); }}>
-              <option value="">Choose state</option>
-              {states.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
-            <span className="mkt-uplabel">Area</span>
-            <select className="mkt-native-select" value={areaName} onChange={(e) => setAreaName(e.target.value)} disabled={!stateId}>
-              <option value="">{stateId ? "Choose area" : "Pick a state first"}</option>
-              {areas.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
-            </select>
-          </div>
+        <div className="mkt-field">
+          <span className="mkt-uplabel">State</span>
+          <select className="mkt-native-select" value={stateId} onChange={(e) => { setStateId(e.target.value); setAreaName(""); }}>
+            <option value="">Choose state</option>
+            {states.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="mkt-field">
+          <span className="mkt-uplabel">Area</span>
+          <AreaCombobox key={stateId} areas={areas} value={areaName} onChange={setAreaName} disabled={!stateId} />
         </div>
 
         <div className="mkt-field">
