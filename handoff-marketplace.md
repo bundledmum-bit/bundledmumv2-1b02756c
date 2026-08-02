@@ -160,7 +160,47 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — single consolidated desktop browse header (design B4), commit `6e1e133`
+### This pass — grouped collapsible category filter (7 groups), commit `f829035`
+The browse category filter (desktop panel + mobile drawer) is now an accordion of
+the 7 category groups instead of one flat list.
+- **Backend was already deployed, no schema work:** `marketplace_category_groups`
+  (`id, name, sort_order`, 7 rows, public-read policy `qual true`) and
+  `marketplace_categories.group_id` + `.sort_order`. Live data: 37 allowed categories,
+  ALL grouped, ALL have icons, 0 ungrouped (brief said 39; built from live 37). Counts:
+  Clothing and shoes 4, Feeding 6, Travel and carriers 7, Nursery 7, Play and learning
+  6, Maternity 4, Bath and care 3.
+- **`useListings.ts`:** `useAllowedCategories` now selects `id, name, icon, group_id,
+  sort_order` (types `CategoryOption`); new `useCategoryGroups` returns the 7 groups.
+  Grouping/ordering is done client side (`groupCategories` in BrowsePage) — NO hardcoded
+  name→group map, so an admin regroup needs no deploy. Any allowed category with an
+  unknown/null group falls through to a loose list (`ungrouped`), never hidden.
+- **`BrowsePage.tsx`:** new `CategoryFilter` accordion (used by both the desktop
+  `.mkt-fpanel` and the mobile `FilterSheet` via the shared `FilterControls`, which now
+  takes a `groups` prop). "All categories" stays always-visible above the groups; the
+  chip design (icon + name, `.mkt-fopt`) is unchanged. Home tiles now source their six
+  from group display order (`tileCats`).
+- **Design decisions (this is the deliverable spec):**
+  - Default: EVERY group collapsed, identical mobile + desktop — the 7 headers +
+    counts are the scannable index over ~37 items.
+  - Active-selection-forces-open: the group holding `filters.categoryId` is force-opened
+    (real entry in the `open` Set, added on mount via the initialiser and via an effect
+    whenever the selection moves in; only ever adds, so a group the buyer opened never
+    auto-closes). That group's count pill turns coral (`.has-active .ct`) as a
+    breadcrumb even if later collapsed; the applied-filter chip above the grid also
+    shows the pick. So the selection is never lost.
+  - Interaction: header button = name + count pill + chevron, `aria-expanded` /
+    `aria-controls`. Chevron ▾ rotates 180°→▴ (`transform .2s`); body fades/slides in
+    (`@keyframes mkt-catg-in`, .18s); both stilled under `prefers-reduced-motion`.
+    Tap targets: header 48px (52px in the drawer), category rows 44px in the drawer.
+- **`marketplace.css`:** `.mkt-catgroups/.mkt-catgroup/.mkt-catgroup-h (.nm/.ct/.chev)/
+  .mkt-catgroup-body` + the keyframe, reduced-motion, and `.mkt-fsheet` touch bumps.
+- Verified live: desktop panel 7 headers all collapsed at 48px with correct counts,
+  expanding Feeding reveals its 6 chips + chevron rotates (`matrix(-1,0,0,-1,0,0)`).
+  Mobile drawer: headers 52px, options 44px; selected Monitors (in Nursery), applied,
+  reopened drawer → only Nursery open with a coral count pill, the pick visible inside.
+  `npm run build` passes. Preview left on browse, mobile view.
+
+### Earlier pass — single consolidated desktop browse header (design B4), commit `6e1e133`
 The desktop marketplace header is now ONE green bar instead of two stacked strips.
 - **Problem:** on desktop, browse showed the shared `MarketplaceHeader` (logo + nav)
   AND `BrowsePage`'s `.mkt-topbar` (tagline/search/location stacked full-width, since
