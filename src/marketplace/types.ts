@@ -37,6 +37,11 @@ export interface MarketplaceListing {
   gallery_urls: string[] | null;
   category_id: string;
   seller_id: string;
+  /** How many identical units the seller has, and how many are already bought.
+   * Available stock is quantity minus quantity_sold; both are trigger/server
+   * owned and never written from the client. */
+  quantity: number;
+  quantity_sold: number;
   category: MarketplaceCategoryEmbed | null;
   seller: MarketplaceSellerPublic | null;
 }

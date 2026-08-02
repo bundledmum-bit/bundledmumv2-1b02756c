@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./useSeller";
-import { sdb, formatNaira, maskAccount, validateDisplayName } from "./sellData";
+import { sdb, formatNaira, maskAccount, validateDisplayName, sellerRelistListing } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -15,13 +16,21 @@ interface MyListing {
   price_naira: number | null;
   image_url: string | null;
   rejection_reason: string | null;
+  quantity: number;
+  quantity_sold: number;
+  delisted_by: string | null;
+  delisted_at: string | null;
 }
 
-const GROUPS: Array<{ key: string; label: string; pill: string }> = [
-  { key: "pending_review", label: "Pending review", pill: "pending" },
-  { key: "live", label: "Live", pill: "live" },
-  { key: "rejected", label: "Rejected", pill: "rejected" },
-  { key: "sold", label: "Sold", pill: "sold" },
+// All five statuses a seller's listing can be in. Every group is shown with its
+// count, and an empty group shows a one-line card, so a count never disagrees
+// with what is on screen (the old bug: delisted counted but never rendered).
+const GROUPS: Array<{ key: string; label: string; pill: string; empty: string }> = [
+  { key: "live", label: "Live", pill: "live", empty: "Nothing live right now." },
+  { key: "pending_review", label: "Waiting on us", pill: "pending", empty: "Nothing waiting for review." },
+  { key: "sold", label: "Sold out", pill: "sold", empty: "Nothing sold out yet, your live items are still out there." },
+  { key: "rejected", label: "Not approved", pill: "rejected", empty: "Nothing was sent back." },
+  { key: "delisted", label: "Delisted", pill: "sold", empty: "Nothing delisted." },
 ];
 
 const PILL_CLASS: Record<string, string> = { "To send": "pending", Sent: "live", Paid: "sold" };
@@ -58,18 +67,35 @@ export default function SellerDashboardPage() {
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 
-  const { data: listings = [], isLoading: listingsLoading } = useQuery({
+  const { data: listings = [], isLoading: listingsLoading, refetch: refetchListings } = useQuery({
     queryKey: ["my-listings", seller?.id],
     enabled: !!seller?.id,
     queryFn: async (): Promise<MyListing[]> => {
       const { data } = await sdb
         .from("marketplace_listings")
-        .select("id, title, status, final_price_naira, price_naira, image_url, rejection_reason")
+        .select("id, title, status, final_price_naira, price_naira, image_url, rejection_reason, quantity, quantity_sold, delisted_by, delisted_at")
         .eq("seller_id", seller!.id)
         .order("created_at", { ascending: false });
       return (data ?? []) as unknown as MyListing[];
     },
   });
+
+  const [relistTarget, setRelistTarget] = useState<MyListing | null>(null);
+  const [relistBusy, setRelistBusy] = useState(false);
+  const [relistError, setRelistError] = useState<string | null>(null);
+
+  async function confirmRelist() {
+    if (!relistTarget) return;
+    setRelistBusy(true); setRelistError(null);
+    const ok = await sellerRelistListing(relistTarget.id);
+    setRelistBusy(false);
+    if (!ok) {
+      setRelistError("We could not put this back up. It may have been removed by our team, or your account has an outstanding balance. Message us and we will help.");
+      return;
+    }
+    setRelistTarget(null);
+    await refetchListings();
+  }
 
   const { data: orders = [] } = useQuery({
     queryKey: ["seller-orders", seller?.id],
@@ -125,34 +151,78 @@ export default function SellerDashboardPage() {
           ) : (
             GROUPS.map((g) => {
               const rows = listings.filter((l) => l.status === g.key);
-              if (rows.length === 0) return null;
               return (
                 <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-                  {rows.map((l) => (
-                    l.status === "rejected" ? (
-                      <div className="mkt-lrow col" key={l.id}>
-                        <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
-                          <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
-                            <div className="meta">You get {formatNaira(l.price_naira)}</div>
+                  <div className="mkt-group-title">{g.label} · {rows.length}</div>
+                  {rows.length === 0 ? (
+                    <div className="mkt-lrow" style={{ color: "var(--mkt-muted)", font: "400 12px/1.45 'Lato', sans-serif", display: "block" }}>{g.empty}</div>
+                  ) : rows.map((l) => {
+                    const total = Number(l.quantity ?? 1);
+                    const soldN = Number(l.quantity_sold ?? 0);
+                    const left = total - soldN;
+                    const multi = total > 1;
+                    const meta = g.key === "sold"
+                      ? (multi ? `All ${total} sold · off browse now` : "Sold · off browse now")
+                      : multi
+                        ? `You get ${formatNaira(l.price_naira)} each · ${soldN} of ${total} sold`
+                        : `You get ${formatNaira(l.price_naira)}`;
+
+                    if (g.key === "rejected") {
+                      return (
+                        <div className="mkt-lrow col" key={l.id}>
+                          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                            <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                              <div className="meta">You get {formatNaira(l.price_naira)}</div>
+                            </div>
+                            <span className="mkt-st rejected">Not approved</span>
                           </div>
-                          <span className="mkt-st rejected">Rejected</span>
+                          {l.rejection_reason && <div className="mkt-reject">{l.rejection_reason}. Fix this and send it back to us.</div>}
+                          <button className="mkt-secondary" onClick={() => navigate("/sell/new")}>Fix and resend</button>
                         </div>
-                        {l.rejection_reason && <div className="mkt-reject">{l.rejection_reason}. Fix this and send it back to us.</div>}
-                        <button className="mkt-secondary" onClick={() => navigate("/sell/new")}>Fix and resend</button>
-                      </div>
-                    ) : (
+                      );
+                    }
+
+                    if (g.key === "delisted") {
+                      const adminRemoved = l.delisted_by === "admin";
+                      const canRelist = l.delisted_by === "seller";
+                      return (
+                        <div className="mkt-lrow col" key={l.id}>
+                          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                            <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                              <div className="meta">{multi ? `${left} of ${total} left` : `You get ${formatNaira(l.price_naira)}`}</div>
+                            </div>
+                            <span className={adminRemoved ? "mkt-st rejected" : "mkt-st sold"}>{adminRemoved ? "Removed" : "Delisted"}</span>
+                          </div>
+                          {canRelist ? (
+                            <>
+                              <div className="meta" style={{ color: "var(--mkt-muted)" }}>You took this down. You can put it back up, it goes through review again first.</div>
+                              <button className="mkt-secondary" onClick={() => { setRelistError(null); setRelistTarget(l); }}>Put it back up</button>
+                            </>
+                          ) : (
+                            <>
+                              <div className="mkt-reject">{adminRemoved ? "BundledMum removed this listing. You cannot put this one back yourself." : "This listing is off the marketplace. You cannot put this one back yourself."} Message us if you think it should return.</div>
+                              <a className="mkt-secondary" style={{ textAlign: "center", textDecoration: "none", display: "block" }} href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, about my delisted listing "${l.title}".`)}`} target="_blank" rel="noreferrer">Ask us about it</a>
+                            </>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
                       <div className={g.key === "sold" ? "mkt-lrow dim" : "mkt-lrow"} key={l.id}>
                         <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
-                          <div className="meta">You get {formatNaira(l.price_naira)}</div>
+                          <div className="meta">{meta}</div>
                         </div>
                         <span className={`mkt-st ${g.pill}`}>{g.label}</span>
                       </div>
-                    )
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })
@@ -209,6 +279,21 @@ export default function SellerDashboardPage() {
       <div className="mkt-sell-foot">
         <button className="mkt-primary" onClick={() => navigate("/sell/new")}>List another item</button>
       </div>
+
+      {/* Relist confirm (design Q6). Goes back through review, so it is a
+          deliberate action, and a false RPC result is surfaced honestly. */}
+      {relistTarget && (
+        <div className="mkt-sheet-overlay" onClick={() => !relistBusy && setRelistTarget(null)}>
+          <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="grab" />
+            <h3>Put {relistTarget.title} back up?</h3>
+            <p>It goes back to our team for a quick check first, the same as a new listing, then it returns to browse. Your photos, price and notes are all still there.</p>
+            {relistError && <div className="mkt-errbox"><span className="m">!</span><span>{relistError}</span></div>}
+            <button className="mkt-primary" onClick={confirmRelist} disabled={relistBusy}>{relistBusy ? "Sending..." : "Send it for review"}</button>
+            <button className="back" onClick={() => setRelistTarget(null)} disabled={relistBusy}>Leave it down</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

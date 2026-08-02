@@ -10,6 +10,11 @@ import VerifiedBadge from "./VerifiedBadge";
  */
 export default function ListingCard({ listing }: { listing: MarketplaceListing }) {
   const verified = isVerifiedSeller(listing);
+  // Availability speaks up only when there are several. A single-item listing
+  // (the usual case) shows no badge, so the grid stays clean.
+  const available = Number(listing.quantity ?? 1) - Number(listing.quantity_sold ?? 0);
+  const showQty = Number(listing.quantity ?? 1) > 1 && available > 0;
+  const qtyLabel = available === 1 ? "Last one" : `${available} available`;
   return (
     <Link className="mkt-card" to={`/listing/${listing.id}`}>
       <div className="mkt-card-imgwrap">
@@ -21,6 +26,7 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
             loading="lazy"
           />
         ) : null}
+        {showQty && <span className={available === 1 ? "mkt-card-qty low" : "mkt-card-qty"}>{qtyLabel}</span>}
       </div>
       <div className="mkt-card-body">
         <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>

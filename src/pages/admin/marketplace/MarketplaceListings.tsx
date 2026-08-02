@@ -14,6 +14,9 @@ interface ListingRow {
   location_state: string | null;
   location_city: string | null;
   seller_id: string;
+  quantity: number;
+  quantity_sold: number;
+  delisted_by: string | null;
   category: { name: string | null } | null;
   seller_name?: string | null;
 }
@@ -34,6 +37,7 @@ export default function MarketplaceListings() {
   const [sellerFilter, setSellerFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [delistTarget, setDelistTarget] = useState<ListingRow | null>(null);
+  const [relistTarget, setRelistTarget] = useState<ListingRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +46,7 @@ export default function MarketplaceListings() {
     staleTime: 10000,
     queryFn: async (): Promise<ListingRow[]> => {
       const { data } = await adb.from("marketplace_listings")
-        .select("id, title, status, final_price_naira, location_state, location_city, seller_id, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
+        .select("id, title, status, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
         .order("created_at", { ascending: false });
       const rows = (data ?? []) as unknown as ListingRow[];
       const ids = Array.from(new Set(rows.map((r) => r.seller_id).filter(Boolean)));
@@ -86,6 +90,18 @@ export default function MarketplaceListings() {
     setDelistTarget(null); await refetch();
   }
 
+  // Admin relist works on any delisted listing, including admin-delisted and sold
+  // items that still have stock. Server-side RPC; a false result is surfaced.
+  async function confirmRelist() {
+    if (!relistTarget) return;
+    setBusy(true); setError(null);
+    const { data, error: err } = await adb.rpc("admin_relist_listing", { p_listing_id: relistTarget.id });
+    setBusy(false);
+    if (err) { setError(err.message); return; }
+    if (data !== true) { setError("This listing could not be relisted. Refresh and check its state."); return; }
+    setRelistTarget(null); await refetch();
+  }
+
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
   return (
@@ -118,7 +134,7 @@ export default function MarketplaceListings() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left" style={{ background: "#FFF8F4" }}>
-                  <Th>Item</Th><Th>Seller</Th><Th>Category</Th><Th>Location</Th><Th>Buyer price</Th><Th>Status</Th><Th> </Th>
+                  <Th>Item</Th><Th>Seller</Th><Th>Category</Th><Th>Stock</Th><Th>Buyer price</Th><Th>Status</Th><Th>Taken down by</Th><Th> </Th>
                 </tr>
               </thead>
               <tbody>
@@ -127,12 +143,14 @@ export default function MarketplaceListings() {
                     <Td><span className="font-heading font-bold text-foreground">{l.title}</span></Td>
                     <Td>{l.seller_name || "Seller"}</Td>
                     <Td>{l.category?.name || "-"}</Td>
-                    <Td>{l.location_city || l.location_state || "-"}</Td>
+                    <Td><span className="tabular-nums">{Number(l.quantity_sold ?? 0)}/{Number(l.quantity ?? 1)}</span></Td>
                     <Td><span className="tabular-nums font-heading font-bold">{formatNaira(l.final_price_naira)}</span></Td>
                     <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
+                    <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
                     <Td>
                       {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
                       {l.status === "pending_review" && <button onClick={() => navigate("/admin/marketplace/review")} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Review</button>}
+                      {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
                     </Td>
                   </tr>
                 ))}
@@ -149,6 +167,19 @@ export default function MarketplaceListings() {
         kv={delistTarget ? [{ label: "Item", value: delistTarget.title }, { label: "Seller", value: delistTarget.seller_name || "Seller" }] : []}
         confirmLabel="Delist now" danger busy={busy} error={error}
         onConfirm={confirmDelist} onCancel={() => !busy && setDelistTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={relistTarget !== null}
+        title="Relist this listing?"
+        body="It re-enters the review queue with a back-from-delisted tag, then returns to browse once approved. Admin relist works whether the seller or BundledMum took it down."
+        kv={relistTarget ? [
+          { label: "Item", value: relistTarget.title },
+          { label: "Seller", value: relistTarget.seller_name || "Seller" },
+          { label: "Taken down by", value: relistTarget.delisted_by === "admin" ? "BundledMum" : relistTarget.delisted_by === "seller" ? "Seller" : "-" },
+        ] : []}
+        confirmLabel="Relist" busy={busy} error={error}
+        onConfirm={confirmRelist} onCancel={() => !busy && setRelistTarget(null)}
       />
     </div>
   );

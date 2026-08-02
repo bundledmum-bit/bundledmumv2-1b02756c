@@ -142,6 +142,19 @@ function drawWatermark(ctx: CanvasRenderingContext2D, size: number) {
   ctx.fillText(text, x + padX, y + lozH / 2 + Math.round(fontSize * 0.06));
 }
 
+/**
+ * A seller relisting their OWN delisted listing. Returns true on success. It only
+ * succeeds when the listing was delisted by the seller (not admin), the seller is
+ * active with no outstanding debit, and stock remains, so a false result is real
+ * and must be surfaced honestly, never shown as success. It re-enters the review
+ * queue server side. Never call this for an admin-delisted listing.
+ */
+export async function sellerRelistListing(listingId: string): Promise<boolean> {
+  const { data, error } = await sdb.rpc("seller_relist_listing", { p_listing_id: listingId });
+  if (error) return false;
+  return data === true;
+}
+
 /** Buyer price from the seller asking price and the current markup percent. */
 export function buyerPrice(askingNaira: number, markupPct: number): number {
   if (!isFinite(askingNaira) || askingNaira <= 0) return 0;

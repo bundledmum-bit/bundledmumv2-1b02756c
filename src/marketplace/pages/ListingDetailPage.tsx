@@ -35,16 +35,37 @@ export default function ListingDetailPage() {
     );
   }
 
+  // A sold-out item (last unit gone, status flipped to 'sold') is no longer
+  // publicly readable, so a saved or shared link resolves here to null. Show a
+  // warm "this one has gone" state with a clear route back to browse.
   if (isError || !listing) {
     return (
       <div className="mkt-center">
-        <div className="mkt-empty-title">This listing is not available</div>
+        <span className="mkt-st sold" style={{ marginBottom: 4 }}>Sold out</span>
+        <div className="mkt-empty-title">Ah, this one has gone</div>
         <div className="mkt-empty-sub">
-          It may have sold or been taken down. Browse other items instead.
+          It sold or was taken down. Things move fast here, especially the good ones. There is plenty more to see.
         </div>
         <button className="mkt-buy" style={{ maxWidth: 220 }} onClick={() => navigate("/")}>
-          Back to marketplace
+          See what else is there
         </button>
+      </div>
+    );
+  }
+
+  const qty = Number(listing.quantity ?? 1);
+  const available = qty - Number(listing.quantity_sold ?? 0);
+  const multi = qty > 1;
+
+  // Belt and braces: a live listing with no stock left (should not happen, the
+  // trigger flips it to 'sold') still shows the gone state rather than a dead Buy.
+  if (available <= 0) {
+    return (
+      <div className="mkt-center">
+        <span className="mkt-st sold" style={{ marginBottom: 4 }}>Sold out</span>
+        <div className="mkt-empty-title">Ah, this one has gone</div>
+        <div className="mkt-empty-sub">The last one was just bought. There is plenty more to see.</div>
+        <button className="mkt-buy" style={{ maxWidth: 220 }} onClick={() => navigate("/")}>See what else is there</button>
       </div>
     );
   }
@@ -81,9 +102,21 @@ export default function ListingDetailPage() {
 
       <div className="mkt-detail-body">
         <div>
-          <div className="mkt-detail-price">{formatNaira(listing.final_price_naira)}</div>
+          <div className="mkt-detail-price">{formatNaira(listing.final_price_naira)}{multi ? " each" : ""}</div>
           <h1 className="mkt-detail-title">{listing.title}</h1>
+          {multi && (
+            <span className={available === 1 ? "mkt-avail low" : "mkt-avail"}>{available === 1 ? "Last one" : `${available} available`}</span>
+          )}
         </div>
+
+        {multi && (
+          <div className="mkt-reassure">
+            <div className="mkt-reassure-tick">✓</div>
+            <div className="mkt-reassure-text">
+              {sellerDisplayName(listing)} has confirmed all {qty} are identical. You are buying one, at {formatNaira(listing.final_price_naira)}.
+            </div>
+          </div>
+        )}
 
         <div className="mkt-tags">
           <span className="mkt-tag cond">{conditionLabel(listing.condition_notes)}</span>
@@ -125,11 +158,11 @@ export default function ListingDetailPage() {
 
       <div className="mkt-buybar">
         <div className="mkt-buybar-price">
-          <small>Price</small>
+          <small>{multi ? "Price each" : "Price"}</small>
           <b>{formatNaira(listing.final_price_naira)}</b>
         </div>
         <button className="mkt-buy" onClick={() => navigate(`/checkout/${listing.id}`)}>
-          Buy now
+          {multi ? "Buy one now" : "Buy now"}
         </button>
       </div>
     </div>

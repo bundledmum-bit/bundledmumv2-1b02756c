@@ -41,6 +41,8 @@ export default function CreateListingPage() {
   const [conditionNotes, setConditionNotes] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [identicalOk, setIdenticalOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -136,6 +138,7 @@ export default function CreateListingPage() {
     if (!conditionNotes.trim()) { setError("Add condition notes. Mention any flaw, buyers cannot ask questions before buying."); return; }
     if (!description.trim()) { setError("Add a description."); return; }
     if (!isFinite(priceNum) || priceNum <= 0) { setError("Enter your asking price."); return; }
+    if (quantity > 1 && !identicalOk) { setError(`Please confirm all ${quantity} items are identical, or set the quantity back to 1.`); return; }
     if (hasContactLeak(description, conditionNotes)) { setContactBlocked(true); return; }
 
     setBusy(true);
@@ -159,6 +162,7 @@ export default function CreateListingPage() {
         description: description.trim(),
         condition_notes: composedNotes,
         price_naira: Math.round(priceNum),
+        quantity: Math.max(1, Math.round(quantity)),
         location_state: stateName,
         location_city: areaName || null,
         image_url: urls[0],
@@ -305,7 +309,33 @@ export default function CreateListingPage() {
               <div className="see">{preview > 0 ? formatNaira(preview) : "₦0"}</div>
             </div>
           </div>
-          <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)}. BundledMum adds a {markupPct}% markup on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
+          <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)} per item. BundledMum adds a {markupPct}% markup on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
+        </div>
+
+        {/* Quantity. Invisible weight for the one-off case, defaults to 1. */}
+        <div className="mkt-field">
+          <div className="mkt-field-head">
+            <span className="lbl">How many</span>
+            <span className="mkt-help">Optional</span>
+          </div>
+          <div className="mkt-qty">
+            <button type="button" onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1} aria-label="Fewer">−</button>
+            <span className="n">{quantity}</span>
+            <button type="button" onClick={() => setQuantity((q) => Math.min(99, q + 1))} aria-label="More">+</button>
+          </div>
+          <div className="mkt-help">Leave it at 1 if you have just the one, which is the usual thing. The price is per item, so buyers see {preview > 0 ? formatNaira(preview) : "the buyer price"} for each, not for all {quantity} together.</div>
+
+          {quantity > 1 && (
+            <div className={identicalOk ? "mkt-identical ok" : "mkt-identical"}>
+              <div className="head"><span className="m">!</span><b>Are all {quantity} exactly the same?</b></div>
+              <p>Same size, same colour, same condition, same everything. Buyers cannot ask you questions before they pay, so whoever buys the last one must get what the photos show, just like the first.</p>
+              <label className="chk">
+                <input type="checkbox" checked={identicalOk} onChange={(e) => setIdenticalOk(e.target.checked)} />
+                <span>Yes, all {quantity} are identical</span>
+              </label>
+              {priceNum > 0 && <div className="tot">Sell all {quantity} and you receive {formatNaira(Math.round(priceNum) * quantity)}. Each one is bought separately.</div>}
+            </div>
+          )}
         </div>
       </div>
 

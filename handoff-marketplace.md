@@ -160,7 +160,50 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — central scroll reset on forward nav, restore on back/forward
+### This pass — listing quantity, sold out, relisting (design 12a)
+- **Data model (deployed, not built here):** `marketplace_listings.quantity` (int,
+  default 1, NOT NULL, >0), `quantity_sold` (int, default 0), `delisted_by` ('seller'
+  | 'admin', set by a trigger when status becomes delisted), `delisted_at`. Available
+  stock = quantity − quantity_sold. Stock is claimed SERVER SIDE at payment; a listing
+  flips to 'sold' automatically when the last unit is claimed. The client NEVER writes
+  quantity_sold or status. `LISTING_SELECT` and `MarketplaceListing` now include
+  quantity + quantity_sold.
+- **Create listing:** a "How many" stepper defaulting to 1 (the one-off case stays
+  effortless). Above 1 it requires an "all N are identical" confirmation checkbox
+  before submit, states the price is per item, and shows "sell all N and you receive
+  ₦X". Submit sends `quantity` (never quantity_sold). Image standard/watermark, 4-photo
+  min, validations all preserved.
+- **Browse card + listing detail:** availability shows ONLY when quantity > 1 (badge
+  top-left on the photo: "N available", or "Last one" at 1 left; single-item cards
+  unchanged). Detail shows "₦X each", an availability pill, the "seller confirmed all N
+  are identical, you are buying one" line, and a "Buy one now" button. Browse still
+  filters status='live' (sold listings never appear). A sold/gone listing (RLS blocks
+  public read of non-live rows) resolves to a warm "Ah, this one has gone" state with a
+  browse CTA; the sold item's specifics cannot be shown to a buyer without a backend
+  read (non-goal).
+- **Seller dashboard listings, bug fixed:** all FIVE status groups now render (Live,
+  Waiting on us, Sold out, Not approved, Delisted), each with a header + count and a
+  one-line card when empty, so the header count always matches what is shown (the old
+  bug counted delisted but rendered nothing). Multi-qty rows show remaining vs sold;
+  sold-out rows are visually distinct (dim) from delisted.
+- **Who delisted decides who relists (`delisted_by`):** a seller-delisted listing gets
+  a working "Put it back up" button → `seller_relist_listing` behind a confirm (design
+  Q6); a false result is surfaced honestly. An ADMIN-delisted listing shows "Removed by
+  BundledMum" and a WhatsApp contact route, with NO relist button (it would only fail).
+- **RPCs:** `seller_relist_listing({ p_listing_id })` (seller's own, only when
+  delisted_by='seller', active, no debit, stock remains) and `admin_relist_listing`
+  ({ p_listing_id }) (admin, any delisted incl. admin-delisted and sold-with-stock),
+  both return boolean, re-enter the review queue.
+- **Admin listings:** a Stock column (quantity_sold/quantity), a "Taken down by" column
+  (BundledMum/Seller), and a Relist action on delisted rows → `admin_relist_listing`
+  behind a confirm, false handled honestly.
+- Verified live (public): detail shows "₦49,500 each / 3 available / all 3 identical /
+  Buy one now" and browse shows exactly one "3 available" badge when a listing is
+  multi-qty (temporarily flipped in the DB and reverted); single-item listings show
+  nothing extra. Create/dashboard/admin screens verified by build + code review (auth
+  gated). No console errors.
+
+### Earlier this branch line — central scroll reset on forward nav, restore on back/forward
 Marketplace routes did not open at the top: client-side navigation kept the
 previous page's scroll (open an item from mid-grid, land mid-detail). Fixed ONCE,
 centrally, no per-screen scroll code.
