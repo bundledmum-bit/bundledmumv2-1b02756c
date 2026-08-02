@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./sell/useSeller";
+import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 
 /**
  * The one shared marketplace footer, rendered once below every route (design
@@ -43,8 +44,8 @@ export default function MarketplaceFooter() {
         {/* Brand + promise + WhatsApp */}
         <div className="mkt-ftr-brandcol">
           <div className="mkt-ftr-lockup">
-            <span className="b">B</span>
-            <span className="nm">BundledMum <small>Marketplace</small></span>
+            <img src={logoWhite} alt="BundledMum" className="mkt-ftr-logo" />
+            <span className="mkt-ftr-market">Marketplace</span>
           </div>
           <p className="mkt-ftr-tag">Secondhand baby and maternity things from mums across Nigeria. Every seller verified, every listing checked, trusted quality at a price that makes sense.</p>
           <a className="mkt-wa mkt-ftr-wa" href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to us on WhatsApp</a>

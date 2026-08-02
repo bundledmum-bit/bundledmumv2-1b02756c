@@ -672,10 +672,9 @@
 .mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; }
 
 .mkt-ftr-brandcol { display: flex; flex-direction: column; gap: 14px; }
-.mkt-ftr-lockup { display: flex; align-items: center; gap: 9px; }
-.mkt-ftr-lockup .b { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 8px; background: var(--mkt-cream); color: var(--mkt-green); font: 900 15px/28px 'Nunito', sans-serif; text-align: center; }
-.mkt-ftr-lockup .nm { font: 900 17px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); }
-.mkt-ftr-lockup .nm small { font: 800 9px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-ftr-lockup { display: flex; align-items: center; gap: 8px; }
+.mkt-ftr-logo { height: 26px; width: auto; display: block; }
+.mkt-ftr-market { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
 .mkt-ftr-tag { margin: 0; font: 300 13px/1.6 'Lato', sans-serif; color: var(--mkt-green-light); max-width: 320px; }
 .mkt-ftr-wa { align-self: flex-start; }
 
