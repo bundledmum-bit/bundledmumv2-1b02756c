@@ -5,21 +5,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Checkout data helpers. marketplace_orders deliberately has NO public INSERT or
  * UPDATE policy: only admin and the service role can write, so a buggy or
  * compromised client cannot forge an order or a payment state. Order creation
- * therefore MUST go through a server-side edge function. This module isolates
- * that single call so it can be pointed at the function once it is deployed.
+ * goes through the deployed edge function `create-marketplace-order`.
  *
- * OUTSTANDING: the edge function `create-marketplace-order` is not deployed yet.
- * Until it is, createMarketplaceOrder throws and the checkout surfaces a clear
- * "checkout is being set up" message. See handoff-marketplace.md for exactly what
- * the function must do (it computes seller_share from the listing's price_naira,
- * which the buyer must never see, which is the core reason it is server-side).
+ * SECURITY: the payment reference is generated SERVER SIDE, not by the client.
+ * If the client chose it, a buyer could submit a reference matching another
+ * buyer's order, and the awaiting screen (which looks up an order by reference)
+ * would then leak that stranger's order. So the client sends ONLY { listing_id }
+ * and reads the reference back from the created order's
+ * paystack_transaction_reference.
  */
 export const cdb = supabase as unknown as SupabaseClient;
-
-/** Reads a public marketplace listing (buyer-facing fields only, never price_naira). */
-export const CHECKOUT_LISTING_SELECT =
-  "id, title, final_price_naira, image_url, status, seller_id, " +
-  "seller:marketplace_sellers!marketplace_listings_seller_id_fkey(display_name)";
 
 export function formatNaira(value: number | null | undefined): string {
   const n = Number(value);
@@ -27,31 +22,45 @@ export function formatNaira(value: number | null | undefined): string {
   return `₦${Math.round(n).toLocaleString("en-NG")}`;
 }
 
-/**
- * Generates a short, unique-enough payment reference for the transfer narration.
- * BM- plus 8 chars from an unambiguous alphabet (no 0/O/1/I) via crypto, roughly
- * 8e11 combinations, so collisions are negligible at this volume. The buyer types
- * this into their transfer so BundledMum can match the money to the order.
- */
-export function generatePaymentReference(): string {
-  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const bytes = new Uint32Array(8);
-  crypto.getRandomValues(bytes);
-  let out = "";
-  for (const b of bytes) out += alphabet[b % alphabet.length];
-  return `BM-${out}`;
+export interface OrderRow {
+  id: string;
+  paystack_transaction_reference: string;
+  amount_naira: number;
+  [k: string]: unknown;
+}
+
+/** Carries the edge function's server error string so the UI can map it to a
+ * friendly, human message. */
+export class CheckoutError extends Error {
+  code: string;
+  constructor(code: string) {
+    super(code);
+    this.code = code;
+  }
 }
 
 /**
- * Creates the order via the server-side edge function. The client sends only the
- * listing id and the reference it displayed; the function authenticates the
- * buyer and computes every money field authoritatively from the listing and
- * site_settings. Returns the created order row.
+ * Creates (or reuses) the buyer's pending order via the edge function. Sends only
+ * the listing id; the function authenticates the buyer, computes every money
+ * field from the listing and site_settings, generates the reference, and returns
+ * the order. functions.invoke forwards the current auth session (verify_jwt is
+ * on server side). May return { order, reused: true } when an existing pending
+ * order for this buyer and listing is returned instead of a new one.
  */
-export async function createMarketplaceOrder(input: { listingId: string; reference: string }) {
+export async function createMarketplaceOrder(input: { listingId: string }): Promise<{ order: OrderRow; reused?: boolean }> {
   const { data, error } = await cdb.functions.invoke("create-marketplace-order", {
-    body: { listing_id: input.listingId, payment_reference: input.reference },
+    body: { listing_id: input.listingId },
   });
-  if (error) throw error;
-  return data as { id: string; paystack_transaction_reference: string } & Record<string, unknown>;
+  if (error) {
+    let code = "";
+    try {
+      const ctx = (error as unknown as { context?: Response }).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        code = (body as { error?: string })?.error || "";
+      }
+    } catch { /* body was not JSON, fall through to a generic code */ }
+    throw new CheckoutError(code || "unknown");
+  }
+  return data as { order: OrderRow; reused?: boolean };
 }
