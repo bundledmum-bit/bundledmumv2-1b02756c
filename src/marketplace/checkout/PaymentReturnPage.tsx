@@ -1,0 +1,156 @@
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { cdb, formatNaira, verifyPayment, getOrderContact, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
+
+/**
+ * Payment return, where Paystack sends the buyer back with ?reference=. It
+ * verifies the payment and shows one of: verifying, succeeded (with the seller
+ * contact block), failed or cancelled, or mismatch. Idempotent, so a refresh
+ * (already: true) still lands on the paid state.
+ */
+export default function PaymentReturnPage() {
+  const [params] = useSearchParams();
+  const reference = params.get("reference") || params.get("trxref") || "";
+  const navigate = useNavigate();
+
+  const verifyQ = useQuery({
+    queryKey: ["mkt-verify", reference],
+    enabled: !!reference,
+    retry: 1,
+    staleTime: Infinity,
+    queryFn: () => verifyPayment(reference),
+  });
+
+  const status = verifyQ.data?.status;
+  const orderId = verifyQ.data && "order_id" in verifyQ.data ? verifyQ.data.order_id : undefined;
+
+  // VERIFYING
+  if (!reference) {
+    return <ResultShell tone="fail" title="We could not read your payment" body="The payment reference is missing. If you were charged, message us and we will sort it out." wa="I returned from Paystack without a reference" onBack={() => navigate("/")} />;
+  }
+  if (verifyQ.isLoading || !status) {
+    return (
+      <div className="mkt-result">
+        <div className="mkt-spinner" />
+        <h1>Checking your payment</h1>
+        <p>A few seconds while Paystack confirms it with us. Please stay on this page and do not pay again.</p>
+      </div>
+    );
+  }
+
+  // SUCCEEDED
+  if (status === "paid") {
+    return <PaidState orderId={orderId} reference={reference} onSeeOrder={() => navigate("/")} onBrowse={() => navigate("/")} />;
+  }
+
+  // MISMATCH, do not say failed
+  if (status === "mismatch") {
+    return <ResultShell tone="check" title="We are checking your payment" body="Something about this payment needs a closer look, so a person at BundledMum is verifying it now and will be in touch. Please do not pay again." wa={`I need help with my payment, reference ${reference}`} onBack={() => navigate("/")} />;
+  }
+
+  // FAILED or ABANDONED or error
+  return <FailedState orderId={orderId} reference={reference} onBrowse={() => navigate("/")} />;
+}
+
+/** Generic centred result shell for the non-success calm states. */
+function ResultShell({ tone, title, body, wa, onBack }: { tone: "fail" | "check"; title: string; body: string; wa: string; onBack: () => void }) {
+  return (
+    <div className="mkt-result">
+      <div className={tone === "fail" ? "mkt-result-icon fail" : "mkt-result-icon check"}>{tone === "fail" ? "!" : "✓"}</div>
+      <h1>{title}</h1>
+      <p>{body}</p>
+      <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hello BundledMum, " + wa + ".")}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+      <button className="mkt-secondary" onClick={onBack}>Back to browsing</button>
+    </div>
+  );
+}
+
+function FailedState({ orderId, reference, onBrowse }: { orderId?: string; reference: string; onBrowse: () => void }) {
+  const navigate = useNavigate();
+  // Fetch the listing id for this order so retry returns to its checkout.
+  const { data: listingId } = useQuery({
+    queryKey: ["mkt-order-listing", orderId],
+    enabled: !!orderId,
+    queryFn: async () => {
+      const { data } = await cdb.from("marketplace_orders").select("listing_id").eq("id", orderId as string).maybeSingle();
+      return (data as { listing_id: string } | null)?.listing_id ?? null;
+    },
+  });
+
+  return (
+    <div className="mkt-sell-body" style={{ paddingTop: 24 }}>
+      <div className="mkt-result-icon fail" style={{ alignSelf: "flex-start" }}>!</div>
+      <h1 style={{ font: "900 26px/1.12 Nunito, sans-serif", letterSpacing: "-0.03em", margin: 0 }}>That payment did not go through</h1>
+      <p style={{ font: "300 15px/1.6 Lato, sans-serif", color: "var(--mkt-muted)", margin: 0 }}>You were not charged, so nothing has left your account. Cards get declined for all sorts of reasons and it is rarely anything you did wrong.</p>
+      <div className="mkt-errbox"><span className="m">!</span><span>If your bank did send an alert, an uncleared hold falls off on its own. Message us and we will check it against Paystack for you.</span></div>
+      <div className="mkt-card2">
+        <div className="mkt-card2-label">Worth trying</div>
+        <span style={{ font: "400 13px/1.5 Lato, sans-serif", color: "#3D3936" }}>Check you have enough in the account and that your card is enabled for online payments, then try again. On Paystack you can also pay by transfer or USSD instead of card.</span>
+      </div>
+      <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, my payment failed, reference ${reference}. Please help.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Failed more than once? Chat to us</a>
+      <button className="mkt-primary" disabled={!listingId} onClick={() => listingId && navigate(`/checkout/${listingId}`, { replace: true })}>
+        {listingId ? "Try paying again" : "Back to browsing"}
+      </button>
+      <button className="mkt-secondary" onClick={onBrowse}>Back to browsing</button>
+    </div>
+  );
+}
+
+function PaidState({ orderId, reference, onBrowse }: { orderId?: string; reference: string; onSeeOrder?: () => void; onBrowse: () => void }) {
+  const { data: contact, isLoading } = useQuery({
+    queryKey: ["mkt-order-contact", orderId],
+    enabled: !!orderId,
+    queryFn: () => getOrderContact(orderId as string),
+  });
+
+  return (
+    <div className="mkt-success">
+      <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
+        <div className="check">✓</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span className="mkt-pill-held">Held by us</span>
+          <h1>Paid, and your money is safe with us</h1>
+          <p>{contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm your item reached you.</p>
+        </div>
+
+        <SellerContact contact={contact} loading={isLoading} reference={reference} />
+
+        <button className="mkt-primary" onClick={onBrowse}>Keep browsing</button>
+      </div>
+    </div>
+  );
+}
+
+function SellerContact({ contact, loading, reference }: { contact: OrderContact | null | undefined; loading: boolean; reference: string }) {
+  const name = contact?.seller_display_name || "your seller";
+  const item = contact?.listing_title || "your item";
+  const phone = contact?.seller_phone || "";
+  const msg = `Hello ${name}, I just paid for ${item} on BundledMum (order ${reference}). Please let me know about delivery.`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div className="mkt-talk-label">Talk to your seller</div>
+      <div className="mkt-talk-card">
+        <div className="mkt-talk-head">
+          <div className="mkt-talk-name">{loading ? "Loading..." : name}</div>
+          {item && !loading ? <div className="mkt-talk-item">{item}</div> : null}
+        </div>
+        {phone ? (
+          <>
+            <div className="mkt-talk-prefill">Message opens ready to send, with your item and order number.</div>
+            <div className="mkt-talk-actions">
+              <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(phone, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
+              <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>
+            </div>
+          </>
+        ) : !loading ? (
+          <>
+            <div className="mkt-talk-prefill">We could not load the seller's number just now. Message BundledMum and we will connect you.</div>
+            <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I paid for ${item} (order ${reference}) and need the seller's contact.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}

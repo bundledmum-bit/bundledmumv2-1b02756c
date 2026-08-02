@@ -5,16 +5,16 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
-import { cdb, formatNaira, createMarketplaceOrder, CheckoutError } from "./orders";
+import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
 
 /**
- * Checkout by manual bank transfer (design T1 + confirm sheet T1b). The order is
- * created server side as soon as the screen loads (once logged in and the bank
- * details are configured), so the buyer sees the REAL server-generated payment
- * reference alongside the bank details, exactly when they make the transfer. The
- * edge function reuses an existing pending order for the same buyer and listing,
- * so a reload does not create duplicates and keeps the reference stable. Tapping
- * "I have sent the transfer" (behind a confirm) moves to the awaiting screen.
+ * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
+ * transaction is initialised server-side (so the payment fee and total are the
+ * server's figures), and one button redirects to Paystack's hosted page. The
+ * older bank-transfer flow is kept but only renders when paystack is off and the
+ * admin transfer toggle is on (marketplace_payment_transfer_enabled).
+ *
+ * The buyer never sees price_naira or the seller's share.
  */
 export default function CheckoutPage() {
   const { listingId } = useParams<{ listingId: string }>();
@@ -24,78 +24,106 @@ export default function CheckoutPage() {
   const { data: listing, isLoading } = useListing(listingId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isLoggedIn) {
-      window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/${listingId}`));
-    }
+    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/${listingId}`));
   }, [authLoading, isLoggedIn, listingId]);
 
   const { data: settings } = useQuery({
     queryKey: ["mkt-checkout-settings"],
     queryFn: async () => {
       const { data } = await cdb.from("site_settings").select("key, value")
-        .in("key", ["marketplace_service_fee_naira", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
+        .in("key", ["marketplace_service_fee_naira", "marketplace_payment_paystack_enabled", "marketplace_payment_transfer_enabled", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
       const m: Record<string, unknown> = {};
       for (const r of (data ?? []) as Array<{ key: string; value: unknown }>) m[r.key] = r.value;
       return m;
     },
     staleTime: 60000,
   });
-
+  const settingsLoaded = settings !== undefined;
+  const paystackEnabled = settings?.marketplace_payment_paystack_enabled === true;
+  const transferEnabled = settings?.marketplace_payment_transfer_enabled === true;
   const serviceFee = Number(settings?.marketplace_service_fee_naira ?? 750) || 0;
   const bankName = String(settings?.marketplace_bank_name ?? "").trim();
   const acctName = String(settings?.marketplace_bank_account_name ?? "").trim();
   const acctNumber = String(settings?.marketplace_bank_account_number ?? "").trim();
   const bankReady = !!(bankName && acctName && acctNumber);
-  const settingsLoaded = settings !== undefined;
 
-  // Create (or reuse) the order once logged in, the listing is loaded, and the
-  // bank is configured. Retry is off so a 4xx from the function is not repeated.
+  // Create (or reuse) the order once logged in and a payment method is enabled.
   const orderQ = useQuery({
     queryKey: ["mkt-create-order", listingId],
-    enabled: !!listingId && isLoggedIn && !!listing && bankReady,
+    enabled: !!listingId && isLoggedIn && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
     retry: false,
     staleTime: Infinity,
     gcTime: 0,
     queryFn: () => createMarketplaceOrder({ listingId: listingId as string }),
   });
+  const order = orderQ.data?.order;
 
-  const reference = orderQ.data?.order?.paystack_transaction_reference ?? "";
-  const itemPrice = Number(listing?.final_price_naira ?? 0);
-  const total = itemPrice + serviceFee;
+  // Initialise the Paystack transaction to get the authoritative fee, total and
+  // hosted page URL. Only when paystack is the active method.
+  const payQ = useQuery({
+    queryKey: ["mkt-init-pay", order?.id],
+    enabled: !!order && paystackEnabled,
+    retry: false,
+    staleTime: Infinity,
+    gcTime: 0,
+    queryFn: () => initializePayment({
+      orderId: order!.id,
+      callbackUrl: `${window.location.origin}/marketplace/checkout/return`,
+    }),
+  });
 
-  // Map the edge function's error codes to friendly, human messages.
-  const errCode = orderQ.error instanceof CheckoutError ? orderQ.error.code : orderQ.error ? "unknown" : null;
-  const notAvailable = errCode === "This item is no longer available";
+  const createCode = orderQ.error instanceof CheckoutError ? orderQ.error.code : orderQ.error ? "unknown" : null;
+  const payCode = payQ.error instanceof CheckoutError ? payQ.error.code : payQ.error ? "unknown" : null;
+
+  // Already paid: jump to the return screen so it shows the paid state.
   useEffect(() => {
-    if (errCode === "Not authenticated") {
+    if (payCode === "This order is already paid" && order?.paystack_transaction_reference) {
+      navigate(`/checkout/return?reference=${encodeURIComponent(order.paystack_transaction_reference)}`, { replace: true });
+    }
+    if (createCode === "Not authenticated" || payCode === "Not authenticated") {
       window.location.assign("/account/login?returnTo=" + encodeURIComponent(`/marketplace/checkout/${listingId}`));
     }
-  }, [errCode, listingId]);
+  }, [payCode, createCode, order, navigate, listingId]);
 
-  function errorMessage(code: string): string {
-    switch (code) {
-      case "You cannot buy your own listing": return "This is your own listing, so you cannot buy it.";
-      case "No customer record found": return "We could not find your account details. Please complete your profile, then try again.";
-      default: return "We could not start your order just yet. Please try again shortly, or message us on WhatsApp.";
-    }
-  }
+  const itemPrice = Number(listing?.final_price_naira ?? 0);
+  const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
+  const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
+  const transferTotal = itemPrice + serviceFee;
 
   async function copy(text: string, tag: string) {
-    try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked, ignore */ }
+    try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked */ }
   }
 
   if (authLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
   if (!isLoggedIn) return null;
 
-  if (!listing || notAvailable) {
+  const listingGone = !listing || createCode === "This item is no longer available" || payCode === "This item is no longer available";
+  const paymentsDown = settingsLoaded && !paystackEnabled && !transferEnabled;
+  const paymentNotConfigured = payCode === "Payment is not configured";
+
+  // P1b, listing gone
+  if (listingGone) {
     return (
       <div className="mkt-center">
-        <div className="mkt-empty-title">This item is no longer available</div>
-        <div className="mkt-empty-sub">It may have just sold or been taken down. There is plenty more to see.</div>
-        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to marketplace</button>
+        <div className="mkt-empty-title">This one has just gone</div>
+        <div className="mkt-empty-sub">Someone paid for it while you were here. Nothing has left your account. There is plenty more to see.</div>
+        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
+      </div>
+    );
+  }
+
+  // P1c, payments unavailable
+  if (paymentsDown || paymentNotConfigured) {
+    return (
+      <div className="mkt-center">
+        <div className="mkt-empty-title">We cannot take payments right now</div>
+        <div className="mkt-empty-sub">Our payment partner is having a moment. This is on our side, not yours, and nothing has been charged.</div>
+        <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+        <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
       </div>
     );
   }
@@ -104,7 +132,7 @@ export default function CheckoutPage() {
     <>
       <div className="mkt-sell-head">
         <div className="inner">
-          <div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listing.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Pay by transfer</h1></div>
+          <div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listing.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Checkout</h1></div>
         </div>
       </div>
 
@@ -117,88 +145,107 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        <div className="mkt-brk">
-          <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
-          <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
-          <div className="rule" />
-          <div className="total"><span>Transfer exactly</span><b>{formatNaira(total)}</b></div>
-        </div>
-
-        {settingsLoaded && !bankReady ? (
-          <div className="mkt-errbox">
-            <span className="m">!</span>
-            <div>
-              <b>Payment details are not set up yet</b>
-              <span>Our transfer account is not configured, so checkout is paused for now. Please{" "}
-                <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us on WhatsApp</a>{" "}
-                to complete your purchase and we will sort it out.</span>
-            </div>
-          </div>
-        ) : errCode && errCode !== "Not authenticated" ? (
-          <div className="mkt-errbox">
-            <span className="m">!</span>
-            <div>
-              <b>We could not start your order</b>
-              <span>{errorMessage(errCode)}{" "}
-                <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>Message us on WhatsApp</a>.</span>
-            </div>
-          </div>
-        ) : bankReady ? (
+        {paystackEnabled ? (
           <>
-            <div className="mkt-ref">
-              <div className="lbl">Put this reference in the narration</div>
-              <div className="row">
-                <div className="code">{reference || "Preparing..."}</div>
-                {reference
-                  ? <button className="mkt-copy" onClick={() => copy(reference, "ref")}>{copied === "ref" ? "Copied" : "Copy"}</button>
-                  : null}
-              </div>
-              <div className="note">Without it we cannot tell which order your money belongs to, and your order will sit unconfirmed. Type it in the narration or remark box in your bank app.</div>
+            <div className="mkt-brk">
+              <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
+              <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
+              <div className="line"><div><span>Payment fee</span><div className="sub">Paystack's charge for the payment</div></div><b>{payQ.data ? formatNaira(paymentFee) : "..."}</b></div>
+              <div className="rule" />
+              <div className="total"><span>Total</span><b>{payQ.data ? formatNaira(paystackTotal) : "..."}</b></div>
             </div>
 
-            <div className="mkt-bank">
-              <div className="lbl">Send to</div>
-              <div className="row">
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="num">{acctNumber}</div>
-                  <div className="who">{bankName} · {acctName}</div>
-                </div>
-                <button className="mkt-copy outline" onClick={() => copy(acctNumber, "acct")}>{copied === "acct" ? "Copied" : "Copy"}</button>
-              </div>
+            <div className="mkt-heldbox">
+              <div className="hb-title">Your money is held, not sent</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact straight away to arrange delivery.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item reached you.</div>
             </div>
 
-            <div className="mkt-reassure" style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-              <div className="mkt-reassure-tick">✓</div>
-              <div className="mkt-reassure-text">We hold your money, the seller is not paid yet. It only moves to them after you confirm the item reached you as described.</div>
+            <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
+              <span>🔒</span>
+              <span>The next step opens Paystack's secure page to take your payment. We never see or store your card details, and you come straight back here when it is done.</span>
             </div>
+
+            {payCode && payCode !== "This order is already paid" && (
+              <div className="mkt-errbox"><span className="m">!</span><span>We could not start your payment just now. Please try again, or <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us</a>.</span></div>
+            )}
           </>
-        ) : null}
+        ) : (
+          /* Bank transfer fallback, only rendered when the admin transfer toggle
+             is on and paystack is off. Kept intact for that case. */
+          <TransferFallback
+            bankReady={bankReady} bankName={bankName} acctName={acctName} acctNumber={acctNumber}
+            reference={order?.paystack_transaction_reference || ""} total={transferTotal}
+            itemPrice={itemPrice} serviceFee={serviceFee} copied={copied} copy={copy}
+            onSent={() => setConfirmOpen(true)}
+          />
+        )}
       </div>
 
-      {bankReady && !errCode && (
+      {/* Paystack pay button */}
+      {paystackEnabled && !payCode && (
         <div className="mkt-sell-foot">
-          <button className="mkt-primary" onClick={() => setConfirmOpen(true)} disabled={!reference}>
-            {reference ? "I have sent the transfer" : "Preparing your reference..."}
+          <button className="mkt-primary" disabled={!payQ.data || redirecting}
+            onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
+            {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
           </button>
-          <div className="helper">Only tap this once the money has left your account</div>
+          <div className="helper">Card, transfer or USSD on Paystack</div>
         </div>
       )}
 
-      {confirmOpen && reference && (
+      {/* Transfer confirm sheet (fallback flow) */}
+      {confirmOpen && order?.paystack_transaction_reference && (
         <div className="mkt-sheet-overlay" onClick={() => setConfirmOpen(false)}>
           <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="grab" />
-            <h3>Have you really sent {formatNaira(total)}?</h3>
+            <h3>Have you really sent {formatNaira(transferTotal)}?</h3>
             <p>Tapping yes tells our team to go looking for your transfer. If it has not left your bank yet, go back and send it first.</p>
             <div className="kv">
-              <div className="r"><span>Amount</span><b>{formatNaira(total)}</b></div>
+              <div className="r"><span>Amount</span><b>{formatNaira(transferTotal)}</b></div>
               <div className="r"><span>To</span><b>{bankName} {acctNumber}</b></div>
-              <div className="r"><span>Reference used</span><b>{reference}</b></div>
+              <div className="r"><span>Reference used</span><b>{order.paystack_transaction_reference}</b></div>
             </div>
-            <button className="mkt-primary" onClick={() => navigate(`/checkout/awaiting/${reference}`, { replace: true })}>Yes, I have sent it</button>
+            <button className="mkt-primary" onClick={() => navigate(`/checkout/awaiting/${order.paystack_transaction_reference}`, { replace: true })}>Yes, I have sent it</button>
             <button className="back" onClick={() => setConfirmOpen(false)}>Not yet, take me back</button>
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+/** Bank-transfer checkout body, retained behind the transfer toggle. */
+function TransferFallback(props: {
+  bankReady: boolean; bankName: string; acctName: string; acctNumber: string;
+  reference: string; total: number; itemPrice: number; serviceFee: number;
+  copied: string | null; copy: (t: string, tag: string) => void; onSent: () => void;
+}) {
+  const { bankReady, bankName, acctName, acctNumber, reference, total, itemPrice, serviceFee, copied, copy, onSent } = props;
+  return (
+    <>
+      <div className="mkt-brk">
+        <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
+        <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
+        <div className="rule" />
+        <div className="total"><span>Transfer exactly</span><b>{formatNaira(total)}</b></div>
+      </div>
+      {!bankReady ? (
+        <div className="mkt-errbox"><span className="m">!</span><div><b>Payment details are not set up yet</b><span>Please message us on WhatsApp to complete your purchase.</span></div></div>
+      ) : (
+        <>
+          <div className="mkt-ref">
+            <div className="lbl">Put this reference in the narration</div>
+            <div className="row"><div className="code">{reference || "..."}</div>{reference && <button className="mkt-copy" onClick={() => copy(reference, "ref")}>{copied === "ref" ? "Copied" : "Copy"}</button>}</div>
+            <div className="note">Without it we cannot tell which order your money belongs to. Type it in the narration box in your bank app.</div>
+          </div>
+          <div className="mkt-bank">
+            <div className="lbl">Send to</div>
+            <div className="row"><div style={{ flex: 1, minWidth: 0 }}><div className="num">{acctNumber}</div><div className="who">{bankName} · {acctName}</div></div><button className="mkt-copy outline" onClick={() => copy(acctNumber, "acct")}>{copied === "acct" ? "Copied" : "Copy"}</button></div>
+          </div>
+          <div className="mkt-heldbox"><div className="hb-title">Your money is held, not sent</div><div className="hb-line"><span className="hb-tick">✓</span>We hold your money, the seller is only paid after you confirm the item reached you.</div></div>
+          {reference && <button className="mkt-primary" style={{ marginTop: 4 }} onClick={onSent}>I have sent the transfer</button>}
+        </>
       )}
     </>
   );

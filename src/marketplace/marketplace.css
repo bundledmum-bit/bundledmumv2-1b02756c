@@ -571,3 +571,33 @@
 .mkt-next .step span { font: 400 11px/1.45 'Lato', sans-serif; color: var(--mkt-muted); }
 .mkt-wa { display: flex; align-items: center; justify-content: center; gap: 9px; background: #25D366; border-radius: 11px; padding: 12px; color: #fff; font: 800 15px/1 'Nunito', sans-serif; text-decoration: none; }
 .mkt-wa .ic { width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #25D366; font: 700 13px/24px 'Lato', sans-serif; text-align: center; }
+
+/* ==================== PAYSTACK CHECKOUT + RESULT ==================== */
+/* held-funds reassurance (never states a held amount that differs from paid) */
+.mkt-heldbox { background: var(--mkt-green-light); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+.mkt-heldbox .hb-title { font: 800 15px/1.2 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-heldbox .hb-line { display: flex; gap: 9px; align-items: flex-start; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); }
+.mkt-heldbox .hb-tick { flex: 0 0 17px; width: 17px; height: 17px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 10px/17px 'Lato', sans-serif; text-align: center; }
+
+/* verifying + result states */
+.mkt-result { max-width: 480px; margin: 0 auto; min-height: 70vh; padding: 30px 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 16px; }
+.mkt-result h1 { font: 900 26px/1.15 'Nunito', sans-serif; letter-spacing: -0.03em; margin: 0; }
+.mkt-result p { font: 300 15px/1.6 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+.mkt-result .mkt-wa, .mkt-result .mkt-secondary { width: 100%; box-sizing: border-box; }
+.mkt-spinner { width: 66px; height: 66px; border-radius: 50%; border: 5px solid var(--mkt-coral-light); border-top-color: var(--mkt-coral); animation: mkt-spin 0.9s linear infinite; }
+@keyframes mkt-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mkt-spinner { animation-duration: 2.4s; } }
+.mkt-result-icon { width: 56px; height: 56px; border-radius: 50%; font: 700 26px/56px 'Lato', sans-serif; text-align: center; }
+.mkt-result-icon.fail { background: var(--mkt-error-bg); color: var(--mkt-error); }
+.mkt-result-icon.check { background: var(--mkt-green-light); color: var(--mkt-green-dark); }
+
+/* success + seller contact */
+.mkt-pill-held { align-self: flex-start; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; padding: 5px 8px; border-radius: 6px; }
+.mkt-talk-label { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-talk-card { background: var(--mkt-cream); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 11px; }
+.mkt-talk-head { display: flex; flex-direction: column; gap: 2px; }
+.mkt-talk-name { font: 800 15px/1.2 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-talk-item { font: 400 12px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-talk-prefill { background: #fff; border: 1px dashed var(--mkt-input-border); border-radius: 9px; padding: 9px 10px; font: 400 11px/1.45 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-talk-actions { display: flex; gap: 8px; }
+.mkt-call { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--mkt-green); color: var(--mkt-green); border-radius: 11px; padding: 12px 20px; font: 800 15px/1 'Nunito', sans-serif; text-decoration: none; }
