@@ -160,7 +160,76 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — one shared marketplace footer on every screen (design 7a)
+### This pass — BUYER ORDER screens (my orders, detail, confirm receipt, dispute)
+Closes the loop after payment (design T3/T3b tracking, T4 confirm-or-dispute, T4b
+dispute form, T4c confirmed). A buyer can now find their orders, talk to the
+seller, confirm receipt (which releases the payout) or report a problem (which
+pauses it). No admin arbitration or payout-queue screen yet (non-goals).
+- **THE MONEY RULE (enforced):** the buyer sees ONLY what THEY paid, `amount_naira`
+  and its breakdown (`item_price_naira`, `service_fee_naira`, `paystack_fee_naira`).
+  `BUYER_ORDER_SELECT` in `checkout/buyerOrders.ts` never selects
+  `seller_share_naira`, `platform_share_naira` or the listing's `price_naira`, even
+  though the "Buyer reads own orders" RLS policy would allow the order columns.
+  Held-money copy never states an amount tied to the seller.
+- **Backend already deployed (not built here), four contracts:**
+  1. Buyers SELECT their own orders via the "Buyer reads own orders" RLS policy
+     (safe columns only).
+  2. RPC `get_marketplace_order_contact({ p_order_id })` → at most one row
+     `{ order_id, listing_title, amount_naira, seller_display_name, seller_phone }`,
+     only when the caller is the buyer AND payment_status 'paid'. Only source of the
+     seller phone; `seller_phone` may be null (handled). Reused from `checkout/orders.ts`.
+  3. RPC `confirm_marketplace_order_receipt({ p_order_id })` → boolean. True on
+     success; false means not confirmable / not this buyer's (surfaced honestly,
+     never faked). Sets order_status 'completed', buyer_confirmation_status
+     'confirmed', buyer_confirmed_at, funds_release_trigger 'buyer_confirmed'.
+  4. RPC `raise_marketplace_dispute({ p_order_id, p_reason, p_evidence })` →
+     dispute uuid. p_reason must be >= 10 chars (validated client-side first for a
+     friendly message); p_evidence is a jsonb array of photo URLs or null. Raises
+     on an un-disputable / already-open order; those are mapped to human copy, not
+     raw errors. Sets order_status 'disputed', settlement_status 'blocked_dispute'.
+- **The clock:** the confirm-by window is read from `site_settings`
+  `marketplace_dispute_window_days` (currently 3), NEVER hardcoded
+  (`getDisputeWindowDays`, falls back to 3 only if unreadable). The deadline is
+  measured from `marketplace_orders.dispatch_confirmed_at` and shown as days-left
+  plus the date, with the honest statement that doing nothing releases the payout.
+- **Dispute evidence storage:** photos upload to the `marketplace-listings` bucket
+  under a folder named after the buyer's AUTH UID (`${user.id}/dispute-...`),
+  exactly like listing and dispatch photos, then their public URLs go into
+  p_evidence. Reuses `compressImage` and the camera-or-gallery input.
+  **ACTION NEEDED (backend, not done here):** the orphan-cleanup job only preserves
+  files referenced by listings and dispatch photos, so it would delete dispute
+  evidence. Dispute evidence URLs must be added to that job's preserve set.
+- **My orders list (`/orders`):** grouped Needs your action (awaiting_confirmation,
+  dominant, coral) / Being looked into (disputed) / On the way (awaiting_dispatch) /
+  Complete (completed). Each row: item photo + title, "Paid ₦X", reference, status
+  pill; links to detail. Encouraging empty state with a Browse CTA.
+- **Order detail (`/orders/:orderId`):** item, reference, what they paid (breakdown),
+  a paid → dispatched → confirmed timeline, seller contact from the RPC (WhatsApp
+  with a pre-filled item+ref message and a Call button, Nigerian→international
+  formatting via the existing helpers, BundledMum fallback when phone is null,
+  never a dead button), the seller's dispatch photo once sent, the deadline
+  countdown + auto-release honesty when awaiting confirmation, held-money
+  reassurance, and the completed / disputed states. Confirm receipt sits behind a
+  confirm sheet (states the consequence, false handled honestly).
+- **Report a problem (`/orders/:orderId/problem`):** category chips + free-text
+  reason (combined into p_reason, >= 10 chars validated client-side) + up to 5
+  compressed evidence photos; honest expectations (a person reviews it, the payout
+  is paused, reply within one working day); guards non-awaiting_confirmation orders.
+- **My orders menu link is now LIVE:** the shared header (desktop nav + mobile menu)
+  shows "My orders" → /orders when logged in (previously omitted because the route
+  did not exist). "How BundledMum works" stays omitted (still no such page).
+- **Footer suppressed on the confirm/dispute screens:** `MarketplaceFooter` now also
+  returns null on `/orders/:id` and `/orders/:id/problem` (they end in the primary
+  action), matching the design's footer rule; the `/orders` LIST keeps the footer.
+- Files: new `checkout/buyerOrders.ts`, `checkout/BuyerOrdersListPage.tsx`,
+  `checkout/BuyerOrderDetailPage.tsx`, `checkout/BuyerDisputePage.tsx`; edited
+  `MarketplaceApp.tsx` (3 routes), `MarketplaceHeader.tsx` (My orders link),
+  `MarketplaceFooter.tsx` (suppression). No new CSS (reused existing classes).
+- Reported design mismatch: T3 shows "she has until Thursday to dispatch" but there
+  is no seller-dispatch-deadline field, so that line is softened to "Waiting on
+  {seller} to send it" with no fabricated date.
+
+### Earlier this branch line — one shared marketplace footer on every screen (design 7a)
 Mirrors how the header was done: ONE `MarketplaceFooter` component rendered ONCE
 in `MarketplaceApp`, inside the `.mkt` div, immediately after `<Routes>`, so every
 marketplace route gets it with no per-page duplication.

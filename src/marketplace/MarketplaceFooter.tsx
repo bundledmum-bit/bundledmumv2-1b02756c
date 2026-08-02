@@ -25,10 +25,14 @@ export default function MarketplaceFooter() {
   const { pathname } = useLocation();
   const { seller } = useSeller();
 
-  // Suppress where a fixed action bar owns the bottom of the screen.
+  // Suppress where a fixed action bar owns the bottom of the screen, per the
+  // design's footer rules: checkout, dispatch upload, and the buyer's confirm-or-
+  // dispute screens. The /orders LIST keeps the footer; only the detail and the
+  // problem form (which end in the primary action) drop it.
   const onCheckout = pathname.startsWith("/checkout");
   const onDispatch = /^\/sell\/orders\/[^/]+\/dispatch$/.test(pathname);
-  if (onCheckout || onDispatch) return null;
+  const onOrderAction = /^\/orders\/[^/]+/.test(pathname);
+  if (onCheckout || onDispatch || onOrderAction) return null;
 
   // Listing detail carries a position:fixed Buy now bar; clear it.
   const hasFixedBar = pathname.startsWith("/listing/");

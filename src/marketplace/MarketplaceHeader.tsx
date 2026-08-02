@@ -16,8 +16,8 @@ import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
  * only, no menu, so a buyer mid-payment cannot casually navigate away. The
  * header is pure chrome and never touches routing or the payment reference.
  *
- * Links to routes that do not exist (My orders, How BundledMum works) are
- * deliberately omitted rather than shipped as dead navigation.
+ * "My orders" links to the buyer orders route (shown when logged in). "How
+ * BundledMum works" is still omitted, as that route does not exist.
  */
 export default function MarketplaceHeader() {
   const { pathname } = useLocation();
@@ -64,6 +64,7 @@ export default function MarketplaceHeader() {
         <nav className="mkt-hdr-nav">
           <Link to="/" className="mkt-hdr-link">Browse</Link>
           <Link to="/sell" className="mkt-hdr-link">Sell an item</Link>
+          {isLoggedIn && <Link to="/orders" className="mkt-hdr-link">My orders</Link>}
           {seller && <Link to="/sell/dashboard" className="mkt-hdr-link">Seller dashboard</Link>}
           {isLoggedIn
             ? <button className="mkt-hdr-account" onClick={() => setOpen(true)}><span className="av">{initials}</span>Account</button>
@@ -85,6 +86,7 @@ export default function MarketplaceHeader() {
           <nav className="mkt-menu-list">
             <Link to="/" className="mkt-menu-item">Browse</Link>
             <Link to="/sell" className="mkt-menu-item">Sell an item</Link>
+            {isLoggedIn && <Link to="/orders" className="mkt-menu-item">My orders</Link>}
             {seller && <Link to="/sell/dashboard" className="mkt-menu-item">Seller dashboard</Link>}
             <a href="/" className="mkt-menu-item soft">Back to bundledmum.com</a>
           </nav>
