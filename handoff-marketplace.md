@@ -149,7 +149,54 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — minimum operator admin (context switcher, review queue, settings)
+### This pass — sell side (seller onboarding + listing creation)
+- Self-serve model: any logged-in BundledMum customer can become a seller and
+  immediately create listings. Seller row is created with status='active',
+  verification_tier='basic', no approval gate. Every listing still goes to admin
+  review (status='pending_review') before it can go live, that is the safety net.
+- Four screens under `/marketplace/sell*` in `MarketplaceApp.tsx`, all new files
+  in `src/marketplace/sell/`:
+  - `/sell` BecomeSellerPage (public value screen, honest payment explanation);
+    logged-out CTA routes through the storefront login with returnTo, existing
+    sellers are sent to the dashboard.
+  - `/sell/setup` SellerSetupPage (creates the seller row; display_name + phone +
+    bank details).
+  - `/sell/new` CreateListingPage (photos, title, allowed category, location,
+    condition picker + notes, description, price with live buyer-price preview).
+  - `/sell/dashboard` SellerDashboardPage (listings grouped by status with
+    rejection_reason, empty orders state, masked payout details, edit profile).
+- Auth: uses the existing `useCustomerAuth` (shared customer session). A new
+  `useSeller` hook resolves the customer (by auth_user_id) and their seller row
+  (by customer_id).
+- Storage: listing photos upload to a dedicated public bucket
+  **`marketplace-listings`**; first photo becomes `image_url`, the rest
+  `gallery_urls`; public URLs are stored. `final_price_naira` (and
+  `markup_percent`) are left to the DB trigger, never written client-side.
+- Anti-leakage controls: display_name rejects digits, @ and URLs (it is public);
+  description + condition_notes are blocked on submit if they contain a phone
+  pattern (7+ digits), +234, or whatsapp / call me / dm me. Mirrors the admin
+  review check.
+- Sensitive data (bank, phone) is only ever rendered in the seller's own
+  dashboard (bank masked to last 4) and to admin, never anywhere public.
+- No storefront, admin, browse or listing-detail changes. No migrations.
+- Verified live: `/sell` value screen renders, `/sell/setup` renders and the
+  display-name validation fires on a name with digits; leak detector and buyer
+  price preview (asking x (1 + markup/100), e.g. 45,000 -> 49,500 at 10%) confirmed.
+  `/sell/new` and `/sell/dashboard` require a seller row, which cannot be created
+  until the DB findings below are resolved, so they are build + code verified only.
+
+### 🛑 DB requirements before the sell side works end to end (not worked around)
+1. **`marketplace_sellers` has no INSERT policy.** A customer cannot create their
+   own seller row from the client (RLS rejects it). Needs an INSERT policy for a
+   customer whose `customers.auth_user_id = auth.uid()`. Until then, seller setup
+   surfaces the RLS error.
+2. **No customer storage-upload path.** Every `storage.objects` INSERT policy
+   requires an admin, and the `marketplace-listings` bucket does not exist. Needs
+   a public `marketplace-listings` bucket plus an authenticated-insert policy
+   (and public read) so sellers can upload listing photos.
+Both are DB-side and handled separately.
+
+### Earlier this branch line — minimum operator admin (context switcher, review queue, settings)
 - **Context switcher** added to the admin sidebar (`AdminLayout.tsx`): two tabs,
   BundledMum and Marketplace, shown ONLY to admins where
   `can("marketplace","manage")` is true (admin + super_admin bypass; other roles
@@ -299,8 +346,10 @@ call in `client.ts`.
 1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
    real buying (Paystack, seller subaccount, contact reveal post-payment) where
    that button is in `ListingDetailPage.tsx`. Not started.
-2. **Seller onboarding** — seller signup, listing creation/submission, the
-   pending_review → live workflow. Not started.
+2. **Seller onboarding, DB unblock.** The UI is built (see §5). Two DB items
+   must land before it works end to end: a `marketplace_sellers` INSERT policy
+   and the `marketplace-listings` storage bucket + authenticated-insert policy.
+   Both are detailed in §5 under DB requirements.
 3. **Admin, remaining surfaces.** Built this phase: context switcher, review
    queue, settings (with category management). Still placeholders, to build next:
    marketplace dashboard (held funds and the daily counts), payout queue,
