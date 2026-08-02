@@ -160,7 +160,29 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — location + city filter beside the search bar (design 13a B1b/B1c)
+### This pass — colourful category treatment, icons from the database
+Home and desktop category sections now show each category's real emoji.
+- **`marketplace_categories.icon`** (text, nullable, one emoji per category; all 11
+  populated, deployed) is the SINGLE source for the icon. It is read live via
+  `useAllowedCategories` (now selects `id, name, icon`) and rendered per row. There is
+  NO hardcoded name→icon map in the frontend, so an admin-added category shows its icon
+  with no deploy. A null/missing icon falls back to `🏷️` (`CATEGORY_FALLBACK_ICON`);
+  the "All categories" entry uses a fixed `🛒` (it is not a real category).
+- **Colour is NOT in the database** and needs no migration: the home tile chip colour
+  is a fixed rotation of two existing brand-palette colours (coral-light `#FDE8DF` /
+  green-light `#D8EFE5`) by tile index, set inline in `BrowsePage`. The design derives
+  colour from the palette, not per category, so admin-added categories need nothing.
+- Home (mobile, design B1): the six category tiles show the emoji in a 40px rounded
+  chip with the alternating brand colour. Desktop + mobile sheet (design B4): the
+  category filter list shows the emoji before each name (`.mkt-fopt .fopt-ic`).
+- Verified live: tiles render 🛁/🤱/👕/👟/📚/🚗 with alternating coral/green chips;
+  desktop panel lists every category with its emoji; a category with icon set to null
+  falls back to 🏷️ (tested by temporarily nulling one and reverting). No console
+  errors; the location/price/condition/sort filters and result count are unchanged.
+- Admin category management was NOT touched (the design shows no icon picker there);
+  icons are edited directly in `marketplace_categories`.
+
+### Earlier this branch line — location + city filter beside the search bar (design 13a B1b/B1c)
 Adds the state-then-city location filter beside browse search, on top of the admin
 edit + browse filters already shipped. The create-listing structured `condition`
 write and the admin listing edit view (see the section below) were already built and

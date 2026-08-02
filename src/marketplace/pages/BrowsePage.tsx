@@ -30,6 +30,13 @@ const CONDITION_OPTS: Array<{ value: string; label: string }> = [
 
 const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", city: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
 
+// Sensible fallback when a category has no icon set (e.g. a newly added one before
+// an admin sets its emoji). "All categories" uses its own fixed shopping icon.
+const CATEGORY_FALLBACK_ICON = "🏷️";
+const ALL_CATEGORIES_ICON = "🛒";
+
+type CategoryOpt = { id: string; name: string; icon: string | null };
+
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
 
 export default function BrowsePage() {
@@ -74,12 +81,14 @@ export default function BrowsePage() {
         <LocationControl filters={filters} onChange={setFilters} states={states} />
       </div>
 
-      {/* Category tiles, home only (they scroll away once a filter is on). */}
+      {/* Category tiles, home only (they scroll away once a filter is on). The
+          emoji is read live from marketplace_categories.icon; the chip colour is a
+          fixed brand-palette rotation by index, not a per-category value. */}
       {!anyFilter && categories.length > 0 && (
         <div className="mkt-cats">
-          {categories.slice(0, 6).map((c) => (
+          {categories.slice(0, 6).map((c, i) => (
             <button key={c.id} className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
-              <span className="ic" aria-hidden>◦</span>
+              <span className="ic" aria-hidden style={{ background: i % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
               <span className="nm">{c.name}</span>
             </button>
           ))}
@@ -158,7 +167,7 @@ export default function BrowsePage() {
 function FilterControls({ value, onChange, categories, showCategory }: {
   value: BrowseFilters;
   onChange: (next: BrowseFilters) => void;
-  categories: Array<{ id: string; name: string }>;
+  categories: CategoryOpt[];
   showCategory?: boolean;
 }) {
   const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
@@ -168,9 +177,9 @@ function FilterControls({ value, onChange, categories, showCategory }: {
       {showCategory && (
         <div className="mkt-fgroup">
           <div className="mkt-fgroup-h">Category</div>
-          <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}>All categories</button>
+          <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}><span className="fopt-ic" aria-hidden>{ALL_CATEGORIES_ICON}</span>All categories</button>
           {categories.map((c) => (
-            <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}>{c.name}</button>
+            <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}><span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>{c.name}</button>
           ))}
         </div>
       )}
@@ -259,7 +268,7 @@ function LocationControl({ filters, onChange, states }: {
 /** Mobile bottom sheet: edits a draft, previews the live count, applies on Show. */
 function FilterSheet({ filters, categories, onApply, onClose, onClearAll }: {
   filters: BrowseFilters;
-  categories: Array<{ id: string; name: string }>;
+  categories: CategoryOpt[];
   onApply: (next: BrowseFilters) => void;
   onClose: () => void;
   onClearAll: () => void;

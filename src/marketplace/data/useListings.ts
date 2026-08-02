@@ -127,9 +127,11 @@ export function useBrowseCount(filters: BrowseFilters, enabled: boolean) {
 export function useAllowedCategories() {
   return useQuery({
     queryKey: ["marketplace", "allowed-categories"],
-    queryFn: async (): Promise<Array<{ id: string; name: string }>> => {
-      const { data } = await mdb.from("marketplace_categories").select("id, name").eq("is_allowed", true).order("name");
-      return (data ?? []) as Array<{ id: string; name: string }>;
+    queryFn: async (): Promise<Array<{ id: string; name: string; icon: string | null }>> => {
+      // icon is a single emoji per category, admin-editable, read live. Never a
+      // hardcoded name->icon map, so a category added later renders with no deploy.
+      const { data } = await mdb.from("marketplace_categories").select("id, name, icon").eq("is_allowed", true).order("name");
+      return (data ?? []) as Array<{ id: string; name: string; icon: string | null }>;
     },
     staleTime: 5 * 60 * 1000,
   });
