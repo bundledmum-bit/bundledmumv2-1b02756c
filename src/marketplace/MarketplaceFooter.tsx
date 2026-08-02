@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./sell/useSeller";
-import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
+import logoWhite from "@/assets/logos/BM-LOGO-WHITE.png";
 
 /**
  * The one shared marketplace footer, rendered once below every route (design
