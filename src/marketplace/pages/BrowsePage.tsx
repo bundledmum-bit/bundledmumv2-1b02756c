@@ -6,10 +6,12 @@ import {
   useBrowseCount,
   useAllowedCategories,
   useAllowedStates,
+  useAreasForState,
   type BrowseFilters,
   type BrowseSort,
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
+import AreaCombobox from "../sell/AreaCombobox";
 
 /**
  * BROWSE, rebuilt to the design (13a B1-B4). Six category tiles then the grid on
@@ -26,7 +28,7 @@ const CONDITION_OPTS: Array<{ value: string; label: string }> = [
   { value: "fair", label: "Fair" },
 ];
 
-const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
+const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", city: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
 
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
 
@@ -48,7 +50,7 @@ export default function BrowsePage() {
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
 
-  const anyFilter = !!(filters.categoryId || filters.state || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
+  const anyFilter = !!(filters.categoryId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 
   const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
 
@@ -69,6 +71,7 @@ export default function BrowsePage() {
           onChange={(e) => setSearchInput(e.target.value)}
           aria-label="Search items by title"
         />
+        <LocationControl filters={filters} onChange={setFilters} states={states} />
       </div>
 
       {/* Category tiles, home only (they scroll away once a filter is on). */}
@@ -103,7 +106,7 @@ export default function BrowsePage() {
           {filters.categoryId && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, categoryId: "" }))}>{catName} ✕</button>}
           {(filters.minPrice != null || filters.maxPrice != null) && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, minPrice: null, maxPrice: null }))}>{filters.minPrice != null ? naira(filters.minPrice) : "₦0"} to {filters.maxPrice != null ? naira(filters.maxPrice) : "any"} ✕</button>}
           {filters.conditions.map((c) => <button key={c} className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, conditions: f.conditions.filter((x) => x !== c) }))}>{CONDITION_OPTS.find((o) => o.value === c)?.label} ✕</button>)}
-          {filters.state && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, state: "" }))}>{filters.state} ✕</button>}
+          {filters.state && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, state: "", city: "" }))}>{filters.city ? `${filters.city}, ${filters.state}` : filters.state} ✕</button>}
           <button className="mkt-fchip clear" onClick={clearAll}>Clear all</button>
         </div>
       )}
@@ -111,7 +114,7 @@ export default function BrowsePage() {
       <div className="mkt-browse">
         {/* Desktop persistent panel */}
         <aside className="mkt-fpanel">
-          <FilterControls value={filters} onChange={setFilters} categories={categories} states={states} showCategory />
+          <FilterControls value={filters} onChange={setFilters} categories={categories} showCategory />
         </aside>
 
         <div className="mkt-browse-main">
@@ -141,7 +144,6 @@ export default function BrowsePage() {
         <FilterSheet
           filters={filters}
           categories={categories}
-          states={states}
           onApply={(next) => { setFilters(next); setSheetOpen(false); }}
           onClose={() => setSheetOpen(false)}
           onClearAll={() => { clearAll(); setSheetOpen(false); }}
@@ -151,12 +153,12 @@ export default function BrowsePage() {
   );
 }
 
-/** The filter controls, shared by the desktop panel and the mobile sheet. */
-function FilterControls({ value, onChange, categories, states, showCategory }: {
+/** The filter controls, shared by the desktop panel and the mobile sheet. Location
+ * is NOT here, it lives beside the search bar in its own state-then-city control. */
+function FilterControls({ value, onChange, categories, showCategory }: {
   value: BrowseFilters;
   onChange: (next: BrowseFilters) => void;
   categories: Array<{ id: string; name: string }>;
-  states: string[];
   showCategory?: boolean;
 }) {
   const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
@@ -195,23 +197,69 @@ function FilterControls({ value, onChange, categories, states, showCategory }: {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="mkt-fgroup">
-        <div className="mkt-fgroup-h">Where</div>
-        <select className="mkt-native-select" value={value.state} onChange={(e) => set({ state: e.target.value })}>
-          <option value="">All locations</option>
-          {states.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </div>
+/**
+ * Location + city, beside the search bar. Default "All Nigeria". A state must be
+ * chosen before a city, exactly the create-listing dependent pattern: a native
+ * state select plus the shared AreaCombobox for the searchable area. Filtering is
+ * server side on location_state and location_city (see buildBrowseQuery).
+ */
+function LocationControl({ filters, onChange, states }: {
+  filters: BrowseFilters;
+  onChange: (updater: (f: BrowseFilters) => BrowseFilters) => void;
+  states: Array<{ id: string; name: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const stateId = useMemo(() => states.find((s) => s.name === filters.state)?.id ?? "", [states, filters.state]);
+  const { data: areas = [] } = useAreasForState(stateId);
+  const label = filters.city ? filters.city : filters.state ? filters.state : "All Nigeria";
+
+  return (
+    <div className="mkt-loc">
+      <button className="mkt-loc-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span className="lbl">Where</span>
+        <span className="val">{label}</span>
+        <span className="car">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <>
+          <div className="mkt-loc-scrim" onClick={() => setOpen(false)} />
+          <div className="mkt-loc-panel">
+            <div className="mkt-fgroup-h">State</div>
+            <select
+              className="mkt-native-select"
+              value={filters.state}
+              onChange={(e) => onChange((f) => ({ ...f, state: e.target.value, city: "" }))}
+            >
+              <option key="all-ng" value="">All Nigeria</option>
+              {states.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
+
+            <div className="mkt-fgroup-h" style={{ marginTop: 12 }}>City or area</div>
+            <AreaCombobox
+              key={stateId || "none"}
+              areas={areas}
+              value={filters.city}
+              onChange={(name) => onChange((f) => ({ ...f, city: name }))}
+              disabled={!filters.state}
+            />
+            {filters.city && <button className="mkt-loc-allareas" onClick={() => onChange((f) => ({ ...f, city: "" }))}>All areas in {filters.state}</button>}
+
+            <button className="mkt-primary" style={{ marginTop: 12 }} onClick={() => setOpen(false)}>Done</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /** Mobile bottom sheet: edits a draft, previews the live count, applies on Show. */
-function FilterSheet({ filters, categories, states, onApply, onClose, onClearAll }: {
+function FilterSheet({ filters, categories, onApply, onClose, onClearAll }: {
   filters: BrowseFilters;
   categories: Array<{ id: string; name: string }>;
-  states: string[];
   onApply: (next: BrowseFilters) => void;
   onClose: () => void;
   onClearAll: () => void;
@@ -236,7 +284,7 @@ function FilterSheet({ filters, categories, states, onApply, onClose, onClearAll
               ))}
             </div>
           </div>
-          <FilterControls value={draft} onChange={setDraft} categories={categories} states={states} showCategory />
+          <FilterControls value={draft} onChange={setDraft} categories={categories} showCategory />
         </div>
 
         <div className="mkt-fsheet-foot">

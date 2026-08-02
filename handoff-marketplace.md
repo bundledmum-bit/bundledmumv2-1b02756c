@@ -160,7 +160,30 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — admin listing edit + browse filters (design 13a)
+### This pass — location + city filter beside the search bar (design 13a B1b/B1c)
+Adds the state-then-city location filter beside browse search, on top of the admin
+edit + browse filters already shipped. The create-listing structured `condition`
+write and the admin listing edit view (see the section below) were already built and
+are unchanged this pass.
+- **`LocationControl`** (in `BrowsePage`) sits beside the search bar in the topbar, a
+  "Where: {label} ▾" button opening a panel with a native state `<select>` (default
+  "All Nigeria" + allowed states) and, once a state is chosen, the shared
+  **`AreaCombobox`** for the searchable city/area (disabled until a state is picked, so
+  a city can never be chosen first; changing state clears the city). This REUSES the
+  create-listing dependent state+area pattern, not a second implementation. The plain
+  "Where" state select was removed from the filter panel/sheet.
+- **`BrowseFilters` gained `city`**; `buildBrowseQuery` now applies BOTH
+  `.eq("location_state", state)` and `.eq("location_city", city)` SERVER SIDE (never a
+  client string match). `useAllowedStates` returns `{id,name}` and a new
+  `useAreasForState(stateId)` feeds the area list from `marketplace_areas` (is_allowed).
+  Applied chip shows "{city}, {state}" and clears both.
+- Verified live: All Nigeria = 24, Lagos = 16, Lagos + Yaba = 2 (matches SQL), city
+  gated on state, chip clears both, no console errors. Note: some seeded listings'
+  location_city values ("Ikeja", "Lekki") predate the granular allowed-area list, so
+  those exact cities may not be selectable from the area search; new listings use the
+  allowed areas. Filtering itself is exact server-side on location_city.
+
+### Earlier this branch line — admin listing edit + browse filters (design 13a)
 - **New `condition` column** (deployed): text `almost_new`|`good`|`fair`, nullable, the
   reliable source for the condition filter (do NOT parse condition_notes). 25/26 seed
   rows backfilled, 1 null by design. `CreateListingPage` now writes `condition`

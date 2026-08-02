@@ -771,3 +771,13 @@
   .mkt-browse { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; max-width: 1240px; margin: 0 auto; }
   .mkt-fpanel { display: block; align-self: start; position: sticky; top: 16px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 18px; }
 }
+
+/* ── Location + city control beside the search bar (design B1b/B1c) ── */
+.mkt-loc { position: relative; }
+.mkt-loc-btn { width: 100%; box-sizing: border-box; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: none; border-radius: 12px; background: #fff; cursor: pointer; text-align: left; }
+.mkt-loc-btn .lbl { font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mkt-muted); }
+.mkt-loc-btn .val { flex: 1; font: 700 14px/1 'Lato', sans-serif; color: var(--mkt-black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mkt-loc-btn .car { color: var(--mkt-muted); font-size: 12px; }
+.mkt-loc-scrim { position: fixed; inset: 0; z-index: 40; }
+.mkt-loc-panel { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 50; background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; box-shadow: 0 14px 34px rgba(26, 26, 26, 0.16); padding: 14px; display: flex; flex-direction: column; }
+.mkt-loc-allareas { align-self: flex-start; margin-top: 8px; background: none; border: none; padding: 0; font: 700 12px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }

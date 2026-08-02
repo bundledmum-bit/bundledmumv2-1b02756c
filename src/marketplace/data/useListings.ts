@@ -64,7 +64,8 @@ export type BrowseSort = "newest" | "price_asc" | "price_desc";
 export interface BrowseFilters {
   search: string;
   categoryId: string;      // "" for all
-  state: string;           // location_state, "" for all
+  state: string;           // location_state, "" for All Nigeria
+  city: string;            // location_city, "" for all areas (needs a state first)
   minPrice: number | null; // filters final_price_naira, never price_naira
   maxPrice: number | null;
   conditions: string[];    // subset of almost_new | good | fair
@@ -82,6 +83,7 @@ function buildBrowseQuery(f: BrowseFilters, head: boolean) {
   if (search) q = q.ilike("title", `%${search}%`);
   if (f.categoryId) q = q.eq("category_id", f.categoryId);
   if (f.state) q = q.eq("location_state", f.state);
+  if (f.city) q = q.eq("location_city", f.city);
   if (f.minPrice != null) q = q.gte("final_price_naira", f.minPrice);
   if (f.maxPrice != null) q = q.lte("final_price_naira", f.maxPrice);
   if (f.conditions.length) q = q.in("condition", f.conditions);
@@ -133,13 +135,28 @@ export function useAllowedCategories() {
   });
 }
 
-/** Allowed states for the location filter. */
+/** Allowed states for the location filter (id + name; id feeds the area lookup). */
 export function useAllowedStates() {
   return useQuery({
     queryKey: ["marketplace", "allowed-states"],
-    queryFn: async (): Promise<string[]> => {
-      const { data } = await mdb.from("marketplace_states").select("name").eq("is_allowed", true).order("sort_order");
-      return ((data ?? []) as Array<{ name: string }>).map((s) => s.name).filter(Boolean);
+    queryFn: async (): Promise<Array<{ id: string; name: string }>> => {
+      const { data } = await mdb.from("marketplace_states").select("id, name").eq("is_allowed", true).order("sort_order");
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Allowed areas for a chosen state, for the dependent city select. Empty until a
+ * state is picked, so a city can never be chosen first. Same source
+ * (marketplace_areas is_allowed) as the create-listing area select. */
+export function useAreasForState(stateId: string | undefined) {
+  return useQuery({
+    queryKey: ["marketplace", "areas", stateId],
+    enabled: !!stateId,
+    queryFn: async (): Promise<Array<{ id: string; name: string }>> => {
+      const { data } = await mdb.from("marketplace_areas").select("id, name").eq("is_allowed", true).eq("state_id", stateId as string).order("name");
+      return (data ?? []) as Array<{ id: string; name: string }>;
     },
     staleTime: 5 * 60 * 1000,
   });
