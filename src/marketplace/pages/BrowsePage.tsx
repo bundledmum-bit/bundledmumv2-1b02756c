@@ -48,9 +48,6 @@ export default function BrowsePage() {
 
   const header = (
     <div className="mkt-topbar">
-      <div className="mkt-brand">
-        BundledMum <small>Marketplace</small>
-      </div>
       <input
         className="mkt-search"
         type="search"

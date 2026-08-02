@@ -601,3 +601,37 @@
 .mkt-talk-prefill { background: #fff; border: 1px dashed var(--mkt-input-border); border-radius: 9px; padding: 9px 10px; font: 400 11px/1.45 'Lato', sans-serif; color: var(--mkt-muted); }
 .mkt-talk-actions { display: flex; gap: 8px; }
 .mkt-call { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; border: 1.5px solid var(--mkt-green); color: var(--mkt-green); border-radius: 11px; padding: 12px 20px; font: 800 15px/1 'Nunito', sans-serif; text-decoration: none; }
+
+/* ==================== SHARED HEADER ==================== */
+.mkt-hdr { background: var(--mkt-green); color: var(--mkt-cream); }
+.mkt-hdr-inner { max-width: 1240px; margin: 0 auto; padding: 11px 16px; display: flex; align-items: center; gap: 16px; }
+.mkt-hdr-lockup { display: inline-flex; align-items: center; gap: 8px; }
+.mkt-hdr-lockuplink { text-decoration: none; }
+.mkt-hdr-logo { height: 22px; width: auto; display: block; }
+.mkt-hdr-market { font: 800 9px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
+@media (min-width: 720px) { .mkt-hdr-logo { height: 26px; } .mkt-hdr-market { font-size: 10px; } }
+
+.mkt-hdr-nav { margin-left: auto; display: none; align-items: center; gap: 22px; }
+@media (min-width: 720px) { .mkt-hdr-nav { display: flex; } }
+.mkt-hdr-link { font: 800 14px/1 'Nunito', sans-serif; color: var(--mkt-green-light); background: none; border: none; cursor: pointer; text-decoration: none; }
+.mkt-hdr-link:hover { color: var(--mkt-cream); }
+.mkt-hdr-account { display: inline-flex; align-items: center; gap: 8px; background: var(--mkt-green-dark); border: none; border-radius: 10px; padding: 8px 11px; color: var(--mkt-cream); font: 800 12px/1 'Nunito', sans-serif; cursor: pointer; }
+.mkt-hdr-account .av { width: 24px; height: 24px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 900 10px/24px 'Nunito', sans-serif; text-align: center; }
+
+.mkt-hdr-burger { margin-left: auto; display: inline-flex; flex-direction: column; gap: 4px; background: none; border: none; padding: 6px 2px; cursor: pointer; }
+.mkt-hdr-burger span { width: 20px; height: 2px; background: var(--mkt-cream); border-radius: 2px; }
+@media (min-width: 720px) { .mkt-hdr-burger { display: none; } }
+
+/* full-screen mobile menu */
+.mkt-menu { position: fixed; inset: 0; z-index: 80; background: var(--mkt-green); display: flex; flex-direction: column; }
+.mkt-menu-top { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; }
+.mkt-menu-close { background: none; border: none; color: var(--mkt-cream); font: 400 26px/1 'Lato', sans-serif; cursor: pointer; padding: 0 4px; }
+.mkt-menu-list { flex: 1; padding: 12px 16px; display: flex; flex-direction: column; }
+.mkt-menu-item { display: flex; align-items: center; padding: 15px 4px; border-bottom: 1px solid var(--mkt-green-dark); font: 900 19px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); text-decoration: none; }
+.mkt-menu-item.soft { font: 800 16px/1 'Nunito', sans-serif; color: var(--mkt-green-light); }
+.mkt-menu-foot { padding: 14px 16px 26px; display: flex; flex-direction: column; gap: 10px; }
+.mkt-menu-account { display: flex; align-items: center; gap: 11px; background: var(--mkt-green-dark); border-radius: 12px; padding: 12px; }
+.mkt-menu-account .av { width: 34px; height: 34px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 900 13px/34px 'Nunito', sans-serif; text-align: center; }
+.mkt-menu-account .who { flex: 1; min-width: 0; font: 400 12px/1.3 'Lato', sans-serif; color: var(--mkt-green-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mkt-menu-account .signout { background: none; border: none; color: var(--mkt-green-light); font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
+.mkt-menu .mkt-primary { text-align: center; text-decoration: none; }

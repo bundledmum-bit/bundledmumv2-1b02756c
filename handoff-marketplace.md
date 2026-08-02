@@ -160,7 +160,40 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — payment moved to Paystack (bank transfer kept as a toggle)
+### This pass — one shared marketplace header on every screen
+Design section 5a. Added a single `MarketplaceHeader` component rendered ONCE in
+`MarketplaceApp` inside the router, above `<Routes>`, so every marketplace route
+gets it with no per-page duplication.
+- **Green strip, logo lockup** (white BundledMum logo + small uppercase
+  "Marketplace" label). Mobile: hamburger opens a full-screen green menu; desktop
+  (>=720px): links inline. Auth-aware via `useCustomerAuth`, seller-aware via
+  `useSeller`. Static (not sticky) so it never fights browse's sticky topbar.
+- **Links implemented:** Browse (/), Sell an item (/sell), Seller dashboard
+  (/sell/dashboard, shown only to sellers), Back to bundledmum.com (storefront /,
+  full navigation), Help on WhatsApp (WHATSAPP_BASE), and account (logged in:
+  email + Sign out via supabase.auth.signOut; logged out: Log in ->
+  /account/login?returnTo=/marketplace).
+- **Links OMITTED because their routes do not exist** (reported, not shipped as
+  dead nav): "My orders" (no orders route) and "How BundledMum works" (no such
+  page). No placeholder pages were created.
+- **Search stays on the browse screen**, not lifted into the shared header. The
+  design shows search in the desktop header, but a sitewide header driving
+  browse's search state would couple the header to one screen; kept decoupled.
+- **Checkout and payment return get a REDUCED header:** logo only, no hamburger,
+  no nav links, logo not a link, so a buyer mid-payment cannot casually navigate
+  away. Variant chosen by `pathname.startsWith("/checkout")`. The header never
+  touches routing or the payment `?reference`, verified.
+- **Only per-page edit:** removed BrowsePage's now-duplicate brand line (chrome
+  only; search, filters, count, data untouched). All other screens get the header
+  for free and keep their own content and sub-chrome.
+- Files: new `src/marketplace/MarketplaceHeader.tsx`; edited `MarketplaceApp.tsx`
+  (render it), `pages/BrowsePage.tsx` (brand line), `marketplace.css`.
+- Verified live: header on browse (full + working menu), listing detail (Buy now
+  preserved), checkout (reduced, fresh-order breakdown + Pay button work),
+  payment return (reduced, reference + failed state intact). Storefront and admin
+  were NOT touched.
+
+### Earlier this branch line — payment moved to Paystack (bank transfer kept as a toggle)
 Money-in is now a hosted Paystack payment; the money model is unchanged
 (BundledMum holds the money, seller paid manually after the buyer confirms
 delivery, refunds manual). Design section 4a (P1 checkout, P1b listing gone, P1c

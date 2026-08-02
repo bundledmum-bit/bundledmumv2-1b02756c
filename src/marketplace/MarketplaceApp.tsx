@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import MarketplaceHeader from "./MarketplaceHeader";
 import BrowsePage from "./pages/BrowsePage";
 import ListingDetailPage from "./pages/ListingDetailPage";
 import BecomeSellerPage from "./sell/BecomeSellerPage";
@@ -35,6 +36,7 @@ export default function MarketplaceApp() {
     <QueryClientProvider client={marketplaceQueryClient}>
       <BrowserRouter basename={MARKETPLACE_BASENAME}>
         <div className="mkt">
+          <MarketplaceHeader />
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/listing/:id" element={<ListingDetailPage />} />
