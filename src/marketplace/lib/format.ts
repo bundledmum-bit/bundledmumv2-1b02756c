@@ -21,7 +21,9 @@ export function conditionLabel(notes: string | null | undefined): string {
   if (!notes) return "Used";
   const n = notes.toLowerCase();
   if (n.includes("brand new") || n.includes("unused") || n.includes("never used")) return "New";
-  if (n.includes("like new") || n.includes("as new")) return "Like new";
+  // "almost new" is the current picker label; "like new" / "as new" are legacy
+  // rows and map to the same display label so cards stay consistent.
+  if (n.includes("almost new") || n.includes("like new") || n.includes("as new")) return "Almost new";
   if (n.includes("barely") || n.includes("excellent")) return "Excellent";
   if (n.includes("very good")) return "Very good";
   if (n.includes("good")) return "Good";

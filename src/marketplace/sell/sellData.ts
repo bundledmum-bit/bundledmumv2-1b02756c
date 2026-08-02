@@ -19,6 +19,36 @@ export function formatNaira(value: number | null | undefined): string {
   return `₦${Math.round(n).toLocaleString("en-NG")}`;
 }
 
+/**
+ * Compresses an image before upload. Phone photos are 3 to 4MB each, and four
+ * of them per listing is slow on Nigerian mobile data and wasteful in storage.
+ * We draw the photo to a canvas with the longest edge capped at maxEdge and
+ * export a moderate quality JPEG. A 3 to 4MB photo typically comes out around
+ * 200 to 350KB. Falls back to the original file if anything goes wrong so an
+ * upload is never lost.
+ */
+export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): Promise<Blob> {
+  try {
+    if (typeof createImageBitmap !== "function") return file;
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions)
+      .catch(() => createImageBitmap(file));
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    if (typeof bitmap.close === "function") bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    return blob && blob.size > 0 ? blob : file;
+  } catch {
+    return file;
+  }
+}
+
 /** Buyer price from the seller asking price and the current markup percent. */
 export function buyerPrice(askingNaira: number, markupPct: number): number {
   if (!isFinite(askingNaira) || askingNaira <= 0) return 0;

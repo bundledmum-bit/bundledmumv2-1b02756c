@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira } from "./data";
+import MarketplaceLocations from "./MarketplaceLocations";
 
 /**
  * Marketplace settings. Reads and writes the marketplace_* keys in
@@ -231,6 +232,9 @@ export default function MarketplaceSettings() {
         </div>
         <p className="text-[12px] text-text-med mt-3">Disabling a category removes it from the customer marketplace. This is how banned categories are kept out. Tap a category to enable or disable it.</p>
       </div>
+
+      {/* locations */}
+      <MarketplaceLocations />
 
       {/* confirm: setting save */}
       {pendingSave && (

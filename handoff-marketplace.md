@@ -149,7 +149,49 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — sell screens reskinned to the approved Claude Design
+### This pass — create-listing changes + admin location management
+Functional changes to `/marketplace/sell/new` plus a new admin Locations section.
+- **Minimum 4 photos, camera or gallery, compressed.** Submission is blocked
+  below 4 with encouraging copy (buyers cannot ask questions, so angles explain).
+  The photo input is `accept="image/*" multiple` with NO `capture` attribute, so
+  mobile browsers present the OS chooser (camera or gallery); adding `capture`
+  would force camera-only, which we deliberately avoid. Each photo is compressed
+  client-side before upload (`compressImage` in `sellData.ts`: createImageBitmap
+  with EXIF orientation, canvas draw at longest edge <=1600px, JPEG quality 0.8,
+  falls back to the original on any failure). A 3 to 4MB phone photo comes out
+  around 200 to 350KB, uploaded as image/jpeg. First photo still image_url, rest
+  gallery_urls.
+- **Condition label "Like new" renamed to "Almost new".** It is a pure frontend
+  string composed into `condition_notes` (no column/enum). The customer
+  `conditionLabel()` in `lib/format.ts` now maps "almost new" AND the legacy
+  "like new"/"as new" to the display label "Almost new", so the 4 pre-existing
+  rows that stored "Like new" stay in the DB unchanged but display consistently.
+  No data migration.
+- **State and area are now admin-controlled dependent dropdowns** reading
+  `public.marketplace_states` and `public.marketplace_areas` (public read where
+  is_allowed=true, admin manage). State lists allowed states by sort_order; area
+  is dependent on the chosen state and resets when state changes. Only Lagos and
+  FCT are open (others exist but is_allowed=false, so sellers never see them).
+  The chosen NAMES are still written to the existing `location_state` /
+  `location_city` columns, so the listings schema and browse filtering are
+  unchanged. Browse derives its location filter from listing values, so it keeps
+  working with cleaner canonical values, no browse change needed.
+- **Admin location management** added to marketplace Settings
+  (`MarketplaceLocations.tsx`): lists states with allowed/disabled pill and area
+  count, toggle per state behind a confirm, expand to areas (toggle + add area),
+  and add a state. Copy explains disabling removes a place from the seller form.
+  Error red #C0392B for disabled/negative. Verified live: Lagos and FCT show On
+  with 20 and 6 areas, the other 35 states show Disabled.
+- Files: `sell/CreateListingPage.tsx`, `sell/sellData.ts`, `lib/format.ts`,
+  new `pages/admin/marketplace/MarketplaceLocations.tsx`, and
+  `pages/admin/marketplace/MarketplaceSettings.tsx` (renders it).
+- Preserved: display_name validation, contact-detail block, buyer-price preview,
+  upload to marketplace-listings (first->image_url), no writing
+  final_price_naira/markup_percent, status pending_review, bank masking.
+- New tables in use: `marketplace_states` (id, name, is_allowed, sort_order),
+  `marketplace_areas` (id, state_id, name, is_allowed).
+
+### Earlier this branch line — sell screens reskinned to the approved Claude Design
 - Applied the approved design (project `0afda8cc`, "Sell flow, four screens":
   S1 become a seller, S2 setup + S2b validation, S3 create listing + S3b contact
   block + S3c awaiting review, S4 dashboard + S4b orders empty) to the existing

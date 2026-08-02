@@ -3,19 +3,24 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak } from "./sellData";
+import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, compressImage } from "./sellData";
 
 interface Category { id: string; name: string }
+interface Place { id: string; name: string }
 interface PhotoDraft { file: File; url: string }
 
-const CONDITIONS = ["Like new", "Good", "Fair"];
+const CONDITIONS = ["Almost new", "Good", "Fair"];
+const MIN_PHOTOS = 4;
+const MAX_PHOTOS = 8;
 
 /**
- * Create listing, reskinned to the design (green header with progress, photo
- * grid, condition chips, live price card). Photos upload to the
- * marketplace-listings bucket, first becomes image_url and the rest gallery_urls.
- * final_price_naira and markup_percent are DB trigger owned, never written here.
- * Description and condition notes are blocked for contact details before submit.
+ * Create listing, reskinned to the approved design. Photos upload to the
+ * marketplace-listings bucket (compressed client-side first), the first becomes
+ * image_url and the rest gallery_urls. final_price_naira and markup_percent are
+ * DB trigger owned, never written here. Description and condition notes are
+ * blocked for contact details before submit. State and area are admin-controlled
+ * dependent dropdowns, but the chosen names are still written into the existing
+ * location_state and location_city columns so browse keeps working.
  */
 export default function CreateListingPage() {
   const { loading, isLoggedIn, seller } = useSeller();
@@ -25,8 +30,8 @@ export default function CreateListingPage() {
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [state, setState] = useState("");
-  const [city, setCity] = useState("");
+  const [stateId, setStateId] = useState("");
+  const [areaName, setAreaName] = useState("");
   const [condition, setCondition] = useState("");
   const [conditionNotes, setConditionNotes] = useState("");
   const [description, setDescription] = useState("");
@@ -61,14 +66,35 @@ export default function CreateListingPage() {
     staleTime: 60000,
   });
 
+  // Admin-controlled locations. Only is_allowed rows are readable, so disabled
+  // states and areas never reach the seller.
+  const { data: states = [] } = useQuery({
+    queryKey: ["mkt-allowed-states"],
+    queryFn: async (): Promise<Place[]> => {
+      const { data } = await sdb.from("marketplace_states").select("id, name").eq("is_allowed", true).order("sort_order");
+      return (data ?? []) as unknown as Place[];
+    },
+    staleTime: 60000,
+  });
+
+  const { data: areas = [] } = useQuery({
+    queryKey: ["mkt-allowed-areas", stateId],
+    enabled: !!stateId,
+    queryFn: async (): Promise<Place[]> => {
+      const { data } = await sdb.from("marketplace_areas").select("id, name").eq("is_allowed", true).eq("state_id", stateId).order("name");
+      return (data ?? []) as unknown as Place[];
+    },
+    staleTime: 60000,
+  });
+
   const priceNum = Number(price);
   const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
-  const filled = [photos.length > 0, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
+  const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
   const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
   function addPhotos(files: FileList | null) {
     if (!files) return;
-    const next = Array.from(files).slice(0, 8 - photos.length).map((file) => ({ file, url: URL.createObjectURL(file) }));
+    const next = Array.from(files).slice(0, MAX_PHOTOS - photos.length).map((file) => ({ file, url: URL.createObjectURL(file) }));
     setPhotos((p) => [...p, ...next]);
   }
   function removePhoto(i: number) { setPhotos((p) => p.filter((_, idx) => idx !== i)); }
@@ -76,7 +102,10 @@ export default function CreateListingPage() {
   async function submit() {
     setError(null); setContactBlocked(false);
     if (!seller) return;
-    if (photos.length < 1) { setError("Add at least one photo so buyers can see the item."); return; }
+    if (photos.length < MIN_PHOTOS) {
+      setError(`Add at least ${MIN_PHOTOS} photos. Buyers cannot ask questions before buying, so different angles do the explaining for you.`);
+      return;
+    }
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
     if (!condition) { setError("Choose the condition."); return; }
@@ -89,15 +118,15 @@ export default function CreateListingPage() {
     try {
       const urls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
-        const f = photos[i].file;
-        const safe = f.name.replace(/[^a-zA-Z0-9.]/g, "-").toLowerCase();
-        const path = `${seller.id}/${Date.now()}-${i}-${safe}`;
-        const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, f, { cacheControl: "3600", upsert: false, contentType: f.type });
+        const blob = await compressImage(photos[i].file);
+        const path = `${seller.id}/${Date.now()}-${i}.jpg`;
+        const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
         if (upErr) throw upErr;
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);
         urls.push(pub.publicUrl);
       }
       const composedNotes = condition ? `${condition}. ${conditionNotes.trim()}` : conditionNotes.trim();
+      const stateName = states.find((s) => s.id === stateId)?.name ?? null;
       const { error: insErr } = await sdb.from("marketplace_listings").insert({
         seller_id: seller.id,
         category_id: categoryId,
@@ -105,8 +134,8 @@ export default function CreateListingPage() {
         description: description.trim(),
         condition_notes: composedNotes,
         price_naira: Math.round(priceNum),
-        location_state: state.trim() || null,
-        location_city: city.trim() || null,
+        location_state: stateName,
+        location_city: areaName || null,
         image_url: urls[0],
         gallery_urls: urls.slice(1),
         status: "pending_review",
@@ -170,7 +199,10 @@ export default function CreateListingPage() {
 
       <div className="mkt-sell-body">
         <div className="mkt-field">
-          <div className="mkt-field-head"><span className="lbl">Photos</span><span className="mkt-help">At least one, add a few angles to sell faster</span></div>
+          <div className="mkt-field-head">
+            <span className="lbl">Photos</span>
+            <span className="mkt-help">{photos.length} of {MIN_PHOTOS} minimum</span>
+          </div>
           <div className="mkt-photos">
             {photos.map((p, i) => (
               <div className="mkt-photo" key={p.url}>
@@ -179,10 +211,11 @@ export default function CreateListingPage() {
                 <button type="button" className="rm" onClick={() => removePhoto(i)} aria-label="Remove photo">×</button>
               </div>
             ))}
-            {photos.length < 8 && <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} aria-label="Add photo">+</button>}
+            {photos.length < MAX_PHOTOS && <button type="button" className="mkt-photo-add" onClick={() => fileRef.current?.click()} aria-label="Add photo">+</button>}
           </div>
+          {/* No capture attribute, so the phone offers camera or gallery each tap. */}
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-          <div className="mkt-help">The first is the main photo buyers see. Front, back, sides, a close up of any wear, and the label.</div>
+          <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
         </div>
 
         <div className="mkt-field">
@@ -190,21 +223,28 @@ export default function CreateListingPage() {
           <input className="mkt-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chicco Bravo stroller, folds flat" />
         </div>
 
+        <div className="mkt-field">
+          <span className="mkt-uplabel">Category</span>
+          <select className="mkt-native-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">Choose a category</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
         <div style={{ display: "flex", gap: 9 }}>
           <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
-            <span className="mkt-uplabel">Category</span>
-            <select className="mkt-native-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Choose</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <span className="mkt-uplabel">State</span>
+            <select className="mkt-native-select" value={stateId} onChange={(e) => { setStateId(e.target.value); setAreaName(""); }}>
+              <option value="">Choose state</option>
+              {states.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
-            <span className="mkt-uplabel">State</span>
-            <input className="mkt-input" value={state} onChange={(e) => setState(e.target.value)} placeholder="Lagos" />
-          </div>
-          <div className="mkt-field" style={{ flex: 1, minWidth: 0 }}>
             <span className="mkt-uplabel">Area</span>
-            <input className="mkt-input" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Lekki" />
+            <select className="mkt-native-select" value={areaName} onChange={(e) => setAreaName(e.target.value)} disabled={!stateId}>
+              <option value="">{stateId ? "Choose area" : "Pick a state first"}</option>
+              {areas.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+            </select>
           </div>
         </div>
 
