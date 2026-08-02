@@ -160,7 +160,66 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — searchable area select on create listing
+### This pass — buyer checkout + awaiting payment (manual bank transfer)
+Replaces the "checkout coming soon" placeholder on listing detail with a real
+bank-transfer checkout and an awaiting-payment state. Scope was checkout +
+awaiting only (no tracking, dispute, or admin). Matches design section 3a
+(T1 checkout, T1b confirm sheet, T2 awaiting, T2b waiting-too-long).
+- New files: `src/marketplace/checkout/{orders.ts, CheckoutPage.tsx,
+  AwaitingPaymentPage.tsx}`. Routes `/checkout/:listingId` and
+  `/checkout/awaiting/:reference` in `MarketplaceApp.tsx`. `ListingDetailPage`
+  Buy now now navigates to `/checkout/:id` (placeholder note removed).
+- **Checkout (T1):** login-gated (returnTo to the storefront login). Order
+  summary (photo, title, seller display_name), price breakdown as separate lines
+  (item = `final_price_naira`, service fee ₦750 non-refundable, total; never
+  `price_naira`), BundledMum bank details with copy-to-clipboard on the account
+  number, a prominent payment reference with copy and narration instruction, an
+  escrow reassurance block, and "I have sent the transfer" behind a confirm
+  bottom sheet (T1b).
+- **Payment reference** generated client-side (`BM-` + 8 crypto chars from an
+  unambiguous alphabet), stored in `sessionStorage` per listing so a refresh
+  mid-transfer keeps it stable. Stored server-side in
+  `paystack_transaction_reference` (reused as the buyer payment reference, no new
+  column needed).
+- **Awaiting (T2/T2b):** reads the order back from `marketplace_orders` by
+  reference (buyers can SELECT their own), so it survives refresh and is
+  reachable later. Shows amount, item, reference (copy), what-happens-next, and
+  reassurance. If the order is still pending and older than 12h it shows the
+  "waiting too long" variant with a WhatsApp receipt route. Cancel is a WhatsApp
+  contact, not a client write (UPDATE is blocked).
+- **Empty bank settings handled:** the bank detail settings are currently blank,
+  so checkout shows a clear "payment details are not set up yet" card with a
+  WhatsApp route and hides the reference box and the transfer action, instead of
+  a broken screen. Verified live.
+- **Order creation is isolated** in `checkout/orders.ts` →
+  `createMarketplaceOrder()` calls the edge function `create-marketplace-order`
+  via `supabase.functions.invoke`. `marketplace_orders` has no public INSERT or
+  UPDATE (only admin + service role write), so this is deliberate and NOT worked
+  around. Until the function is deployed the call fails and checkout shows a
+  clear "secure checkout is being set up" message.
+- Preserved: browse, listing detail, the whole sell flow, and admin unchanged.
+
+### 🛑 OUTSTANDING: edge function `create-marketplace-order` (needed for checkout to complete)
+The client cannot write to `marketplace_orders` (RLS). Deploy an edge function
+that:
+- authenticates the buyer (auth.uid → `customers.id` = buyer_id),
+- loads the listing server-side and requires `status='live'`,
+- computes `item_price_naira = final_price_naira`, `service_fee_naira` from
+  `site_settings` (750), `paystack_fee_naira = 0`, `amount_naira = item + fee`,
+  `seller_share_naira = listing.price_naira` (the seller's asking price, which
+  the buyer must never see, this is the core reason it is server-side), and
+  `platform_share_naira = amount_naira - seller_share_naira`,
+- sets `payment_status='pending'`, `order_status='awaiting_payment'`,
+  `settlement_status='unsettled'`, `paystack_transaction_reference = <ref from
+  the client>`, `listing_id`, `buyer_id`, `seller_id = listing.seller_id`,
+- inserts with the service role and returns the order row.
+Input: `{ listing_id, payment_reference }`. Also worth considering: reject if the
+buyer already has an open order for the same listing. The bank detail settings
+(`marketplace_bank_name`, `marketplace_bank_account_name`,
+`marketplace_bank_account_number`) must also be filled for checkout to show the
+transfer step at all.
+
+### Earlier this branch line — searchable area select on create listing
 - The area field on `/marketplace/sell/new` is now a searchable type-ahead
   combobox (`sell/AreaCombobox.tsx`), because the allowed area lists have grown:
   **Lagos has 164 allowed areas, FCT has 33, both states open.** A 164-option
@@ -480,9 +539,14 @@ all storage logic lives in `authStorage.ts`; recovery is re-adding one import +
 call in `client.ts`.
 
 ## 6. Next steps
-1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
-   real buying (Paystack, seller subaccount, contact reveal post-payment) where
-   that button is in `ListingDetailPage.tsx`. Not started.
+1. **Checkout, finish the loop.** The bank-transfer checkout and awaiting-payment
+   UI are built (see §5). To make it work end to end: (a) deploy the
+   `create-marketplace-order` edge function detailed in §5, and (b) fill the bank
+   detail settings in admin settings (`marketplace_bank_name`,
+   `marketplace_bank_account_name`, `marketplace_bank_account_number`), which are
+   currently blank so checkout shows the "not set up yet" state. Still to build
+   after that: admin marks payment received, order tracking, and confirm-or-
+   dispute (design T3/T4).
 2. **THE SELLER FLOW HAS NOT YET BEEN WALKED THROUGH END TO END BY A HUMAN.**
    The UI is built and the DB dependencies are all resolved (INSERT policy,
    storage bucket + policies, protected-fields trigger, see §5). But nobody has

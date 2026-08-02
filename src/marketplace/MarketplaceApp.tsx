@@ -6,6 +6,8 @@ import BecomeSellerPage from "./sell/BecomeSellerPage";
 import SellerSetupPage from "./sell/SellerSetupPage";
 import CreateListingPage from "./sell/CreateListingPage";
 import SellerDashboardPage from "./sell/SellerDashboardPage";
+import CheckoutPage from "./checkout/CheckoutPage";
+import AwaitingPaymentPage from "./checkout/AwaitingPaymentPage";
 import "./marketplace.css";
 
 /**
@@ -40,6 +42,9 @@ export default function MarketplaceApp() {
             <Route path="/sell/setup" element={<SellerSetupPage />} />
             <Route path="/sell/new" element={<CreateListingPage />} />
             <Route path="/sell/dashboard" element={<SellerDashboardPage />} />
+            {/* Checkout, bank transfer, and awaiting-payment states */}
+            <Route path="/checkout/:listingId" element={<CheckoutPage />} />
+            <Route path="/checkout/awaiting/:reference" element={<AwaitingPaymentPage />} />
           </Routes>
         </div>
       </BrowserRouter>

@@ -26,7 +26,6 @@ export default function ListingDetailPage() {
   const { data: listing, isLoading, isError } = useListing(id);
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
-  const [showBuyNote, setShowBuyNote] = useState(false);
 
   if (isLoading) {
     return (
@@ -124,19 +123,12 @@ export default function ListingDetailPage() {
         </div>
       </div>
 
-      {showBuyNote ? (
-        <div className="mkt-buy-note" role="status">
-          Checkout is coming soon. Secure buying opens shortly, thank you for your
-          patience.
-        </div>
-      ) : null}
-
       <div className="mkt-buybar">
         <div className="mkt-buybar-price">
           <small>Price</small>
           <b>{formatNaira(listing.final_price_naira)}</b>
         </div>
-        <button className="mkt-buy" onClick={() => setShowBuyNote(true)}>
+        <button className="mkt-buy" onClick={() => navigate(`/checkout/${listing.id}`)}>
           Buy now
         </button>
       </div>
