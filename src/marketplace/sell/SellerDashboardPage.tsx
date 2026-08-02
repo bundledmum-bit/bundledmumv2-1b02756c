@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, formatNaira, maskAccount, validateDisplayName } from "./sellData";
+import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 
 interface MyListing {
   id: string;
@@ -21,6 +22,22 @@ const GROUPS: Array<{ key: string; label: string; pill: string }> = [
   { key: "rejected", label: "Rejected", pill: "rejected" },
   { key: "sold", label: "Sold", pill: "sold" },
 ];
+
+const PILL_CLASS: Record<string, string> = { "To send": "pending", Sent: "live", Paid: "sold" };
+
+/** One order row on the dashboard, links to its detail. Payout figure only. */
+function OrderRow({ o, coral, pill, onClick }: { o: SellerOrder; coral?: boolean; pill: string; onClick: () => void }) {
+  return (
+    <button className={coral ? "mkt-lrow" : "mkt-lrow"} style={coral ? { borderColor: "var(--mkt-coral)", borderWidth: "1.5px" } : undefined} onClick={onClick}>
+      <div className="th">{o.listing?.image_url && <img src={o.listing.image_url} alt="" />}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.listing?.title || "Item"}</div>
+        <div className="meta">You get {formatNaira(o.seller_share_naira)}</div>
+      </div>
+      <span className={`mkt-st ${PILL_CLASS[pill] || "sold"}`}>{pill}</span>
+    </button>
+  );
+}
 
 /**
  * Seller dashboard, reskinned to the design (green header, payout card, tabs).
@@ -53,8 +70,16 @@ export default function SellerDashboardPage() {
     },
   });
 
+  const { data: orders = [] } = useQuery({
+    queryKey: ["seller-orders", seller?.id],
+    enabled: !!seller?.id,
+    queryFn: () => fetchSellerOrders(seller!.id),
+  });
+
   if (loading || !seller) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
+  const { needsAction, inProgress, complete } = groupSellerOrders(orders);
+  const owed = [...needsAction, ...inProgress].reduce((s, o) => s + Number(o.seller_share_naira || 0), 0);
   const debit = Number(seller.outstanding_debit_naira || 0);
   const firstName = (seller.display_name || "there").split(/\s+/)[0];
 
@@ -88,7 +113,7 @@ export default function SellerDashboardPage() {
 
         <div className="mkt-tabs">
           <button className={tab === "listings" ? "mkt-tab on" : "mkt-tab"} onClick={() => setTab("listings")}>Listings <span className="c">{listings.length}</span></button>
-          <button className={tab === "orders" ? "mkt-tab on" : "mkt-tab"} onClick={() => setTab("orders")}>Orders <span className="c">0</span></button>
+          <button className={tab === "orders" ? "mkt-tab on" : "mkt-tab"} onClick={() => setTab("orders")}>Orders <span className="c">{orders.length}</span></button>
         </div>
 
         {tab === "listings" ? (
@@ -131,7 +156,7 @@ export default function SellerDashboardPage() {
               );
             })
           )
-        ) : (
+        ) : orders.length === 0 ? (
           <>
             <div className="mkt-empty">
               <div className="box"></div>
@@ -144,6 +169,38 @@ export default function SellerDashboardPage() {
               <div className="mkt-step"><div className="mkt-step-num">2</div><span>You send the item and mark it on this screen</span></div>
               <div className="mkt-step"><div className="mkt-step-num final">3</div><span>Buyer confirms, we transfer to {seller.bank_name || "your bank"} {maskAccount(seller.bank_account_number)}</span></div>
             </div>
+          </>
+        ) : (
+          <>
+            {owed > 0 && (
+              <button className="mkt-payout-card" onClick={() => navigate("/sell/payouts")}>
+                <div>
+                  <div className="lbl">Owed to you</div>
+                  <div className="amt">{formatNaira(owed)}</div>
+                  <div className="lbl" style={{ marginTop: 2 }}>to {seller.bank_name || "your bank"} {maskAccount(seller.bank_account_number)}</div>
+                </div>
+                <span className="go">›</span>
+              </button>
+            )}
+
+            {needsAction.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div className="mkt-group-title">Needs your action</div>
+                {needsAction.map((o) => <OrderRow key={o.id} o={o} coral pill="To send" onClick={() => navigate(`/sell/orders/${o.id}`)} />)}
+              </div>
+            )}
+            {inProgress.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div className="mkt-group-title">In progress</div>
+                {inProgress.map((o) => <OrderRow key={o.id} o={o} pill="Sent" onClick={() => navigate(`/sell/orders/${o.id}`)} />)}
+              </div>
+            )}
+            {complete.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div className="mkt-group-title">Complete</div>
+                {complete.map((o) => <OrderRow key={o.id} o={o} pill="Paid" onClick={() => navigate(`/sell/orders/${o.id}`)} />)}
+              </div>
+            )}
           </>
         )}
       </div>

@@ -24,7 +24,7 @@ const MAX_PHOTOS = 8;
  * location_state and location_city columns so browse keeps working.
  */
 export default function CreateListingPage() {
-  const { loading, isLoggedIn, seller } = useSeller();
+  const { loading, isLoggedIn, seller, user } = useSeller();
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -102,7 +102,7 @@ export default function CreateListingPage() {
 
   async function submit() {
     setError(null); setContactBlocked(false);
-    if (!seller) return;
+    if (!seller || !user) return;
     if (photos.length < MIN_PHOTOS) {
       setError(`Add at least ${MIN_PHOTOS} photos. Buyers cannot ask questions before buying, so different angles do the explaining for you.`);
       return;
@@ -120,7 +120,7 @@ export default function CreateListingPage() {
       const urls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
         const blob = await compressImage(photos[i].file);
-        const path = `${seller.id}/${Date.now()}-${i}.jpg`;
+        const path = `${user.id}/${Date.now()}-${i}.jpg`;
         const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
         if (upErr) throw upErr;
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);

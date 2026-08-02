@@ -1,0 +1,98 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useSeller } from "./useSeller";
+import { formatNaira, maskAccount } from "./sellData";
+import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
+
+/**
+ * Payouts (design O5). Shows only the seller's own payout figures
+ * (seller_share_naira), grouped by whether the money is waiting on the buyer,
+ * waiting on the seller to dispatch, or already paid. Honest that payouts are
+ * sent by hand, not instantly.
+ */
+export default function SellerPayoutsPage() {
+  const navigate = useNavigate();
+  const { seller, loading, isLoggedIn } = useSeller();
+
+  useEffect(() => {
+    if (loading) return;
+    if (!isLoggedIn) window.location.assign("/account/login?returnTo=" + encodeURIComponent("/marketplace/sell/payouts"));
+  }, [loading, isLoggedIn]);
+
+  const { data: orders = [], isLoading } = useQuery({
+    queryKey: ["seller-orders", seller?.id],
+    enabled: !!seller?.id,
+    queryFn: () => fetchSellerOrders(seller!.id),
+  });
+
+  if (loading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
+  if (!seller) { navigate("/sell", { replace: true }); return null; }
+
+  const { needsAction, inProgress, complete } = groupSellerOrders(orders);
+  const owed = [...needsAction, ...inProgress].reduce((s, o) => s + Number(o.seller_share_naira || 0), 0);
+  const bankLine = `${seller.bank_name || "your bank"} ${maskAccount(seller.bank_account_number)}`;
+
+  const Row = ({ o, coral }: { o: SellerOrder; coral?: boolean }) => (
+    <button className={coral ? "mkt-lrow" : "mkt-lrow"} style={coral ? { borderColor: "var(--mkt-coral)", borderWidth: "1.5px" } : undefined} onClick={() => navigate(`/sell/orders/${o.id}`)}>
+      <div className="th">{o.listing?.image_url && <img src={o.listing.image_url} alt="" />}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.listing?.title || "Item"}</div>
+        <div className="meta">{o.paystack_transaction_reference || ""}</div>
+      </div>
+      <b className="nun tnum" style={{ font: "900 15px/1 Nunito, sans-serif" }}>{formatNaira(o.seller_share_naira)}</b>
+    </button>
+  );
+
+  return (
+    <>
+      <div className="mkt-sell-head">
+        <div className="inner">
+          <div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your payouts</h1></div>
+          <div className="mkt-payout" style={{ marginTop: 4 }}>
+            <div style={{ flex: 1 }}>
+              <div className="lbl">Owed to you</div>
+              <div className="acct" style={{ fontSize: 24 }}>{formatNaira(owed)}</div>
+              <div className="lbl" style={{ marginTop: 4 }}>to {bankLine}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mkt-sell-body">
+        <div className="mkt-debit" style={{ background: "var(--mkt-coral-light)" }}>
+          <span className="m">i</span>
+          <span>We send payouts by hand, not automatically. Once a buyer confirms, your money usually goes out the same working day, so no need to keep refreshing.</span>
+        </div>
+
+        {orders.length === 0 && <div className="mkt-empty"><div className="box"></div><h3>No payouts yet</h3><p>When you make a sale and dispatch it, your payout will show here.</p></div>}
+
+        {inProgress.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="mkt-group-title">Waiting on a buyer</div>
+            {inProgress.map((o) => <Row key={o.id} o={o} />)}
+          </div>
+        )}
+        {needsAction.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="mkt-group-title">Waiting on you to send</div>
+            {needsAction.map((o) => <Row key={o.id} o={o} coral />)}
+          </div>
+        )}
+        {complete.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="mkt-group-title">Already paid</div>
+            {complete.map((o) => <Row key={o.id} o={o} />)}
+          </div>
+        )}
+
+        <div className="mkt-card2" style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
+          <span style={{ flex: 1, font: "400 12px/1.45 Lato, sans-serif", color: "var(--mkt-muted)" }}>Money should have landed and has not? Talk to us.</span>
+          <a className="mkt-wa" style={{ width: "auto", padding: "9px 12px" }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat</a>
+        </div>
+      </div>
+    </>
+  );
+}

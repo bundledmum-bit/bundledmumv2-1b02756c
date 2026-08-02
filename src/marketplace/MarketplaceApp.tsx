@@ -7,6 +7,9 @@ import BecomeSellerPage from "./sell/BecomeSellerPage";
 import SellerSetupPage from "./sell/SellerSetupPage";
 import CreateListingPage from "./sell/CreateListingPage";
 import SellerDashboardPage from "./sell/SellerDashboardPage";
+import SellerOrderDetailPage from "./sell/SellerOrderDetailPage";
+import SellerDispatchPage from "./sell/SellerDispatchPage";
+import SellerPayoutsPage from "./sell/SellerPayoutsPage";
 import CheckoutPage from "./checkout/CheckoutPage";
 import PaymentReturnPage from "./checkout/PaymentReturnPage";
 import AwaitingPaymentPage from "./checkout/AwaitingPaymentPage";
@@ -45,6 +48,9 @@ export default function MarketplaceApp() {
             <Route path="/sell/setup" element={<SellerSetupPage />} />
             <Route path="/sell/new" element={<CreateListingPage />} />
             <Route path="/sell/dashboard" element={<SellerDashboardPage />} />
+            <Route path="/sell/payouts" element={<SellerPayoutsPage />} />
+            <Route path="/sell/orders/:orderId" element={<SellerOrderDetailPage />} />
+            <Route path="/sell/orders/:orderId/dispatch" element={<SellerDispatchPage />} />
             {/* Checkout: Paystack (primary), payment return, transfer fallback */}
             <Route path="/checkout/:listingId" element={<CheckoutPage />} />
             <Route path="/checkout/return" element={<PaymentReturnPage />} />

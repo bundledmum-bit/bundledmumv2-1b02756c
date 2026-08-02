@@ -193,6 +193,73 @@ gets it with no per-page duplication.
   payment return (reduced, reference + failed state intact). Storefront and admin
   were NOT touched.
 
+### This pass — SELLER ORDER screens (list, detail, dispatch-with-photo, payouts)
+Design section 6a (O1–O5). The seller side of the order lifecycle: a seller sees
+a paid order, contacts the buyer, ships it, uploads proof, and tracks what
+BundledMum owes them. Buyer confirm/dispute and the admin payout queue are NOT in
+scope (non-goals).
+
+- **THE MONEY RULE (enforced):** a seller sees ONLY their own payout,
+  `marketplace_orders.seller_share_naira`. The seller order queries NEVER select
+  `item_price_naira`, `amount_naira`, `platform_share_naira`, `service_fee_naira`
+  or `paystack_fee_naira`, even though the "Seller reads own orders" RLS policy
+  would technically allow it. `SELLER_ORDER_SELECT` in `sell/sellerOrders.ts` is
+  the single safe column list. Audit at build time: no seller-facing file renders
+  any buyer-total column; the only place those columns appear is the buyer-facing
+  checkout flow (AwaitingPaymentPage / PaymentReturnPage / CheckoutPage /
+  checkout/orders.ts), where the buyer is looking at their own total — correct.
+- **Backend already deployed (not built here), two contracts:**
+  1. RPC `get_marketplace_seller_order_contact({ p_order_id })` → at most one row
+     `{ order_id, listing_title, order_reference, seller_share_naira, buyer_name,
+     buyer_phone }`, and ONLY when the caller is the seller on that order AND
+     payment_status is 'paid'. `buyer_phone` may be null. This is the ONLY source
+     of the buyer's contact details.
+  2. RPC `mark_marketplace_order_dispatched({ p_order_id, p_dispatch_photo_url })`
+     → boolean. Returns false (not an error) when the order is not this seller's
+     or is not awaiting dispatch. Cannot change payment/settlement status. A false
+     result is surfaced honestly to the seller; success is never faked.
+- **Dispatch photo storage:** uploaded to the `marketplace-listings` bucket under
+  a folder named after the seller's **auth uid** (`${user.id}/dispatch-...`). The
+  bucket's upload policy is `foldername[1] = auth.uid()`, so the path MUST use the
+  auth uid, NOT the `marketplace_sellers.id`.
+- **Orders list (O1):** replaces the empty "Orders" tab on the seller dashboard.
+  Grouped **Needs your action** (`awaiting_dispatch`, coral-outlined rows),
+  **In progress** (`awaiting_confirmation`), **Complete** (`completed`). Each row:
+  item photo + title, "You get ₦X" (seller_share only), status pill; links to the
+  detail. A payout summary card (owed = sum of seller_share for needsAction +
+  inProgress) sits on top and links to /sell/payouts. The encouraging empty state
+  is kept for sellers with no orders. The tab count is now real.
+- **Order detail (O2/O4):** item + order reference; a green payout box "You will
+  receive ₦X" from seller_share_naira ONLY, with copy explaining BundledMum holds
+  the buyer's payment and transfers after the buyer confirms; buyer contact box
+  (WhatsApp with a pre-filled message + Call, via `sellerWhatsAppLink` /
+  `sellerCallLink` from checkout/orders, Nigerian→international formatting) shown
+  only for paid orders; if `buyer_phone` is null it degrades to a BundledMum
+  WhatsApp fallback, never a dead button; a 3-step timeline reflecting current
+  state; the dispatch photo once sent. "Mark as dispatched" CTA only when
+  awaiting_dispatch.
+- **Mark as dispatched (O3/O3b):** photo REQUIRED (framed as protection for the
+  seller if the buyer later claims non-delivery), guidance (packed item + waybill
+  in the shot), camera-or-gallery via a single `accept="image/*"` input, reuses
+  `compressImage`, a confirm sheet, then upload-then-RPC. Guards non-
+  awaiting_dispatch orders. On RPC false or upload failure it shows a clear error
+  and does NOT navigate to success. (The design's optional waybill text field was
+  omitted — there is no DB column to store it; reported.)
+- **Payouts (O5):** what the seller is owed and which orders, grouped Waiting on a
+  buyer / Waiting on you to send / Already paid; bank masked to last 4; an honest
+  note that payouts are sent by hand, not automatically.
+- **Latent bug fixed in passing:** `CreateListingPage` uploaded listing photos to
+  `${seller.id}/...` (the marketplace_sellers row id), which violates the storage
+  policy (`foldername[1] = auth.uid()`) and would fail RLS. Changed to
+  `${user.id}/...` (auth uid) to match the policy and the new dispatch upload.
+- Files: new `sell/sellerOrders.ts` (data + money-safe select + grouping),
+  `sell/SellerOrderDetailPage.tsx`, `sell/SellerDispatchPage.tsx`,
+  `sell/SellerPayoutsPage.tsx`; edited `sell/SellerDashboardPage.tsx` (Orders tab +
+  payout card + real count), `sell/CreateListingPage.tsx` (upload path fix),
+  `MarketplaceApp.tsx` (routes /sell/payouts, /sell/orders/:orderId,
+  /sell/orders/:orderId/dispatch), `marketplace.css` (payout box/card, buyer box,
+  dispatch drop/preview, group title).
+
 ### Earlier this branch line — payment moved to Paystack (bank transfer kept as a toggle)
 Money-in is now a hosted Paystack payment; the money model is unchanged
 (BundledMum holds the money, seller paid manually after the buyer confirms

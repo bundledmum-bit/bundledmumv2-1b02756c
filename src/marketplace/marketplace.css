@@ -635,3 +635,33 @@
 .mkt-menu-account .who { flex: 1; min-width: 0; font: 400 12px/1.3 'Lato', sans-serif; color: var(--mkt-green-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mkt-menu-account .signout { background: none; border: none; color: var(--mkt-green-light); font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
 .mkt-menu .mkt-primary { text-align: center; text-decoration: none; }
+
+/* ── Seller orders: payout, buyer contact, dispatch (design section 6a) ── */
+.mkt-payout-box { background: var(--mkt-green-dark); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 3px; }
+.mkt-payout-box .lbl { font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-payout-box .amt { font: 900 28px/1.1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); }
+.mkt-payout-box .note { margin-top: 6px; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); }
+
+.mkt-payout-card { width: 100%; text-align: left; background: var(--mkt-green-dark); border: none; border-radius: 16px; padding: 15px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.mkt-payout-card .lbl { font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-payout-card .amt { font: 900 22px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); }
+.mkt-payout-card .go { margin-left: auto; font: 400 24px/1 'Nunito', sans-serif; color: var(--mkt-green-light); }
+
+.mkt-group-title { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.02em; text-transform: uppercase; color: var(--mkt-muted); margin: 6px 2px 0; }
+
+.mkt-buyerbox { background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 11px; }
+.mkt-buyer-head { display: flex; align-items: center; gap: 11px; }
+.mkt-buyer-head .av { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 900 16px/40px 'Nunito', sans-serif; text-align: center; }
+.mkt-buyer-head .nm { font: 800 15px/1.2 'Nunito', sans-serif; color: var(--mkt-ink, #2B2320); }
+.mkt-buyer-head .sub { font: 400 11px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-buyer-note { font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-buyer-actions { display: flex; gap: 9px; }
+
+.mkt-dispatch-drop { width: 100%; background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 10px, var(--mkt-cream) 10px 20px); border: 1.5px dashed var(--mkt-coral); border-radius: 14px; padding: 26px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.mkt-dispatch-drop .ic { font-size: 30px; }
+.mkt-dispatch-drop .t { font: 800 15px/1.2 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-dispatch-drop .s { font: 400 12px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+
+.mkt-dispatch-preview { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--mkt-border); }
+.mkt-dispatch-preview img { width: 100%; display: block; }
+.mkt-dispatch-preview .retake { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
