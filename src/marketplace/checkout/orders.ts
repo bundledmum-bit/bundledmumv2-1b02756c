@@ -52,18 +52,26 @@ async function invokeErrorCode(error: unknown): Promise<string> {
 }
 
 /**
- * Creates (or reuses) the pending order via the edge function (verify_jwt is
- * FALSE, so guests are accepted). A logged-in buyer's session is used silently
- * and any email is ignored; a guest MUST pass a valid email, from which the
- * function finds or creates a customer record. The function computes every money
- * field from the listing and site_settings and generates the reference. May
- * return { reused: true } for an existing pending order.
- * Errors: 'A valid email address is required' 400, 'This item is no longer
- * available' 409, 'You cannot buy your own listing' 400.
+ * Creates (or reuses) the pending order via the edge function (v4, verify_jwt is
+ * FALSE, so guests are accepted). Because the two parties arrange delivery
+ * directly, the seller needs the buyer's NAME and PHONE, not just an email:
+ *  - GUEST: email, full_name and phone are all required. The function finds or
+ *    creates a customer from them. Errors: 'A valid email address is required',
+ *    'Please give your name so the seller knows who to send to', 'A valid Nigerian
+ *    phone number is required so the seller can reach you'.
+ *  - LOGGED IN: email comes from the account (any sent email is ignored). full_name
+ *    and phone are optional; if the customer record is missing either, the sent
+ *    value fills the gap, existing values are never overwritten.
+ * Phone is normalised SERVER SIDE, so pass whatever the buyer typed. The function
+ * computes every money field and generates the reference. May return
+ * { reused: true }. Other errors: 'This item is no longer available',
+ * 'You cannot buy your own listing'.
  */
-export async function createMarketplaceOrder(input: { listingId: string; email?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
-  const body: { listing_id: string; email?: string } = { listing_id: input.listingId };
+export async function createMarketplaceOrder(input: { listingId: string; email?: string; full_name?: string; phone?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
+  const body: { listing_id: string; email?: string; full_name?: string; phone?: string } = { listing_id: input.listingId };
   if (input.email) body.email = input.email;
+  if (input.full_name) body.full_name = input.full_name;
+  if (input.phone) body.phone = input.phone;
   const { data, error } = await cdb.functions.invoke("create-marketplace-order", { body });
   if (error) throw new CheckoutError((await invokeErrorCode(error)) || "unknown");
   return data as { order: OrderRow; email?: string; reused?: boolean };

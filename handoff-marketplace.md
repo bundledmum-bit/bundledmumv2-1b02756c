@@ -160,7 +160,48 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — GUEST CHECKOUT (nothing blocks a purchase; sign-in moves to AFTER payment)
+### This pass — checkout collects buyer NAME + PHONE + email (seller needs to reach the buyer)
+Guest checkout previously collected only an email, so the seller order screens
+(get_marketplace_seller_order_contact) got an empty buyer_name/buyer_phone and the
+seller could not arrange delivery. In this marketplace the two parties coordinate
+delivery directly, so name and phone are REQUIRED, not optional.
+- **create-marketplace-order is now v4** (already deployed, not built here):
+  INPUT `{ listing_id, email, full_name, phone }`.
+  - GUEST: all four required. Errors: 'A valid email address is required',
+    'Please give your name so the seller knows who to send to', 'A valid Nigerian
+    phone number is required so the seller can reach you', plus the existing 'This
+    item is no longer available' and 'You cannot buy your own listing'.
+  - LOGGED IN: email comes from the account (sent email ignored); full_name and
+    phone are optional and only FILL GAPS in the customer record, never overwrite.
+  - Phone is normalised SERVER SIDE (08031234567, 2348031234567, +234... all work),
+    so the client sends the raw typed value. Verified: typing 08031234567 stored
+    2348031234567 on the customer row.
+- **Checkout (`checkout/CheckoutPage.tsx`):**
+  - Guest sees three fields (name, phone, email) with the honest framing that the
+    seller arranges delivery directly so needs name + number, and the receipt/order
+    link go to the email. Not an account, no password.
+  - Logged-in buyers: a profile query reads their own `customers` row
+    (`full_name, phone` where `auth_user_id = auth.uid()`). Complete profile →
+    silent checkout, order created on load as before. Missing name and/or phone →
+    only the missing field(s) are asked for. The order is NOT created for a
+    logged-in buyer until this profile query has loaded, so an incomplete profile
+    is never skipped.
+  - Client validation before calling: name >= 2 chars; Nigerian phone
+    `/^(0\d{10}|234\d{10}|\d{10})$/` on the digits; standard email. Friendly inline
+    errors per field; server error strings mapped to human copy via
+    `friendlyCreateError`. Mobile keypads: phone `type="tel" inputMode="tel"`,
+    email `type="email" inputMode="email"`, name `type="text"`.
+  - Ownerless-order guard preserved: order query `enabled` only when
+    `isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed`.
+    Verified: no create-marketplace-order call fires before valid details are
+    committed, and invalid input shows inline errors without creating an order.
+  - Everything else unchanged: 4-line breakdown, Pay button, Paystack redirect,
+    held-funds box, listing-gone / payments-down / own-listing states, reduced
+    header, guest paid screen + resend, seller contact still hidden until sign-in.
+- Files: edited `checkout/CheckoutPage.tsx` and `checkout/orders.ts`
+  (createMarketplaceOrder now takes optional full_name + phone).
+
+### Earlier this branch line — GUEST CHECKOUT (nothing blocks a purchase; sign-in moves to AFTER payment)
 Supersedes the "login before Buy now" model. A logged-out buyer now pays as a
 guest with just an email, and signs in afterwards only to see the seller's contact
 and manage the order. The login gate is removed from checkout.

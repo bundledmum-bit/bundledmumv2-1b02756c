@@ -16,6 +16,17 @@ import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutEr
  *
  * The buyer never sees price_naira or the seller's share.
  */
+/** Maps create-marketplace-order (v4) server errors to warm, human copy. The
+ * listing-gone and own-listing codes are handled by their own screens. */
+function friendlyCreateError(code: string): string {
+  switch (code) {
+    case "A valid email address is required": return "Please enter a valid email address.";
+    case "Please give your name so the seller knows who to send to": return "Please enter your name so the seller knows who to send to.";
+    case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian phone number so the seller can reach you.";
+    default: return "We could not start your order just now. Please check your details and try again.";
+  }
+}
+
 export default function CheckoutPage() {
   const { listingId } = useParams<{ listingId: string }>();
   const navigate = useNavigate();
@@ -26,15 +37,55 @@ export default function CheckoutPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
-  // Guest checkout: a logged-out buyer gives an email for their receipt and order
-  // link, then pays. We commit the email before creating the order so a logged-out
-  // page view never creates an ownerless order.
+  // Checkout details. The seller arranges delivery directly, so we need the buyer's
+  // name and phone, not just an email. A guest gives all three; a logged-in buyer
+  // is asked only for whatever their account is missing. We commit the details
+  // before creating the order so a logged-out (or not-yet-loaded) page view never
+  // creates an ownerless order.
+  const [nameInput, setNameInput] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
-  const [committedEmail, setCommittedEmail] = useState<string | null>(null);
-  const [emailTouched, setEmailTouched] = useState(false);
+  const [committed, setCommitted] = useState(false);
+  const [touched, setTouched] = useState(false);
+
+  // A logged-in buyer's existing name/phone, to know what (if anything) to ask for.
+  const profileQ = useQuery({
+    queryKey: ["mkt-buyer-profile"],
+    enabled: isLoggedIn,
+    staleTime: 60000,
+    queryFn: async () => {
+      const { data: auth } = await cdb.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return { full_name: "", phone: "" };
+      const { data } = await cdb.from("customers").select("full_name, phone").eq("auth_user_id", uid).maybeSingle();
+      const row = (data as { full_name: string | null; phone: string | null } | null);
+      return { full_name: row?.full_name ?? "", phone: row?.phone ?? "" };
+    },
+  });
+  const profileLoaded = !isLoggedIn || profileQ.data !== undefined;
+  const hasName = !!profileQ.data?.full_name?.trim();
+  const hasPhone = !!profileQ.data?.phone?.trim();
+
+  // Which fields to collect. A guest needs all three; a logged-in buyer only the
+  // gaps (guarded by profileLoaded so an incomplete profile is never skipped).
+  const needName = isLoggedIn ? (profileLoaded && !hasName) : true;
+  const needPhone = isLoggedIn ? (profileLoaded && !hasPhone) : true;
+  const needEmail = !isLoggedIn;
+  const needAnyDetail = needName || needPhone || needEmail;
+
+  const nameValid = nameInput.trim().length >= 2;
+  const phoneDigits = phoneInput.replace(/\D/g, "");
+  const phoneValid = /^(0\d{10}|234\d{10}|\d{10})$/.test(phoneDigits);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim().toLowerCase());
-  const needEmail = !authLoading && !isLoggedIn && !committedEmail;
-  const canCreateOrder = isLoggedIn || !!committedEmail;
+  const detailsValid = (!needName || nameValid) && (!needPhone || phoneValid) && (!needEmail || emailValid);
+
+  const showDetailsForm = !authLoading && profileLoaded && needAnyDetail && !committed;
+  const canCreateOrder = isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed;
+
+  function commitDetails() {
+    setTouched(true);
+    if (detailsValid) setCommitted(true);
+  }
 
   const { data: settings } = useQuery({
     queryKey: ["mkt-checkout-settings"],
@@ -60,12 +111,17 @@ export default function CheckoutPage() {
   // valid email) and a payment method is enabled. Gating on canCreateOrder is what
   // stops a logged-out page view from minting an ownerless order.
   const orderQ = useQuery({
-    queryKey: ["mkt-create-order", listingId, isLoggedIn ? "auth" : committedEmail],
+    queryKey: ["mkt-create-order", listingId, isLoggedIn ? "auth" : "guest", committed],
     enabled: !!listingId && canCreateOrder && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
     retry: false,
     staleTime: Infinity,
     gcTime: 0,
-    queryFn: () => createMarketplaceOrder({ listingId: listingId as string, email: isLoggedIn ? undefined : committedEmail || undefined }),
+    queryFn: () => createMarketplaceOrder({
+      listingId: listingId as string,
+      email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
+      full_name: needName ? nameInput.trim() : undefined,
+      phone: needPhone ? phoneInput.trim() : undefined,
+    }),
   });
   const order = orderQ.data?.order;
 
@@ -165,42 +221,73 @@ export default function CheckoutPage() {
             <div className="mkt-brk">
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
               <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
-              {needEmail ? (
+              {showDetailsForm ? (
                 <div className="line"><div><span>Payment fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
               ) : (
                 <div className="line"><div><span>Payment fee</span><div className="sub">Paystack's charge for the payment</div></div><b>{payQ.data ? formatNaira(paymentFee) : "..."}</b></div>
               )}
               <div className="rule" />
-              <div className="total"><span>Total</span><b>{needEmail ? "..." : (payQ.data ? formatNaira(paystackTotal) : "...")}</b></div>
+              <div className="total"><span>Total</span><b>{showDetailsForm ? "..." : (payQ.data ? formatNaira(paystackTotal) : "...")}</b></div>
             </div>
 
-            {/* Guest email, required before we create the order and take payment */}
-            {needEmail && (
-              <div className="mkt-field">
-                <span className="mkt-uplabel">Your email</span>
-                <input
-                  className={emailTouched && !emailValid ? "mkt-input error" : "mkt-input"}
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  onBlur={() => setEmailTouched(true)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && emailValid) setCommittedEmail(emailInput.trim().toLowerCase()); }}
-                  placeholder="you@example.com"
-                />
-                <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
-                  We send your receipt and a link to your order here. No account or password needed, and you can sign in later with this same email.
-                </span>
-                {emailTouched && !emailValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Please enter a valid email address.</span>}
+            {/* Buyer details, required before we create the order and take payment.
+                The seller arranges delivery directly, so they need name + phone. */}
+            {showDetailsForm && (
+              <div className="mkt-field" style={{ gap: 14 }}>
+                <div>
+                  <div style={{ font: "800 15px/1.2 'Nunito', sans-serif", marginBottom: 4 }}>{needEmail ? "Where do we send this, and how does the seller reach you?" : "One more thing before you pay"}</div>
+                  <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
+                    The seller arranges delivery with you directly, so they need your name and number.{needEmail ? " Your receipt and order link go to your email." : ""} This is not an account, no password needed.
+                  </span>
+                </div>
+
+                {needName && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <span className="mkt-uplabel">Your name</span>
+                    <input
+                      className={touched && !nameValid ? "mkt-input error" : "mkt-input"}
+                      type="text" autoComplete="name" autoCapitalize="words"
+                      value={nameInput} onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="e.g. Amaka Okafor"
+                    />
+                    {touched && !nameValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Please enter your name so the seller knows who to send to.</span>}
+                  </div>
+                )}
+
+                {needPhone && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <span className="mkt-uplabel">Phone number</span>
+                    <input
+                      className={touched && !phoneValid ? "mkt-input error" : "mkt-input"}
+                      type="tel" inputMode="tel" autoComplete="tel"
+                      value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)}
+                      placeholder="e.g. 0803 123 4567"
+                    />
+                    {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian phone number, for example 0803 123 4567.</span>}
+                  </div>
+                )}
+
+                {needEmail && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    <span className="mkt-uplabel">Email</span>
+                    <input
+                      className={touched && !emailValid ? "mkt-input error" : "mkt-input"}
+                      type="email" inputMode="email" autoComplete="email"
+                      value={emailInput} onChange={(e) => setEmailInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") commitDetails(); }}
+                      placeholder="you@example.com"
+                    />
+                    {touched && !emailValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Please enter a valid email address.</span>}
+                  </div>
+                )}
               </div>
             )}
 
-            {committedEmail && !isLoggedIn && (
+            {committed && !isLoggedIn && (
               <div className="mkt-help" style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <span>✉️</span>
-                <span style={{ flex: 1 }}>Receipt goes to {committedEmail}.</span>
-                <button style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "700 12px/1 'Lato', sans-serif", color: "var(--mkt-green)" }} onClick={() => { setCommittedEmail(null); setEmailInput(committedEmail); }}>Change</button>
+                <span style={{ flex: 1 }}>Receipt goes to {emailInput.trim().toLowerCase()}.</span>
+                <button style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "700 12px/1 'Lato', sans-serif", color: "var(--mkt-green)" }} onClick={() => setCommitted(false)}>Change</button>
               </div>
             )}
 
@@ -211,11 +298,15 @@ export default function CheckoutPage() {
               <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item reached you.</div>
             </div>
 
-            {!needEmail && (
+            {!showDetailsForm && (
               <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
                 <span>🔒</span>
                 <span>The next step opens Paystack's secure page to take your payment. We never see or store your card details, and you come straight back here when it is done.</span>
               </div>
+            )}
+
+            {createCode && createCode !== "unknown" && !listingGone && !ownListing && (
+              <div className="mkt-errbox"><span className="m">!</span><span>{friendlyCreateError(createCode)}</span></div>
             )}
 
             {payCode && payCode !== "This order is already paid" && (
@@ -234,19 +325,18 @@ export default function CheckoutPage() {
         )}
       </div>
 
-      {/* Guest email step: commit the email, which lets the order be created. */}
-      {paystackEnabled && needEmail && (
+      {/* Details step: commit name/phone/email, which lets the order be created. */}
+      {paystackEnabled && showDetailsForm && (
         <div className="mkt-sell-foot">
-          <button className="mkt-primary" disabled={!emailValid}
-            onClick={() => { setEmailTouched(true); if (emailValid) setCommittedEmail(emailInput.trim().toLowerCase()); }}>
+          <button className="mkt-primary" onClick={commitDetails}>
             Continue to payment
           </button>
-          <div className="helper">No account needed, just an email for your receipt</div>
+          <div className="helper">No account needed, this is so the seller can reach you</div>
         </div>
       )}
 
       {/* Paystack pay button */}
-      {paystackEnabled && !needEmail && !payCode && (
+      {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && (
         <div className="mkt-sell-foot">
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
