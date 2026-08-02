@@ -215,8 +215,9 @@ Functional changes to `/marketplace/sell/new` plus a new admin Locations section
   used only for validation and rejected states; coral stays the action accent.
 - Verified live: become-a-seller matches the design; setup renders and the
   display-name validation fires with the new styling; contact-leak and price
-  logic confirmed. Create listing and dashboard still require a seller row (DB
-  blocked, see below), so they are build + code verified. Browse, listing detail,
+  logic confirmed. Create listing and dashboard are build + code verified; the DB
+  dependencies that gate them are now resolved (see below), but the full seller
+  flow has not yet been walked end to end by a human. Browse, listing detail,
   admin and storefront unchanged.
 
 ### Earlier this branch line — sell side (seller onboarding + listing creation)
@@ -252,19 +253,24 @@ Functional changes to `/marketplace/sell/new` plus a new admin Locations section
 - Verified live: `/sell` value screen renders, `/sell/setup` renders and the
   display-name validation fires on a name with digits; leak detector and buyer
   price preview (asking x (1 + markup/100), e.g. 45,000 -> 49,500 at 10%) confirmed.
-  `/sell/new` and `/sell/dashboard` require a seller row, which cannot be created
-  until the DB findings below are resolved, so they are build + code verified only.
+  `/sell/new` and `/sell/dashboard` are build + code verified. The DB
+  dependencies that once gated them are now resolved (see the resolved note
+  below); a human end-to-end walkthrough is still outstanding.
 
-### 🛑 DB requirements before the sell side works end to end (not worked around)
-1. **`marketplace_sellers` has no INSERT policy.** A customer cannot create their
-   own seller row from the client (RLS rejects it). Needs an INSERT policy for a
-   customer whose `customers.auth_user_id = auth.uid()`. Until then, seller setup
-   surfaces the RLS error.
-2. **No customer storage-upload path.** Every `storage.objects` INSERT policy
-   requires an admin, and the `marketplace-listings` bucket does not exist. Needs
-   a public `marketplace-listings` bucket plus an authenticated-insert policy
-   (and public read) so sellers can upload listing photos.
-Both are DB-side and handled separately.
+### ✅ DB dependencies for the sell side, now RESOLVED (done on Supabase)
+The two items that previously blocked the sell side are live, plus a guard:
+1. **`marketplace_sellers` INSERT policy exists** ("Customer creates own seller
+   row"), so a customer can create their own seller row from the client in a safe
+   initial state.
+2. **The `marketplace-listings` public bucket exists** with per-user-folder
+   upload policies (authenticated upload/update/delete own listing photos) and
+   public read, so sellers can upload listing photos.
+3. **A trigger guards protected seller fields** (`trg_guard_seller_protected_fields`):
+   a seller cannot change their own `verification_tier`, `status`,
+   `strike_count`, `outstanding_debit_naira` or `bank_account_verified`.
+All three verified present in the DB. The sell side is therefore no longer
+DB-blocked. It has NOT yet been walked through end to end by a human, see Next
+steps.
 
 ### Earlier this branch line — minimum operator admin (context switcher, review queue, settings)
 - **Context switcher** added to the admin sidebar (`AdminLayout.tsx`): two tabs,
@@ -416,10 +422,12 @@ call in `client.ts`.
 1. **Checkout** — the Buy now CTA is a placeholder ("checkout coming soon"). Wire
    real buying (Paystack, seller subaccount, contact reveal post-payment) where
    that button is in `ListingDetailPage.tsx`. Not started.
-2. **Seller onboarding, DB unblock.** The UI is built (see §5). Two DB items
-   must land before it works end to end: a `marketplace_sellers` INSERT policy
-   and the `marketplace-listings` storage bucket + authenticated-insert policy.
-   Both are detailed in §5 under DB requirements.
+2. **Seller flow, human end-to-end verification (outstanding).** The UI is built
+   and the DB dependencies are now resolved (INSERT policy, storage bucket +
+   policies, protected-fields trigger, see §5). No one has yet walked the full
+   flow live: become a seller, create the seller row, upload photos, submit a
+   listing as pending_review, then approve it in the admin review queue and see
+   it appear on browse. This should be done and confirmed before relying on it.
 3. **Admin, remaining surfaces.** Built this phase: context switcher, review
    queue, settings (with category management). Still placeholders, to build next:
    marketplace dashboard (held funds and the daily counts), payout queue,
