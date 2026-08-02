@@ -160,7 +160,38 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — colourful category treatment, icons from the database
+### This pass — single consolidated desktop browse header (design B4), commit `6e1e133`
+The desktop marketplace header is now ONE green bar instead of two stacked strips.
+- **Problem:** on desktop, browse showed the shared `MarketplaceHeader` (logo + nav)
+  AND `BrowsePage`'s `.mkt-topbar` (tagline/search/location stacked full-width, since
+  the topbar was `flex-direction:column` at every width) — two green bars. Design B4
+  wants one row: logo · tagline · search · location · nav.
+- **`MarketplaceHeader.tsx`:** on the browse route (`pathname === "/"`) the header now
+  carries `mkt-hdr--browse`, which CSS hides at `>=1024px`. So on desktop browse the
+  shared header disappears and BrowsePage renders the whole bar; mobile browse keeps the
+  shared header (hamburger); the reduced checkout header is untouched.
+- **`BrowsePage.tsx`:** topbar children wrapped in `.mkt-topbar-inner`. Added a
+  DESKTOP-ONLY brand lockup (reusing the header's `.mkt-hdr-lockup` markup + `logoWhite`)
+  and a DESKTOP-ONLY `.mkt-topbar-nav` (Browse active / Sell / `My orders` when logged
+  in via `useCustomerAuth`, else `Log in`). Search input wrapped in `.mkt-searchwrap`
+  with a leading magnifier SVG. Tagline h1 holds both `.mkt-hl-long` ("...baby and
+  toddler items", mobile) and `.mkt-hl-short` ("...baby items", desktop per design).
+- **`marketplace.css`:** base rules for `.mkt-topbar-inner`, `.mkt-searchwrap`
+  (`:focus-within` ring), hidden brand/nav/short-line. `@media (min-width:1024px)`:
+  hides `.mkt-hdr--browse`; inner becomes a centered 1240px row (`padding 12px 24px`);
+  shows brand + nav; home-line compacts (green-light, short copy, Sell pill hidden);
+  search flexes; location pill restyled dark-green `#1A4A33` (label `#8FB6A2`, value
+  cream) at height 40 with popover widened to 300px right-aligned; Browse link gets the
+  coral (`--mkt-coral`) 2px active underline. The location overrides are scoped under
+  `.mkt-topbar-inner` so they beat the later base `.mkt-loc-*` rules (media queries add
+  no specificity).
+- Verified live at 1280px: one bar only (shared header `display:none`), brand + nav
+  visible, nav = Browse/Sell/Log in, Browse underline coral 2px, Where pill
+  `rgb(26,74,51)`, popover 300px within viewport, 25 cards render. At 375px: shared
+  header + burger back, topbar column, brand/nav hidden, long tagline, Sell pill, white
+  location pill. `npm run build` passes. Preview left on browse, mobile view.
+
+### Earlier pass — colourful category treatment, icons from the database
 Home and desktop category sections now show each category's real emoji.
 - **`marketplace_categories.icon`** (text, nullable, one emoji per category; all 11
   populated, deployed) is the SINGLE source for the icon. It is read live via
