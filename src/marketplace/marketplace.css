@@ -725,3 +725,49 @@
 .mkt-identical .chk { display: flex; align-items: center; gap: 9px; font: 700 13px/1.3 'Lato', sans-serif; color: var(--mkt-green-dark); cursor: pointer; }
 .mkt-identical .chk input { width: 18px; height: 18px; accent-color: var(--mkt-green); }
 .mkt-identical .tot { font: 700 12px/1.4 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
+/* ── Browse redesign: category tiles, filter bar, panel + sheet (design 13a) ── */
+.mkt-cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 16px 4px; }
+.mkt-cat { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 96px; border: 1px solid var(--mkt-border); border-radius: 14px; background: #fff; cursor: pointer; }
+.mkt-cat .ic { font: 900 20px/1 'Nunito', sans-serif; color: var(--mkt-green); }
+.mkt-cat .nm { font: 800 12px/1.1 'Nunito', sans-serif; color: var(--mkt-black); text-align: center; padding: 0 6px; }
+.mkt-cat:hover { border-color: var(--mkt-green); }
+
+.mkt-fbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 6px; flex-wrap: wrap; }
+.mkt-fbar-right { display: flex; align-items: center; gap: 8px; }
+.mkt-sortsel { height: 38px; border: 1px solid var(--mkt-input-border); border-radius: 10px; background: #fff; color: var(--mkt-black); font: 700 12px/1 'Lato', sans-serif; padding: 0 10px; cursor: pointer; }
+.mkt-filters-btn { height: 38px; padding: 0 16px; border: none; border-radius: 10px; background: var(--mkt-green); color: var(--mkt-cream); font: 800 13px/1 'Nunito', sans-serif; cursor: pointer; }
+
+.mkt-chips-applied { display: flex; flex-wrap: wrap; gap: 7px; padding: 4px 16px 8px; }
+.mkt-fchip { border: 1px solid var(--mkt-green); background: var(--mkt-green-light); color: var(--mkt-green-dark); border-radius: 999px; padding: 6px 11px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
+.mkt-fchip.clear { border-color: var(--mkt-border); background: transparent; color: var(--mkt-muted); }
+
+.mkt-browse { padding: 0 16px; }
+.mkt-fpanel { display: none; }
+.mkt-browse-main { min-width: 0; }
+
+.mkt-fgroups { display: flex; flex-direction: column; gap: 18px; }
+.mkt-fgroup { display: flex; flex-direction: column; gap: 8px; }
+.mkt-fgroup-h { font: 800 11px/1 'Nunito', sans-serif; letter-spacing: 0.09em; text-transform: uppercase; color: var(--mkt-muted); }
+.mkt-fopt { text-align: left; border: none; background: none; padding: 7px 2px; font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-black); cursor: pointer; border-radius: 8px; }
+.mkt-fopt.on { font-weight: 800; color: var(--mkt-green-dark); }
+.mkt-price-row { display: flex; align-items: center; gap: 8px; }
+.mkt-price-box { flex: 1; display: flex; align-items: center; border: 1px solid var(--mkt-input-border); border-radius: 10px; padding: 0 10px; background: #fff; font: 400 14px/1 'Lato', sans-serif; }
+.mkt-price-box input { width: 100%; border: none; outline: none; padding: 11px 0; font: 400 14px/1 'Lato', sans-serif; background: transparent; }
+.mkt-price-row .to { font: 400 12px/1 'Lato', sans-serif; color: var(--mkt-muted); }
+
+/* Mobile filter sheet, grid stays visible behind it */
+.mkt-fsheet { width: 100%; max-height: 86vh; background: var(--mkt-cream); border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; }
+.mkt-fsheet-top { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; border-bottom: 1px solid var(--mkt-border); }
+.mkt-fsheet-top h3 { margin: 0; font: 900 18px/1 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-fsheet-clear { background: none; border: none; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }
+.mkt-fsheet-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+.mkt-fsheet-foot { padding: 12px 18px calc(14px + env(safe-area-inset-bottom)); border-top: 1px solid var(--mkt-border); background: var(--mkt-cream); }
+.mkt-fsheet-foot .mkt-primary { width: 100%; }
+
+@media (min-width: 1024px) {
+  .mkt-cats { display: none; }
+  .mkt-filters-btn { display: none; }
+  .mkt-browse { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; max-width: 1240px; margin: 0 auto; }
+  .mkt-fpanel { display: block; align-self: start; position: sticky; top: 16px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 18px; }
+}

@@ -59,6 +59,92 @@ export function useLiveListings() {
   });
 }
 
+export type BrowseSort = "newest" | "price_asc" | "price_desc";
+
+export interface BrowseFilters {
+  search: string;
+  categoryId: string;      // "" for all
+  state: string;           // location_state, "" for all
+  minPrice: number | null; // filters final_price_naira, never price_naira
+  maxPrice: number | null;
+  conditions: string[];    // subset of almost_new | good | fair
+  sort: BrowseSort;
+}
+
+/** Builds the live-listings query with every filter applied SERVER SIDE, so this
+ * scales past the seeded set. head:true gives just a count for the live sheet. */
+function buildBrowseQuery(f: BrowseFilters, head: boolean) {
+  let q = mdb
+    .from("marketplace_listings")
+    .select(head ? "id" : LISTING_SELECT, { count: "exact", head })
+    .eq("status", "live");
+  const search = f.search.trim();
+  if (search) q = q.ilike("title", `%${search}%`);
+  if (f.categoryId) q = q.eq("category_id", f.categoryId);
+  if (f.state) q = q.eq("location_state", f.state);
+  if (f.minPrice != null) q = q.gte("final_price_naira", f.minPrice);
+  if (f.maxPrice != null) q = q.lte("final_price_naira", f.maxPrice);
+  if (f.conditions.length) q = q.in("condition", f.conditions);
+  if (f.sort === "price_asc") q = q.order("final_price_naira", { ascending: true });
+  else if (f.sort === "price_desc") q = q.order("final_price_naira", { ascending: false });
+  else q = q.order("created_at", { ascending: false });
+  return q;
+}
+
+/** Live listings matching the filters (server side), plus the total count. */
+export function useBrowseListings(filters: BrowseFilters) {
+  return useQuery({
+    queryKey: ["marketplace", "browse", filters],
+    queryFn: async (): Promise<{ listings: MarketplaceListing[]; count: number }> => {
+      const { data, error, count } = await buildBrowseQuery(filters, false);
+      if (error) throw error;
+      const listings = (data ?? []) as unknown as MarketplaceListing[];
+      const sellers = await fetchSellersByIds(listings.map((l) => l.seller_id));
+      for (const l of listings) l.seller = sellers.get(l.seller_id) ?? null;
+      return { listings, count: count ?? listings.length };
+    },
+    staleTime: 30 * 1000,
+  });
+}
+
+/** Just the matching count, for the live "N matching now" in the filter sheet. */
+export function useBrowseCount(filters: BrowseFilters, enabled: boolean) {
+  return useQuery({
+    queryKey: ["marketplace", "browse-count", filters],
+    enabled,
+    queryFn: async (): Promise<number> => {
+      const { count, error } = await buildBrowseQuery(filters, true);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    staleTime: 15 * 1000,
+  });
+}
+
+/** Allowed categories (with a live-listing count each) for the tiles and panel. */
+export function useAllowedCategories() {
+  return useQuery({
+    queryKey: ["marketplace", "allowed-categories"],
+    queryFn: async (): Promise<Array<{ id: string; name: string }>> => {
+      const { data } = await mdb.from("marketplace_categories").select("id, name").eq("is_allowed", true).order("name");
+      return (data ?? []) as Array<{ id: string; name: string }>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Allowed states for the location filter. */
+export function useAllowedStates() {
+  return useQuery({
+    queryKey: ["marketplace", "allowed-states"],
+    queryFn: async (): Promise<string[]> => {
+      const { data } = await mdb.from("marketplace_states").select("name").eq("is_allowed", true).order("sort_order");
+      return ((data ?? []) as Array<{ name: string }>).map((s) => s.name).filter(Boolean);
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 /** A single listing by id, with its public seller attached. Still scoped to
  * status='live' so a non-live id 404s. */
 export function useListing(id: string | undefined) {

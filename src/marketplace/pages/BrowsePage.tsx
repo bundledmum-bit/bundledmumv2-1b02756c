@@ -1,152 +1,250 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { useLiveListings } from "../data/useListings";
+import {
+  useBrowseListings,
+  useBrowseCount,
+  useAllowedCategories,
+  useAllowedStates,
+  type BrowseFilters,
+  type BrowseSort,
+} from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 
 /**
- * BROWSE, the marketplace front door, reskinned to the design: a green header
- * carrying the brand, search, and the two filter pills, then the 2-up card grid.
- * Search and both filters run client-side over the fetched live listings, so
- * typing and filtering stay instant. All data plumbing is unchanged.
+ * BROWSE, rebuilt to the design (13a B1-B4). Six category tiles then the grid on
+ * the home, real filters on top of search: price range (on final_price_naira,
+ * never price_naira), condition (the structured column), location, and sort, with
+ * a live matching count. Mobile puts filters in a sheet that keeps the grid behind
+ * it and updates its count as you tap; desktop shows a persistent left panel. All
+ * filtering runs SERVER SIDE so it scales past the seeded set.
  */
+
+const CONDITION_OPTS: Array<{ value: string; label: string }> = [
+  { value: "almost_new", label: "Almost new" },
+  { value: "good", label: "Good" },
+  { value: "fair", label: "Fair" },
+];
+
+const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
+
+function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
+
 export default function BrowsePage() {
-  const { data, isLoading, isError } = useLiveListings();
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
-  const [state, setState] = useState("");
+  const [filters, setFilters] = useState<BrowseFilters>(EMPTY);
+  const [searchInput, setSearchInput] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const listings = data ?? [];
+  // Debounce the search box into the server-side filters.
+  useEffect(() => {
+    const t = setTimeout(() => setFilters((f) => ({ ...f, search: searchInput })), 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  // Filter options come from the live listings themselves, so we never offer a
-  // category or location that has nothing to show.
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of listings) {
-      const name = l.category?.name;
-      if (name) set.add(name);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [listings]);
+  const { data, isLoading, isError } = useBrowseListings(filters);
+  const { data: categories = [] } = useAllowedCategories();
+  const { data: states = [] } = useAllowedStates();
 
-  const states = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of listings) {
-      if (l.location_state) set.add(l.location_state);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [listings]);
+  const listings = data?.listings ?? [];
+  const count = data?.count ?? 0;
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return listings.filter((l) => {
-      if (q && !l.title.toLowerCase().includes(q)) return false;
-      if (category && l.category?.name !== category) return false;
-      if (state && l.location_state !== state) return false;
-      return true;
-    });
-  }, [listings, search, category, state]);
+  const anyFilter = !!(filters.categoryId || filters.state || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 
-  // Home header line, browse only, sitting where the old greeting was so nothing
-  // below it moves. Shares its row with the Sell link (design R3).
-  const homeLine = (
-    <div className="mkt-home-line">
-      <h1>Buy or sell used baby and toddler items</h1>
-      <Link to="/sell" className="mkt-home-sell">Sell</Link>
-    </div>
-  );
+  const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
 
-  const header = (
-    <div className="mkt-topbar">
-      <input
-        className="mkt-search"
-        type="search"
-        placeholder="Search prams, cots, maternity wear"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        aria-label="Search items by title"
-      />
-      <div className="mkt-filters">
-        <select
-          className="mkt-select"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          aria-label="Filter by category"
-        >
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          className="mkt-select"
-          value={state}
-          onChange={(e) => setState(e.target.value)}
-          aria-label="Filter by location"
-        >
-          <option value="">All locations</option>
-          {states.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
-
-  if (isLoading) {
-    return (
-      <>
-        {homeLine}
-        {header}
-        <div className="mkt-center">
-          <BMLoadingAnimation size={160} />
-        </div>
-      </>
-    );
-  }
-
-  if (isError) {
-    return (
-      <>
-        {homeLine}
-        {header}
-        <div className="mkt-center">
-          <div className="mkt-empty-title">We could not load the marketplace</div>
-          <div className="mkt-empty-sub">
-            Please check your connection and try again in a moment.
-          </div>
-        </div>
-      </>
-    );
-  }
+  function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 
   return (
     <>
-      {homeLine}
-      {header}
-      <div className="mkt-count">
-        {filtered.length} {filtered.length === 1 ? "item" : "items"}, trusted
-        quality, checked by our team
-      </div>
-      {filtered.length === 0 ? (
-        <div className="mkt-center">
-          <div className="mkt-empty-title">Nothing here just yet</div>
-          <div className="mkt-empty-sub">
-            We could not find any items to match. Try a different search or clear
-            your filters, new listings are added often.
-          </div>
+      <div className="mkt-topbar">
+        <div className="mkt-home-line" style={{ padding: 0, maxWidth: "none" }}>
+          <h1 style={{ color: "var(--mkt-cream)" }}>Buy or sell used baby and toddler items</h1>
+          <Link to="/sell" className="mkt-home-sell">Sell</Link>
         </div>
-      ) : (
-        <div className="mkt-grid">
-          {filtered.map((l) => (
-            <ListingCard key={l.id} listing={l} />
+        <input
+          className="mkt-search"
+          type="search"
+          placeholder="Search prams, cots, bibs"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          aria-label="Search items by title"
+        />
+      </div>
+
+      {/* Category tiles, home only (they scroll away once a filter is on). */}
+      {!anyFilter && categories.length > 0 && (
+        <div className="mkt-cats">
+          {categories.slice(0, 6).map((c) => (
+            <button key={c.id} className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
+              <span className="ic" aria-hidden>◦</span>
+              <span className="nm">{c.name}</span>
+            </button>
           ))}
         </div>
       )}
+
+      {/* Count + sort + filters (mobile) */}
+      <div className="mkt-fbar">
+        <span className="mkt-count" style={{ padding: 0 }}>{count} {count === 1 ? "item" : "items"}, checked by our team</span>
+        <div className="mkt-fbar-right">
+          <select className="mkt-sortsel" value={filters.sort} onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value as BrowseSort }))} aria-label="Sort">
+            <option value="newest">Newest first</option>
+            <option value="price_asc">Price, low to high</option>
+            <option value="price_desc">Price, high to low</option>
+          </select>
+          <button className="mkt-filters-btn" onClick={() => setSheetOpen(true)}>Filters</button>
+        </div>
+      </div>
+
+      {/* Applied chips */}
+      {anyFilter && (
+        <div className="mkt-chips-applied">
+          {filters.search && <button className="mkt-fchip" onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: "" })); }}>{filters.search} ✕</button>}
+          {filters.categoryId && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, categoryId: "" }))}>{catName} ✕</button>}
+          {(filters.minPrice != null || filters.maxPrice != null) && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, minPrice: null, maxPrice: null }))}>{filters.minPrice != null ? naira(filters.minPrice) : "₦0"} to {filters.maxPrice != null ? naira(filters.maxPrice) : "any"} ✕</button>}
+          {filters.conditions.map((c) => <button key={c} className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, conditions: f.conditions.filter((x) => x !== c) }))}>{CONDITION_OPTS.find((o) => o.value === c)?.label} ✕</button>)}
+          {filters.state && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, state: "" }))}>{filters.state} ✕</button>}
+          <button className="mkt-fchip clear" onClick={clearAll}>Clear all</button>
+        </div>
+      )}
+
+      <div className="mkt-browse">
+        {/* Desktop persistent panel */}
+        <aside className="mkt-fpanel">
+          <FilterControls value={filters} onChange={setFilters} categories={categories} states={states} showCategory />
+        </aside>
+
+        <div className="mkt-browse-main">
+          {isLoading ? (
+            <div className="mkt-center"><BMLoadingAnimation size={160} /></div>
+          ) : isError ? (
+            <div className="mkt-center">
+              <div className="mkt-empty-title">We could not load the marketplace</div>
+              <div className="mkt-empty-sub">Please check your connection and try again in a moment.</div>
+            </div>
+          ) : listings.length === 0 ? (
+            <div className="mkt-center">
+              <div className="mkt-empty-title">Nothing matches just yet</div>
+              <div className="mkt-empty-sub">Try loosening a filter, there is plenty more across the marketplace. New listings are added often.</div>
+              {anyFilter && <button className="mkt-secondary" style={{ maxWidth: 220, marginTop: 6 }} onClick={clearAll}>Clear all filters</button>}
+            </div>
+          ) : (
+            <div className="mkt-grid" style={{ padding: "0 0 32px" }}>
+              {listings.map((l) => <ListingCard key={l.id} listing={l} />)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile filter sheet */}
+      {sheetOpen && (
+        <FilterSheet
+          filters={filters}
+          categories={categories}
+          states={states}
+          onApply={(next) => { setFilters(next); setSheetOpen(false); }}
+          onClose={() => setSheetOpen(false)}
+          onClearAll={() => { clearAll(); setSheetOpen(false); }}
+        />
+      )}
     </>
+  );
+}
+
+/** The filter controls, shared by the desktop panel and the mobile sheet. */
+function FilterControls({ value, onChange, categories, states, showCategory }: {
+  value: BrowseFilters;
+  onChange: (next: BrowseFilters) => void;
+  categories: Array<{ id: string; name: string }>;
+  states: string[];
+  showCategory?: boolean;
+}) {
+  const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
+  const toggleCond = (c: string) => set({ conditions: value.conditions.includes(c) ? value.conditions.filter((x) => x !== c) : [...value.conditions, c] });
+  return (
+    <div className="mkt-fgroups">
+      {showCategory && (
+        <div className="mkt-fgroup">
+          <div className="mkt-fgroup-h">Category</div>
+          <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}>All categories</button>
+          {categories.map((c) => (
+            <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}>{c.name}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="mkt-fgroup">
+        <div className="mkt-fgroup-h">Price</div>
+        <div className="mkt-price-row">
+          <div className="mkt-price-box">₦&nbsp;<input inputMode="numeric" placeholder="Min" value={value.minPrice ?? ""} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); set({ minPrice: v ? Number(v) : null }); }} /></div>
+          <span className="to">to</span>
+          <div className="mkt-price-box">₦&nbsp;<input inputMode="numeric" placeholder="Max" value={value.maxPrice ?? ""} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ""); set({ maxPrice: v ? Number(v) : null }); }} /></div>
+        </div>
+        <div className="mkt-chips" style={{ flexWrap: "wrap", marginTop: 8 }}>
+          <button className="mkt-chip" onClick={() => set({ minPrice: null, maxPrice: 10000 })}>Under ₦10k</button>
+          <button className="mkt-chip" onClick={() => set({ minPrice: 10000, maxPrice: 50000 })}>₦10k to ₦50k</button>
+          <button className="mkt-chip" onClick={() => set({ minPrice: 50000, maxPrice: null })}>Over ₦50k</button>
+        </div>
+      </div>
+
+      <div className="mkt-fgroup">
+        <div className="mkt-fgroup-h">Condition</div>
+        <div className="mkt-chips">
+          {CONDITION_OPTS.map((o) => (
+            <button key={o.value} className={value.conditions.includes(o.value) ? "mkt-chip on" : "mkt-chip"} onClick={() => toggleCond(o.value)}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mkt-fgroup">
+        <div className="mkt-fgroup-h">Where</div>
+        <select className="mkt-native-select" value={value.state} onChange={(e) => set({ state: e.target.value })}>
+          <option value="">All locations</option>
+          {states.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/** Mobile bottom sheet: edits a draft, previews the live count, applies on Show. */
+function FilterSheet({ filters, categories, states, onApply, onClose, onClearAll }: {
+  filters: BrowseFilters;
+  categories: Array<{ id: string; name: string }>;
+  states: string[];
+  onApply: (next: BrowseFilters) => void;
+  onClose: () => void;
+  onClearAll: () => void;
+}) {
+  const [draft, setDraft] = useState<BrowseFilters>(filters);
+  const { data: liveCount, isFetching } = useBrowseCount(draft, true);
+
+  return (
+    <div className="mkt-sheet-overlay" onClick={onClose}>
+      <div className="mkt-fsheet" onClick={(e) => e.stopPropagation()}>
+        <div className="mkt-fsheet-top">
+          <h3>Filters</h3>
+          <button className="mkt-fsheet-clear" onClick={onClearAll}>Clear all</button>
+        </div>
+
+        <div className="mkt-fsheet-body">
+          <div className="mkt-fgroup">
+            <div className="mkt-fgroup-h">Sort by</div>
+            <div className="mkt-chips" style={{ flexWrap: "wrap" }}>
+              {([["newest", "Newest first"], ["price_asc", "Price, low to high"], ["price_desc", "Price, high to low"]] as Array<[BrowseSort, string]>).map(([v, l]) => (
+                <button key={v} className={draft.sort === v ? "mkt-chip on" : "mkt-chip"} onClick={() => setDraft((d) => ({ ...d, sort: v }))}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <FilterControls value={draft} onChange={setDraft} categories={categories} states={states} showCategory />
+        </div>
+
+        <div className="mkt-fsheet-foot">
+          <button className="mkt-primary" onClick={() => onApply(draft)}>
+            {isFetching ? "Counting…" : `Show ${liveCount ?? 0} ${(liveCount ?? 0) === 1 ? "item" : "items"}`}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -29,6 +29,9 @@ export interface MarketplaceListing {
   title: string;
   description: string;
   condition_notes: string | null;
+  /** Structured condition, the reliable source for the browse filter. Null when
+   * the seller's old free text did not map cleanly. */
+  condition: "almost_new" | "good" | "fair" | null;
   final_price_naira: number;
   location_state: string | null;
   location_city: string | null;

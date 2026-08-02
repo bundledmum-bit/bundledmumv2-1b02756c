@@ -148,9 +148,11 @@ export default function MarketplaceListings() {
                     <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
                     <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
                     <Td>
-                      {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
-                      {l.status === "pending_review" && <button onClick={() => navigate("/admin/marketplace/review")} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Review</button>}
-                      {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
+                        {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
+                        {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
+                      </div>
                     </Td>
                   </tr>
                 ))}

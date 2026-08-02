@@ -14,6 +14,10 @@ interface Place { id: string; name: string }
 interface PhotoDraft { blob: Blob; url: string }
 
 const CONDITIONS = ["Almost new", "Good", "Fair"];
+// Maps the picker's display label to the structured `condition` enum column, the
+// reliable source used by the browse condition filter. condition_notes stays free
+// text, written alongside as before.
+const CONDITION_VALUE: Record<string, string> = { "Almost new": "almost_new", "Good": "good", "Fair": "fair" };
 const MIN_PHOTOS = 4;
 const MAX_PHOTOS = 8;
 
@@ -161,6 +165,7 @@ export default function CreateListingPage() {
         title: title.trim(),
         description: description.trim(),
         condition_notes: composedNotes,
+        condition: CONDITION_VALUE[condition] ?? null,
         price_naira: Math.round(priceNum),
         quantity: Math.max(1, Math.round(quantity)),
         location_state: stateName,

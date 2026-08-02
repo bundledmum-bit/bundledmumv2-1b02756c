@@ -160,7 +160,46 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — listing quantity, sold out, relisting (design 12a)
+### This pass — admin listing edit + browse filters (design 13a)
+- **New `condition` column** (deployed): text `almost_new`|`good`|`fair`, nullable, the
+  reliable source for the condition filter (do NOT parse condition_notes). 25/26 seed
+  rows backfilled, 1 null by design. `CreateListingPage` now writes `condition`
+  directly from the picker (via a label→enum `CONDITION_VALUE` map) ALONGSIDE the
+  existing free-text `condition_notes`. Added to `LISTING_SELECT` + `MarketplaceListing`.
+- **Admin listing edit view** (`pages/admin/marketplace/MarketplaceListingEdit.tsx`,
+  route `/admin/marketplace/listings/:id/edit`, gated marketplace/manage; reachable via
+  an Edit action in the listings table). Edits title, description, condition_notes,
+  `condition` (same picker), category_id (allowed cats), location_state + location_city
+  (dependent state select + a searchable datalist area input — the seller AreaCombobox
+  is `.mkt`-scoped so a native datalist is used in the admin shell), price_naira,
+  quantity, photos (reorder / make main / remove), and status. Writes go straight to
+  marketplace_listings under "Admin manage listings". Includes: (1) a live buyer-price
+  preview computed from price × (1+markup%); final_price_naira/markup_percent are NEVER
+  written; (2) a warning when the listing is sold or has a paid order attached, with an
+  Open orders link, non-blocking; (3) choosing 'rejected' requires a rejection_reason
+  and warns the seller is emailed the exact words, and any status change to rejected /
+  live / delisted shows the email warning (pending_review and sold do not email); (4)
+  Relist as its own action for delisted listings with stock, via `admin_relist_listing`
+  behind a confirm, false handled honestly; (5) an edit-history panel reading
+  `marketplace_listing_edits` (id, listing_id, edited_by, field, old_value, new_value,
+  created_at; admin-readable, TRIGGER-written, this only reads it; edited_by resolved to
+  admin email); (6) the seller display name linking to the Sellers screen. Admin
+  listings table also links each row to Edit.
+- **Browse redesign with server-side filters** (`BrowsePage` + `useBrowseListings` /
+  `useBrowseCount` / `useAllowedCategories` / `useAllowedStates`): six category tiles on
+  the home then the grid; filters on top of search — price range (min/max on
+  final_price_naira, never price_naira), condition (the new column, multi-select),
+  location, and sort (newest / price asc / price desc) — with a live matching count. ALL
+  filtering is built into ONE Supabase query server side (`.eq status live` + `.ilike` /
+  `.eq` / `.gte`/`.lte` / `.in` / `.order`, `{ count: 'exact' }`), so it scales past the
+  seed. Mobile: a bottom sheet that keeps the grid behind it and shows "Show N items"
+  updating live (a head-count query on the draft) before applying; desktop: a persistent
+  left panel; applied chips + clear-all above the grid; empty state suggests loosening a
+  filter. Verified live: condition Good 24→17, Fair 24→2, sheet live count, apply, clear
+  all restores 24; desktop panel and mobile sheet both work. The status='live' public
+  filter and price-hiding are preserved.
+
+### Earlier this branch line — listing quantity, sold out, relisting (design 12a)
 - **Data model (deployed, not built here):** `marketplace_listings.quantity` (int,
   default 1, NOT NULL, >0), `quantity_sold` (int, default 0), `delisted_by` ('seller'
   | 'admin', set by a trigger when status becomes delisted), `delisted_at`. Available
