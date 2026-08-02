@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import MarketplaceHeader from "./MarketplaceHeader";
+import MarketplaceFooter from "./MarketplaceFooter";
 import BrowsePage from "./pages/BrowsePage";
 import ListingDetailPage from "./pages/ListingDetailPage";
 import BecomeSellerPage from "./sell/BecomeSellerPage";
@@ -56,6 +57,7 @@ export default function MarketplaceApp() {
             <Route path="/checkout/return" element={<PaymentReturnPage />} />
             <Route path="/checkout/awaiting/:reference" element={<AwaitingPaymentPage />} />
           </Routes>
+          <MarketplaceFooter />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

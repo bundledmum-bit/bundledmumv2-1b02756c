@@ -665,3 +665,36 @@
 .mkt-dispatch-preview { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--mkt-border); }
 .mkt-dispatch-preview img { width: 100%; display: block; }
 .mkt-dispatch-preview .retake { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
+
+/* ── Shared sitewide footer (design 7a) ── */
+.mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 26px 16px 30px; display: flex; flex-direction: column; gap: 18px; }
+.mkt-ftr.clear-bar { padding-bottom: 104px; } /* clear the fixed Buy now bar on listing detail */
+.mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; }
+
+.mkt-ftr-brandcol { display: flex; flex-direction: column; gap: 14px; }
+.mkt-ftr-lockup { display: flex; align-items: center; gap: 9px; }
+.mkt-ftr-lockup .b { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 8px; background: var(--mkt-cream); color: var(--mkt-green); font: 900 15px/28px 'Nunito', sans-serif; text-align: center; }
+.mkt-ftr-lockup .nm { font: 900 17px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); }
+.mkt-ftr-lockup .nm small { font: 800 9px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-ftr-tag { margin: 0; font: 300 13px/1.6 'Lato', sans-serif; color: var(--mkt-green-light); max-width: 320px; }
+.mkt-ftr-wa { align-self: flex-start; }
+
+.mkt-ftr-col { display: flex; flex-direction: column; gap: 11px; }
+.mkt-ftr-h { font: 800 11px/1 'Nunito', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #9DBFAF; }
+.mkt-ftr-link { font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-cream); text-decoration: none; }
+.mkt-ftr-link:hover { color: var(--mkt-cream); text-decoration: underline; }
+
+.mkt-ftr-held { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; background: var(--mkt-green); border-radius: 14px; padding: 15px; display: flex; align-items: flex-start; gap: 12px; }
+.mkt-ftr-held .tick { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 13px/22px 'Lato', sans-serif; text-align: center; }
+.mkt-ftr-held span:last-child { flex: 1; font: 400 13px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); }
+
+.mkt-ftr-legal { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; border-top: 1px solid var(--mkt-green); padding-top: 16px; display: flex; flex-direction: column; gap: 5px; font: 400 12px/1.5 'Lato', sans-serif; color: #9DBFAF; }
+
+@media (min-width: 720px) {
+  .mkt-ftr { padding: 34px 24px 26px; }
+  .mkt-ftr.clear-bar { padding-bottom: 104px; } /* fixed Buy now bar spans full width at every breakpoint */
+  .mkt-ftr-inner { flex-direction: row; gap: 28px; }
+  .mkt-ftr-brandcol { flex: 1.5; }
+  .mkt-ftr-col { flex: 1; }
+  .mkt-ftr-legal { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+}

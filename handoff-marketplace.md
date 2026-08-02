@@ -160,7 +160,49 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — one shared marketplace header on every screen
+### This pass — one shared marketplace footer on every screen (design 7a)
+Mirrors how the header was done: ONE `MarketplaceFooter` component rendered ONCE
+in `MarketplaceApp`, inside the `.mkt` div, immediately after `<Routes>`, so every
+marketplace route gets it with no per-page duplication.
+- **Green-dark (`#1A4A33`) footer**, mobile stacks / desktop opens into columns at
+  the header's `720px` breakpoint. Carries the trust promise, not marketing. Brand
+  lockup ("B" mark + "BundledMum Marketplace"), tagline, a "Chat to us on
+  WhatsApp" button (reuses `.mkt-wa`, `WHATSAPP_BASE`, never a hardcoded number),
+  the held-payment promise line (word for word), and the ©/Paystack legal line.
+- **Links implemented (all destinations verified to exist):** Browse (`/`), Start
+  selling (`/sell`), Seller dashboard (`/sell/dashboard`, shown only when `seller`,
+  mirroring the header), and Back to bundledmum.com (`<a href="/">`, a FULL
+  navigation to the origin root / storefront, not a client route).
+- **Links OMITTED because their destinations do not exist** (reported, not shipped
+  as dead nav, no placeholder pages created): "How buying works", "What sells
+  fastest", "Getting paid", "Help centre", "Refunds and disputes", "Terms",
+  "Privacy"; the category shortcuts "Prams and strollers" / "Cots and furniture" /
+  "Maternity wear" (browse category filters are in-page state, not routable URLs);
+  and the mobile secondary links row (help/terms/privacy/refunds).
+- **Bottom tab bar NOT built.** The mobile mock shows a white Browse/Orders/Sell/
+  Account tab bar under the footer. That is a separate bottom-nav element the app
+  does not have (nav is the hamburger header), and "Orders" would be a dead buyer
+  route, so building it is out of scope. The footer simply ends the page.
+- **Suppressed where a fixed action bar owns the bottom of the screen** (design's
+  own rule + the reduced-header rationale): all `/checkout*` routes and the
+  dispatch-upload route (`/sell/orders/:id/dispatch`). The footer returns `null`
+  there so a scrolling footer never fights the primary button and a buyer
+  mid-payment is not lured away. Kept on `/sell/new` (its submit bar is in-flow,
+  and the design does not list create-listing among the suppressed screens).
+- **Listing detail clearance:** `/listing/:id` carries a `position:fixed`
+  `.mkt-buybar` at every breakpoint, so the footer gets a `clear-bar` modifier
+  (extra `padding-bottom`) so the fixed Buy now bar never obscures the copyright
+  line. Verified: on mobile the legal line sits above the bar, not behind it.
+- **Never on admin:** admin lives in `StorefrontApp` (a separate tree), so it never
+  receives this footer, and the storefront's own footer is untouched.
+- Files: new `src/marketplace/MarketplaceFooter.tsx`; edited `MarketplaceApp.tsx`
+  (render it once) and `marketplace.css` (footer classes, all scoped under `.mkt`).
+- Verified live (mobile + desktop): footer renders on browse, listing detail
+  (clears the Buy now bar), seller order detail, and the sell screens; suppressed
+  on checkout and dispatch; desktop shows the column layout; no link points at a
+  missing route. Storefront and admin were NOT touched.
+
+### Earlier this branch line — one shared marketplace header on every screen
 Design section 5a. Added a single `MarketplaceHeader` component rendered ONCE in
 `MarketplaceApp` inside the router, above `<Routes>`, so every marketplace route
 gets it with no per-page duplication.
