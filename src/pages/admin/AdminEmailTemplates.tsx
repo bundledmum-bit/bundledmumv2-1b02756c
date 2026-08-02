@@ -52,6 +52,23 @@ const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
   ],
 };
 
+// The marketplace_* templates store BODY FRAGMENTS in a shorthand; their shared
+// header, logo, footer and styling are applied by the sender at send time. These
+// are the placeholders those fragments support (rendered by the sender), so the
+// sidebar lists them instead of "No placeholders defined". Preview for these
+// templates goes through the preview-marketplace-email edge function, not the
+// client-side applyPreviewData used for storefront templates.
+const MARKETPLACE_PLACEHOLDERS: string[] = [
+  "{{buyer_name}}", "{{seller_name}}", "{{listing_title}}", "{{order_reference}}",
+  "{{order_date}}", "{{amount_paid}}", "{{seller_amount}}", "{{platform_margin}}",
+  "{{strike_count}}", "{{seller_phone}}", "{{payout_bank}}", "{{window_days}}",
+  "{{deadline_date}}", "{{dispute_reason}}", "{{outcome_note}}", "{{rejection_reason}}",
+  "{{item_card}}", "{{contact_block}}", "{{dispatch_photo_block}}", "{{outcome_block}}",
+  "{{refund_timing_block}}", "{{payout_table}}", "{{payout_count}}", "{{payout_total}}",
+  "{{open_disputes}}", "{{pending_reviews}}", "{{refunds_pending}}", "{{held_funds}}",
+  "{{primary_button:Your label here}}",
+];
+
 const SAMPLE_DATA: Record<string, string> = {
   "{{customer_name}}": "Amara Okafor",
   "{{first_name}}": "Amara",
@@ -398,6 +415,34 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
   const [editBody, setEditBody] = useState(t.html_body || "");
   const [showPreview, setShowPreview] = useState(false);
 
+  // marketplace_* templates store body fragments; the sender wraps them in the
+  // shared layout at send time, so we preview them through the edge function that
+  // renders exactly as it sends. Storefront templates store complete HTML and keep
+  // the existing client-side preview.
+  const isMarketplace = t.slug.startsWith("marketplace_");
+
+  // Debounce the editor content so previewing unsaved edits does not call the
+  // function on every keystroke.
+  const [debouncedBody, setDebouncedBody] = useState(editBody);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedBody(editBody), 500);
+    return () => clearTimeout(id);
+  }, [editBody]);
+
+  const mktPreview = useQuery({
+    queryKey: ["mkt-email-preview", t.slug, debouncedBody],
+    enabled: showPreview && isMarketplace,
+    staleTime: 0,
+    queryFn: async (): Promise<{ html: string; subject: string; sample: boolean }> => {
+      const res = await (supabase.functions as any).invoke("preview-marketplace-email", {
+        body: { slug: t.slug, html_body: debouncedBody },
+      });
+      if (res?.error) throw new Error(res.error?.message || "Preview failed");
+      if (res?.data?.error) throw new Error(res.data.error);
+      return res.data as { html: string; subject: string; sample: boolean };
+    },
+  });
+
   const save = useMutation({
     mutationFn: async () => {
       const { error } = await (supabase as any)
@@ -410,7 +455,7 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
     onError: (e: any) => toast.error(e?.message || "Save failed"),
   });
 
-  const placeholders = TEMPLATE_PLACEHOLDERS[t.slug] || [];
+  const placeholders = isMarketplace ? MARKETPLACE_PLACEHOLDERS : (TEMPLATE_PLACEHOLDERS[t.slug] || []);
 
   return (
     <div>
@@ -471,21 +516,58 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
               <div className="flex items-center gap-2 mb-3">
                 <Eye className="w-4 h-4 text-forest" />
                 <label className="text-xs font-semibold text-forest">Live preview</label>
-                <span className="text-[10px] text-text-light ml-auto">Sample data used for placeholders</span>
+                <span className="text-[10px] text-text-light ml-auto">
+                  {isMarketplace ? "Sample data, rendered with the shared layout" : "Sample data used for placeholders"}
+                </span>
               </div>
-              <div className="bg-muted/30 border border-border rounded-lg px-4 py-2.5 mb-3">
-                <span className="text-[10px] text-text-light block mb-0.5">Subject:</span>
-                <span className="text-sm font-semibold">{applyPreviewData(editSubject)}</span>
-              </div>
-              <div className="bg-white border border-border rounded-lg overflow-hidden">
-                <iframe
-                  title="Email preview"
-                  srcDoc={applyPreviewData(editBody)}
-                  className="w-full border-0"
-                  style={{ minHeight: 500 }}
-                  sandbox=""
-                />
-              </div>
+
+              {isMarketplace ? (
+                // Marketplace: render exactly as it sends, via the edge function,
+                // so the shared header, logo, footer and styling all show.
+                mktPreview.isLoading ? (
+                  <div className="bg-muted/30 border border-border rounded-lg px-4 py-10 text-center text-sm text-text-light">Building the preview…</div>
+                ) : mktPreview.error ? (
+                  <div className="bg-destructive/5 border border-destructive/30 rounded-lg px-4 py-4 text-sm text-destructive">
+                    Could not build the preview. {(mktPreview.error as Error)?.message || "Please try again."}
+                  </div>
+                ) : mktPreview.data ? (
+                  <>
+                    <div className="bg-muted/30 border border-border rounded-lg px-4 py-2.5 mb-3">
+                      <span className="text-[10px] text-text-light block mb-0.5">Subject:</span>
+                      <span className="text-sm font-semibold">{mktPreview.data.subject}</span>
+                    </div>
+                    <div className="bg-white border border-border rounded-lg overflow-hidden">
+                      <iframe
+                        title="Email preview"
+                        srcDoc={mktPreview.data.html}
+                        className="w-full border-0"
+                        style={{ minHeight: 500 }}
+                        sandbox=""
+                      />
+                    </div>
+                    <p className="text-[10px] text-text-light mt-2 leading-relaxed">
+                      This preview uses sample data, not a real order. The shared header, logo and footer are added when the email is sent, so this is how it will actually look.
+                    </p>
+                  </>
+                ) : null
+              ) : (
+                // Storefront: complete HTML, previewed client-side as before.
+                <>
+                  <div className="bg-muted/30 border border-border rounded-lg px-4 py-2.5 mb-3">
+                    <span className="text-[10px] text-text-light block mb-0.5">Subject:</span>
+                    <span className="text-sm font-semibold">{applyPreviewData(editSubject)}</span>
+                  </div>
+                  <div className="bg-white border border-border rounded-lg overflow-hidden">
+                    <iframe
+                      title="Email preview"
+                      srcDoc={applyPreviewData(editBody)}
+                      className="w-full border-0"
+                      style={{ minHeight: 500 }}
+                      sandbox=""
+                    />
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -500,7 +582,9 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
               className="w-full border border-input rounded-lg px-3 py-2.5 text-xs font-mono bg-background leading-relaxed"
             />
             <p className="text-[10px] text-text-light mt-1.5">
-              Full HTML email template. Use {"{{placeholder}}"} syntax for dynamic values. Inline CSS recommended for email clients.
+              {isMarketplace
+                ? <>Body content only. The shared header, logo, footer and styling are added when the email sends. Use {"{{placeholder}}"} syntax, and {"{{primary_button:Label}}"} for a button. Preview to see the full styled email.</>
+                : <>Full HTML email template. Use {"{{placeholder}}"} syntax for dynamic values. Inline CSS recommended for email clients.</>}
             </p>
           </div>
         </div>
