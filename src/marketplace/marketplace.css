@@ -82,6 +82,47 @@
 .mkt-search::placeholder { color: var(--mkt-muted-2); font-weight: 300; }
 .mkt-search:focus { outline: none; box-shadow: 0 0 0 3px rgba(244, 132, 95, 0.5); }
 
+/* ── Browse topbar, consolidated on desktop into one green bar (design B4) ── */
+.mkt-topbar-inner { display: flex; flex-direction: column; gap: 12px; }
+/* Brand lockup + inline nav belong to the shared header on mobile; the topbar
+   only surfaces them at desktop where it becomes the sole header bar. */
+.mkt-topbar-brand, .mkt-topbar-nav { display: none; }
+.mkt-hl-short { display: none; }
+.mkt-topbar .mkt-home-line h1 { color: var(--mkt-cream); }
+/* Search field wrapped with a leading magnifier; the focus ring moves to the
+   wrapper so the icon and input read as one control. */
+.mkt-searchwrap { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box; height: 44px; padding: 0 14px; border-radius: 12px; background: #fff; }
+.mkt-searchwrap:focus-within { box-shadow: 0 0 0 3px rgba(244, 132, 95, 0.5); }
+.mkt-search-ic { flex: 0 0 15px; display: flex; color: var(--mkt-muted); }
+.mkt-searchwrap .mkt-search { flex: 1; min-width: 0; height: auto; padding: 0; border-radius: 0; background: transparent; }
+.mkt-searchwrap .mkt-search:focus { box-shadow: none; }
+
+@media (min-width: 1024px) {
+  /* The shared header hides here; this bar is the whole desktop header. */
+  .mkt-hdr--browse { display: none; }
+  .mkt-topbar { padding: 0; }
+  .mkt-topbar-inner { flex-direction: row; align-items: center; gap: 16px; max-width: 1240px; margin: 0 auto; width: 100%; padding: 12px 24px; box-sizing: border-box; }
+  .mkt-topbar-brand { display: inline-flex; align-items: center; text-decoration: none; flex: 0 0 auto; }
+  .mkt-topbar .mkt-home-line { flex: 0 0 auto; width: auto; padding: 0; margin: 0; }
+  .mkt-topbar .mkt-home-line h1 { font-size: 15px; line-height: 1.2; white-space: nowrap; color: var(--mkt-green-light); }
+  .mkt-hl-long { display: none; }
+  .mkt-hl-short { display: inline; }
+  .mkt-topbar .mkt-home-sell { display: none; }
+  .mkt-searchwrap { flex: 1 1 190px; min-width: 190px; height: 40px; }
+  /* Scoped under .mkt-topbar-inner so these beat the base .mkt-loc-* rules that
+     appear later in the file (media queries add no specificity of their own). */
+  .mkt-topbar-inner .mkt-loc { flex: 0 0 172px; }
+  .mkt-topbar-inner .mkt-loc-btn { height: 40px; background: var(--mkt-green-dark); }
+  .mkt-topbar-inner .mkt-loc-btn .lbl { color: #8FB6A2; }
+  .mkt-topbar-inner .mkt-loc-btn .val { color: var(--mkt-cream); }
+  .mkt-topbar-inner .mkt-loc-btn .car { color: var(--mkt-green-light); }
+  .mkt-topbar-inner .mkt-loc-panel { left: auto; right: 0; width: 300px; }
+  .mkt-topbar-nav { display: inline-flex; align-items: center; gap: 20px; flex: 0 0 auto; }
+  .mkt-topbar-link { font: 800 14px/1 'Nunito', sans-serif; color: var(--mkt-green-light); text-decoration: none; white-space: nowrap; }
+  .mkt-topbar-link:hover { color: var(--mkt-cream); }
+  .mkt-topbar-link.on { color: var(--mkt-cream); border-bottom: 2px solid var(--mkt-coral); padding-bottom: 5px; }
+}
+
 .mkt-filters { display: flex; gap: 8px; }
 .mkt-select {
   flex: 1;

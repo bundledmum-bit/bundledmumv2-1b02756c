@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import {
   useBrowseListings,
   useBrowseCount,
@@ -43,6 +45,7 @@ export default function BrowsePage() {
   const [filters, setFilters] = useState<BrowseFilters>(EMPTY);
   const [searchInput, setSearchInput] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { isLoggedIn } = useCustomerAuth();
 
   // Debounce the search box into the server-side filters.
   useEffect(() => {
@@ -65,20 +68,55 @@ export default function BrowsePage() {
 
   return (
     <>
+      {/* Desktop (>=1024px) renders this as one consolidated green bar, design B4:
+          logo + tagline + search + location + nav. Mobile keeps the shared header
+          above and stacks the tagline, search and location rows. */}
       <div className="mkt-topbar">
-        <div className="mkt-home-line" style={{ padding: 0, maxWidth: "none" }}>
-          <h1 style={{ color: "var(--mkt-cream)" }}>Buy or sell used baby and toddler items</h1>
-          <Link to="/sell" className="mkt-home-sell">Sell</Link>
+        <div className="mkt-topbar-inner">
+          {/* Desktop-only brand lockup (mobile gets it from the shared header). */}
+          <Link to="/" className="mkt-topbar-brand" aria-label="BundledMum Marketplace, browse">
+            <span className="mkt-hdr-lockup">
+              <img src={logoWhite} alt="BundledMum" className="mkt-hdr-logo" />
+              <span className="mkt-hdr-market">Marketplace</span>
+            </span>
+          </Link>
+
+          <div className="mkt-home-line" style={{ padding: 0, maxWidth: "none" }}>
+            <h1>
+              <span className="mkt-hl-long">Buy or sell used baby and toddler items</span>
+              <span className="mkt-hl-short">Buy or sell used baby items</span>
+            </h1>
+            <Link to="/sell" className="mkt-home-sell">Sell</Link>
+          </div>
+
+          <div className="mkt-searchwrap">
+            <span className="mkt-search-ic" aria-hidden>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.5" y2="16.5" />
+              </svg>
+            </span>
+            <input
+              className="mkt-search"
+              type="search"
+              placeholder="Search prams, cots, bibs"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              aria-label="Search items by title"
+            />
+          </div>
+
+          <LocationControl filters={filters} onChange={setFilters} states={states} />
+
+          {/* Desktop-only nav (mobile gets it from the shared header hamburger). */}
+          <nav className="mkt-topbar-nav">
+            <Link to="/" className="mkt-topbar-link on">Browse</Link>
+            <Link to="/sell" className="mkt-topbar-link">Sell</Link>
+            {isLoggedIn
+              ? <Link to="/orders" className="mkt-topbar-link">My orders</Link>
+              : <Link to="/login" className="mkt-topbar-link">Log in</Link>}
+          </nav>
         </div>
-        <input
-          className="mkt-search"
-          type="search"
-          placeholder="Search prams, cots, bibs"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          aria-label="Search items by title"
-        />
-        <LocationControl filters={filters} onChange={setFilters} states={states} />
       </div>
 
       {/* Category tiles, home only (they scroll away once a filter is on). The

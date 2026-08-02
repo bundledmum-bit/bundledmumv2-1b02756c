@@ -48,6 +48,12 @@ export default function MarketplaceHeader() {
 
   const initials = (user?.email || "?").slice(0, 2).toUpperCase();
 
+  // On the browse route the desktop header is rendered by BrowsePage itself as a
+  // single consolidated bar (logo + tagline + search + location + nav, design B4),
+  // so this shared header hides at >=1024px there to avoid a duplicate strip. It
+  // still shows on browse mobile (the hamburger) and on every other route.
+  const onBrowse = pathname === "/";
+
   async function signOut() {
     await supabase.auth.signOut();
     setOpen(false);
@@ -55,7 +61,7 @@ export default function MarketplaceHeader() {
   }
 
   return (
-    <header className="mkt-hdr">
+    <header className={onBrowse ? "mkt-hdr mkt-hdr--browse" : "mkt-hdr"}>
       <div className="mkt-hdr-inner">
         <Link to="/" className="mkt-hdr-lockuplink" aria-label="BundledMum Marketplace, browse">{Lockup}</Link>
 
