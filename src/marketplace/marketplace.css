@@ -168,7 +168,9 @@
   border-radius: 5px;
   padding: 2px 5px;
 }
-.mkt-verified-tick {
+/* Two-class selector so the white tick beats `.mkt-verified span` (0,1,1),
+   which otherwise tints this span green-dark and hides the check. */
+.mkt-verified .mkt-verified-tick {
   width: 11px;
   height: 11px;
   border-radius: 50%;
@@ -570,7 +572,10 @@
 .mkt-next .step.todo b { color: var(--mkt-muted-2); }
 .mkt-next .step span { font: 400 11px/1.45 'Lato', sans-serif; color: var(--mkt-muted); }
 .mkt-wa { display: flex; align-items: center; justify-content: center; gap: 9px; background: #25D366; border-radius: 11px; padding: 12px; color: #fff; font: 800 15px/1 'Nunito', sans-serif; text-decoration: none; }
-.mkt-wa .ic { width: 24px; height: 24px; border-radius: 50%; background: #fff; color: #25D366; font: 700 13px/24px 'Lato', sans-serif; text-align: center; }
+/* Real WhatsApp brand logo (same asset the storefront uses), sits directly on
+   the green button; its own white halo separates it. The decorative fallback
+   glyph in markup is hidden with font-size:0. */
+.mkt-wa .ic { width: 22px; height: 22px; flex: 0 0 auto; background: url("../assets/whatsapp-logo.svg") center / contain no-repeat; font-size: 0; }
 
 /* ==================== PAYSTACK CHECKOUT + RESULT ==================== */
 /* held-funds reassurance (never states a held amount that differs from paid) */
