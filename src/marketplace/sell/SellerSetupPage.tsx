@@ -98,7 +98,7 @@ export default function SellerSetupPage() {
         <div className="mkt-field">
           <div className="mkt-field-head"><span className="lbl">Phone number</span><span className="mkt-tag private">Private</span></div>
           <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803..." inputMode="tel" />
-          <div className="mkt-help">For BundledMum only, so we can reach you about a sale. Buyers never see this number.</div>
+          <div className="mkt-help">For BundledMum to reach you about a sale. Your buyer only gets it after they have paid, and you get their number too. It is never shown on your listing.</div>
         </div>
 
         <div className="mkt-bankcard">
