@@ -160,7 +160,64 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — MARKETPLACE login (magic link, in-marketplace), fixes the stranded-buyer bug
+### This pass — GUEST CHECKOUT (nothing blocks a purchase; sign-in moves to AFTER payment)
+Supersedes the "login before Buy now" model. A logged-out buyer now pays as a
+guest with just an email, and signs in afterwards only to see the seller's contact
+and manage the order. The login gate is removed from checkout.
+- **Backend already deployed (not built here), verify_jwt now FALSE on the three
+  checkout functions:**
+  1. `create-marketplace-order` — INPUT `{ listing_id, email }` (email required for
+     guests, ignored when a session exists) → `{ order, email, reused? }`. Finds or
+     creates a customer from the email. Errors: 'A valid email address is required'
+     400, 'This item is no longer available' 409, 'You cannot buy your own listing'
+     400.
+  2. `marketplace-initialize-payment` — INPUT `{ order_id, callback_url }`; email
+     comes from the order's customer, never the body.
+  3. `marketplace-verify-payment` — INPUT `{ reference }`; on success it ALSO sends
+     the buyer's confirmation email SERVER SIDE. The frontend sends no email.
+  4. `send-marketplace-order-confirmation` — `{ order_id, force? }`. Idempotent per
+     order (a refresh does not resend). The email carries a one-time sign-in link
+     that authenticates the buyer and lands on `/marketplace/orders/{order_id}`.
+     Called from the frontend ONLY for the "resend" action, with `force: true`.
+  5. `get_marketplace_order_contact` — UNCHANGED, still needs a session, so a guest
+     cannot see the seller's phone until signed in (by design).
+- **Checkout (`checkout/CheckoutPage.tsx`):** login gate removed. A logged-in buyer
+  is used silently (no email field). A guest sees one email field (format-validated,
+  "for your receipt and order link") and a "Continue to payment" action; the order
+  is created only after a valid email is committed (`enabled: isLoggedIn ||
+  !!committedEmail`), so a logged-out page view never mints an ownerless order.
+  Verified live: guest reaches checkout with no redirect, no create call fires
+  before the email, and after Continue the order is created and the Pay button
+  appears. The 4-line breakdown, held box, Pay redirect and transfer fallback are
+  unchanged. Added a friendly "This is your own listing" state.
+- **Data helpers (`checkout/orders.ts`):** `createMarketplaceOrder({ listingId,
+  email? })` now sends the email when present; added `resendOrderConfirmation(orderId)`
+  (invokes send-marketplace-order-confirmation with `force: true`).
+- **Payment return (`checkout/PaymentReturnPage.tsx`):** the paid state branches on
+  `useCustomerAuth`. Logged in → the seller-contact block as before. Guest → NO
+  seller details; instead the order reference as proof, a "check your email"
+  explanation (one-time link that opens the order and signs them in, works once and
+  expires, and they can sign in later with the same email), and a rate-limited
+  Resend (disabled 60s after a send) calling `resendOrderConfirmation`. No email is
+  sent from the frontend; verification already sent it.
+- **Marketplace login (`auth/MarketplaceLoginPage.tsx`):** default post-login
+  destination is now `/orders` (the marketplace orders list), never the storefront.
+  emailRedirectTo is unchanged: `https://bundledmum.com/marketplace/login?returnTo=
+  <url-encoded destination>` (default `/orders`).
+- **⚠️ SUPABASE ALLOW-LIST (unchanged requirement, still needed):**
+  `https://bundledmum.com/marketplace/**` must be in Auth → URL Configuration →
+  Redirect URLs. It covers both the login redirect and the server confirmation
+  email's `/marketplace/orders/{id}` sign-in link. Without it Supabase falls back to
+  the Site URL (the 404).
+- **Transfer fallback (`AwaitingPaymentPage`) still needs a session** (it reads the
+  order via the "Buyer reads own orders" RLS policy), so its login gate is kept.
+  Guest checkout is the Paystack path (checkout → Paystack → payment return); the
+  bank-transfer fallback remains sign-in-bound, which is acceptable as it is off by
+  default.
+- Files: edited `checkout/CheckoutPage.tsx`, `checkout/orders.ts`,
+  `checkout/PaymentReturnPage.tsx`, `auth/MarketplaceLoginPage.tsx`.
+
+### Earlier this branch line — MARKETPLACE login (magic link, in-marketplace), fixes the stranded-buyer bug
 A logged-out marketplace visitor was handed to the STOREFRONT login
 (/account/login), whose magic link landed on the storefront /account (a 404), so
 they never got back to the item they were buying. Now the marketplace has its own

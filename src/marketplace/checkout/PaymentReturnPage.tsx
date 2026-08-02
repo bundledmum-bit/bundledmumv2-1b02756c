@@ -1,7 +1,9 @@
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
-import { cdb, formatNaira, verifyPayment, getOrderContact, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
+import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
 
 /**
  * Payment return, where Paystack sends the buyer back with ?reference=. It
@@ -98,11 +100,19 @@ function FailedState({ orderId, reference, onBrowse }: { orderId?: string; refer
 }
 
 function PaidState({ orderId, reference, onBrowse }: { orderId?: string; reference: string; onSeeOrder?: () => void; onBrowse: () => void }) {
+  const { isLoggedIn, loading: authLoading } = useCustomerAuth();
+
+  // Seller contact needs a session (the RPC requires it), so only fetch it when
+  // signed in. A guest never sees seller details here, by design.
   const { data: contact, isLoading } = useQuery({
     queryKey: ["mkt-order-contact", orderId],
-    enabled: !!orderId,
+    enabled: !!orderId && isLoggedIn,
     queryFn: () => getOrderContact(orderId as string),
   });
+
+  if (authLoading) {
+    return <div className="mkt-result"><div className="mkt-spinner" /><h1>Confirming your payment</h1></div>;
+  }
 
   return (
     <div className="mkt-success">
@@ -111,12 +121,66 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
           <h1>Paid, and your money is safe with us</h1>
-          <p>{contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm your item reached you.</p>
+          <p>{isLoggedIn && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm your item reached you.</p>
         </div>
 
-        <SellerContact contact={contact} loading={isLoading} reference={reference} />
+        {isLoggedIn
+          ? <SellerContact contact={contact} loading={isLoading} reference={reference} />
+          : <GuestPaid orderId={orderId} reference={reference} />}
 
         <button className="mkt-primary" onClick={onBrowse}>Keep browsing</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Paid state for a guest (not signed in). No seller details, by design. Shows the
+ * order reference as proof and explains the confirmation email carries a one-time
+ * sign-in link that opens their order. The email is sent SERVER SIDE during
+ * verification, never here; this only offers a rate-limited resend.
+ */
+function GuestPaid({ orderId, reference }: { orderId?: string; reference: string }) {
+  const [cooldown, setCooldown] = useState(0);
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  async function resend() {
+    if (!orderId || cooldown > 0 || busy) return;
+    setBusy(true);
+    const ok = await resendOrderConfirmation(orderId);
+    setBusy(false);
+    setSent(ok);
+    setCooldown(60); // rate limit in the UI so it cannot be spammed
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="mkt-brk">
+        <div className="line"><span>Your order reference</span><b>{reference}</b></div>
+        <div className="sub" style={{ marginTop: 2 }}>Keep this as proof of payment.</div>
+      </div>
+
+      <div className="mkt-heldbox">
+        <div className="hb-title">Check your email</div>
+        <div className="hb-line"><span className="hb-tick">✓</span>We are sending a confirmation with a button that opens your order and signs you in, so you can get the seller's contact and track delivery.</div>
+        <div className="hb-line"><span className="hb-tick">✓</span>That link works once and expires. After that you can sign in from the marketplace any time using the same email.</div>
+      </div>
+
+      <div className="mkt-help" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
+          {sent ? "Sent again. Give it a minute and check your spam folder too." : "Did not get the email?"}
+        </span>
+        <button className="mkt-secondary" disabled={!orderId || cooldown > 0 || busy} onClick={resend}>
+          {busy ? "Sending..." : cooldown > 0 ? `Resend in ${cooldown}s` : "Resend the email"}
+        </button>
+        <Link className="mkt-talk-label" style={{ textAlign: "center", textDecoration: "none", color: "var(--mkt-green)" }} to="/login?returnTo=%2Forders">Already have an account? Sign in</Link>
       </div>
     </div>
   );

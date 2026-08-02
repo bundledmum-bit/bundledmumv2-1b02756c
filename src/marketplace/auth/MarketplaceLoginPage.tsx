@@ -22,7 +22,8 @@ import { safeReturnTo } from "./marketplaceLogin";
 export default function MarketplaceLoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const returnTo = safeReturnTo(params.get("returnTo"));
+  // Default destination is the marketplace orders list, never the storefront.
+  const returnTo = safeReturnTo(params.get("returnTo") || "/orders");
   const { isLoggedIn, loading } = useCustomerAuth();
 
   const [email, setEmail] = useState("");

@@ -6,7 +6,6 @@ import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
-import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -27,10 +26,15 @@ export default function CheckoutPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/checkout/${listingId}`);
-  }, [authLoading, isLoggedIn, listingId]);
+  // Guest checkout: a logged-out buyer gives an email for their receipt and order
+  // link, then pays. We commit the email before creating the order so a logged-out
+  // page view never creates an ownerless order.
+  const [emailInput, setEmailInput] = useState("");
+  const [committedEmail, setCommittedEmail] = useState<string | null>(null);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim().toLowerCase());
+  const needEmail = !authLoading && !isLoggedIn && !committedEmail;
+  const canCreateOrder = isLoggedIn || !!committedEmail;
 
   const { data: settings } = useQuery({
     queryKey: ["mkt-checkout-settings"],
@@ -52,14 +56,16 @@ export default function CheckoutPage() {
   const acctNumber = String(settings?.marketplace_bank_account_number ?? "").trim();
   const bankReady = !!(bankName && acctName && acctNumber);
 
-  // Create (or reuse) the order once logged in and a payment method is enabled.
+  // Create (or reuse) the order once we may (logged in, or a guest who has given a
+  // valid email) and a payment method is enabled. Gating on canCreateOrder is what
+  // stops a logged-out page view from minting an ownerless order.
   const orderQ = useQuery({
-    queryKey: ["mkt-create-order", listingId],
-    enabled: !!listingId && isLoggedIn && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
+    queryKey: ["mkt-create-order", listingId, isLoggedIn ? "auth" : committedEmail],
+    enabled: !!listingId && canCreateOrder && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
     retry: false,
     staleTime: Infinity,
     gcTime: 0,
-    queryFn: () => createMarketplaceOrder({ listingId: listingId as string }),
+    queryFn: () => createMarketplaceOrder({ listingId: listingId as string, email: isLoggedIn ? undefined : committedEmail || undefined }),
   });
   const order = orderQ.data?.order;
 
@@ -85,10 +91,7 @@ export default function CheckoutPage() {
     if (payCode === "This order is already paid" && order?.paystack_transaction_reference) {
       navigate(`/checkout/return?reference=${encodeURIComponent(order.paystack_transaction_reference)}`, { replace: true });
     }
-    if (createCode === "Not authenticated" || payCode === "Not authenticated") {
-      sendToMarketplaceLogin(`/checkout/${listingId}`);
-    }
-  }, [payCode, createCode, order, navigate, listingId]);
+  }, [payCode, order, navigate]);
 
   const itemPrice = Number(listing?.final_price_naira ?? 0);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
@@ -100,8 +103,8 @@ export default function CheckoutPage() {
   }
 
   if (authLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
-  if (!isLoggedIn) return null;
 
+  const ownListing = createCode === "You cannot buy your own listing";
   const listingGone = !listing || createCode === "This item is no longer available" || payCode === "This item is no longer available";
   const paymentsDown = settingsLoaded && !paystackEnabled && !transferEnabled;
   const paymentNotConfigured = payCode === "Payment is not configured";
@@ -112,6 +115,17 @@ export default function CheckoutPage() {
       <div className="mkt-center">
         <div className="mkt-empty-title">This one has just gone</div>
         <div className="mkt-empty-sub">Someone paid for it while you were here. Nothing has left your account. There is plenty more to see.</div>
+        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
+      </div>
+    );
+  }
+
+  // Seller tried to buy their own item.
+  if (ownListing) {
+    return (
+      <div className="mkt-center">
+        <div className="mkt-empty-title">This is your own listing</div>
+        <div className="mkt-empty-sub">You cannot buy an item you are selling. Nothing has been charged.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
       </div>
     );
@@ -151,22 +165,58 @@ export default function CheckoutPage() {
             <div className="mkt-brk">
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
               <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
-              <div className="line"><div><span>Payment fee</span><div className="sub">Paystack's charge for the payment</div></div><b>{payQ.data ? formatNaira(paymentFee) : "..."}</b></div>
+              {needEmail ? (
+                <div className="line"><div><span>Payment fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
+              ) : (
+                <div className="line"><div><span>Payment fee</span><div className="sub">Paystack's charge for the payment</div></div><b>{payQ.data ? formatNaira(paymentFee) : "..."}</b></div>
+              )}
               <div className="rule" />
-              <div className="total"><span>Total</span><b>{payQ.data ? formatNaira(paystackTotal) : "..."}</b></div>
+              <div className="total"><span>Total</span><b>{needEmail ? "..." : (payQ.data ? formatNaira(paystackTotal) : "...")}</b></div>
             </div>
+
+            {/* Guest email, required before we create the order and take payment */}
+            {needEmail && (
+              <div className="mkt-field">
+                <span className="mkt-uplabel">Your email</span>
+                <input
+                  className={emailTouched && !emailValid ? "mkt-input error" : "mkt-input"}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && emailValid) setCommittedEmail(emailInput.trim().toLowerCase()); }}
+                  placeholder="you@example.com"
+                />
+                <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
+                  We send your receipt and a link to your order here. No account or password needed, and you can sign in later with this same email.
+                </span>
+                {emailTouched && !emailValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Please enter a valid email address.</span>}
+              </div>
+            )}
+
+            {committedEmail && !isLoggedIn && (
+              <div className="mkt-help" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span>✉️</span>
+                <span style={{ flex: 1 }}>Receipt goes to {committedEmail}.</span>
+                <button style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "700 12px/1 'Lato', sans-serif", color: "var(--mkt-green)" }} onClick={() => { setCommittedEmail(null); setEmailInput(committedEmail); }}>Change</button>
+              </div>
+            )}
 
             <div className="mkt-heldbox">
               <div className="hb-title">Your money is held, not sent</div>
               <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact straight away to arrange delivery.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to arrange delivery.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item reached you.</div>
             </div>
 
-            <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
-              <span>🔒</span>
-              <span>The next step opens Paystack's secure page to take your payment. We never see or store your card details, and you come straight back here when it is done.</span>
-            </div>
+            {!needEmail && (
+              <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
+                <span>🔒</span>
+                <span>The next step opens Paystack's secure page to take your payment. We never see or store your card details, and you come straight back here when it is done.</span>
+              </div>
+            )}
 
             {payCode && payCode !== "This order is already paid" && (
               <div className="mkt-errbox"><span className="m">!</span><span>We could not start your payment just now. Please try again, or <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us</a>.</span></div>
@@ -184,8 +234,19 @@ export default function CheckoutPage() {
         )}
       </div>
 
+      {/* Guest email step: commit the email, which lets the order be created. */}
+      {paystackEnabled && needEmail && (
+        <div className="mkt-sell-foot">
+          <button className="mkt-primary" disabled={!emailValid}
+            onClick={() => { setEmailTouched(true); if (emailValid) setCommittedEmail(emailInput.trim().toLowerCase()); }}>
+            Continue to payment
+          </button>
+          <div className="helper">No account needed, just an email for your receipt</div>
+        </div>
+      )}
+
       {/* Paystack pay button */}
-      {paystackEnabled && !payCode && (
+      {paystackEnabled && !needEmail && !payCode && (
         <div className="mkt-sell-foot">
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>

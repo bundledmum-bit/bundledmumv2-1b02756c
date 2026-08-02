@@ -52,18 +52,34 @@ async function invokeErrorCode(error: unknown): Promise<string> {
 }
 
 /**
- * Creates (or reuses) the buyer's pending order via the edge function. Sends only
- * the listing id; the function authenticates the buyer, computes every money
- * field from the listing and site_settings, generates the reference, and returns
- * the order. May return { order, reused: true } when an existing pending order
- * for this buyer and listing is returned instead of a new one.
+ * Creates (or reuses) the pending order via the edge function (verify_jwt is
+ * FALSE, so guests are accepted). A logged-in buyer's session is used silently
+ * and any email is ignored; a guest MUST pass a valid email, from which the
+ * function finds or creates a customer record. The function computes every money
+ * field from the listing and site_settings and generates the reference. May
+ * return { reused: true } for an existing pending order.
+ * Errors: 'A valid email address is required' 400, 'This item is no longer
+ * available' 409, 'You cannot buy your own listing' 400.
  */
-export async function createMarketplaceOrder(input: { listingId: string }): Promise<{ order: OrderRow; reused?: boolean }> {
-  const { data, error } = await cdb.functions.invoke("create-marketplace-order", {
-    body: { listing_id: input.listingId },
-  });
+export async function createMarketplaceOrder(input: { listingId: string; email?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
+  const body: { listing_id: string; email?: string } = { listing_id: input.listingId };
+  if (input.email) body.email = input.email;
+  const { data, error } = await cdb.functions.invoke("create-marketplace-order", { body });
   if (error) throw new CheckoutError((await invokeErrorCode(error)) || "unknown");
-  return data as { order: OrderRow; reused?: boolean };
+  return data as { order: OrderRow; email?: string; reused?: boolean };
+}
+
+/**
+ * Resends the buyer's order-confirmation email (the one carrying the one-time
+ * sign-in link that opens /marketplace/orders/{order_id}). The normal send
+ * happens SERVER SIDE during payment verification; this is only for a "did not
+ * get the email, resend" action, so it forces a resend. Returns true on success.
+ */
+export async function resendOrderConfirmation(orderId: string): Promise<boolean> {
+  const { error } = await cdb.functions.invoke("send-marketplace-order-confirmation", {
+    body: { order_id: orderId, force: true },
+  });
+  return !error;
 }
 
 export interface InitPayment {
