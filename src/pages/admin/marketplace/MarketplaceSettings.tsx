@@ -27,8 +27,15 @@ const FIELD = {
   markup: { key: "marketplace_markup_percent", label: "Markup percentage", help: "Added to the seller price to make the buyer price.", numeric: true, suffix: "%" },
   fee: { key: "marketplace_service_fee_naira", label: "Service fee", help: "Non refundable, charged once per order.", numeric: true, money: true },
   window: { key: "marketplace_dispute_window_days", label: "Dispute window", help: "After this, payout sweeps to the seller.", numeric: true, suffix: " days" },
-  email: { key: "marketplace_payout_digest_email", label: "Daily payout digest to", help: "The email address that receives the daily payout digest.", numeric: false },
+  email: { key: "marketplace_payout_digest_email", label: "Internal alert recipients", help: "Every internal alert goes to all of these: the daily payout digest, a new sale, a new dispute, a new seller registering, a seller auto suspended, a payment amount anomaly, and the review backlog nudge. Enter one or more addresses, comma separated.", numeric: false },
 } as const;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Split a comma separated recipients string into trimmed, non-empty addresses. */
+function parseEmails(raw: string): string[] {
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 export default function MarketplaceSettings() {
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -84,6 +91,33 @@ export default function MarketplaceSettings() {
     }
     const display = f.money ? formatNaira(Number(value)) : `${value}${f.suffix ?? ""}`;
     setPendingSave({ key: f.key as SettingKey, label: f.label, value, display });
+  }
+
+  /**
+   * Internal alert recipients. Stored in the SAME site_settings key as a comma
+   * separated string (the edge functions split it server side), so we normalise
+   * the entries back into that format. Refuse an empty value, since that would
+   * silently switch off every internal alert, and reject any malformed entry by
+   * name rather than saving something that will fail to send.
+   */
+  function requestSaveEmails() {
+    const list = parseEmails(edits[FIELD.email.key] ?? "");
+    if (list.length === 0) {
+      setError("Enter at least one email address. An empty value would switch off every internal alert.");
+      return;
+    }
+    const bad = list.find((e) => !EMAIL_RE.test(e));
+    if (bad) {
+      setError(`"${bad}" is not a valid email address. Fix it before saving.`);
+      return;
+    }
+    const normalized = list.join(", ");
+    setPendingSave({
+      key: FIELD.email.key,
+      label: FIELD.email.label,
+      value: normalized,
+      display: list.length === 1 ? normalized : `${list.length} recipients: ${normalized}`,
+    });
   }
 
   async function confirmSave() {
@@ -161,16 +195,28 @@ export default function MarketplaceSettings() {
         <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
           <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">{FIELD.email.label}</div>
           {editing[FIELD.email.key] ? (
-            <div className="flex gap-2 mt-2">
-              <input type="email" value={edits[FIELD.email.key] ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [FIELD.email.key]: e.target.value }))}
-                placeholder="ops@bundledmum.com" className="flex-1 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
-              <button onClick={() => cancelEdit(FIELD.email.key)} className="text-xs font-heading font-bold px-3 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-              <button onClick={() => requestSave(FIELD.email)} className="text-xs font-heading font-extrabold px-3 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+            <div className="flex flex-col gap-2 mt-2">
+              <input type="text" inputMode="email" value={edits[FIELD.email.key] ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [FIELD.email.key]: e.target.value }))}
+                placeholder="ops@bundledmum.com, alerts@bundledmum.com" className="w-full rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
+              <div className="flex gap-2">
+                <button onClick={() => cancelEdit(FIELD.email.key)} className="text-xs font-heading font-bold px-3 py-1.5 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
+                <button onClick={requestSaveEmails} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+              </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between mt-2">
-              <div className="font-heading font-bold text-[15px]">{strVal(FIELD.email.key) || <span className="text-text-light font-body font-normal">Not set</span>}</div>
-              <button onClick={() => startEdit(FIELD.email.key, strVal(FIELD.email.key))} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border" style={{ borderColor: "#F0DDD2" }}>Edit</button>
+            <div className="flex items-start justify-between gap-2 mt-2">
+              <div className="flex-1 min-w-0">
+                {parseEmails(strVal(FIELD.email.key)).length ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {parseEmails(strVal(FIELD.email.key)).map((e) => (
+                      <span key={e} className="inline-flex items-center text-[12px] font-heading font-bold px-2.5 py-1 rounded-lg break-all" style={{ background: "#D8EFE5", color: "#1A4A33" }}>{e}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-text-light text-sm">Not set</span>
+                )}
+              </div>
+              <button onClick={() => startEdit(FIELD.email.key, strVal(FIELD.email.key))} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border flex-none" style={{ borderColor: "#F0DDD2" }}>Edit</button>
             </div>
           )}
           <p className="text-[12px] text-text-med mt-2">{FIELD.email.help}</p>

@@ -160,7 +160,24 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — checkout shows Paystack fee as an ESTIMATE (dashboard fee-passing is on)
+### This pass — Settings: internal alert recipients (multiple, comma separated)
+`site_settings.marketplace_payout_digest_email` now drives ALL SEVEN internal
+alerts, not just the payout digest: the daily payout digest, a new sale, a new
+dispute, a new seller registering, a seller auto suspended, a payment amount
+anomaly, and the review backlog nudge. It also supports MULTIPLE recipients as a
+comma separated string, and every internal alert goes to all of them.
+- The marketplace admin Settings field (`MarketplaceSettings.tsx`) was relabelled
+  from "Daily payout digest to" to "Internal alert recipients", with help text
+  listing the seven alerts and explaining comma-separated multiple recipients.
+- Storage is UNCHANGED: same key `marketplace_payout_digest_email`, still a comma
+  separated STRING (not an array). The edge functions split it server side. The UI
+  normalises entries back to `join(", ")` on save.
+- Validation before save: every entry must be a valid email (bad entry named in a
+  friendly inline error); whitespace trimmed; an empty value is refused (it would
+  silently switch off every internal alert). Saved addresses show as chips, one per
+  address, behind the existing confirm step. Current value: bundledmum@gmail.com.
+
+### Earlier this branch line — checkout shows Paystack fee as an ESTIMATE (dashboard fee-passing is on)
 Paystack's "pass transaction fee to customer" is ON, so Paystack adds its own fee
 to whatever we send. We now send only the subtotal (item price + service fee) and
 Paystack adds its fee at the point of payment, so the fee and total shown at
