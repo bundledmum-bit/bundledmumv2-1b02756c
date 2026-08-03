@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useListing } from "../data/useListings";
+import { mdb } from "../data/mdb";
 import {
   formatNaira,
   locationLabel,
@@ -12,6 +14,29 @@ import {
   sellerInitials,
 } from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
+
+type FieldType = "select" | "text" | "number" | "boolean";
+interface CategoryField {
+  id: string;
+  field_key: string;
+  label: string;
+  field_type: FieldType;
+  sort_order: number;
+}
+/** The one field_key seeded on every category, always shown separately with a
+ * lighter weight, it is trust context ("why they're selling this"), not a
+ * decisive spec like size or brand. */
+const REASON_KEY = "reason_for_selling";
+
+/** True when this field actually has something to show: an empty string or a
+ * missing key never renders a row, and an explicit boolean false still counts
+ * as a real answer (e.g. "Has it been written in? No"), never as unanswered. */
+function isAnswered(field: CategoryField, attributes: Record<string, unknown>): boolean {
+  const v = attributes[field.field_key];
+  if (field.field_type === "boolean") return v === true || v === false;
+  if (v === undefined || v === null) return false;
+  return String(v).trim() !== "";
+}
 
 /**
  * LISTING DETAIL, reskinned to the design: hero photo with back control and
@@ -26,6 +51,33 @@ export default function ListingDetailPage() {
   const { data: listing, isLoading, isError } = useListing(id);
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
+
+  // This category's question definitions, so the seller's raw attributes jsonb
+  // can be paired with a label, type and sort_order to render. Public readable,
+  // read-only here (only create-listing writes an answer).
+  const { data: categoryFields = [] } = useQuery({
+    queryKey: ["mkt-detail-category-fields", listing?.category_id],
+    enabled: !!listing?.category_id,
+    queryFn: async (): Promise<CategoryField[]> => {
+      const { data } = await mdb.from("marketplace_category_fields")
+        .select("id, field_key, label, field_type, sort_order")
+        .eq("category_id", listing!.category_id)
+        .order("sort_order")
+        .order("field_key");
+      return (data ?? []) as unknown as CategoryField[];
+    },
+    staleTime: 60000,
+  });
+
+  const attributes = listing?.attributes ?? {};
+  // Hard specs: every answered question except the reason-for-selling default,
+  // in sort_order. The reason field renders separately, lighter weight, below.
+  const hardSpecs = useMemo(
+    () => categoryFields.filter((f) => f.field_key !== REASON_KEY && isAnswered(f, attributes)),
+    [categoryFields, attributes],
+  );
+  const reasonField = categoryFields.find((f) => f.field_key === REASON_KEY);
+  const reasonAnswer = reasonField && isAnswered(reasonField, attributes) ? String(attributes[REASON_KEY]) : null;
 
   if (isLoading) {
     return (
@@ -147,6 +199,36 @@ export default function ListingDetailPage() {
             <p className="mkt-detail-text">{listing.condition_notes}</p>
           </div>
         ) : null}
+
+        {/* Category answers (design 17a), between condition notes and description.
+            When a category has no hard specs and no reason answered (e.g. bibs),
+            neither renders at all, nothing here reads as missing or broken. */}
+        {hardSpecs.length > 0 && (
+          <div className="mkt-spec">
+            <div className="mkt-spec-h">What this listing answers</div>
+            {hardSpecs.map((f) => (
+              <div className="mkt-spec-row" key={f.id}>
+                <span className="k">{f.label}</span>
+                {f.field_type === "boolean" ? (
+                  attributes[f.field_key] === true ? (
+                    <span className="v yes"><span className="ic">✓</span>Yes</span>
+                  ) : (
+                    <span className="v no"><span className="ic">✕</span>No</span>
+                  )
+                ) : (
+                  <span className="v">{String(attributes[f.field_key])}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {reasonAnswer && (
+          <div className="mkt-spec-note">
+            <span className="ic">i</span>
+            <span>Why they're selling: “{reasonAnswer}”</span>
+          </div>
+        )}
 
         <div>
           <p className="mkt-section-label">Description</p>

@@ -45,6 +45,10 @@ export interface MarketplaceListing {
    * owned and never written from the client. */
   quantity: number;
   quantity_sold: number;
+  /** The seller's answers to their category's questions (marketplace_category_fields),
+   * keyed by field_key. Always an object (jsonb NOT NULL, defaults to {}), never null.
+   * Read-only here; only create-listing writes to it. */
+  attributes: Record<string, string | number | boolean>;
   category: MarketplaceCategoryEmbed | null;
   seller: MarketplaceSellerPublic | null;
 }

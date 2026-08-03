@@ -17,7 +17,7 @@ export const mdb = supabase as unknown as SupabaseClient;
  * base table's FK, so sellers are fetched separately and joined client-side by
  * seller_id (see useListings). */
 export const LISTING_SELECT =
-  "id, title, description, condition_notes, condition, final_price_naira, location_state, location_city, status, image_url, gallery_urls, category_id, seller_id, quantity, quantity_sold, " +
+  "id, title, description, condition_notes, condition, final_price_naira, location_state, location_city, status, image_url, gallery_urls, category_id, seller_id, quantity, quantity_sold, attributes, " +
   "category:marketplace_categories!marketplace_listings_category_id_fkey(name)";
 
 /** The ONLY seller columns anyone may read. This is the full column list of the
