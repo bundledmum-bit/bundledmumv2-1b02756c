@@ -251,6 +251,10 @@
 
 /* ==================== DETAIL ==================== */
 .mkt-detail { display: flex; flex-direction: column; padding-bottom: 96px; }
+/* Gallery + panel wrappers are layout-invisible on mobile (display:contents), so the
+   hero, thumbs, body and fixed buy bar render exactly as before. They become the two
+   columns of the desktop layout at >=1024px (see the media query near the buy bar). */
+.mkt-detail-gallery, .mkt-detail-panel { display: contents; }
 
 .mkt-hero {
   position: relative;
@@ -400,6 +404,50 @@
   color: var(--mkt-green-dark);
   font: 400 13px/1.5 'Lato', sans-serif;
   text-align: center;
+}
+
+/* ── Listing detail, DESKTOP layout (design 14a, screens D1/D2) ──
+   Two columns above 1024px: gallery left, purchase panel right (sticky). Below
+   1024px nothing here applies, so the mobile single column + fixed bottom bar is
+   untouched. Max content width 1200px, centred, 32px page gutters. */
+@media (min-width: 1024px) {
+  .mkt-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 480px); /* gallery 58 / panel 42, panel clamped 380-480 */
+    gap: 40px;
+    align-items: start;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 32px 40px; /* replaces the 96px bottom padding; no fixed bar on desktop */
+    box-sizing: border-box;
+  }
+  .mkt-detail-gallery { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  /* The whole right panel sticks 24px from the top as the page scrolls. */
+  .mkt-detail-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; position: sticky; top: 24px; align-self: start; }
+
+  /* Main photo at a proper size: the same 1:1 crop the images already are, never
+     letterboxed, rounded to match the design. */
+  .mkt-hero { aspect-ratio: 1 / 1; border-radius: 16px; }
+  /* Thumbnails become a 1:1 grid beneath the main image, 5 wide (4 between 1024-1200). */
+  .mkt-thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0; overflow: visible; }
+  .mkt-thumb { width: auto; height: auto; aspect-ratio: 1 / 1; border-radius: 11px; }
+
+  /* Panel body: drop the top padding so the price aligns with the image top. */
+  .mkt-detail-body { padding: 0; }
+
+  /* The buy bar stops being a fixed full-width strip and becomes the panel's
+     static purchase footer (same button, same Buy now flow). */
+  .mkt-buybar {
+    position: static; left: auto; right: auto; bottom: auto; z-index: auto;
+    flex-direction: column; align-items: stretch; gap: 12px;
+    border: 1px solid var(--mkt-border); border-radius: 14px;
+    background: #fff; padding: 16px;
+  }
+  .mkt-buybar-price { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .mkt-buybar .mkt-buy { flex: 0 0 auto; }
+}
+@media (min-width: 1200px) {
+  .mkt-thumbs { grid-template-columns: repeat(5, 1fr); }
 }
 
 /* ==================== SELL SIDE ==================== */

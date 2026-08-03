@@ -78,28 +78,34 @@ export default function ListingDetailPage() {
 
   return (
     <div className="mkt-detail">
-      <div className="mkt-hero">
-        {hero ? <img src={hero} alt={listing.title} /> : null}
-        <button className="mkt-back" onClick={() => navigate("/")} aria-label="Back to marketplace">
-          ‹
-        </button>
+      {/* Gallery + panel are grouped so the desktop layout (>=1024px) can place them
+          as two columns. On mobile both wrappers are display:contents, so the hero,
+          thumbs, body and buy bar lay out exactly as before, single column. */}
+      <div className="mkt-detail-gallery">
+        <div className="mkt-hero">
+          {hero ? <img src={hero} alt={listing.title} /> : null}
+          <button className="mkt-back" onClick={() => navigate("/")} aria-label="Back to marketplace">
+            ‹
+          </button>
+        </div>
+
+        {images.length > 1 ? (
+          <div className="mkt-thumbs">
+            {images.map((url) => (
+              <button
+                key={url}
+                className={url === hero ? "mkt-thumb active" : "mkt-thumb"}
+                onClick={() => setActiveImage(url)}
+                aria-label="View image"
+              >
+                <img src={url} alt="" />
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {images.length > 1 ? (
-        <div className="mkt-thumbs">
-          {images.map((url) => (
-            <button
-              key={url}
-              className={url === hero ? "mkt-thumb active" : "mkt-thumb"}
-              onClick={() => setActiveImage(url)}
-              aria-label="View image"
-            >
-              <img src={url} alt="" />
-            </button>
-          ))}
-        </div>
-      ) : null}
-
+      <div className="mkt-detail-panel">
       <div className="mkt-detail-body">
         <div>
           <div className="mkt-detail-price">{formatNaira(listing.final_price_naira)}{multi ? " each" : ""}</div>
@@ -164,6 +170,7 @@ export default function ListingDetailPage() {
         <button className="mkt-buy" onClick={() => navigate(`/checkout/${listing.id}`)}>
           {multi ? "Buy one now" : "Buy now"}
         </button>
+      </div>
       </div>
     </div>
   );
