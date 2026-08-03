@@ -160,7 +160,48 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — grouped collapsible category filter (7 groups), commit `f829035`
+### This pass — listing detail, genuine desktop two-column layout, commit `b9fa20a`
+Listing detail had no real desktop layout: it was the mobile design stretched
+wide (4/3 hero letterboxed, no max width, the sticky bottom buy bar spanning the
+full viewport like an oversized mobile control). Implements the design's
+desktop layout, **frame `14a — Listing detail, desktop`** (screens `D1`, `D2`),
+confirmed present via a fresh design import before any code changed.
+- **Design spec (14a):** breakpoint **1024px**; below it the mobile stack + fixed
+  bottom bar stay exactly as built. Max width **1200px**, centred, 32px page
+  gutters. Columns **58/42** (gallery/panel), 40px gap; panel clamped
+  **380–480px**. Main photo **1:1, never letterboxed**; **5** thumbnails beneath
+  at 1:1 (drop to **4** between 1024–1200px), selected one green-bordered. The
+  whole right panel is **sticky at 24px** from the top; the page-width bottom
+  bar is gone on desktop.
+- **`ListingDetailPage.tsx`:** existing elements only, no new content/data. Hero
+  + thumbs wrapped in `.mkt-detail-gallery`; body + buy bar wrapped in
+  `.mkt-detail-panel`. Both wrappers are `display:contents` by default, so on
+  mobile the DOM lays out exactly as before (verified below). Did NOT add the
+  mock's breadcrumb, "More from Amaka" related row, image count/watermark
+  overlays or "Total with fees" subline — those are new content not on the
+  page today; the ask was rearrange existing elements only.
+- **`marketplace.css`:** `@media (min-width:1024px)` turns `.mkt-detail` into
+  the 1200px 2-col grid; `.mkt-hero` goes `aspect-ratio:1/1`; `.mkt-thumbs`
+  becomes a `repeat(4,1fr)` grid (→ `repeat(5,1fr)` at `min-width:1200px`);
+  `.mkt-detail-panel` gets `position:sticky;top:24px`; `.mkt-buybar` flips from
+  `position:fixed` full-width to the panel's static purchase footer (same
+  `.mkt-buy` button, same `navigate(/checkout/:id)` call, untouched).
+- **Verified live:** at 1280px the grid is `616px 480px` (panel clamped to its
+  480 ceiling), `max-width:1200px`, panel `position:sticky;top:24px`, hero
+  `1/1`, thumbnails 5-wide. At 1050px (1024–1200 band) thumbnails drop to
+  4-wide, panel still clamped at 480, gallery shrinks. At 1023px (one px below
+  breakpoint) everything reverts: `.mkt-detail` back to `flex`, `.mkt-buybar`
+  back to `fixed;bottom:0`, hero back to `4/3`, thumbs back to horizontal
+  scroll. **Mobile explicitly verified unchanged:** stashed this change,
+  captured every rect/display/position for `.mkt-detail/.mkt-hero/.mkt-thumbs/
+  .mkt-detail-body/.mkt-buybar/.mkt-buy` at 375px, popped the stash, recaptured
+  the same set — every value matched exactly (pixel-for-pixel). Buy now tested
+  on both breakpoints, navigates to `/checkout/:id` both times. Verified badge,
+  seller card + tenure, condition/location chips, held-funds notice, header,
+  footer all render unchanged. `npm run build` passes. Preview left on browse,
+  mobile view.
+
+### Earlier pass — grouped collapsible category filter (7 groups), commit `f829035`
 The browse category filter (desktop panel + mobile drawer) is now an accordion of
 the 7 category groups instead of one flat list.
 - **Backend was already deployed, no schema work:** `marketplace_category_groups`
