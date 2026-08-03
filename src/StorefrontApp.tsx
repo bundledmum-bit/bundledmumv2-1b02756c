@@ -168,6 +168,7 @@ import MarketplaceListings from "@/pages/admin/marketplace/MarketplaceListings";
 import MarketplaceListingEdit from "@/pages/admin/marketplace/MarketplaceListingEdit";
 import MarketplaceOrders from "@/pages/admin/marketplace/MarketplaceOrders";
 import MarketplaceMoneyOwed from "@/pages/admin/marketplace/MarketplaceMoneyOwed";
+import MarketplaceCategoryFields from "@/pages/admin/marketplace/MarketplaceCategoryFields";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -501,6 +502,8 @@ const StorefrontApp = () => (
                 <Route path="marketplace/listings/:id/edit" element={<PermissionGate module="marketplace" action="manage"><MarketplaceListingEdit /></PermissionGate>} />
                 <Route path="marketplace/orders" element={<PermissionGate module="marketplace" action="manage"><MarketplaceOrders /></PermissionGate>} />
                 <Route path="marketplace/money-owed" element={<PermissionGate module="marketplace" action="manage"><MarketplaceMoneyOwed /></PermissionGate>} />
+                <Route path="marketplace/categories" element={<PermissionGate module="marketplace" action="manage"><MarketplaceCategoryFields /></PermissionGate>} />
+                <Route path="marketplace/categories/:categoryId" element={<PermissionGate module="marketplace" action="manage"><MarketplaceCategoryFields /></PermissionGate>} />
                 <Route path="marketplace/settings" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSettings /></PermissionGate>} />
               </Route>
 
