@@ -160,7 +160,72 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — create-listing renders and submits category questions, commit `af7677d`
+### This pass — listing detail displays category answers, commit `df0d443`
+Listing detail now shows the seller's category-question answers from
+`marketplace_listings.attributes`, read-only, on both mobile and the desktop
+two-column layout. Built to design 17a ("Category details, on listing
+detail", screens S1-S4), which places the spec block between condition notes
+and description — confirmed and matched exactly.
+- **`mdb.ts`:** `LISTING_SELECT` now selects `attributes`. **`types.ts`:**
+  `MarketplaceListing` gains a typed `attributes: Record<string, string |
+  number | boolean>` (jsonb NOT NULL, never null). Both purely additive,
+  checked against every consumer (`ListingCard`, the admin listing screens,
+  `useListings.ts`) — none destructure it, zero risk.
+- **`ListingDetailPage.tsx`:** fetches `marketplace_category_fields` for the
+  listing's `category_id` (public readable), pairs each by `field_key`
+  against `attributes`. A field renders only when actually answered: text/
+  select/number need a non-empty value, boolean needs an explicit `true` or
+  `false` (an unanswered boolean never renders, but a real `false` always
+  does — "Has it been written in? No" is a genuine answer, not a gap).
+  select/text/number render as plain text; boolean renders as a green
+  check-circle "Yes" or a red cross-circle "No", never the raw word true or
+  false. `reason_for_selling` (the one field_key seeded on every category) is
+  pulled out of the hard-spec list and shown separately, lighter weight,
+  italic: `Why they're selling: "..."` — the design mock uses gendered
+  "she's", swapped for neutral "they're" to match this app's tone.
+- **Empty state:** when a category has no hard specs and no reason answered
+  (every one of the 25 live seeded listings, today, since nobody has yet
+  submitted through the new create-listing form), NEITHER the spec card nor
+  the reason note renders at all — condition notes and description carry the
+  page. Matches the design's explicit instruction: "nothing reads as missing
+  since those two sections already carry the page."
+- **Placement:** same position and order on mobile (single column) and
+  desktop (inside the existing sticky purchase panel, `.mkt-detail-panel`,
+  built in the prior two-column-layout pass) — condition notes → spec card →
+  reason note → description → held-funds notice → Buy now. New CSS only
+  (`.mkt-spec`, `.mkt-spec-row`, `.mkt-spec-note`), no edits to the existing
+  desktop-layout or sticky-panel rules.
+- **Design deviation noted:** the S4 desktop mockup shows the entire purchase
+  panel as one big white card; the ACTUAL desktop build (from the prior pass)
+  only boxes the sticky Buy-now footer in a card, the rest of the panel sits
+  on the page background. Preserved that structure exactly rather than
+  rebuilding it; the new spec card carries its own white/bordered look either
+  way, so it still reads as a distinct block in both contexts.
+- **Verified live with temporary test data, then reverted:** set real-shaped
+  `attributes` (real JSON types, boolean as boolean) on one live Baby
+  clothing listing (`size` text + a reason quote) and one live Books listing
+  (`all_pieces_present: false`, since no live "Toddler school books" listing
+  currently exists — Books carries the identical boolean field_type, so it
+  exercises the same code path and specifically proves `false` renders as a
+  real red-cross "No", not as unanswered). Confirmed on both mobile and
+  desktop, zero console errors, then reverted both listings to `{}` and
+  confirmed via SQL that all 25 live listings are back to empty. The empty
+  state was also verified on a real, untouched listing (Graco double pram):
+  no spec card, no reason note, page reads calm and complete.
+- Preserved untouched: the desktop two-column layout and sticky purchase
+  panel, the verified badge, seller name and tenure, condition/location
+  chips, held-funds notice, quantity and sold-out states (no live
+  multi-quantity listing exists to test that combination today, but the code
+  path above the new block is unmodified), `price_naira`/
+  `seller_share_naira` never shown to buyers. Browse, checkout, payment
+  return, buyer/seller orders, header, footer, the entire admin, and
+  create-listing (which writes these answers) are untouched.
+- **All 25 seeded live listings show the empty state today** — nobody has
+  submitted through the category-questions form yet (deployed last pass).
+  This is expected and correct, not a bug; the spec block will start
+  appearing organically as real sellers list under the new form.
+
+### Earlier this branch line — create-listing renders and submits category questions, commit `af7677d`
 Create listing now renders `marketplace_category_fields` for the chosen
 category and submits the seller's answers into `marketplace_listings.attributes`.
 Built to design 16a ("Category questions, on create listing", screens C1-C4),
