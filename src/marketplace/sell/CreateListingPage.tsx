@@ -9,6 +9,18 @@ import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
+type FieldType = "select" | "text" | "number" | "boolean";
+interface CategoryField {
+  id: string;
+  field_key: string;
+  label: string;
+  field_type: FieldType;
+  options: string[] | null;
+  is_required: boolean;
+  help_text: string | null;
+  sort_order: number;
+}
+type AnswerValue = string | number | boolean;
 // The blob is the processed photo (square, watermarked, compressed). We process
 // on add so the seller sees exactly what will be stored, and upload the same blob.
 interface PhotoDraft { blob: Blob; url: string }
@@ -51,6 +63,27 @@ export default function CreateListingPage() {
   const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  // Per-category questions (design 16a). Answers are keyed by field_key and reset
+  // whenever the category changes, since a different category's field_keys carry
+  // different meaning (or don't exist at all) — never submit an answer under a key
+  // that belongs to a different category than the one being submitted.
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  const [invalidKeys, setInvalidKeys] = useState<Set<string>>(new Set());
+  const [recovery, setRecovery] = useState<{ labels: string[]; keys: string[] } | null>(null);
+  const questionsRef = useRef<HTMLDivElement | null>(null);
+  const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  function changeCategory(id: string) {
+    setCategoryId(id);
+    setAnswers({});
+    setInvalidKeys(new Set());
+    setRecovery(null);
+  }
+  function setAnswer(key: string, value: AnswerValue) {
+    setAnswers((a) => ({ ...a, [key]: value }));
+    setInvalidKeys((s) => { if (!s.has(key)) return s; const n = new Set(s); n.delete(key); return n; });
+  }
 
   useEffect(() => {
     if (loading) return;
@@ -98,6 +131,56 @@ export default function CreateListingPage() {
     staleTime: 60000,
   });
 
+  // Category-specific questions (marketplace_category_fields, admin-managed).
+  // Ordered by sort_order, field_key as a stable tiebreaker for rows an admin gave
+  // the same sort_order (e.g. two bulk-applied questions land on the same number).
+  const { data: categoryFields = [], isLoading: fieldsLoading } = useQuery({
+    queryKey: ["mkt-category-fields", categoryId],
+    enabled: !!categoryId,
+    queryFn: async (): Promise<CategoryField[]> => {
+      const { data } = await sdb.from("marketplace_category_fields")
+        .select("id, field_key, label, field_type, options, is_required, help_text, sort_order")
+        .eq("category_id", categoryId)
+        .order("sort_order")
+        .order("field_key");
+      return (data ?? []) as unknown as CategoryField[];
+    },
+    staleTime: 60000,
+  });
+  const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
+
+  function fieldErrorText(f: CategoryField): string {
+    return f.help_text || "This is required. Buyers cannot ask before buying.";
+  }
+
+  /** Every required question with no real answer yet: text/select need a non-empty
+   * trimmed string, number needs a value that parses, boolean needs an EXPLICIT
+   * true or false (an unanswered boolean must never default to false, or a
+   * required yes/no could silently pass with no seller input at all). */
+  function missingRequiredFields(): CategoryField[] {
+    return categoryFields.filter((f) => {
+      if (!f.is_required) return false;
+      const v = answers[f.field_key];
+      if (f.field_type === "boolean") return v !== true && v !== false;
+      if (f.field_type === "number") return v === undefined || v === "" || !isFinite(Number(v));
+      return v === undefined || String(v).trim() === "";
+    });
+  }
+
+  /** attributes payload for the insert: real JSON types per field_type, so the
+   * database trigger's null/empty check (which only special-cases the STRING
+   * type as "empty" when blank) reads every answer correctly, a boolean false or
+   * a number 0 both count as answered, never as missing. */
+  function buildAttributes(): Record<string, AnswerValue> {
+    const out: Record<string, AnswerValue> = {};
+    for (const f of categoryFields) {
+      const v = answers[f.field_key];
+      if (v === undefined || v === "") continue;
+      out[f.field_key] = f.field_type === "number" ? Number(v) : v;
+    }
+    return out;
+  }
+
   const priceNum = Number(price);
   const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
   const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
@@ -129,8 +212,15 @@ export default function CreateListingPage() {
     });
   }
 
+  function goToQuestions() {
+    const firstKey = recovery?.keys[0];
+    const target = (firstKey && fieldRefs.current[firstKey]) || questionsRef.current;
+    setRecovery(null);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function submit() {
-    setError(null); setContactBlocked(false);
+    setError(null); setContactBlocked(false); setRecovery(null);
     if (!seller || !user) return;
     if (photos.length < MIN_PHOTOS) {
       setError(`Add at least ${MIN_PHOTOS} photos. Buyers cannot ask questions before buying, so different angles do the explaining for you.`);
@@ -140,6 +230,21 @@ export default function CreateListingPage() {
     if (!categoryId) { setError("Choose a category."); return; }
     if (!condition) { setError("Choose the condition."); return; }
     if (!conditionNotes.trim()) { setError("Add condition notes. Mention any flaw, buyers cannot ask questions before buying."); return; }
+
+    // Required category questions, same "cannot ask questions later" reasoning as
+    // photos and condition notes. The database enforces this too (a trigger on
+    // marketplace_listings), this check exists for a good experience, not because
+    // the backend needs it, so it must never be treated as the only guard.
+    const missing = missingRequiredFields();
+    if (missing.length > 0) {
+      setInvalidKeys(new Set(missing.map((f) => f.field_key)));
+      setError(missing.length === 1
+        ? `${missing[0].label} still needs an answer. Buyers cannot ask before buying.`
+        : `A few more answers are needed: ${missing.map((f) => f.label).join(", ")}.`);
+      questionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     if (!description.trim()) { setError("Add a description."); return; }
     if (!isFinite(priceNum) || priceNum <= 0) { setError("Enter your asking price."); return; }
     if (quantity > 1 && !identicalOk) { setError(`Please confirm all ${quantity} items are identical, or set the quantity back to 1.`); return; }
@@ -170,6 +275,7 @@ export default function CreateListingPage() {
         quantity: Math.max(1, Math.round(quantity)),
         location_state: stateName,
         location_city: areaName || null,
+        attributes: buildAttributes(),
         image_url: urls[0],
         gallery_urls: urls.slice(1),
         status: "pending_review",
@@ -178,7 +284,21 @@ export default function CreateListingPage() {
       setBusy(false); setDone(true);
     } catch (e) {
       setBusy(false);
-      setError((e as { message?: string })?.message || "Something went wrong. Please try again.");
+      const msg = (e as { message?: string })?.message || "";
+      // The required-fields trigger raises "Missing required details: Label, Label".
+      // Client validation should already catch this every normal time, this is the
+      // rare-recovery path (design C4) for whatever slipped past it, e.g. a category
+      // question added by an admin between page load and submit. Never show the raw
+      // database error for this case, name the field(s) and offer one tap back.
+      const dbMatch = /^Missing required details:\s*(.+)$/.exec(msg.trim());
+      if (dbMatch) {
+        const labels = dbMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+        const keys = categoryFields.filter((f) => labels.includes(f.label)).map((f) => f.field_key);
+        setInvalidKeys(new Set(keys));
+        setRecovery({ labels, keys });
+        return;
+      }
+      setError(msg || "Something went wrong. Please try again.");
     }
   }
 
@@ -259,7 +379,7 @@ export default function CreateListingPage() {
 
         <div className="mkt-field">
           <span className="mkt-uplabel">Category</span>
-          <select className="mkt-native-select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <select className="mkt-native-select" value={categoryId} onChange={(e) => changeCategory(e.target.value)}>
             <option value="">Choose a category</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -288,6 +408,39 @@ export default function CreateListingPage() {
             placeholder="Describe the condition honestly. Mention any scuff, stain or missing part, and what is included." />
           <div className="mkt-help">Mention any scuff or missing part, honesty prevents disputes. Do not add a phone number or way to contact you.</div>
         </div>
+
+        {/* Category questions (design 16a), sits between condition and description.
+            Nothing renders until a category is chosen and its questions have loaded. */}
+        {categoryId && !fieldsLoading && categoryFields.length > 0 && (
+          <div className="mkt-field" ref={questionsRef}>
+            <div className="mkt-cq-head">
+              <span className="mkt-uplabel">
+                {categoryName}{categoryFields.length === 1 ? ", one quick thing" : ", a couple more details"}
+              </span>
+              {categoryFields.length > 1 && (
+                <p className="mkt-help" style={{ marginTop: 2 }}>Buyers cannot ask you questions, so these help them decide with confidence.</p>
+              )}
+            </div>
+
+            {categoryFields.length === 1 ? (
+              <>
+                {/* The single default question, then a short reassurance instead of a
+                    sparse or seemingly-broken empty section (design C2). */}
+                <QuestionField field={categoryFields[0]} value={answers[categoryFields[0].field_key]} invalid={invalidKeys.has(categoryFields[0].field_key)}
+                  onChange={(v) => setAnswer(categoryFields[0].field_key, v)} setRef={(el) => { fieldRefs.current[categoryFields[0].field_key] = el; }} errorText={fieldErrorText(categoryFields[0])} />
+                <div className="mkt-reassure">
+                  <div className="mkt-reassure-tick">✓</div>
+                  <div className="mkt-reassure-text">That is everything specific to {categoryName}. On to description and price.</div>
+                </div>
+              </>
+            ) : (
+              categoryFields.map((f) => (
+                <QuestionField key={f.id} field={f} value={answers[f.field_key]} invalid={invalidKeys.has(f.field_key)}
+                  onChange={(v) => setAnswer(f.field_key, v)} setRef={(el) => { fieldRefs.current[f.field_key] = el; }} errorText={fieldErrorText(f)} />
+              ))
+            )}
+          </div>
+        )}
 
         <div className="mkt-field">
           <span className="mkt-uplabel">Description</span>
@@ -348,6 +501,90 @@ export default function CreateListingPage() {
         <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : "Send for review"}</button>
         <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : "Our team checks every listing before it goes live"}</div>
       </div>
+
+      {/* Server-side rejection recovery (design C4). Client validation should always
+          catch this first, this is the rare path for whatever slipped past it, e.g.
+          a category question added by an admin between page load and submit. */}
+      {recovery && (
+        <div className="mkt-sheet-overlay" onClick={() => setRecovery(null)}>
+          <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="grab" />
+            <h3 style={{ color: "var(--mkt-error)" }}>
+              {recovery.labels.length === 1 ? "One answer did not go through" : "A few answers did not go through"}
+            </h3>
+            <p>
+              We could not save your listing because {recovery.labels.join(", ")} {recovery.labels.length === 1 ? "was" : "were"} left empty.
+              Nothing else was lost, your photos and price are still here.
+            </p>
+            <div className="mkt-errbox" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+              {recovery.labels.map((l) => (
+                <div key={l} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <b style={{ marginBottom: 0 }}>{l}</b>
+                  <span className="mkt-qpill req">Required</span>
+                </div>
+              ))}
+            </div>
+            <button className="mkt-primary" onClick={goToQuestions}>
+              {recovery.labels.length === 1 ? `Take me to ${recovery.labels[0]}` : "Take me to those fields"}
+            </button>
+            <div style={{ textAlign: "center", font: "400 11.5px/1 Lato, sans-serif", color: "var(--mkt-muted)" }}>
+              Everything else you entered stays exactly as it was
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A single category question, all four field types (design 16a).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function QuestionField({ field, value, invalid, onChange, setRef, errorText }: {
+  field: CategoryField;
+  value: AnswerValue | undefined;
+  invalid: boolean;
+  onChange: (v: AnswerValue) => void;
+  setRef: (el: HTMLDivElement | null) => void;
+  errorText: string;
+}) {
+  return (
+    <div className="mkt-field" ref={setRef} style={{ gap: 6 }}>
+      <div className="mkt-field-head">
+        <span className="lbl" style={invalid ? { color: "var(--mkt-error)" } : undefined}>{field.label}</span>
+        <span className={field.is_required ? "mkt-qpill req" : "mkt-qpill opt"}>{field.is_required ? "Required" : "Optional"}</span>
+      </div>
+
+      {field.field_type === "select" && (
+        <select className={invalid ? "mkt-native-select error" : "mkt-native-select"} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Choose {field.label.toLowerCase()}</option>
+          {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      )}
+
+      {field.field_type === "text" && (
+        <input className={invalid ? "mkt-input error" : "mkt-input"} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder={`Add ${field.label.toLowerCase()}`} />
+      )}
+
+      {field.field_type === "number" && (
+        <input className={invalid ? "mkt-input error" : "mkt-input"} value={value === undefined ? "" : String(value)} inputMode="numeric"
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, ""))} placeholder={`Add ${field.label.toLowerCase()}`} />
+      )}
+
+      {field.field_type === "boolean" && (
+        <div className={invalid ? "mkt-chips error" : "mkt-chips"}>
+          <button type="button" className={value === true ? "mkt-chip on" : "mkt-chip"} onClick={() => onChange(true)}>Yes</button>
+          <button type="button" className={value === false ? "mkt-chip on" : "mkt-chip"} onClick={() => onChange(false)}>No</button>
+        </div>
+      )}
+
+      {field.help_text && field.field_type !== "select" && !invalid && <div className="mkt-help">{field.help_text}</div>}
+      {invalid && (
+        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontWeight: 800 }}>!</span>{errorText}
+        </div>
+      )}
+    </div>
   );
 }

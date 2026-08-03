@@ -507,7 +507,7 @@
 .mkt-input, .mkt-textarea, .mkt-native-select { width: 100%; box-sizing: border-box; border: 1px solid var(--mkt-input-border); border-radius: 12px; padding: 13px; font: 400 15px/1.3 'Lato', sans-serif; color: var(--mkt-black); background: #fff; }
 .mkt-textarea { min-height: 92px; resize: vertical; }
 .mkt-input:focus, .mkt-textarea:focus, .mkt-native-select:focus { outline: none; border-color: var(--mkt-coral); box-shadow: 0 0 0 3px var(--mkt-coral-light); }
-.mkt-input.error, .mkt-textarea.error { border-color: var(--mkt-error); border-width: 1.5px; }
+.mkt-input.error, .mkt-textarea.error, .mkt-native-select.error { border-color: var(--mkt-error); border-width: 1.5px; }
 .mkt-help { font: 400 11px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
 
 /* Error box (design red), used for validation + contact-detail block */
@@ -536,6 +536,16 @@
 .mkt-chips { display: flex; gap: 7px; }
 .mkt-chip { flex: 1; text-align: center; border: 1px solid var(--mkt-input-border); background: #fff; border-radius: 10px; padding: 10px; font: 800 13px/1 'Nunito', sans-serif; cursor: pointer; color: var(--mkt-black); }
 .mkt-chip.on { background: var(--mkt-green); color: var(--mkt-cream); border-color: var(--mkt-green); }
+/* An unanswered required yes/no (design C3): the pair gets the same red the other
+   invalid inputs get, rather than a bare checkbox reading as required. */
+.mkt-chips.error .mkt-chip { border-color: var(--mkt-error); }
+
+/* Required/optional pill on a category question (design 16a), reusing the coral
+   and neutral-grey chip colours already used site-wide, never the availability
+   green so it cannot be mistaken for stock state. */
+.mkt-qpill { display: inline-block; flex: 0 0 auto; font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.02em; padding: 4px 8px; border-radius: 6px; }
+.mkt-qpill.req { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); }
+.mkt-qpill.opt { background: var(--mkt-grey-chip); color: var(--mkt-muted); }
 
 /* Price preview card */
 .mkt-pricecard { background: var(--mkt-green-light); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 9px; }
