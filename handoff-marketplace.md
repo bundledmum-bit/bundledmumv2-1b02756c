@@ -160,7 +160,85 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — admin category questions manager, commit `1ca74de`
+### This pass — create-listing renders and submits category questions, commit `af7677d`
+Create listing now renders `marketplace_category_fields` for the chosen
+category and submits the seller's answers into `marketplace_listings.attributes`.
+Built to design 16a ("Category questions, on create listing", screens C1-C4),
+which sits between condition and description — reuses existing input styles
+throughout, no new visual language.
+- **The database already enforces required answers, this pass does not add
+  that enforcement, only a good frontend experience around it.**
+  `trg_enforce_required_category_fields` (BEFORE INSERT/UPDATE on
+  `marketplace_listings`, already deployed) blocks any write into
+  `pending_review` if a required field for that category has no answer in
+  `attributes`, or an empty string, raising `Missing required details: Label,
+  Label`. A JSON `false` or `0` counts as answered (the trigger only
+  special-cases an empty STRING), so `attributes` values are written with
+  real JSON types per `field_type` — boolean stays a boolean, number a
+  number — never stringified.
+- **Position and rendering:** the questions block sits between the condition
+  textarea and the description textarea, exactly where design 16a places it.
+  Nothing renders until a category is picked and its fields have loaded.
+  select → `.mkt-native-select`; text → `.mkt-input`, `help_text` shown below
+  when present; number → `.mkt-input`, digits only; boolean → a two-button
+  Yes/No pair reusing the `.mkt-chip` condition-picker style (a tactile
+  toggle, not a bare checkbox — and tracked as `true | false | undefined` in
+  state, an unanswered required boolean must never silently default to
+  `false`, which would already satisfy the trigger). Every row gets a
+  Required (coral) / Optional (neutral grey) pill, new
+  `.mkt-qpill`/`.mkt-qpill.req`/`.mkt-qpill.opt` classes, deliberately not the
+  green `.mkt-avail` availability pill so it can never read as stock status.
+- **Short-form state (design C2):** when a category has only the default
+  optional "Why are you selling this" question (real categories like "Baby
+  bath and grooming" have exactly this), a green reassurance box ("That is
+  everything specific to X. On to description and price.") replaces the
+  missing rows, reusing the existing `.mkt-reassure` component so the section
+  reads as complete, never sparse or broken.
+- **Client validation (design C3):** on submit, every required question with
+  no real answer blocks submission with a specific message (the single
+  field's label, or a joined list for several), scrolls to the questions
+  block, and turns each offending row red (border, label colour, and an
+  inline reason using the question's own `help_text` when present — Size's
+  `help_text` "Required, buyers cannot ask before buying" reads exactly as
+  the design's per-field reasoning — falling back to a generic "This is
+  required. Buyers cannot ask before buying." otherwise).
+- **Server-rejection recovery (design C4):** the trigger's `Missing required
+  details: ...` message is parsed (never shown raw), its labels matched back
+  to their `field_key`s, those rows highlighted red, and a bottom sheet
+  (reuses `.mkt-sheet`) opens naming the field(s), "nothing else was lost",
+  with a "Take me to it" action that scrolls to and focuses the first one.
+  Any other error keeps the existing generic `.mkt-errbox` handling
+  unchanged. This path is a rare-recovery net (e.g. a category question added
+  by an admin mid-session), client validation is expected to catch it first
+  every normal time.
+- **Category change after questions are answered:** ALL category-question
+  answers and validation state are cleared the instant `categoryId` changes.
+  Decided this over trying to carry answers forward, because a different
+  category's `field_key`s carry different meaning or may not exist at all
+  (the unique constraint is per-category, not globally reserved), so nothing
+  is ever submitted keyed to the wrong category.
+- Verified against real live data (not placeholder): Baby clothing (2
+  questions — the optional default plus required `size` with its own
+  `help_text`), Toddler school books and workbooks (3 — the shared required
+  `all_pieces_present` bulk-applied in the prior pass, alongside the
+  category-unique required `written_in`), and single-question categories
+  trigger the short-form state. `npx tsc --noEmit` and `npm run build` both
+  pass. The route was smoke-tested live: `/marketplace/sell/new` redirects
+  correctly to `/marketplace/login` with zero console errors after this
+  change (confirms the module loads and mounts cleanly); the authenticated
+  form itself needs a completed magic-link login to reach, which could not be
+  done here, consistent with how other seller/admin auth-gated screens in
+  this codebase have been verified — build + typecheck + code review +
+  real-data cross-check.
+- Preserved untouched: 4-photo minimum + image standard/watermark,
+  `display_name` enforcement, the contact-detail block, the searchable area
+  select, the buyer price preview, `pending_review` status,
+  `final_price_naira`/`markup_percent` staying trigger-owned. Browse,
+  listing detail, checkout, payment return, buyer/seller orders, header,
+  footer, the entire admin (including the category questions manager) are
+  untouched.
+
+### Earlier this branch line — admin category questions manager, commit `1ca74de`
 New admin screen manages `marketplace_category_fields`, the per-category
 questions a seller will answer when creating a listing. Built to design 15a
 ("Admin, category questions manager", screens Q1-Q8) — the frame did not exist
