@@ -160,7 +160,78 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — listing detail, genuine desktop two-column layout, commit `b9fa20a`
+### This pass — admin category questions manager, commit `1ca74de`
+New admin screen manages `marketplace_category_fields`, the per-category
+questions a seller will answer when creating a listing. Built to design 15a
+("Admin, category questions manager", screens Q1-Q8) — the frame did not exist
+on the first check this pass, was added mid-conversation, then found and read
+in full on the retry.
+- **Schema (already deployed, no migration this pass):**
+  `marketplace_category_fields` — `id, category_id (FK -> marketplace_categories
+  ON DELETE CASCADE), field_key, label, field_type ('select'|'text'|'number'|
+  'boolean' CHECK), options jsonb (select only), is_required, help_text,
+  sort_order, created_at`. **Unique `(category_id, field_key)`.** RLS: public
+  read, `Admin manage category fields` on `has_admin_permission('marketplace',
+  'manage')`, same pattern as every other admin table here.
+  `marketplace_listings.attributes jsonb NOT NULL` also exists — **nothing
+  writes to it yet, and the seller create-listing form does not read these
+  question definitions yet either. Both are a later phase.** This screen only
+  manages question DEFINITIONS.
+- **Real seeded data this pass (verified live, not placeholder):** 39
+  categories across the 7 groups, 66 questions total. `reason_for_selling`
+  ("Why are you selling this", select, optional) on nearly every category;
+  `size` (text, required) on Clothing+shoes and Maternity; `all_parts_present`/
+  `all_pieces_present` (boolean, required) on Feeding/Play+learning;
+  `brand_model` (text, required) on Travel and carriers; `written_in` ("Has it
+  been written in", boolean, required) exists ONLY on "Toddler school books
+  and workbooks", nowhere else in Play and learning, the one-off case the
+  design calls out explicitly.
+- **New file** `pages/admin/marketplace/MarketplaceCategoryFields.tsx`. New
+  sidebar nav item **"Categories"** (between Money owed and Settings, icon
+  `ListTree`) — this is DELIBERATELY separate from the existing category
+  enable/disable chip list inside `MarketplaceSettings.tsx`, which is
+  untouched. Two routes on one component sharing one data layer:
+  `/admin/marketplace/categories` (grouped list, Q1) and
+  `/admin/marketplace/categories/:categoryId` (per-category editor, Q2-Q4).
+- **List**: categories grouped by the same 7 groups the buyer filter accordion
+  uses, each row showing "N required, M optional" and a "N questions" pill; a
+  coral tag when a category carries a question unique to it, plus a
+  group-level "N categories carry a one-off question" line.
+- **Editor**: reorder via up/down buttons (not drag, works identically on
+  mobile and desktop, no drag-drop library); inline add/edit form (label, type
+  as 4 segmented buttons, required toggle, help text, a live "Seller sees"
+  preview); remove sits behind a danger `ConfirmDialog` stating the REAL
+  "answered on N live listings" count, read via
+  `attributes->>field_key is not null` scoped to that category and
+  `status='live'` — correctly 0 today since nothing writes to attributes yet,
+  this becomes accurate the moment that later phase lands.
+- **`field_key` stability, the concern called out in the brief:** on ADD, the
+  key is auto-suggested from the label (lowercase, underscored) and shown
+  editable, the admin confirms or edits it before the row is created. On EDIT
+  of an EXISTING question the key is LOCKED by default; a "Change key
+  (advanced)" link reveals it behind a coral warning explaining that any
+  answer already stored under the old key becomes orphaned and the question
+  starts fresh under the new key. Client-side key pattern `^[a-z][a-z0-9_]*$`
+  enforced before save (also keeps the `attributes->>key` query path safe).
+- **Bulk apply (design Q5, in scope, built):** its own dialog, off by default,
+  reachable from the list page ("Apply a question to a group"). Copies an
+  EXISTING question already used somewhere in the chosen group (never invents
+  a new shape) to every other category in that group; the preview pre-checks
+  every category that does not already have that `field_key` and disables/
+  greys the checkbox for ones that already do (would violate the unique
+  constraint), the admin can uncheck any row for judgement reasons before
+  confirming "Add to N categories".
+- Preserved untouched: the existing category enable/disable list and
+  `MarketplaceLocations` inside `MarketplaceSettings.tsx`, every other
+  marketplace admin screen, the customer marketplace, all seller screens,
+  checkout, buyer/seller orders, the storefront.
+- Admin is password-gated so this could not be live-rendered; verified by
+  `npx tsc --noEmit` (clean) + `npm run build` (passes) + code review, same as
+  every prior admin-ops pass. Diff is minimal and scoped: one new file plus a
+  3-line route addition in `StorefrontApp.tsx` and a 2-line nav addition in
+  `AdminLayout.tsx`.
+
+### Earlier this branch line — listing detail, genuine desktop two-column layout, commit `b9fa20a`
 Listing detail had no real desktop layout: it was the mobile design stretched
 wide (4/3 hero letterboxed, no max width, the sticky bottom buy bar spanning the
 full viewport like an oversized mobile control). Implements the design's
