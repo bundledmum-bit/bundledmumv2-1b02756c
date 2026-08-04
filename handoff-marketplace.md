@@ -165,7 +165,61 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — checkout drops the Paystack-fee hedging, all figures verified exact
+### This pass — admin Settings exposes all eighteen marketplace_* settings
+`MarketplaceSettings.tsx` only. Before this pass only 7 of the 18 live
+`marketplace_*` keys in `site_settings` were editable from admin (markup
+percent, service fee, dispute window, payout digest email, the three bank
+fields) — the other 11 were live and enforced but only changeable by editing
+the database directly. All 18 now editable, grouped exactly as specified
+(Pricing and fees / Negotiation / Orders and disputes / Payments /
+Notifications), each behind the same confirm-step modal already used for
+every other change here (toggles and the SMS-provider select act on the
+first interaction and still route through that same modal, number/text
+fields keep the existing edit-save-cancel pattern). Help text is each
+setting's own `site_settings.description`, already real prose, not
+invented. No values changed, no new settings added, no migrations or edge
+functions touched.
+- **Important, found while tracing the markup setting per this pass's own
+  audit requirement:** `marketplace_markup_percent` does **not** reprice
+  existing live listings, and — more than that — it does not correctly
+  apply to *new* listings either. `compute_marketplace_listing_price()`
+  computes `final_price_naira` from `new.markup_percent`, a column stored on
+  each listing row whose schema default is a hardcoded `10`; neither
+  `CreateListingPage.tsx`'s insert nor `SellerPriceEditPage.tsx`'s update
+  ever writes `markup_percent` into the payload (confirmed by grep), so a
+  listing's stored markup is always the hardcoded column default regardless
+  of this setting. The setting is only actually read by the client-side
+  buyer-price preview shown while listing, and by the negotiation RPC's
+  seller-share math (which also reads the listing's own stored
+  `markup_percent`, not this setting). **Changing this setting today has no
+  effect on what any buyer is actually charged.** Flagged as a standing
+  coral warning directly under that field in the admin UI, and here — needs
+  either the column default changed via a migration or the insert/update
+  payloads wired to read the live setting, neither of which is in scope for
+  a settings-screen pass.
+- **Two live warnings**, computed from the real current values, not static
+  copy: a coral banner under Orders and disputes when the confirm-receipt
+  prompt day is at or after the dispute-window day (this has caused a real
+  problem before, a buyer gets prompted to confirm at the exact moment their
+  money is already auto-releasing); a coral banner under Payments when both
+  Paystack and bank transfer are off (checkout becomes impossible). Neither
+  fires today: confirm day is 1, dispute window is 3; Paystack is on.
+- Validation: percentages 0-100, day/hour counts must be a positive whole
+  number, fees and the markup/discount percentages cannot be negative, the
+  SMS sender ID cannot be saved empty.
+- Preserved untouched: the per-alert recipient overrides, categories,
+  locations, and every other admin/marketplace/storefront screen.
+  `marketplace_payout_digest_email` was already exposed, left exactly as it
+  was, just now visually grouped under Notifications alongside the per-alert
+  overrides that already sit next to it.
+- Admin is password-gated, verified by `npx tsc --noEmit` (clean) +
+  `npm run build` (passes) + a live check that the route renders cleanly
+  (redirects to admin sign-in, zero console errors besides the sandbox's own
+  known Vite HMR warning) — the actual field-by-field save flow could not be
+  clicked through live, same limitation as every other admin-gated screen in
+  this file.
+
+### Earlier this branch line — checkout drops the Paystack-fee hedging, all figures verified exact
 Copy-only, `CheckoutPage.tsx` only. The §"checkout shows Paystack fee as an
 ESTIMATE" entry further down this file documented the original reasoning
 (dashboard fee-passing meant our number could differ from what Paystack

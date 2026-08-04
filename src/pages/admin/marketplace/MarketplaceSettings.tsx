@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { Switch } from "@/components/ui/switch";
 import { adb, formatNaira } from "./data";
 import MarketplaceLocations from "./MarketplaceLocations";
 
@@ -10,25 +11,90 @@ import MarketplaceLocations from "./MarketplaceLocations";
  * a confirm step, because these levers affect live buyers and sellers.
  */
 
-type SettingKey =
-  | "marketplace_markup_percent"
-  | "marketplace_service_fee_naira"
-  | "marketplace_dispute_window_days"
-  | "marketplace_payout_digest_email"
-  | "marketplace_bank_name"
-  | "marketplace_bank_account_name"
-  | "marketplace_bank_account_number";
+type FieldType = "number" | "toggle" | "select" | "text";
+
+interface SettingField {
+  key: string;
+  label: string;
+  help: string;
+  type: FieldType;
+  money?: boolean;
+  /** Renders/validates 0-100 with a % suffix. */
+  percent?: boolean;
+  /** Whole numbers only (day/hour counts). */
+  integer?: boolean;
+  suffix?: string;
+  options?: Array<{ value: string; label: string }>;
+  /** A standing caution shown under the field regardless of its value, not
+   * a validation error, e.g. the markup-percent disconnect below. */
+  warning?: string;
+}
 
 interface Category { id: string; name: string; is_allowed: boolean }
-interface PendingSave { key: SettingKey; label: string; value: string | number; display: string }
+interface PendingSave { key: string; label: string; value: string | number | boolean; display: string }
 interface PendingToggle { cat: Category }
 
 const FIELD = {
-  markup: { key: "marketplace_markup_percent", label: "Markup percentage", help: "Added to the seller price to make the buyer price.", numeric: true, suffix: "%" },
-  fee: { key: "marketplace_service_fee_naira", label: "Service fee", help: "Non refundable, charged once per order.", numeric: true, money: true },
-  window: { key: "marketplace_dispute_window_days", label: "Dispute window", help: "After this, payout sweeps to the seller.", numeric: true, suffix: " days" },
   email: { key: "marketplace_payout_digest_email", label: "Internal alert recipients", help: "The fallback address for any internal alert below that has no recipients of its own: the daily payout digest, a new sale, a new dispute, a new seller registering, a seller auto suspended, a payment amount anomaly, and the review backlog nudge. Enter one or more addresses, comma separated.", numeric: false },
 } as const;
+
+/**
+ * Every marketplace_* setting, grouped as specified. Help text is the real
+ * site_settings.description for each (source of truth), with two additions
+ * called out below where the description alone would not be enough for an
+ * admin making the change.
+ */
+const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
+  {
+    title: "Pricing and fees",
+    fields: [
+      {
+        key: "marketplace_markup_percent", label: "Markup percentage", type: "number", percent: true,
+        help: "Percentage added to the seller asking price to produce the buyer-facing price.",
+        warning: "Does not currently reprice anything: final_price_naira is computed per listing from that listing's OWN stored markup_percent column, which defaults to a fixed 10% and is not written from this setting when a listing is created or edited. Changing this only updates the buyer-price preview a seller sees while listing, not what is actually charged, for existing OR new listings. Needs a code fix (out of scope here) before it does what it looks like it does.",
+      },
+      { key: "marketplace_service_fee_naira", label: "Service fee", type: "number", money: true, help: "Flat non-refundable service fee charged to the buyer per marketplace order." },
+      { key: "marketplace_buyer_pays_paystack_fee", label: "Buyer pays the Paystack fee", type: "toggle", help: "Show the Paystack transaction fee as a separate line charged to the buyer at marketplace checkout." },
+    ],
+  },
+  {
+    title: "Negotiation",
+    fields: [
+      {
+        key: "marketplace_offers_enabled", label: "Negotiation enabled", type: "toggle",
+        help: "Whether buyers can ask for a lower price on a listing. Sellers also choose per listing whether theirs is negotiable, so switching this off disables negotiation everywhere, regardless of any listing's own setting.",
+      },
+      {
+        key: "marketplace_max_discount_percent", label: "Maximum discount", type: "number", percent: true,
+        help: "The most a buyer can ask off a listing, as a percentage of the buyer-facing price. Buyers only ever see this as a naira amount, never as a percentage.",
+      },
+      { key: "marketplace_offer_expiry_hours", label: "Offer expiry", type: "number", integer: true, suffix: " hours", help: "Hours a seller has to respond to an offer before it lapses." },
+    ],
+  },
+  {
+    title: "Orders and disputes",
+    fields: [
+      { key: "marketplace_confirm_prompt_day", label: "Confirm-receipt prompt", type: "number", integer: true, suffix: " day(s) after payment", help: "Days after payment confirmation when the automated buyer confirm-receipt prompt is sent." },
+      { key: "marketplace_dispute_window_days", label: "Dispute window", type: "number", integer: true, suffix: " days after dispatch", help: "Days after delivery confirmation before funds become payout-eligible without buyer response." },
+      { key: "marketplace_return_confirm_days", label: "Return confirm window", type: "number", integer: true, suffix: " days", help: "Days a seller has to confirm a returned item before it escalates to admin to resolve manually." },
+    ],
+  },
+  {
+    title: "Payments",
+    fields: [
+      { key: "marketplace_payment_paystack_enabled", label: "Paystack", type: "toggle", help: "Enable Paystack card payment on marketplace checkout." },
+      { key: "marketplace_payment_transfer_enabled", label: "Bank transfer", type: "toggle", help: "Enable manual bank transfer on marketplace checkout, the fallback if Paystack is unavailable. Off by default, Paystack is the primary method." },
+    ],
+  },
+  {
+    title: "Notifications",
+    fields: [
+      { key: "marketplace_sms_enabled", label: "SMS notifications", type: "toggle", help: "Master switch for SMS. Does nothing until a provider API key is configured and a sender ID is approved, leave off until then." },
+      { key: "marketplace_sms_provider", label: "SMS provider", type: "select", help: "SMS provider for marketplace notifications. Not yet connected.", options: [{ value: "termii", label: "Termii" }, { value: "africastalking", label: "Africa's Talking" }] },
+      { key: "marketplace_sms_sender_id", label: "SMS sender ID", type: "text", help: "Registered alphanumeric sender ID shown on SMS. Must be registered with the provider before SMS delivers." },
+    ],
+  },
+];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -119,16 +185,37 @@ export default function MarketplaceSettings() {
     setEditing((e) => ({ ...e, [key]: false }));
   }
 
-  function requestSave(f: { key: string; label: string; numeric?: boolean; money?: boolean; suffix?: string }) {
-    const raw = edits[f.key] ?? "";
-    let value: string | number = raw.trim();
-    if (f.numeric) {
+  /** Handles the numeric and plain-text fields (bank details, sender ID).
+   * Percentages validate 0-100; day/hour counts must be a positive whole
+   * number; a plain fee only needs to be non negative. */
+  function requestSave(f: { key: string; label: string; type?: FieldType; percent?: boolean; integer?: boolean; money?: boolean; suffix?: string }) {
+    const raw = (edits[f.key] ?? "").trim();
+    let value: string | number = raw;
+    const isNumeric = f.type === "number" || f.money || f.percent || f.integer;
+    if (isNumeric) {
       const n = Number(raw);
-      if (!isFinite(n) || n < 0) { setError(`${f.label} must be a number.`); return; }
+      if (raw === "" || !isFinite(n)) { setError(`${f.label} must be a number.`); return; }
+      if (n < 0) { setError(`${f.label} cannot be negative.`); return; }
+      if (f.percent && n > 100) { setError(`${f.label} must be between 0 and 100.`); return; }
+      if (f.integer && !Number.isInteger(n)) { setError(`${f.label} must be a whole number.`); return; }
       value = n;
+    } else if (f.type === "text" && !raw) {
+      setError(`${f.label} cannot be empty.`);
+      return;
     }
-    const display = f.money ? formatNaira(Number(value)) : `${value}${f.suffix ?? ""}`;
-    setPendingSave({ key: f.key as SettingKey, label: f.label, value, display });
+    const display = f.money ? formatNaira(Number(value)) : f.percent ? `${value}%` : `${value}${f.suffix ?? ""}`;
+    setPendingSave({ key: f.key, label: f.label, value, display });
+  }
+
+  /** Toggles and the SMS-provider select share the exact same save path as
+   * everything else, site_settings does not care what shape the value is. */
+  function requestToggle(f: SettingField, current: unknown) {
+    const next = !(current === true);
+    setPendingSave({ key: f.key, label: f.label, value: next, display: next ? "On" : "Off" });
+  }
+  function requestSaveSelect(f: SettingField, value: string) {
+    const label = f.options?.find((o) => o.value === value)?.label ?? value;
+    setPendingSave({ key: f.key, label: f.label, value, display: label });
   }
 
   /**
@@ -250,7 +337,60 @@ export default function MarketplaceSettings() {
     return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
   }
 
-  const numericFields = [FIELD.markup, FIELD.fee, FIELD.window];
+  // Two live warnings, computed from the real current values, not stale copy.
+  const confirmDay = Number(val("marketplace_confirm_prompt_day"));
+  const disputeDays = Number(val("marketplace_dispute_window_days"));
+  const confirmVsDisputeClash = isFinite(confirmDay) && isFinite(disputeDays) && confirmDay >= disputeDays;
+  const paystackOn = val("marketplace_payment_paystack_enabled") === true;
+  const transferOn = val("marketplace_payment_transfer_enabled") === true;
+  const noPaymentMethod = !paystackOn && !transferOn;
+
+  /** One setting card: number/text share the edit-save-cancel pattern already
+   * used for the bank fields; toggle/select act on the first interaction,
+   * both still route through the same confirm modal before anything saves. */
+  function renderField(f: SettingField) {
+    const current = val(f.key);
+    return (
+      <div key={f.key} className="rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
+        <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">{f.label}</div>
+
+        {f.type === "toggle" ? (
+          <div className="flex items-center gap-2 mt-2">
+            <Switch checked={current === true} onCheckedChange={() => requestToggle(f, current)} />
+            <span className="text-sm font-heading font-bold">{current === true ? "On" : "Off"}</span>
+          </div>
+        ) : f.type === "select" ? (
+          <select
+            value={typeof current === "string" ? current : (f.options?.[0]?.value ?? "")}
+            onChange={(e) => requestSaveSelect(f, e.target.value)}
+            className="mt-2 w-full rounded-xl border px-3 py-2 text-sm bg-white"
+            style={{ borderColor: "#F0DDD2" }}
+          >
+            {(f.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : editing[f.key] ? (
+          <div className="flex gap-2 mt-2">
+            <input type={f.type === "number" ? "number" : "text"} value={edits[f.key] ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [f.key]: e.target.value }))}
+              className="flex-1 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
+            <button onClick={() => cancelEdit(f.key)} className="text-xs font-heading font-bold px-3 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
+            <button onClick={() => requestSave(f)} className="text-xs font-heading font-extrabold px-3 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between mt-2">
+            <div className="font-heading font-black text-xl tabular-nums">
+              {f.money ? formatNaira(Number(current)) : f.percent ? `${strVal(f.key)}%` : `${strVal(f.key)}${f.suffix ?? ""}`}
+            </div>
+            <button onClick={() => startEdit(f.key, strVal(f.key))} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border" style={{ borderColor: "#F0DDD2" }}>Edit</button>
+          </div>
+        )}
+
+        <p className="text-[12px] text-text-med mt-2">{f.help}</p>
+        {f.warning && (
+          <p className="text-[12px] mt-2 pt-2 border-t" style={{ color: "#C0392B", borderColor: "#F0DDD2" }}>{f.warning}</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -259,29 +399,26 @@ export default function MarketplaceSettings() {
 
       {error && <div className="mt-3 text-xs" style={{ color: "#D4613C" }}>{error}</div>}
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
-        {numericFields.map((f) => (
-          <div key={f.key} className="rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
-            <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">{f.label}</div>
-            {editing[f.key] ? (
-              <div className="flex gap-2 mt-2">
-                <input type="number" value={edits[f.key] ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [f.key]: e.target.value }))}
-                  className="flex-1 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
-                <button onClick={() => cancelEdit(f.key)} className="text-xs font-heading font-bold px-3 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-                <button onClick={() => requestSave(f)} className="text-xs font-heading font-extrabold px-3 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between mt-2">
-                <div className="font-heading font-black text-xl tabular-nums">
-                  {"money" in f && f.money ? formatNaira(Number(val(f.key))) : `${strVal(f.key)}${"suffix" in f ? (f.suffix ?? "") : ""}`}
-                </div>
-                <button onClick={() => startEdit(f.key, strVal(f.key))} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border" style={{ borderColor: "#F0DDD2" }}>Edit</button>
-              </div>
-            )}
-            <p className="text-[12px] text-text-med mt-2">{f.help}</p>
+      {GROUPS.map((group) => (
+        <div key={group.title} className="mt-6">
+          <h2 className="text-sm font-heading font-extrabold text-foreground">{group.title}</h2>
+          <div className="mt-2 grid gap-4 md:grid-cols-2">
+            {group.fields.map(renderField)}
           </div>
-        ))}
+          {group.title === "Orders and disputes" && confirmVsDisputeClash && (
+            <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#C0392B", background: "#FDECEA", color: "#8C2A1F" }}>
+              The confirm-receipt prompt fires on day {confirmDay}, at or after the {disputeDays}-day dispute window that auto releases the payout. A buyer gets prompted the same moment their money is already releasing. This has happened before, lower the prompt day or raise the dispute window so the prompt lands first.
+            </div>
+          )}
+          {group.title === "Payments" && noPaymentMethod && (
+            <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#C0392B", background: "#FDECEA", color: "#8C2A1F" }}>
+              Both Paystack and bank transfer are off. Checkout is impossible for buyers right now, turn at least one back on.
+            </div>
+          )}
+        </div>
+      ))}
 
+      <div className="mt-6 grid gap-4 md:grid-cols-2">
         {/* digest email */}
         <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
           <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">{FIELD.email.label}</div>
@@ -368,6 +505,7 @@ export default function MarketplaceSettings() {
       {/* bank group */}
       <div className="mt-4 rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
         <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Bank account shown to buyers at checkout</div>
+        <p className="text-[12px] text-text-med mt-1">Only used when bank transfer is enabled above, under Payments.</p>
         <div className="grid gap-3 sm:grid-cols-3 mt-3">
           {([
             { key: "marketplace_bank_name", label: "Bank" },
