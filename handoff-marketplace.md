@@ -165,7 +165,66 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — legal name fields + bank account name match, commit `242aade`
+### This pass — display_name now derived by the database, legal name locked once set, commit `f18437b`
+Two more backend rules went live, both database-owned, neither rebuilt here.
+- **`display_name` is derived, never typed.** `trg_a_derive_seller_display_name`
+  (BEFORE INSERT/UPDATE, deployed) sets `display_name` automatically from
+  `legal_first_name` + `legal_last_name` whenever both are present — reuses
+  the SAME `format_seller_display_name` formatter from the bank-match pass
+  above (first token capitalised, last token → single uppercase initial).
+  **Anything the client sends as `display_name` is silently overwritten.**
+  Confirmed live: "Marvellous" + "Esevbode" → stored `display_name` is
+  exactly "Marvellous E.".
+- **Legal name is locked once set.** `trg_lock_seller_legal_name` (BEFORE
+  UPDATE, deployed) blocks a non-admin from changing `legal_first_name` or
+  `legal_last_name` once either was already non-null, raising *"Your legal
+  name cannot be changed once set. Message BundledMum if it needs
+  correcting."* Admins bypass (checked via `admin_users`). This exists so a
+  seller can't register truthfully, pass the bank-match check, then rewrite
+  their legal name to match a different account.
+- **`SellerSetupPage.tsx`:** the free-text Display name field is **gone
+  entirely** — it was already dead (overwritten regardless) and now actively
+  misleading. Collects only legal first/last name, with a live preview
+  ("Buyers will see: Marvellous E.") and a warm explanation of why only the
+  surname initial is public. The insert no longer sends `display_name` at
+  all; after saving, the existing `refresh()` + navigate-to-dashboard flow
+  means the seller always sees the REAL stored value next, never a
+  client-side guess (task's own "read the stored value back" requirement,
+  satisfied by structure already in place).
+- **`SellerDashboardPage.tsx`'s `EditProfile`:** distinguishes a seller who
+  already has both legal names on file (`!!(seller.legal_first_name &&
+  seller.legal_last_name)`) from one who doesn't. **Locked:** shown read-only,
+  tagged "Private, locked", with the derived public name spelled out and a
+  WhatsApp link (reuses the existing `WHATSAPP_BASE` pattern) to request a
+  correction. **Not yet set** (every seller who registered before this
+  change): still-editable inputs, same live preview, same bank-match
+  validation from the prior pass. Bank details stay editable either way. Also
+  removed its own free-text Display name field, for the same reason as setup
+  — a judgment call slightly beyond the prompt's literal point 2 (which only
+  asked for the legal-name fields to lock), justified by the backend rule
+  being unconditional, not setup-specific.
+- **`sellData.ts`:** `previewDisplayName` ports `format_seller_display_name`'s
+  exact algorithm client-side (clean → collapse whitespace → split → first
+  token capitalised, last token → single initial, single-word input has no
+  initial) — explicitly PREVIEW ONLY, verified against the real stored value.
+  `parseLegalNameLockError` recognises the lock trigger's exact message,
+  turns it into a human message with the WhatsApp path forward, never shown
+  raw. `validateDisplayName` is now unused (both call sites removed) but left
+  exported — zero risk, not worth the removal churn this pass.
+- **Verified live** against the real, already-deployed database and a real
+  seller account: `EditProfile` correctly showed the locked read-only legal
+  name with the derived "Marvellous E." and working WhatsApp link; a save
+  with unchanged legal names succeeded (no false lock rejection, confirmed
+  via SQL); `previewDisplayName` checked directly against the real seller's
+  own name (produced "Marvellous E.", matching the actual stored value
+  exactly), plus a single-word name, an apostrophe, and digits. One real
+  surprise caught and traced rather than assumed: a direct lock-trigger test
+  unexpectedly succeeded — turned out the test account also holds admin
+  privileges (confirmed via `is_admin()` RPC), which the trigger's own
+  documented admin-bypass clause correctly allows; not a bug, test data
+  reverted via SQL afterward. `npm run build` passes, zero console errors.
+
+### Earlier this branch line — legal name fields + bank account name match, commit `242aade`
 New backend rule: a seller's real first and last name must be on file and
 must genuinely match the name on the bank account they provide, enforced at
 the database level regardless of what the frontend does.
