@@ -20,7 +20,7 @@ export default function SellerPayoutsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin("/sell/payouts");
+    if (!isLoggedIn) sendToMarketplaceLogin("/sell/payouts", "seller");
   }, [loading, isLoggedIn]);
 
   const { data: orders = [], isLoading } = useQuery({

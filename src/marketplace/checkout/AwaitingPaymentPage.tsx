@@ -22,7 +22,7 @@ export default function AwaitingPaymentPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/checkout/awaiting/${reference}`);
+    if (!isLoggedIn) sendToMarketplaceLogin(`/checkout/awaiting/${reference}`, "payment");
   }, [authLoading, isLoggedIn, reference]);
 
   const { data, isLoading } = useQuery({

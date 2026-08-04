@@ -4,7 +4,16 @@ import { supabase } from "@/integrations/supabase/client";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { recordLoginEvent } from "@/lib/recordLoginEvent";
-import { safeReturnTo } from "./marketplaceLogin";
+import { safeReturnTo, LOGIN_REASON_COPY, type LoginReason } from "./marketplaceLogin";
+
+/** True for any string that is actually one of our known reason keys,
+ * narrowing an arbitrary URL param down to a safe lookup key. An unknown or
+ * missing reason (typed the URL directly, an old bookmarked link, a gate
+ * that forgot to pass one) always falls through to the generic copy below,
+ * never a blank space or a broken layout. */
+function isKnownReason(r: string | null): r is LoginReason {
+  return !!r && Object.prototype.hasOwnProperty.call(LOGIN_REASON_COPY, r);
+}
 
 /**
  * Marketplace login. Passwordless magic link only, using the SAME shared Supabase
@@ -26,6 +35,14 @@ export default function MarketplaceLoginPage() {
   // Default destination is the marketplace orders list, never the storefront.
   const returnTo = safeReturnTo(params.get("returnTo") || "/orders");
   const { isLoggedIn, loading } = useCustomerAuth();
+
+  // Contextual copy (what sent them here, and why), falling back to a
+  // sensible general message for a bare /login (typed URL, old bookmark,
+  // or the header's own "Log in" link, which has no specific action).
+  const reasonParam = params.get("reason");
+  const reason = isKnownReason(reasonParam) ? LOGIN_REASON_COPY[reasonParam] : null;
+  const heading = reason?.lead || "Sign in";
+  const subline = reason?.sub || "The marketplace uses your BundledMum account. No password, we email you a link.";
 
   const [email, setEmail] = useState("");
   const [stage, setStage] = useState<"idle" | "sent" | "error">("idle");
@@ -96,8 +113,8 @@ export default function MarketplaceLoginPage() {
   return (
     <>
       <div className="mkt-sell-head">
-        <div className="inner"><div className="row"><h1 style={{ flex: 1 }}>Sign in</h1></div>
-          <p className="sub">The marketplace uses your BundledMum account. No password, we email you a link.</p>
+        <div className="inner"><div className="row"><h1 style={{ flex: 1 }}>{heading}</h1></div>
+          <p className="sub">{subline}</p>
         </div>
       </div>
 

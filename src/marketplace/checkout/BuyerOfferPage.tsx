@@ -20,7 +20,7 @@ export default function BuyerOfferPage() {
   const qc = useQueryClient();
   const { loading: authLoading, isLoggedIn } = useCustomerAuth();
 
-  if (!authLoading && !isLoggedIn) sendToMarketplaceLogin(`/listing/${listingId}/offer`);
+  if (!authLoading && !isLoggedIn) sendToMarketplaceLogin(`/listing/${listingId}/offer`, "offer");
 
   const { data: listing, isLoading: listingLoading } = useListing(listingId);
   const { data: offer, isLoading: offerLoading } = useQuery({

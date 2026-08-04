@@ -143,7 +143,7 @@ export default function CreateListingPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell", "sell"); return; }
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 

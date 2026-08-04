@@ -2427,6 +2427,56 @@ could not be walked through, same credential limitation as every other
 authenticated page this session. Verified instead by reading all three RPC
 bodies directly and matching the code's queries/payloads to them exactly.
 
+### Contextual marketplace login
+The marketplace login (`auth/MarketplaceLoginPage.tsx`) used to show the same
+generic "Sign in" copy no matter what sent someone there. `sendToMarketplaceLogin`
+(`auth/marketplaceLogin.ts`) now takes an optional second argument, a
+`LoginReason` — a closed TypeScript union (`offer | sell | seller | orders |
+dispute | return | payment`), not a bare string, so a new gate has to
+either pick one of these or add a new one with its own copy; it cannot
+silently ship reasonless. Each reason's `{ lead, sub }` copy lives in one
+map, `LOGIN_REASON_COPY`, the single source of truth the login page reads
+from via `?reason=`. **Any future gate in the marketplace must call
+`sendToMarketplaceLogin(returnTo, reason)` with a real reason, not just
+`sendToMarketplaceLogin(returnTo)`** — the type system won't stop the old
+one-argument form (reason is optional so the fallback always works), but
+the whole point of this pass is that a bare reasonless gate is now the
+exception needing a good excuse, not the default.
+
+**Every gate found and its reason**, all traced individually, not assumed:
+`offer` — `ListingDetailPage.tsx` (make an offer), `BuyerOfferPage.tsx`
+(view your own offer). `sell` — `BecomeSellerPage.tsx`, `SellerSetupPage.tsx`,
+`CreateListingPage.tsx` (listing with no account yet). `seller` —
+`SellerDashboardPage.tsx`, `SellerPayoutsPage.tsx`, `SellerOrderDetailPage.tsx`,
+`SellerDispatchPage.tsx`, `SellerPriceEditPage.tsx`, `SellerOfferPage.tsx`.
+`orders` — `BuyerOrdersListPage.tsx`, `BuyerOrderDetailPage.tsx`. `dispute` —
+`BuyerDisputePage.tsx`. `return` — `BuyerReturnPage.tsx`. `payment` —
+`AwaitingPaymentPage.tsx` (the bank-transfer fallback, already sign-in-bound
+before this pass, off by default). `MarketplaceHeader.tsx`'s two "Log in"
+links (desktop nav + mobile menu) deliberately carry no reason — there
+genuinely isn't a specific action behind them, so they correctly land on
+the generic fallback rather than an invented one.
+
+**Bug found and fixed in the same pass**: `SellerOfferPage.tsx` read
+`isLoggedIn` but never actually redirected a logged-out visitor — it fell
+through silently to "Offer not found" instead of "please sign in". Added
+the missing gate (reason `seller`), matching every other seller page.
+
+**Confirmed no bug on buying**: `CheckoutPage.tsx` uses `isLoggedIn` only to
+decide which contact fields to collect, it never redirects — guest checkout
+has no login gate at all, and none of the `LOGIN_REASON_COPY` entries
+describe or imply buying.
+
+**Verified live**: every `LOGIN_REASON_COPY` entry renders correctly by
+navigating straight to `/marketplace/login?reason=<key>` (screenshotted:
+`offer`, `seller`); a made-up `reason=bogus` and no `reason` at all both
+fall back cleanly to "Sign in / The marketplace uses your BundledMum
+account..." with no blank space or broken layout; clicking the real "Make
+an offer" gate on listing detail end to end confirmed the resulting URL
+carries both `returnTo` and `reason` correctly encoded
+(`?returnTo=%2Flisting%2F...&reason=offer`), so the existing return-to
+destination handling is untouched. No console errors on any of the above.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

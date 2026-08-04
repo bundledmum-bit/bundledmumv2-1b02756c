@@ -170,7 +170,7 @@ export default function ListingDetailPage() {
   const offerPendingOrCountered = !!myOffer && (myOffer.status === "countered" || (myOffer.status === "pending" && !isLapsed(myOffer)));
 
   function openOfferSheet() {
-    if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "offer"); return; }
     setOfferSheetOpen(true);
   }
 

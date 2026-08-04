@@ -27,7 +27,7 @@ export default function SellerDispatchPage() {
 
   useEffect(() => {
     if (sellerLoading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}/dispatch`);
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}/dispatch`, "seller");
   }, [sellerLoading, isLoggedIn, orderId]);
 
   const { data: order, isLoading } = useQuery({

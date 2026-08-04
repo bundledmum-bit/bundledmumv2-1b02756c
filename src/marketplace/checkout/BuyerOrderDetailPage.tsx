@@ -27,7 +27,7 @@ export default function BuyerOrderDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   if (!authLoading && !isLoggedIn) {
-    sendToMarketplaceLogin(`/orders/${orderId}`);
+    sendToMarketplaceLogin(`/orders/${orderId}`, "orders");
   }
 
   const { data: order, isLoading } = useQuery({

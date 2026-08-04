@@ -30,7 +30,7 @@ export default function BuyerReturnPage() {
   const [error, setError] = useState<string | null>(null);
 
   if (!authLoading && !isLoggedIn) {
-    sendToMarketplaceLogin(`/orders/${orderId}/return`);
+    sendToMarketplaceLogin(`/orders/${orderId}/return`, "return");
   }
 
   const { data: order, isLoading } = useQuery({

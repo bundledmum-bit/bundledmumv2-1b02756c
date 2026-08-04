@@ -30,7 +30,7 @@ export default function SellerOrderDetailPage() {
 
   useEffect(() => {
     if (sellerLoading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}`);
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/orders/${orderId}`, "seller");
   }, [sellerLoading, isLoggedIn, orderId]);
 
   const { data: order, isLoading } = useQuery({

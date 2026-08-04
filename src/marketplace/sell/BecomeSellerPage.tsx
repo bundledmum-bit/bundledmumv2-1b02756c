@@ -31,7 +31,7 @@ export default function BecomeSellerPage() {
 
   const startCta = () => {
     if (loading) return;
-    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell", "sell"); return; }
     navigate("/sell/setup");
   };
 

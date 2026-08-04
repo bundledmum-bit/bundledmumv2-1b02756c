@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { formatNaira } from "./sellData";
 import { fetchSellerOffer, sellerRespondToOffer, isLapsed } from "../offers";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
  * Seller's own view of an incoming offer (design 23a O6 incoming, O7
@@ -19,6 +20,14 @@ export default function SellerOfferPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { seller, loading: sellerLoading, isLoggedIn } = useSeller();
+
+  // BUG FIX: this page read isLoggedIn but never actually sent a logged-out
+  // visitor to sign in, it silently fell through to "Offer not found"
+  // instead. Every other seller gate redirects, this one now does too.
+  useEffect(() => {
+    if (sellerLoading) return;
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/offers/${offerId}`, "seller");
+  }, [sellerLoading, isLoggedIn, offerId]);
 
   const [counterOpen, setCounterOpen] = useState(false);
   const [counterAmount, setCounterAmount] = useState("");

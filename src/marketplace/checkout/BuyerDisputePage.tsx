@@ -39,7 +39,7 @@ export default function BuyerDisputePage() {
   const [touched, setTouched] = useState(false);
 
   if (!authLoading && !isLoggedIn) {
-    sendToMarketplaceLogin(`/orders/${orderId}/problem`);
+    sendToMarketplaceLogin(`/orders/${orderId}/problem`, "dispute");
   }
 
   const { data: order, isLoading } = useQuery({

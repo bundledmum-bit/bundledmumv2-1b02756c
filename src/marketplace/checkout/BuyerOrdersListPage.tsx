@@ -18,7 +18,7 @@ export default function BuyerOrdersListPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin("/orders");
+    if (!isLoggedIn) sendToMarketplaceLogin("/orders", "orders");
   }, [loading, isLoggedIn]);
 
   const { data: orders = [], isLoading } = useQuery({

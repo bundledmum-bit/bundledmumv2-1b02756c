@@ -64,7 +64,7 @@ export default function SellerDashboardPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) { sendToMarketplaceLogin("/sell"); return; }
+    if (!isLoggedIn) { sendToMarketplaceLogin("/sell", "seller"); return; }
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 

@@ -31,7 +31,7 @@ export default function SellerPriceEditPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/listings/${id}/price`);
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/listings/${id}/price`, "seller");
   }, [loading, isLoggedIn, id]);
 
   const { data: listing, isLoading } = useQuery({
