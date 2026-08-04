@@ -196,3 +196,47 @@ export function hasContactLeak(...texts: Array<string | null | undefined>): bool
   if (/(?:\d[\s().\-]?){7,}/.test(blob)) return true;
   return false;
 }
+
+/**
+ * Mirrors the database's normalize_name_for_match(text) exactly: strip
+ * everything that is not a letter, uppercase what remains. Used client side
+ * so the bank-account-name guidance reflects the same rule the database
+ * trigger actually enforces, ignoring case and punctuation the same way.
+ */
+export function normalizeNameForMatch(text: string): string {
+  return (text || "").replace(/[^A-Za-z]/g, "").toUpperCase();
+}
+
+/**
+ * Checks whether a bank account name genuinely contains both a legal first
+ * and last name, the same substring test the database trigger runs. Returns
+ * which of the two parts are missing (empty array means it matches, or one
+ * of the three inputs is not yet filled in so there is nothing to check yet).
+ */
+export function missingNameParts(
+  bankAcctName: string,
+  legalFirstName: string,
+  legalLastName: string,
+): Array<"first" | "last"> {
+  const first = normalizeNameForMatch(legalFirstName);
+  const last = normalizeNameForMatch(legalLastName);
+  const account = normalizeNameForMatch(bankAcctName);
+  if (!first || !last || !account) return [];
+  const missing: Array<"first" | "last"> = [];
+  if (!account.includes(first)) missing.push("first");
+  if (!account.includes(last)) missing.push("last");
+  return missing;
+}
+
+/**
+ * Parses the database's bank-name-match rejection, raised in the form
+ * 'The bank account name must include your first and last name. We could
+ * not match "X Y" against the account name "Z"', into a specific, human
+ * message naming the actual first and last name. Returns null when the
+ * message does not match that shape, so any other database error still
+ * falls through to being shown as-is by the caller.
+ */
+export function parseBankNameMismatch(message: string, legalFirstName: string, legalLastName: string): string | null {
+  if (!/must include your first and last name/i.test(message || "")) return null;
+  return `The account name needs to include your name, ${legalFirstName.trim()} and ${legalLastName.trim()}, so we can confirm it is yours.`;
+}

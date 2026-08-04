@@ -6,6 +6,12 @@ export interface SellerRow {
   id: string;
   customer_id: string;
   display_name: string | null;
+  /** Private, never public. Distinct from display_name (which the DB truncates
+   * the surname of, e.g. "Amaka O."). Must genuinely match bank_account_name,
+   * enforced by a database trigger, so the seller's payouts can be trusted to
+   * be genuinely theirs. */
+  legal_first_name: string | null;
+  legal_last_name: string | null;
   phone: string | null;
   bank_name: string | null;
   bank_account_name: string | null;
@@ -43,7 +49,7 @@ export function useSeller() {
     if (!cid) { setSeller(null); setLoading(false); return; }
     const { data: s } = await sdb
       .from("marketplace_sellers")
-      .select("id, customer_id, display_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira")
+      .select("id, customer_id, display_name, legal_first_name, legal_last_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira")
       .eq("customer_id", cid)
       .maybeSingle();
     setSeller((s as unknown as SellerRow) ?? null);

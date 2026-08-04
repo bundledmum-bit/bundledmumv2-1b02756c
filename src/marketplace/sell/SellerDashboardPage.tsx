@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./useSeller";
-import { sdb, formatNaira, maskAccount, validateDisplayName, sellerRelistListing } from "./sellData";
+import { sdb, formatNaira, maskAccount, validateDisplayName, missingNameParts, parseBankNameMismatch, sellerRelistListing } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -300,25 +300,51 @@ export default function SellerDashboardPage() {
 
 function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnType<typeof useSeller>["seller"]>; onDone: () => void; onCancel: () => void }) {
   const [displayName, setDisplayName] = useState(seller.display_name || "");
+  const [legalFirstName, setLegalFirstName] = useState(seller.legal_first_name || "");
+  const [legalLastName, setLegalLastName] = useState(seller.legal_last_name || "");
   const [bankName, setBankName] = useState(seller.bank_name || "");
   const [bankAcctName, setBankAcctName] = useState(seller.bank_account_name || "");
   const [bankAcctNumber, setBankAcctNumber] = useState(seller.bank_account_number || "");
   const [err, setErr] = useState<string | null>(null);
+  const [bankNameErr, setBankNameErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Same live guidance as setup: which legal name parts, if any, the account
+  // name is missing right now (same substring test the database enforces).
+  const missing = missingNameParts(bankAcctName, legalFirstName, legalLastName);
+
   async function save() {
-    setErr(null);
+    setErr(null); setBankNameErr(null);
     const nErr = validateDisplayName(displayName);
     if (nErr) { setErr(nErr); return; }
+    if (!legalFirstName.trim() || !legalLastName.trim()) {
+      setErr("Please add your legal first and last name, so we can confirm the bank account is genuinely yours.");
+      return;
+    }
+    const stillMissing = missingNameParts(bankAcctName, legalFirstName, legalLastName);
+    if (stillMissing.length > 0) {
+      setBankNameErr(`The account name needs to include your name, ${legalFirstName.trim()} and ${legalLastName.trim()}, so we can confirm it is yours.`);
+      return;
+    }
     setBusy(true);
     const { error } = await sdb.from("marketplace_sellers").update({
       display_name: displayName.trim(),
+      legal_first_name: legalFirstName.trim(),
+      legal_last_name: legalLastName.trim(),
       bank_name: bankName.trim(),
       bank_account_name: bankAcctName.trim(),
       bank_account_number: bankAcctNumber.trim(),
     }).eq("id", seller.id);
     setBusy(false);
-    if (error) { setErr(error.message); return; }
+    if (error) {
+      // The database enforces the name match regardless of the check above,
+      // this is the recovery path if a mismatch somehow slips past it. Never
+      // show the raw database error for this case.
+      const mismatch = parseBankNameMismatch(error.message, legalFirstName, legalLastName);
+      if (mismatch) { setBankNameErr(mismatch); return; }
+      setErr(error.message);
+      return;
+    }
     onDone();
   }
 
@@ -328,9 +354,38 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
         <div className="mkt-field-head"><span className="lbl">Display name</span><span className="mkt-tag public">Public</span></div>
         <input className="mkt-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
       </div>
+
+      <div className="mkt-reassure">
+        <div className="mkt-reassure-tick">✓</div>
+        <div className="mkt-reassure-text">
+          The name on your bank account needs to match your own name below. This protects you as much as it protects buyers, it is how we make sure a payout can only ever go to an account that is genuinely yours.
+        </div>
+      </div>
+
+      <div className="mkt-field">
+        <div className="mkt-field-head"><span className="lbl">Legal first name</span><span className="mkt-tag private">Private</span></div>
+        <input className="mkt-input" value={legalFirstName} onChange={(e) => { setLegalFirstName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
+      </div>
+      <div className="mkt-field">
+        <div className="mkt-field-head"><span className="lbl">Legal last name</span><span className="mkt-tag private">Private</span></div>
+        <input className="mkt-input" value={legalLastName} onChange={(e) => { setLegalLastName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
+        <div className="mkt-help">Your real name as it appears on your bank account, never shown to buyers.</div>
+      </div>
+
       <div className="mkt-field"><span className="mkt-uplabel">Bank</span><input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></div>
       <div className="mkt-field"><span className="mkt-uplabel">Account number</span><input className="mkt-input" value={bankAcctNumber} onChange={(e) => setBankAcctNumber(e.target.value)} inputMode="numeric" /></div>
-      <div className="mkt-field"><span className="mkt-uplabel">Account name</span><input className="mkt-input" value={bankAcctName} onChange={(e) => setBankAcctName(e.target.value)} /></div>
+      <div className="mkt-field">
+        <span className="mkt-uplabel">Account name</span>
+        <input className={bankNameErr ? "mkt-input error" : "mkt-input"} value={bankAcctName}
+          onChange={(e) => { setBankAcctName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
+        {bankNameErr ? (
+          <div className="mkt-errbox"><span className="m">!</span><span>{bankNameErr}</span></div>
+        ) : missing.length > 0 ? (
+          <div className="mkt-help" style={{ color: "var(--mkt-error)" }}>
+            This does not look like it includes your {missing.length === 2 ? "first and last name" : missing[0] === "first" ? "first name" : "last name"} yet.
+          </div>
+        ) : null}
+      </div>
       {err && <div className="mkt-errbox"><span className="m">!</span><span>{err}</span></div>}
       <div style={{ display: "flex", gap: 8 }}>
         <button className="mkt-secondary" style={{ flex: 1 }} onClick={onCancel} disabled={busy}>Cancel</button>
