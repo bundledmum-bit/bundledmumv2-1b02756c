@@ -2115,6 +2115,34 @@ should also gain "as described" for full consistency, or whether the
 six-step structure (a short promise plus an explicit dispute step) is
 intentionally a different, acceptable framing for this specific widget.
 
+### Create listing: honesty guidance, condition fields
+Added a guidance card (`.mkt-honesty` in `marketplace.css`) directly between
+the condition chips and the condition-notes textarea in
+`CreateListingPage.tsx` — at the point disclosure actually happens, not a
+top-of-form banner and not in seller onboarding. Replaces the old generic
+line ("Mention any scuff or missing part, honesty prevents disputes.") with
+the concrete consequence: a buyer cannot ask questions before buying, so an
+undisclosed flaw only surfaces once the parcel is open; declaring a flaw
+does not cost the sale, but a mismatch does, since the buyer can report it,
+BundledMum reviews it, and a seller found at fault is refunded-against on
+that order, unpaid, and struck, three strikes suspends selling. Prompts for
+the specific things that actually cause disputes: marks or stains, missing
+parts, fading, a stiff or broken zip, worn soles, anything that no longer
+works, and whether it has been washed. Styled as advice (green-light, same
+register as `.mkt-reassure`/`.mkt-heldbox`), not a warning (no coral, no
+red). The phone-number instruction stays as its own separate help line
+underneath, unrelated topic, still necessary. Not verified live: this page
+needs a real seller login (magic-link, no test credentials available this
+session); confirmed by build + typecheck and by reading the rendered CSS in
+the build output only.
+
+**Condition notes has no minimum length, client or database.** Submit-time
+validation is `!conditionNotes.trim()` only, a seller can currently submit
+a single word or character. Confirmed no DB-side CHECK constraint or
+trigger enforces any length either (checked directly against the database).
+Not adding a minimum this pass, per the prompt, flagging for a separate
+decision.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

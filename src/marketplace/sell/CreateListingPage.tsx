@@ -436,9 +436,26 @@ export default function CreateListingPage() {
               <button type="button" key={c} className={condition === c ? "mkt-chip on" : "mkt-chip"} onClick={() => setCondition(c)}>{c}</button>
             ))}
           </div>
+
+          {/* Honesty guidance, at the point disclosure actually happens, not a
+              banner at the top of the form and not in onboarding. Makes the
+              consequence concrete rather than a generic "be honest" line: a
+              buyer cannot ask before buying, so an undisclosed flaw becomes a
+              dispute, and a seller found at fault is refunded-against, unpaid
+              on that order, and struck. Framed as advice on the seller's
+              side, not a warning notice. */}
+          <div className="mkt-honesty">
+            <span className="ic">💡</span>
+            <div>
+              <p>Buyers cannot ask you anything before they buy. Buy now is the only button they have, so whatever is not written here, they only find out once the parcel is open.</p>
+              <p>Declaring a flaw does not stop it selling, secondhand buyers expect wear. What they do not expect is a surprise. If the item does not match your description, the buyer can report a problem, we review it, and if you were not upfront, they get refunded, you do not get paid, and it counts as a strike. Three strikes and you can no longer sell here.</p>
+              <p>So mention it all: any mark or stain, missing pieces, fading, a stiff or broken zip, worn soles, anything that no longer works, and whether it has been washed. You will still sell it, you just will not lose it.</p>
+            </div>
+          </div>
+
           <textarea className="mkt-textarea" value={conditionNotes} onChange={(e) => setConditionNotes(e.target.value)}
             placeholder="Describe the condition honestly. Mention any scuff, stain or missing part, and what is included." />
-          <div className="mkt-help">Mention any scuff or missing part, honesty prevents disputes. Do not add a phone number or way to contact you.</div>
+          <div className="mkt-help">Do not add a phone number or way to contact you.</div>
         </div>
 
         {/* Category questions (design 16a), sits between condition and description.

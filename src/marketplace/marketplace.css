@@ -610,6 +610,15 @@
    invalid inputs get, rather than a bare checkbox reading as required. */
 .mkt-chips.error .mkt-chip { border-color: var(--mkt-error); }
 
+/* Honesty guidance, sits with the condition picker + notes, where disclosure
+   actually happens. Green-light "advice on your side" treatment, matching
+   .mkt-reassure/.mkt-heldbox, deliberately not coral (action) or red
+   (warning) — this is a tip, not an alert. */
+.mkt-honesty { background: var(--mkt-green-light); border-radius: 13px; padding: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.mkt-honesty .ic { flex: 0 0 auto; font-size: 16px; line-height: 1.3; }
+.mkt-honesty p { margin: 0; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
+.mkt-honesty p + p { margin-top: 8px; }
+
 /* Required/optional pill on a category question (design 16a), reusing the coral
    and neutral-grey chip colours already used site-wide, never the availability
    green so it cannot be mistaken for stock state. */
