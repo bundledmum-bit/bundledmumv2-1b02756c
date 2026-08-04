@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Mail, Loader2, ArrowLeft } from "lucide-react";
 import bmLogoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { recordLoginEvent } from "@/lib/recordLoginEvent";
 import { track as pixelTrack, trackOnce as pixelTrackOnce } from "@/lib/metaPixel";
 import { analytics } from "@/lib/ga";
 
@@ -44,6 +45,18 @@ export default function AccountLoginPage() {
     const t = setInterval(() => setCooldown(c => Math.max(0, c - 1)), 1000);
     return () => clearInterval(t);
   }, [cooldown]);
+
+  // New-device sign-in alert: fires once per GENUINE new sign-in, not on every
+  // load. SIGNED_IN only fires when a sign-in flow (here, the magic link)
+  // actually just completed; a page load that finds an already-valid session
+  // fires INITIAL_SESSION instead, which this deliberately ignores. Same
+  // shared customer account as the marketplace login, same wiring there too.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") recordLoginEvent(supabase);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   const sendLink = async () => {
     const addr = email.trim().toLowerCase();

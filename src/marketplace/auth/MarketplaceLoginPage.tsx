@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { recordLoginEvent } from "@/lib/recordLoginEvent";
 import { safeReturnTo } from "./marketplaceLogin";
 
 /**
@@ -37,6 +38,17 @@ export default function MarketplaceLoginPage() {
   useEffect(() => {
     if (!loading && isLoggedIn) navigate(returnTo, { replace: true });
   }, [loading, isLoggedIn, navigate, returnTo]);
+
+  // New-device sign-in alert: fires once per GENUINE new sign-in, not on every
+  // load. SIGNED_IN only fires when a sign-in flow (here, the magic link)
+  // actually just completed; a page load that finds an already-valid session
+  // fires INITIAL_SESSION instead, which this deliberately ignores.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") recordLoginEvent(supabase);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // Resend cooldown.
   useEffect(() => {

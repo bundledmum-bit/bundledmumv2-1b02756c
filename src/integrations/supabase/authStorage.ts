@@ -1,69 +1,47 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "./types";
 
 /**
- * Cross-subdomain auth session setup for BundledMum.
+ * Auth session storage for BundledMum.
  *
- * The storefront (bundledmum.com) and the marketplace
- * (marketplace.bundledmum.com) are different browser ORIGINS. Supabase's
- * default session storage is localStorage, which is scoped per-origin, so a
- * customer logged in on one host appears logged out on the other. To share a
- * single session across the root domain and all its subdomains we persist the
- * session in a cookie scoped to the parent domain ".bundledmum.com".
+ * HISTORY: this used to persist the session in a cookie on ".bundledmum.com"
+ * so the storefront and the marketplace, then living on the SEPARATE origin
+ * marketplace.bundledmum.com, could share one login. The marketplace now
+ * lives on the /marketplace PATH of this same origin, so that cross-origin
+ * need is gone — localStorage, scoped per-origin, already covers every route
+ * on bundledmum.com (/, /marketplace, /admin, /account, ...) with no special
+ * configuration.
  *
- * We use @supabase/ssr's browser client for this because a Supabase session
- * (access JWT + refresh token + user object) routinely exceeds the ~4KB
- * per-cookie limit; @supabase/ssr chunks the cookie correctly, which a
- * hand-rolled document.cookie adapter would get wrong.
+ * REVERTED FROM COOKIES (deliberately, not a stray cleanup): the cookie
+ * approach had a real, confirmed bug. @supabase/ssr's browser client sets the
+ * session cookie via `document.cookie` in the page's own JavaScript, not a
+ * server Set-Cookie response header (this is a pure client-side SPA, there is
+ * no server in the request path that could set one). WebKit (Safari on iOS
+ * and macOS, and every iOS browser, since all iOS browsers are WebKit-based
+ * by Apple's policy) enforces a hard 7-day cap on any cookie set this way,
+ * REGARDLESS of the Max-Age requested — the 1-year value this file used to
+ * configure, and even @supabase/ssr's own 400-day internal default, were both
+ * silently truncated to 7 days by the browser. That is why sellers on mobile
+ * specifically were being signed out unexpectedly: after roughly a week
+ * without the session being actively refreshed (easily reached by a mobile
+ * browser tab sitting backgrounded), the cookie was simply gone, no error,
+ * nothing in this app's own code did it. localStorage carries no such cap —
+ * Safari's separate rule for script-writable storage only evicts it after 7
+ * days of the user never visiting the site at all, which any return visit
+ * resets, a far more forgiving bar for a returning seller checking their shop
+ * every so often.
  *
- * IMPORTANT: the ".bundledmum.com" cookie domain is applied ONLY on real
- * bundledmum.com hosts. On localhost and on the Lovable preview host
- * (*.lovable.app) a ".bundledmum.com" cookie cannot be set and would silently
- * break login, so we fall back to the previous default localStorage-backed
- * client on those hosts — keeping local dev and preview auth working exactly
- * as they did before this change.
+ * KNOWN, ACCEPTED TRADEOFF: reverting logs out everyone currently holding a
+ * cookie session, once. Worth it: the alternative is the bug above repeating
+ * indefinitely for every mobile seller.
  *
- * This module deliberately lives OUTSIDE the auto-generated client.ts so the
- * cross-subdomain logic survives any regeneration of that file.
- */
-
-const PARENT_COOKIE_DOMAIN = ".bundledmum.com";
-
-/** True for bundledmum.com and any of its subdomains (marketplace., www., ...). */
-function isBundledmumHost(hostname: string): boolean {
-  return hostname === "bundledmum.com" || hostname.endsWith(".bundledmum.com");
-}
-
-/**
- * Creates the app-wide Supabase client with the correct session storage for
- * the current host. All auth access in the app goes through the SDK
- * (supabase.auth.*), so swapping the storage mechanism here is transparent to
- * every consumer — no code reads the session out of localStorage directly.
+ * Every auth access in the app goes through the SDK (supabase.auth.*), so
+ * this storage choice is transparent to every consumer.
  */
 export function createBundledmumSupabaseClient(
   url: string,
   key: string,
 ): SupabaseClient<Database> {
-  const hostname =
-    typeof window !== "undefined" ? window.location.hostname : "";
-
-  // Production bundledmum hosts → shared cookie session across all subdomains.
-  if (isBundledmumHost(hostname)) {
-    return createBrowserClient<Database>(url, key, {
-      cookieOptions: {
-        domain: PARENT_COOKIE_DOMAIN,
-        path: "/",
-        sameSite: "lax",
-        secure: true,
-        // ~1 year, so the shared session lives as long as a refresh session.
-        maxAge: 60 * 60 * 24 * 365,
-      },
-    });
-  }
-
-  // localhost / *.lovable.app / anything else → unchanged default behaviour
-  // (localStorage). This preserves dev + preview auth precisely as before.
   return createClient<Database>(url, key, {
     auth: {
       storage: localStorage,
