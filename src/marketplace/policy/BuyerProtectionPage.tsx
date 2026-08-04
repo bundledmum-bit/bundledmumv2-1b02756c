@@ -41,7 +41,7 @@ export default function BuyerProtectionPage() {
 
       <div className="mkt-policy-steps">
         <div className="mkt-card2-label">If something's wrong when it arrives</div>
-        <div className="mkt-step"><div className="mkt-step-num">1</div><span>Open your order and tap Report a problem, within 48 hours of it arriving</span></div>
+        <div className="mkt-step"><div className="mkt-step-num">1</div><span>Open your order and tap Report a problem. You have until {s.disputeWindowDays} days after dispatch, before your money would otherwise release to the seller automatically</span></div>
         <div className="mkt-step"><div className="mkt-step-num">2</div><span>A real person at BundledMum reviews it, your money stays held while they do</span></div>
         <div className="mkt-step"><div className="mkt-step-num final">3</div><span>If the item isn't as described, you're refunded by bank transfer once it's posted back to the seller</span></div>
       </div>

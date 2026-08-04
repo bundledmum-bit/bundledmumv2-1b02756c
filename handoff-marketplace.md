@@ -165,7 +165,64 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — admin Settings exposes all eighteen marketplace_* settings
+### This pass — verification audit of the five policy pages, one factual error fixed
+Not a rebuild. Confirmed all five (`TermsPage.tsx`, `PrivacyPage.tsx`,
+`BuyerProtectionPage.tsx`, `SellerProtectionPage.tsx`, `CookiesPage.tsx`)
+exist as routes (`/terms`, `/privacy`, `/buyer-protection`,
+`/seller-protection`, `/cookies`) and are linked from both the footer and
+the shared `PolicyNav`, none missing.
+- **Values re-checked against live site_settings, all already dynamic,
+  nothing hardcoded found**: service fee (₦1,000, not the design's stale
+  ₦750), markup 10%, max discount 10%, dispute window 3 days, return confirm
+  4 days all read live via `useMarketplacePolicySettings()`. Negotiation
+  expiry (48h) and confirm-prompt day (day 1) are not stated as numbers on
+  any of the five pages, so there was nothing to fix there.
+- **One factual error found and fixed**: `BuyerProtectionPage.tsx` step 1
+  said "within 48 hours of it arriving" to report a problem. Re-read
+  `raise_marketplace_dispute` directly — it enforces no such deadline at
+  all, only that the order hasn't already settled. The real closing
+  mechanism is the same dispute window already used correctly two lines
+  above it on this same page. Fixed to read the live
+  `disputeWindowDays` value instead of the stale, wrong "48 hours": *"Open
+  your order and tap Report a problem. You have until {disputeWindowDays}
+  days after dispatch, before your money would otherwise release to the
+  seller automatically."* Verified live, renders "3 days", zero console
+  errors.
+- **Every other behavioural claim checked against the real code, all
+  correct, none changed**: buyer pays BundledMum not the seller (Terms §6,
+  Buyer protection); refunds by bank transfer not the card, same day the
+  seller confirms a return arrived (Terms §9, matches
+  `buyerMarkReturnSent`'s flow exactly); the three dispute outcomes
+  `rejected`/`full_refund`/`courier_fault` (Terms §8, re-checked against
+  `admin_resolve_dispute`'s actual outcome enum); three strikes suspends a
+  seller and auto-delists their listings (Terms §10, Seller protection,
+  re-checked against `auto_suspend_seller_on_strikes` and
+  `delist_listings_on_seller_suspension`); delivery arranged between buyer
+  and seller, BundledMum not the courier (Terms §7); passwordless sign-in,
+  no stored passwords (Privacy §6); guest checkout, buying needs no account
+  (nothing on any page claims otherwise); negotiation only on listings
+  marked negotiable, one ask, one counter (Terms §5); seller bank details
+  for payouts, buyer bank details only when a refund is due (Privacy §1).
+- **Contact email discrepancy still present, still not resolved, re-flagged
+  as instructed**: `site_settings.contact_email` is `hello@bundledmum.ng`;
+  `send-transactional-email`'s actual `FROM_EMAIL` is
+  `hello@bundledmum.com` (its `REPLY_TO` is `.ng`, matching the setting).
+  The five pages use `contact_email` (so `.ng`), which lines up with where
+  a reply lands, not the visible From address. Needs a human decision on
+  which is canonical; not guessed at here.
+- **Last-updated date, re-assessed**: `POLICY_LAST_UPDATED` in
+  `policySettings.ts` is still a single hardcoded string, not
+  database-backed. One place to change instead of five, but still not
+  meaningfully maintainable, nothing reminds anyone to update it when
+  content changes. Unchanged this pass, flagged again per this task's own
+  instruction to report on it.
+- `npx tsc --noEmit` and `npm run build` both pass. **These five pages must
+  be re-checked whenever marketplace fee, timing, dispute-outcome, or
+  strike behaviour actually changes** — their prose, not just their
+  numbers, describes that behaviour and can drift the same way the ₦750
+  figure and the 48-hours claim both already did.
+
+### Earlier this branch line — admin Settings exposes all eighteen marketplace_* settings
 `MarketplaceSettings.tsx` only. Before this pass only 7 of the 18 live
 `marketplace_*` keys in `site_settings` were editable from admin (markup
 percent, service fee, dispute window, payout digest email, the three bank
