@@ -1,6 +1,6 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
-import { useMarketplacePolicySettings, POLICY_LAST_UPDATED } from "./policySettings";
+import { useMarketplacePolicySettings } from "./policySettings";
 
 const SECTIONS = [
   { id: "what-we-collect", label: "What we collect and why" },
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Privacy policy</h1>
-        <span className="mkt-policy-updated">Last updated {POLICY_LAST_UPDATED}</span>
+        {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
       </div>
 
       <div className="mkt-policy-body">

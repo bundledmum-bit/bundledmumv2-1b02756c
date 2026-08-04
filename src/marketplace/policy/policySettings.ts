@@ -19,6 +19,10 @@ export interface MarketplacePolicySettings {
   returnConfirmDays: number;
   contactEmail: string;
   whatsappNumber: string;
+  /** null when the setting is empty or missing, so the caller can hide the
+   * "Last updated" line entirely rather than show a blank or a fallback
+   * date. A missing date is honest, a wrong one is not. */
+  policiesUpdatedAt: string | null;
 }
 
 const KEYS = [
@@ -30,6 +34,7 @@ const KEYS = [
   "marketplace_return_confirm_days",
   "contact_email",
   "whatsapp_number",
+  "marketplace_policies_updated_at",
 ] as const;
 
 export function useMarketplacePolicySettings() {
@@ -47,6 +52,12 @@ export function useMarketplacePolicySettings() {
         const v = map.get(key);
         return typeof v === "string" && v.trim() ? v.trim() : fallback;
       };
+      // No fallback here on purpose: an empty or missing date must hide the
+      // "Last updated" line, never show a blank or a made up date.
+      const strOrNull = (key: string): string | null => {
+        const v = map.get(key);
+        return typeof v === "string" && v.trim() ? v.trim() : null;
+      };
       return {
         serviceFeeNaira: num("marketplace_service_fee_naira", 1000),
         markupPercent: num("marketplace_markup_percent", 10),
@@ -56,20 +67,12 @@ export function useMarketplacePolicySettings() {
         returnConfirmDays: num("marketplace_return_confirm_days", 4),
         contactEmail: str("contact_email", "hello@bundledmum.ng"),
         whatsappNumber: str("whatsapp_number", "2347040667424"),
+        policiesUpdatedAt: strOrNull("marketplace_policies_updated_at"),
       };
     },
     staleTime: 5 * 60 * 1000,
   });
 }
-
-/**
- * Single source of truth for the "Last updated" date shown on every policy
- * page. Not database-backed (no setting for it, and adding one is out of
- * scope, see handoff), so this remains a human-maintained constant. Kept in
- * exactly one place rather than five so there is exactly one line to change,
- * but it is still a plain string nobody is reminded to update.
- */
-export const POLICY_LAST_UPDATED = "1 August 2026";
 
 export function naira(n: number): string {
   return `₦${Math.round(n).toLocaleString("en-NG")}`;

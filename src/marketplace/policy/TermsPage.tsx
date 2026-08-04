@@ -1,6 +1,6 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
-import { useMarketplacePolicySettings, POLICY_LAST_UPDATED, naira } from "./policySettings";
+import { useMarketplacePolicySettings, naira } from "./policySettings";
 
 const SECTIONS = [
   { id: "who-we-are", label: "Who we are" },
@@ -34,7 +34,7 @@ export default function TermsPage() {
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Terms and conditions</h1>
-        <span className="mkt-policy-updated">Last updated {POLICY_LAST_UPDATED}</span>
+        {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
       </div>
 
       <div className="mkt-policy-body">

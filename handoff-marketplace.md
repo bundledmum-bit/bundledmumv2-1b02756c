@@ -165,7 +165,50 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — footer reorganised into labelled groups
+### This pass — policy "Last updated" date is admin editable, no longer hardcoded
+The `POLICY_LAST_UPDATED` constant (`policySettings.ts`, was `"1 August
+2026"`, already stale against the live setting's `"04 August 2026"`) is
+**removed entirely** — grepped the whole marketplace tree afterward to
+confirm nothing still imports it. All five policy pages (Terms, Privacy,
+Buyer protection, Seller protection, Cookies) now read the date from
+`site_settings.marketplace_policies_updated_at` via
+`useMarketplacePolicySettings()`, the same hook they already used for every
+other value on these pages.
+- **Missing or empty hides the line, no fallback, no blank line.** The
+  hook's new `policiesUpdatedAt` field is `string | null` (no default
+  string, unlike every other field on this hook, which all get a sensible
+  fallback), and each page renders `{s.policiesUpdatedAt && <span>...}`.
+  Verified live: temporarily set the setting to an empty string via SQL,
+  confirmed the "Last updated" line disappeared entirely on the Cookies
+  page (heading straight into body copy, no gap), zero console errors, then
+  reverted and confirmed the line came back.
+- **Now editable from admin**, added as its own new group, "Policy pages",
+  in `MarketplaceSettings.tsx` (placed after Notifications) — none of the
+  five existing groups (Pricing and fees / Negotiation / Orders and
+  disputes / Payments / Notifications) fit a policy-page-content date, so a
+  dedicated group was more honest than forcing it under an unrelated
+  heading. Its help text: *"The date shown as 'Last updated' on the five
+  customer policy pages (Terms, Privacy, Buyer protection, Seller
+  protection, Cookies). Update this whenever any policy page's content
+  actually changes, so the date stays true. Leave empty to hide the
+  last-updated line on those pages rather than show a wrong date."* This is
+  the one text field on the whole settings screen allowed to save empty on
+  purpose (a new `allowEmpty` flag on `SettingField`, since every other text
+  field there, e.g. the SMS sender ID, must never be blank) — its own-value
+  display reads "Empty, last-updated line is hidden" rather than a blank
+  space, so an admin looking at the list doesn't mistake it for unset by
+  accident.
+- **Verified live, real save through the app's own confirm-step flow, not a
+  SQL shortcut:** edited the field in admin, confirmed the modal, saved,
+  confirmed the public Terms page picked up the new value on next load with
+  no cache staleness issue, then reverted both via the same real save path
+  and via SQL back to the original `"04 August 2026"`.
+- `npx tsc --noEmit` and `npm run build` both pass. **This setting must be
+  updated by hand whenever any of the five policy pages' content changes**
+  — nothing automates that, it is exactly the same discipline the old
+  hardcoded constant needed, just now changeable without a code deploy.
+
+### Earlier this branch line — footer reorganised into labelled groups
 `MarketplaceFooter.tsx` + its CSS in `marketplace.css` only. The one flat,
 wrapping `.mkt-ftr-links` list (nine links plus the storefront link all in a
 row) is now: a brand column (logo + "Marketplace" wordmark + the protection

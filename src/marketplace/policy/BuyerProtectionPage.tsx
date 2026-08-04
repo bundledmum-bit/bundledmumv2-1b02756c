@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
-import { useMarketplacePolicySettings, POLICY_LAST_UPDATED } from "./policySettings";
+import { useMarketplacePolicySettings } from "./policySettings";
 
 /**
  * Buyer protection (design 24a, screen 1). Warm, visual, reassurance-first,
@@ -20,7 +20,7 @@ export default function BuyerProtectionPage() {
           <span className="crumb">Policies ›</span>
           <h1>Buying here is protected</h1>
           <p className="lead">A plain explanation of what we promise you, and what we don't.</p>
-          <span className="mkt-policy-updated">Last updated {POLICY_LAST_UPDATED}</span>
+          {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
         </div>
       </div>
 

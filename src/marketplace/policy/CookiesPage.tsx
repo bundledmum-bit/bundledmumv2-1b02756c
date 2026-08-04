@@ -1,6 +1,6 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
-import { useMarketplacePolicySettings, POLICY_LAST_UPDATED } from "./policySettings";
+import { useMarketplacePolicySettings } from "./policySettings";
 
 /** Cookies (design 24a, screen 5), short and honest, no jump links, it is
  * short enough not to need any. */
@@ -13,7 +13,7 @@ export default function CookiesPage() {
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Cookies</h1>
-        <span className="mkt-policy-updated">Last updated {POLICY_LAST_UPDATED}</span>
+        {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
       </div>
 
       <div className="mkt-policy-body">

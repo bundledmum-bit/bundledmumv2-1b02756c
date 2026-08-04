@@ -28,6 +28,9 @@ interface SettingField {
   /** A standing caution shown under the field regardless of its value, not
    * a validation error, e.g. the markup-percent disconnect below. */
   warning?: string;
+  /** A text field may be saved empty on purpose (e.g. the policies
+   * last-updated date, where empty means "hide the line", not an error). */
+  allowEmpty?: boolean;
 }
 
 interface Category { id: string; name: string; is_allowed: boolean }
@@ -92,6 +95,15 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
       { key: "marketplace_sms_enabled", label: "SMS notifications", type: "toggle", help: "Master switch for SMS. Does nothing until a provider API key is configured and a sender ID is approved, leave off until then." },
       { key: "marketplace_sms_provider", label: "SMS provider", type: "select", help: "SMS provider for marketplace notifications. Not yet connected.", options: [{ value: "termii", label: "Termii" }, { value: "africastalking", label: "Africa's Talking" }] },
       { key: "marketplace_sms_sender_id", label: "SMS sender ID", type: "text", help: "Registered alphanumeric sender ID shown on SMS. Must be registered with the provider before SMS delivers." },
+    ],
+  },
+  {
+    title: "Policy pages",
+    fields: [
+      {
+        key: "marketplace_policies_updated_at", label: "Policies last updated", type: "text", allowEmpty: true,
+        help: "The date shown as \"Last updated\" on the five customer policy pages (Terms, Privacy, Buyer protection, Seller protection, Cookies). Update this whenever any policy page's content actually changes, so the date stays true. Leave empty to hide the last-updated line on those pages rather than show a wrong date.",
+      },
     ],
   },
 ];
@@ -188,7 +200,7 @@ export default function MarketplaceSettings() {
   /** Handles the numeric and plain-text fields (bank details, sender ID).
    * Percentages validate 0-100; day/hour counts must be a positive whole
    * number; a plain fee only needs to be non negative. */
-  function requestSave(f: { key: string; label: string; type?: FieldType; percent?: boolean; integer?: boolean; money?: boolean; suffix?: string }) {
+  function requestSave(f: { key: string; label: string; type?: FieldType; percent?: boolean; integer?: boolean; money?: boolean; suffix?: string; allowEmpty?: boolean }) {
     const raw = (edits[f.key] ?? "").trim();
     let value: string | number = raw;
     const isNumeric = f.type === "number" || f.money || f.percent || f.integer;
@@ -199,11 +211,14 @@ export default function MarketplaceSettings() {
       if (f.percent && n > 100) { setError(`${f.label} must be between 0 and 100.`); return; }
       if (f.integer && !Number.isInteger(n)) { setError(`${f.label} must be a whole number.`); return; }
       value = n;
-    } else if (f.type === "text" && !raw) {
+    } else if (f.type === "text" && !raw && !f.allowEmpty) {
       setError(`${f.label} cannot be empty.`);
       return;
     }
-    const display = f.money ? formatNaira(Number(value)) : f.percent ? `${value}%` : `${value}${f.suffix ?? ""}`;
+    const display = f.money ? formatNaira(Number(value))
+      : f.percent ? `${value}%`
+      : (!value && f.allowEmpty) ? "Empty, hides the line"
+      : `${value}${f.suffix ?? ""}`;
     setPendingSave({ key: f.key, label: f.label, value, display });
   }
 
@@ -378,7 +393,10 @@ export default function MarketplaceSettings() {
         ) : (
           <div className="flex items-center justify-between mt-2">
             <div className="font-heading font-black text-xl tabular-nums">
-              {f.money ? formatNaira(Number(current)) : f.percent ? `${strVal(f.key)}%` : `${strVal(f.key)}${f.suffix ?? ""}`}
+              {f.money ? formatNaira(Number(current))
+                : f.percent ? `${strVal(f.key)}%`
+                : (!strVal(f.key) && f.allowEmpty) ? <span className="text-text-light font-body font-normal text-sm">Empty, last-updated line is hidden</span>
+                : `${strVal(f.key)}${f.suffix ?? ""}`}
             </div>
             <button onClick={() => startEdit(f.key, strVal(f.key))} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border" style={{ borderColor: "#F0DDD2" }}>Edit</button>
           </div>

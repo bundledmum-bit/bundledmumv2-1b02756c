@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
-import { useMarketplacePolicySettings, POLICY_LAST_UPDATED } from "./policySettings";
+import { useMarketplacePolicySettings } from "./policySettings";
 
 /** Seller protection (design 24a, screen 2). Same warm, visual treatment as
  * Buyer protection, mirrored content. */
@@ -17,7 +17,7 @@ export default function SellerProtectionPage() {
           <span className="crumb">Policies ›</span>
           <h1>Selling here is protected too</h1>
           <p className="lead">What we guarantee you, and what we expect back.</p>
-          <span className="mkt-policy-updated">Last updated {POLICY_LAST_UPDATED}</span>
+          {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
         </div>
       </div>
 
