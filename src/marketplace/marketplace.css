@@ -884,7 +884,7 @@
 
 /* ── Home header line, browse only (design R3) ── */
 .mkt-home-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 12px 4px; max-width: 1180px; margin: 0 auto; width: 100%; box-sizing: border-box; }
-.mkt-home-line h1 { font: 900 22px/1.12 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-green-dark); margin: 0; max-width: 15ch; text-wrap: balance; }
+.mkt-home-line h1 { font: 900 22px/1.12 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-green-dark); margin: 0; max-width: 22ch; text-wrap: balance; }
 .mkt-home-sell { flex: 0 0 auto; align-self: center; font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-cream); background: var(--mkt-coral); border-radius: 999px; padding: 9px 16px; text-decoration: none; }
 .mkt-home-sell:hover { background: var(--mkt-coral-dark); color: var(--mkt-cream); }
 @media (min-width: 720px) {
