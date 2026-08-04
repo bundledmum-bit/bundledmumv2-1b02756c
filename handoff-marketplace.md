@@ -165,7 +165,21 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — verification audit of the five policy pages, one factual error fixed
+### This pass — footer reorganised into labelled groups
+`MarketplaceFooter.tsx` + its CSS in `marketplace.css` only. The one flat,
+wrapping `.mkt-ftr-links` list (nine links plus the storefront link all in a
+row) is now: a brand column (logo + "Marketplace" wordmark + the protection
+line, kept as-is); two headed nav groups, "Marketplace" (Browse, Sell, My
+orders, Seller dashboard when logged in) and "Policies" (Buyer protection,
+Seller protection, Terms, Privacy, Cookies); and a separate bottom bar below
+a hairline divider holding the copyright and the `bundledmum.com` link.
+Desktop puts brand left, groups right, bottom bar as one row; mobile stacks
+brand then the two groups side by side then the divider and bottom bar.
+Same links, same destinations, same suppression rules, nothing added or
+removed. Verified live at both mobile (375px) and desktop (1280px), zero
+console errors. `npx tsc --noEmit` and `npm run build` both pass.
+
+### Earlier this branch line — verification audit of the five policy pages, one factual error fixed
 Not a rebuild. Confirmed all five (`TermsPage.tsx`, `PrivacyPage.tsx`,
 `BuyerProtectionPage.tsx`, `SellerProtectionPage.tsx`, `CookiesPage.tsx`)
 exist as routes (`/terms`, `/privacy`, `/buyer-protection`,

@@ -907,26 +907,36 @@
 .mkt-dispatch-preview img { width: 100%; display: block; }
 .mkt-dispatch-preview .retake { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
 
-/* ── Shared sitewide footer (design R2/R2b, compact) ── */
-.mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 18px 16px 22px; display: flex; flex-direction: column; gap: 12px; }
+/* ── Shared sitewide footer (design R2/R2b, compact, grouped) ── */
+.mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 26px 16px 18px; display: flex; flex-direction: column; gap: 22px; }
 .mkt-ftr.clear-bar { padding-bottom: 96px; } /* clear the fixed Buy now bar on listing detail, every breakpoint */
-.mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; }
+.mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; }
 
+.mkt-ftr-brand { display: flex; flex-direction: column; gap: 10px; }
 .mkt-ftr-lockup { display: flex; align-items: center; gap: 8px; }
 .mkt-ftr-logo { height: 22px; width: auto; display: block; }
 .mkt-ftr-market { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mkt-green-light); }
+.mkt-ftr-protect { margin: 0; max-width: 30ch; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); }
 
-.mkt-ftr-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.mkt-ftr-groups { display: flex; gap: 40px; flex-wrap: wrap; }
+.mkt-ftr-group { display: flex; flex-direction: column; gap: 9px; min-width: 128px; }
+.mkt-ftr-group-h { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mkt-green-light); opacity: 0.7; }
 .mkt-ftr-link { font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-cream); text-decoration: none; }
 .mkt-ftr-link:hover { text-decoration: underline; }
 
-.mkt-ftr-protect { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); }
-.mkt-ftr-legal { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; font: 400 11px/1.4 'Lato', sans-serif; color: #9DBFAF; }
+.mkt-ftr-bottom {
+  max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box;
+  padding-top: 16px; border-top: 1px solid rgba(255, 248, 244, 0.14);
+  display: flex; flex-direction: column-reverse; gap: 6px;
+}
+.mkt-ftr-legal { margin: 0; font: 400 11px/1.4 'Lato', sans-serif; color: #9DBFAF; }
 
 @media (min-width: 720px) {
-  .mkt-ftr { padding: 22px 24px; }
-  .mkt-ftr-inner { flex-direction: row; align-items: center; justify-content: space-between; gap: 24px; }
-  .mkt-ftr-links { justify-content: flex-end; }
+  .mkt-ftr { padding: 32px 24px 20px; }
+  .mkt-ftr-inner { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 40px; }
+  .mkt-ftr-brand { max-width: 280px; }
+  .mkt-ftr-groups { gap: 64px; }
+  .mkt-ftr-bottom { flex-direction: row; align-items: center; justify-content: space-between; }
 }
 
 /* ── Home header line, browse only (design R3) ── */

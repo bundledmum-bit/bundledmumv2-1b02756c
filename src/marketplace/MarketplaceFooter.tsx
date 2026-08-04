@@ -4,9 +4,10 @@ import logoWhite from "@/assets/logos/BM-LOGO-WHITE.png";
 
 /**
  * The one shared marketplace footer, rendered once below every route (design R2 /
- * R2b, the compact version, about a third of the old height). It carries the
- * brand lockup, the real navigation links, one protection line, and the
- * copyright. No marketing paragraph, no held-payment paragraph, no WhatsApp CTA.
+ * R2b, the compact version, about a third of the old height). Brand + protection
+ * line on one side, links grouped under "Marketplace" and "Policies" headings on
+ * the other, copyright and the storefront link in a separate bottom bar below a
+ * divider. No marketing paragraph, no held-payment paragraph, no WhatsApp CTA.
  *
  * Suppressed on the screens that end in a fixed action bar: all /checkout* routes,
  * the dispatch-upload screen, and the buyer order detail + problem routes, plus
@@ -31,27 +32,38 @@ export default function MarketplaceFooter() {
   return (
     <footer className={hasFixedBar ? "mkt-ftr clear-bar" : "mkt-ftr"}>
       <div className="mkt-ftr-inner">
-        <div className="mkt-ftr-lockup">
-          <img src={logoWhite} alt="BundledMum" className="mkt-ftr-logo" />
-          <span className="mkt-ftr-market">Marketplace</span>
+        <div className="mkt-ftr-brand">
+          <div className="mkt-ftr-lockup">
+            <img src={logoWhite} alt="BundledMum" className="mkt-ftr-logo" />
+            <span className="mkt-ftr-market">Marketplace</span>
+          </div>
+          <p className="mkt-ftr-protect">Sellers checked, listings reviewed, and your money held until you confirm the item arrived as described.</p>
         </div>
 
-        <nav className="mkt-ftr-links">
-          <Link to="/" className="mkt-ftr-link">Browse</Link>
-          <Link to="/sell" className="mkt-ftr-link">Sell</Link>
-          <Link to="/orders" className="mkt-ftr-link">My orders</Link>
-          {seller && <Link to="/sell/dashboard" className="mkt-ftr-link">Seller dashboard</Link>}
-          <Link to="/buyer-protection" className="mkt-ftr-link">Buyer protection</Link>
-          <Link to="/seller-protection" className="mkt-ftr-link">Seller protection</Link>
-          <Link to="/terms" className="mkt-ftr-link">Terms</Link>
-          <Link to="/privacy" className="mkt-ftr-link">Privacy</Link>
-          <Link to="/cookies" className="mkt-ftr-link">Cookies</Link>
-          <a href="/" className="mkt-ftr-link">bundledmum.com</a>
-        </nav>
+        <div className="mkt-ftr-groups">
+          <nav className="mkt-ftr-group">
+            <span className="mkt-ftr-group-h">Marketplace</span>
+            <Link to="/" className="mkt-ftr-link">Browse</Link>
+            <Link to="/sell" className="mkt-ftr-link">Sell</Link>
+            <Link to="/orders" className="mkt-ftr-link">My orders</Link>
+            {seller && <Link to="/sell/dashboard" className="mkt-ftr-link">Seller dashboard</Link>}
+          </nav>
+
+          <nav className="mkt-ftr-group">
+            <span className="mkt-ftr-group-h">Policies</span>
+            <Link to="/buyer-protection" className="mkt-ftr-link">Buyer protection</Link>
+            <Link to="/seller-protection" className="mkt-ftr-link">Seller protection</Link>
+            <Link to="/terms" className="mkt-ftr-link">Terms</Link>
+            <Link to="/privacy" className="mkt-ftr-link">Privacy</Link>
+            <Link to="/cookies" className="mkt-ftr-link">Cookies</Link>
+          </nav>
+        </div>
       </div>
 
-      <p className="mkt-ftr-protect">Sellers checked, listings reviewed, and your money held until you confirm the item arrived as described.</p>
-      <p className="mkt-ftr-legal">© 2026 BundledMum Ltd, Lagos.</p>
+      <div className="mkt-ftr-bottom">
+        <p className="mkt-ftr-legal">© 2026 BundledMum Ltd, Lagos.</p>
+        <a href="/" className="mkt-ftr-link">bundledmum.com</a>
+      </div>
     </footer>
   );
 }
