@@ -140,6 +140,94 @@ export function isUnsettled(settlementStatus: string): boolean {
   return settlementStatus !== "settled";
 }
 
+// ─── Returns (design 20a) ──────────────────────────────────────────────────
+export interface ReturnAwaitingRow {
+  dispute_id: string;
+  order_id: string;
+  return_sent_at: string;
+  return_proof_url: string | null;
+  return_shipping_cost_naira: number | null;
+  order_reference: string;
+  amount_naira: number;
+  listing_title: string | null;
+  seller_name: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  is_overdue: boolean;
+}
+
+/** Returns the buyer has posted back, not yet confirmed received. From the
+ * marketplace_returns_awaiting_confirmation view (admin readable). */
+export async function fetchReturnsAwaitingConfirmation(): Promise<ReturnAwaitingRow[]> {
+  const { data, error } = await adb.from("marketplace_returns_awaiting_confirmation").select("*").order("return_sent_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as unknown as ReturnAwaitingRow[];
+}
+
+export interface ReturnToPayRow {
+  dispute_id: string;
+  order_id: string;
+  order_reference: string;
+  amount_naira: number;
+  listing_title: string | null;
+  return_received_at: string;
+  return_confirmed_by: string | null;
+  refund_bank_name: string | null;
+  refund_account_name: string | null;
+  refund_account_number: string | null;
+}
+
+/** Confirmed returns whose refund transfer has not been recorded yet. The
+ * awaiting-confirmation view excludes these (return_received_at is set), and
+ * it does not carry bank details anyway, so this reads marketplace_disputes
+ * directly, the same manual-join pattern the disputes screen already uses. */
+export async function fetchReturnsToPay(): Promise<ReturnToPayRow[]> {
+  const { data: rows, error } = await adb.from("marketplace_disputes")
+    .select("id, order_id, return_received_at, return_confirmed_by, refund_bank_name, refund_account_name, refund_account_number")
+    .eq("return_required", true)
+    .not("return_received_at", "is", null)
+    .is("refund_paid_at", null)
+    .order("return_received_at", { ascending: true });
+  if (error) throw error;
+  const dRows = (rows ?? []) as Array<{ id: string; order_id: string; return_received_at: string; return_confirmed_by: string | null; refund_bank_name: string | null; refund_account_name: string | null; refund_account_number: string | null }>;
+  if (!dRows.length) return [];
+
+  const { data: orders } = await adb.from("marketplace_orders").select("id, paystack_transaction_reference, amount_naira, listing_id").in("id", dRows.map((d) => d.order_id));
+  const oMap = new Map((orders ?? []).map((o: Record<string, unknown>) => [o.id as string, o]));
+  const listingIds = Array.from(new Set((orders ?? []).map((o: Record<string, unknown>) => o.listing_id as string).filter(Boolean)));
+  const { data: listings } = listingIds.length ? await adb.from("marketplace_listings").select("id, title").in("id", listingIds) : { data: [] };
+  const lMap = new Map((listings ?? []).map((l: { id: string; title: string | null }) => [l.id, l.title]));
+
+  return dRows.map((d) => {
+    const o = (oMap.get(d.order_id) ?? {}) as Record<string, unknown>;
+    return {
+      dispute_id: d.id, order_id: d.order_id,
+      order_reference: (o.paystack_transaction_reference as string) || "",
+      amount_naira: Number(o.amount_naira || 0),
+      listing_title: (lMap.get(o.listing_id as string) as string) || null,
+      return_received_at: d.return_received_at, return_confirmed_by: d.return_confirmed_by,
+      refund_bank_name: d.refund_bank_name, refund_account_name: d.refund_account_name, refund_account_number: d.refund_account_number,
+    };
+  });
+}
+
+/** Confirms a return on the seller's behalf, at any time, not only when
+ * overdue. Releases the buyer's refund, same as the seller doing it
+ * themselves. */
+export async function adminConfirmReturnReceived(disputeId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("admin_confirm_return_received", { p_dispute_id: disputeId });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Records that the refund bank transfer has actually been sent. Only
+ * meaningful once the return itself is confirmed received. */
+export async function adminMarkReturnRefundPaid(disputeId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("admin_mark_return_refund_paid", { p_dispute_id: disputeId });
+  if (error) throw error;
+  return data === true;
+}
+
 /** Same-day check for keeping released rows visible (dimmed) for the day. */
 export function isToday(iso: string | null): boolean {
   if (!iso) return false;

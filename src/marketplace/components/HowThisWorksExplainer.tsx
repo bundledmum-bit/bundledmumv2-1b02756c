@@ -21,7 +21,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
     "Their contact is shared with you right after payment",
     "They ship and upload a photo of the parcel",
     "You confirm it arrived, only then are they paid",
-    "Something wrong? Report it instead, a real person reviews it before any money moves",
+    "Not as described? Report it and send it back, once they confirm it arrived your refund goes out the same day",
   ];
   const shortSteps = [
     `You pay us, not ${sellerName}`,
@@ -29,7 +29,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
     "Their contact comes to you after payment",
     "They ship with a photo as proof",
     "You confirm, then they are paid",
-    "Wrong item? Report it, we step in first",
+    "Not as described? Send it back, refunded the same day it arrives",
   ];
 
   return (

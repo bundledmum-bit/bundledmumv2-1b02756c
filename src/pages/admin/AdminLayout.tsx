@@ -88,6 +88,7 @@ function AdminLayoutInner() {
     { label: "Payout queue", to: "/admin/marketplace/payouts", icon: Banknote },
     { label: "Review queue", to: "/admin/marketplace/review", icon: ClipboardCheck, badge: mktPendingCount },
     { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
+    { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },
     { label: "Sellers", to: "/admin/marketplace/sellers", icon: Users },
     { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
     { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },

@@ -619,6 +619,13 @@
 .mkt-honesty p { margin: 0; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
 .mkt-honesty p + p { margin-top: 8px; }
 
+/* Short condition-notes nudge (design 20a, RT7). Coral, deliberately not the
+   error red used for real validation failures on this form, since it never
+   blocks submit, just a gentle prompt. */
+.mkt-notes-nudge { display: flex; gap: 9px; align-items: flex-start; background: var(--mkt-coral-light); border-radius: 10px; padding: 10px 11px; }
+.mkt-notes-nudge .ic { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-coral-dark); color: var(--mkt-cream); font: 800 10px/16px 'Nunito', sans-serif; text-align: center; }
+.mkt-notes-nudge span:last-child { font: 400 11.5px/1.5 'Lato', sans-serif; color: #8C4A34; }
+
 /* Required/optional pill on a category question (design 16a), reusing the coral
    and neutral-grey chip colours already used site-wide, never the availability
    green so it cannot be mistaken for stock state. */
@@ -1093,6 +1100,14 @@
 @media (min-width: 1024px) {
   .mkt-dispatch-page .mkt-dispatch-drop { min-height: 220px; }
   .mkt-dispatch-page .mkt-dispatch-preview img { min-height: 220px; object-fit: cover; }
+}
+
+/* Buyer return, mark sent (design 20a RT1) — same single-column, centred
+   treatment as seller dispatch, it is the same shape of screen: one photo,
+   a short form, one confirm action. */
+@media (min-width: 1024px) {
+  .mkt-return-page .mkt-dispatch-drop { min-height: 180px; }
+  .mkt-return-page .mkt-dispatch-preview img { min-height: 180px; object-fit: cover; }
 }
 
 /* D11 — Seller payouts: single column, widened into a table-like list (max

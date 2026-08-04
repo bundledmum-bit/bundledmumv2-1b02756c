@@ -92,11 +92,68 @@ export async function markDispatched(orderId: string, photoUrl: string): Promise
   return data === true;
 }
 
-/** Groups seller orders by what the seller must do. */
+/** Groups seller orders by what the seller must do. A refunded order (a
+ * resolved dispute, possibly with a return still in progress) sits
+ * alongside orders in progress, never invisible: previously "refunded"
+ * matched no bucket at all and silently vanished from the dashboard. */
 export function groupSellerOrders(orders: SellerOrder[]) {
   return {
     needsAction: orders.filter((o) => o.order_status === "awaiting_dispatch"),
-    inProgress: orders.filter((o) => o.order_status === "awaiting_confirmation"),
+    inProgress: orders.filter((o) => o.order_status === "awaiting_confirmation" || o.order_status === "disputed" || o.order_status === "refunded"),
     complete: orders.filter((o) => o.order_status === "completed"),
   };
+}
+
+// ─── Returns (design 20a) ──────────────────────────────────────────────────
+export interface OrderDispute {
+  id: string;
+  order_id: string;
+  outcome: string | null;
+  resolved_at: string | null;
+  return_required: boolean;
+  return_proof_url: string | null;
+  return_sent_at: string | null;
+  return_received_at: string | null;
+  refund_paid_at: string | null;
+}
+
+const DISPUTE_SELECT =
+  "id, order_id, outcome, resolved_at, return_required, return_proof_url, return_sent_at, return_received_at, refund_paid_at";
+
+/** The dispute tied to this order, for the seller who sold it. Only their
+ * own order-side columns, no buyer bank details (those are never a
+ * seller's business, and RLS would not permit them anyway). */
+export async function fetchOrderDispute(orderId: string): Promise<OrderDispute | null> {
+  const { data, error } = await sdb.from("marketplace_disputes")
+    .select(DISPUTE_SELECT)
+    .eq("order_id", orderId)
+    .not("outcome", "is", null)
+    .order("resolved_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return (data as unknown as OrderDispute) ?? null;
+}
+
+/** The days a seller (or BundledMum, on their behalf) has to confirm a
+ * returned item before it counts as overdue, read from site_settings
+ * (marketplace_return_confirm_days). Never hardcoded. Falls back to 4 only
+ * if the setting cannot be read, matching the database view's own default. */
+export async function getReturnConfirmDays(): Promise<number> {
+  const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_return_confirm_days").maybeSingle();
+  const n = Number((data as { value?: unknown } | null)?.value);
+  return isFinite(n) && n > 0 ? n : 4;
+}
+
+/**
+ * Confirms a returned item arrived back with the seller. THIS RELEASES THE
+ * BUYER'S REFUND, so it sits behind a confirm step at the call site. Only
+ * works once the buyer has marked it sent and only for the seller's own
+ * order. Returns false (never throws a raw error to show) when the dispute
+ * was not in a confirmable state.
+ */
+export async function sellerConfirmReturnReceived(disputeId: string): Promise<boolean> {
+  const { data, error } = await sdb.rpc("seller_confirm_return_received", { p_dispute_id: disputeId });
+  if (error) return false;
+  return data === true;
 }

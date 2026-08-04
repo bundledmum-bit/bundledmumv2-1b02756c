@@ -32,6 +32,9 @@ const CONDITIONS = ["Almost new", "Good", "Fair"];
 const CONDITION_VALUE: Record<string, string> = { "Almost new": "almost_new", "Good": "good", "Fair": "fair" };
 const MIN_PHOTOS = 4;
 const MAX_PHOTOS = 8;
+// Below this many characters the condition notes nudge shows (design 20a,
+// RT7). Not a validation minimum, just a gentle prompt, never blocks submit.
+const SHORT_NOTES_LENGTH = 20;
 
 /**
  * Create listing, reskinned to the approved design. Photos upload to the
@@ -455,6 +458,15 @@ export default function CreateListingPage() {
 
           <textarea className="mkt-textarea" value={conditionNotes} onChange={(e) => setConditionNotes(e.target.value)}
             placeholder="Describe the condition honestly. Mention any scuff, stain or missing part, and what is included." />
+
+          {/* Nudge only, never a validation error: coral, not the error red
+              used elsewhere on this form, and it never blocks Continue. */}
+          {conditionNotes.trim().length > 0 && conditionNotes.trim().length < SHORT_NOTES_LENGTH && (
+            <div className="mkt-notes-nudge">
+              <span className="ic">i</span>
+              <span>That's quite short. Buyers cannot ask you questions, so anything else worth mentioning, marks, missing parts, how long you used it?</span>
+            </div>
+          )}
           <div className="mkt-help">Do not add a phone number or way to contact you.</div>
         </div>
 

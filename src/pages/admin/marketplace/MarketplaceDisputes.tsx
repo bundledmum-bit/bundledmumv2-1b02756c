@@ -133,14 +133,24 @@ export default function MarketplaceDisputes() {
   );
 }
 
+const SHIPPING_PAYERS = [
+  { key: "buyer", label: "Buyer pays" },
+  { key: "seller", label: "Seller reimburses" },
+  { key: "bundledmum", label: "BundledMum covers it" },
+];
+
 function DisputeDetailView({ d, onBack, onResolved }: { d: DisputeDetail; onBack: () => void; onResolved: () => void }) {
   const [outcome, setOutcome] = useState<DisputeOutcome | null>(null);
   const [notes, setNotes] = useState("");
+  const [returnRequired, setReturnRequired] = useState(false);
+  const [shippingPayer, setShippingPayer] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const photos = evidenceUrls(d.evidence);
   const chosen = DISPUTE_OUTCOMES.find((o) => o.key === outcome) || null;
+  // A return only makes sense when the ruling actually refunds the buyer.
+  const refundsBuyer = outcome === "full_refund" || outcome === "courier_fault";
 
   const timeline: Array<{ label: string; at: string | null }> = [
     { label: "Payment held", at: d.order_created_at },
@@ -160,7 +170,11 @@ function DisputeDetailView({ d, onBack, onResolved }: { d: DisputeDetail; onBack
     if (!outcome) return;
     setBusy(true); setError(null);
     try {
-      const ok = await resolveDispute({ disputeId: d.id, outcome, notes: notes.trim() });
+      const ok = await resolveDispute({
+        disputeId: d.id, outcome, notes: notes.trim(),
+        returnRequired: refundsBuyer && returnRequired,
+        returnShippingPayer: refundsBuyer && returnRequired ? shippingPayer : null,
+      });
       if (!ok) { setError("This ruling could not be recorded. Refresh and check the dispute state."); setBusy(false); return; }
       setBusy(false); setConfirming(false); onResolved();
     } catch (e) { setBusy(false); setError((e as { message?: string })?.message || "Something went wrong."); }
@@ -238,6 +252,28 @@ function DisputeDetailView({ d, onBack, onResolved }: { d: DisputeDetail; onBack
             );
           })}
         </div>
+        {/* Only a refunding outcome can require a return; the seller was not
+            at fault otherwise, or the money never left the buyer at all. */}
+        {refundsBuyer && (
+          <div className="mt-3 rounded-xl border p-3" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={returnRequired} onChange={(e) => { setReturnRequired(e.target.checked); if (!e.target.checked) setShippingPayer(null); }} className="w-4 h-4" />
+              <span className="font-heading font-bold text-sm text-foreground">Does the buyer need to send the item back?</span>
+            </label>
+            <p className="text-xs text-text-med mt-1">If not (lost in transit, never arrived), leave this unchecked, the refund is recorded outright.</p>
+            {returnRequired && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {SHIPPING_PAYERS.map((p) => (
+                  <button key={p.key} onClick={() => setShippingPayer(p.key)} type="button" className="text-xs font-heading font-bold rounded-lg px-2.5 py-1.5 border"
+                    style={shippingPayer === p.key ? { borderColor: "#2D6A4F", background: "#D8EFE5", color: "#1A4A33" } : { borderColor: "#F0DDD2", background: "#fff", color: "#6B5B54" }}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Reason for this ruling, required, at least 5 characters."
           className="w-full mt-3 rounded-xl border p-3 text-sm min-h-[70px] resize-y" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
         {error && !confirming && <div className="text-xs mt-2" style={{ color: "#C0392B" }}>{error}</div>}
@@ -250,7 +286,11 @@ function DisputeDetailView({ d, onBack, onResolved }: { d: DisputeDetail; onBack
         open={confirming}
         title={chosen ? `${chosen.title}: are you sure?` : "Confirm"}
         body={chosen ? chosen.consequence : ""}
-        kv={[{ label: "Dispute", value: d.order_reference }, { label: "Amount", value: formatNaira(d.amount_naira) }]}
+        kv={[
+          { label: "Dispute", value: d.order_reference },
+          { label: "Amount", value: formatNaira(d.amount_naira) },
+          ...(refundsBuyer ? [{ label: "Return required", value: returnRequired ? (shippingPayer ? SHIPPING_PAYERS.find((p) => p.key === shippingPayer)?.label || "Yes" : "Yes") : "No" }] : []),
+        ]}
         confirmLabel="Commit this ruling"
         danger={chosen?.danger} busy={busy} error={error}
         onConfirm={commit} onCancel={() => !busy && setConfirming(false)}

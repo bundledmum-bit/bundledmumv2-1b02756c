@@ -19,6 +19,7 @@ import AwaitingPaymentPage from "./checkout/AwaitingPaymentPage";
 import BuyerOrdersListPage from "./checkout/BuyerOrdersListPage";
 import BuyerOrderDetailPage from "./checkout/BuyerOrderDetailPage";
 import BuyerDisputePage from "./checkout/BuyerDisputePage";
+import BuyerReturnPage from "./checkout/BuyerReturnPage";
 import "./marketplace.css";
 
 /**
@@ -67,6 +68,7 @@ export default function MarketplaceApp() {
             <Route path="/orders" element={<BuyerOrdersListPage />} />
             <Route path="/orders/:orderId" element={<BuyerOrderDetailPage />} />
             <Route path="/orders/:orderId/problem" element={<BuyerDisputePage />} />
+            <Route path="/orders/:orderId/return" element={<BuyerReturnPage />} />
           </Routes>
           <MarketplaceFooter />
         </div>

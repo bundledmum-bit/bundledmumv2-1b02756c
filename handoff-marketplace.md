@@ -2143,6 +2143,107 @@ trigger enforces any length either (checked directly against the database).
 Not adding a minimum this pass, per the prompt, flagging for a separate
 decision.
 
+### Return flow (design 20a): send-back, refund by bank transfer, admin returns queue
+Backend was already deployed (no migrations this pass): `marketplace_disputes`
+gained `return_requested_at, return_sent_at, return_received_at,
+return_confirmed_by, refund_bank_name, refund_account_name,
+refund_account_number, refund_paid_at, refund_paid_by`, alongside the
+existing `return_required, return_proof_url, return_shipping_cost_naira`.
+Four RPCs, all boolean:
+1. `buyer_mark_return_sent({ p_dispute_id, p_return_proof_url, p_bank_name, p_account_name, p_account_number, p_return_shipping_cost_naira })`
+   — proof + all three bank fields required, buyer-only, only once,
+   only when `return_required` is true.
+2. `seller_confirm_return_received({ p_dispute_id })` — seller only, their
+   own order, only after the buyer marked it sent. **This releases the
+   refund** and sets the order `refunded`.
+3. `admin_confirm_return_received({ p_dispute_id })` — admin can confirm
+   on the seller's behalf at any time, not gated on overdue.
+4. `admin_mark_return_refund_paid({ p_dispute_id })` — records the refund
+   bank transfer was actually sent; only after the return is confirmed
+   received. Sets `settlement_status = 'settled'` on the order (bookkeeping
+   only, doesn't move money, same pattern as the existing
+   `admin_mark_refund_paid`/`admin_mark_payout_released`).
+
+**Refunds go out by bank transfer, never back to the card**, which is why
+bank details are collected at return time (`BuyerReturnPage.tsx`), not at
+checkout — almost no buyer ever needs one. **All six emails are fully
+automatic**, fired by two DB triggers on `marketplace_disputes`
+(`trg_marketplace_return_emails` for the five return-lifecycle ones,
+`trg_marketplace_dispute_emails` already existed for raise/resolve) plus a
+daily overdue sweep; nothing here calls any email function.
+
+**Two gaps found in the database that were not part of this task's stated
+scope, but were required for the feature to be reachable at all:**
+- `admin_resolve_dispute`'s `p_return_required`/`p_return_shipping_payer`
+  params existed but nothing in the admin UI ever set them (defaulted to
+  `false`/`null` always) — extended `MarketplaceDisputes.tsx`'s ruling panel
+  with a "does the buyer need to send this back?" toggle + shipping-payer
+  chips, shown only for the two outcomes that actually refund the buyer
+  (`full_refund`, `courier_fault`), wired through the existing RPC params.
+- `return_requested_at` is never written by any function in the database
+  (checked every function body). Genuinely orphaned. Not relied on anywhere
+  in this pass; `resolved_at` is used instead wherever a "since when" is
+  needed. Flagging for whoever owns the schema, not fixed here (no
+  migrations this pass).
+- `groupBuyerOrders()`/`groupSellerOrders()` had no bucket at all for
+  `order_status === 'refunded'` — such orders were invisible on My orders
+  and the seller dashboard (pre-existing, not caused by this task, but it
+  would have made the return flow unreachable from the list page). Both
+  now include `refunded` in an existing bucket.
+- `marketplace_returns_awaiting_confirmation` does not expose the refund
+  bank columns despite being the obvious place an operator would want them.
+  `MarketplaceReturns.tsx` reads those directly off `marketplace_disputes`
+  for the "refund transfers to record" section instead (admin already has
+  full `SELECT` there, confirmed via RLS policy, same pattern the disputes
+  screen already uses for its manual joins).
+
+**What was built:**
+- **Buyer, mark return sent** — new `BuyerReturnPage.tsx`
+  (`/orders/:orderId/return`), single proof photo (same upload pattern as
+  dispute evidence, buyer's own auth uid folder), bank name/account
+  name/account number as free text (no bank-picker dropdown — the RPC takes
+  free text, no banks reference table exists to pick from), optional
+  shipping cost. The two specific RPC rejections get exact human copy.
+- **Buyer, waiting/resolved** — `BuyerOrderDetailPage.tsx` gained a
+  `refunded` branch covering all of: return needed but not sent, waiting on
+  the seller (with the overdue safety-net line, using
+  `site_settings.marketplace_return_confirm_days`, never hardcoded), refund
+  released, refund sent, and an outright refund with no return at all.
+- **Seller, confirm return received** — `SellerOrderDetailPage.tsx` gained
+  disputed + return-in-progress states: item, the buyer's proof of posting,
+  a "before you confirm" consequence box, the confirm action behind a
+  confirm-step bottom sheet (this app's existing pattern), and the same
+  overdue safety-net line from the seller's side.
+- **Admin returns queue** — new `MarketplaceReturns.tsx`
+  (`/admin/marketplace/returns`, nav link added), two sections: returns
+  awaiting confirmation (overdue rows in error red `#C0392B`, two actions —
+  confirm now / confirm on seller's behalf, identical RPC either way, just
+  different labels for context) and refund transfers to record (bank
+  details shown here, where the operator actually needs them, both actions
+  behind `ConfirmDialog`).
+- **Listing detail + checkout copy** — one line folded into the existing
+  `HowThisWorksExplainer` step 6 (both long and short variants), one 4th
+  tick added to checkout's existing held-funds box. No new section, no
+  layout change, Buy now stays exactly where it was — verified live in the
+  browser on both public pages.
+- **Short condition-notes nudge** — coral, non-blocking, shown under
+  `SHORT_NOTES_LENGTH = 20` characters (the design says "quite short" but
+  gives no exact number, chose 20 and am stating it explicitly rather than
+  picking silently). Visually distinct from `.mkt-input.error` red.
+
+**Wording note**: I corrected "she has N days from delivery" (RT2's mockup
+text) to "N days from when you posted it" in the actual implementation —
+the database view's overdue calculation (`is_overdue`) measures from
+`return_sent_at`, there is no separate "delivery" timestamp for a returned
+item, so the mockup's literal phrase would have described a date the app
+does not actually track.
+
+**Not verified live**: buyer/seller return states, the admin ruling toggle,
+and the admin returns queue all need a real login this session doesn't have
+credentials for (buyer/seller magic-link, admin password) — confirmed by
+build + typecheck + code review only. Listing detail's step 6 and checkout's
+4th tick ARE both verified live (screenshots, no console errors).
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,
