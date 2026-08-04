@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
-import { sdb, LISTING_BUCKET, compressImage } from "../sell/sellData";
+import { sdb, LISTING_BUCKET, compressImage, describeUploadError } from "../sell/sellData";
 import { fetchBuyerOrder, raiseDispute } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -80,9 +80,9 @@ export default function BuyerDisputePage() {
       setBusy(false);
       if (!res.ok) { setError(res.message || "We could not open this problem report."); return; }
       navigate(`/orders/${order.id}`, { replace: true });
-    } catch {
+    } catch (e) {
       setBusy(false);
-      setError("The photos did not finish uploading. Please check your connection and try again.");
+      setError(describeUploadError(e));
     }
   }
 

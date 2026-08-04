@@ -1882,6 +1882,108 @@ would drop the one-line delegation and revert the client to plain `localStorage`
 all storage logic lives in `authStorage.ts`; recovery is re-adding one import +
 call in `client.ts`.
 
+### Security hardening pass (XSS audit, admin idle timeout audit, upload error handling, error-message leakage)
+Four-item pass, each item audited/fixed independently.
+
+**Item 1 — XSS on user-supplied text: audited, no vulnerability found, no fix
+needed.** Grepped the entire repo for `dangerouslySetInnerHTML`, `.innerHTML =`,
+`.outerHTML =`, `insertAdjacentHTML`, `document.write`, and sanitizer libraries.
+Every marketplace user-text field (listing titles, descriptions,
+`condition_notes`, seller display names, dispute reasons, category answers in
+`marketplace_listings.attributes`, admin rejection reasons, dispute
+`outcome_notes`) is rendered exclusively through React `{}` interpolation, which
+escapes by default — confirmed no raw-HTML sink touches any of it anywhere in
+the app. Repo-wide raw-HTML sinks found, all confirmed safe:
+- `Breadcrumb.tsx` — `dangerouslySetInnerHTML` on `JSON.stringify(jsonLd)` inside
+  a `<script type="application/ld+json">` tag. Data is storefront/category/product
+  titles, not marketplace user free text, but `JSON.stringify` doesn't escape
+  `<`, so this is a real (low-risk, out-of-marketplace-scope) script-tag-breakout
+  vector. Left unfixed per this task's scope (marketplace only) and flagged as a
+  separate background task instead of fixed inline.
+- `DbPageContent.tsx` — renders CMS `pages.content` (admin-authored Privacy/
+  Terms/About pages) via `dangerouslySetInnerHTML`. This is exactly the
+  "trusted CMS content" case the task expected to find — no fix needed.
+- `components/ui/chart.tsx` — shadcn/ui internal boilerplate, not user data — no
+  fix needed.
+- `PrintInvoice.tsx`, `AdminFinance.tsx`, `AdminOrders.tsx` — each uses
+  `document.write` for print views, but each has its own `esc()`/`escapeHtml()`
+  function applied consistently to every piece of customer/employee text
+  (address, phone, name, product name, etc.) before interpolation. Confirmed
+  properly escaped — no fix needed.
+
+**Item 2 — Admin idle timeout after the cookie→localStorage auth change:
+audited, confirmed unaffected, no fix needed.** Two idle-timeout
+implementations exist: `IdleTimeoutGuard.tsx` (the live one — mounted
+unconditionally for every authenticated admin in `AdminLayout.tsx`, 20-minute
+idle timeout, 60s warning, 12h absolute cap, resets on
+mousedown/keydown/touchstart/click, cross-tab synced via `BroadcastChannel`,
+signs out via `supabase.auth.signOut()` + redirect on expiry) and
+`useIdleTimeout.ts` (a separate, simpler 30-minute version — confirmed dead
+code, imported nowhere; noted as a discrepancy worth cleaning up later, not
+touched). Traced `IdleTimeoutGuard`'s only storage dependency: a `sessionStorage`
+key (`admin_session_start`) it owns itself for its own absolute-cap bookkeeping
+— entirely separate from Supabase's own session storage medium (which the
+auth-storage work above already settled back to plain `localStorage`). No code
+path in the guard reads Supabase session/cookie state at all, so the storage
+medium change cannot affect it. Supplemented the static trace with a live check
+in an active admin session (inspected `sessionStorage.admin_session_start`
+directly) — confirmed present and behaving as expected. The full real-time
+20-minute firing was not observed live; to confirm by hand: log in as admin,
+stay idle (no mouse/keyboard/touch/click) for 19 minutes and confirm the
+60-second warning appears, then let it run out and confirm it signs out and
+redirects to `/admin/login`.
+
+**Item 3 — Storage rejections now surface a clear, actionable message
+everywhere a photo is uploaded.** Found 3 upload sites: listing photos
+(`CreateListingPage.tsx`), seller dispatch photo (`SellerDispatchPage.tsx`),
+buyer dispute evidence photos (`BuyerDisputePage.tsx`) — all go through
+`compressImage`/`processListingImage` in `sellData.ts` before uploading to the
+`marketplace-listings` bucket (5MB limit, JPEG/PNG/WebP/HEIC/HEIF only,
+enforced server-side by Supabase Storage). Previously, the whole pipeline
+(decode + canvas compress + upload) was wrapped in one try/catch per call site
+that on failure showed either nothing actionable or a generic
+connection-sounding message, even for a size/type rejection — misleading, and a
+genuinely undecodable file (e.g. a PDF renamed `.jpg`) would silently fall back
+to uploading the raw unprocessed file rather than erroring clearly. Fixed by
+adding to `sellData.ts`:
+- `UnsupportedImageError` — thrown by a new `decodeBitmap()` helper only when
+  BOTH an orientation-aware and a plain `createImageBitmap()` decode fail (i.e.
+  the file genuinely isn't a readable image); all other failure points in the
+  canvas/toBlob pipeline keep their own local fallback-to-original behaviour
+  unchanged, preserving the existing "never lose a legitimate quirky photo"
+  resilience.
+- `describeUploadError(error)` — maps `UnsupportedImageError` to "that file
+  doesn't look like a photo," Supabase Storage's size-rejection message to "file
+  too large" (max 5MB), its MIME-rejection message to "not a supported photo
+  type" (jpg/png/webp/heic/heif only), and anything unrecognized to a generic
+  retry message while logging the real error to console for debugging.
+Wired `describeUploadError` into the catch blocks of all 3 upload sites'
+submit handlers. Also added per-file error handling in `CreateListingPage.tsx`'s
+`addPhotos()` so one undecodable file among a multi-photo batch is skipped and
+named in an inline message, instead of aborting the whole batch or failing
+silently.
+
+**Item 4 — Raw DB/RPC error strings could reach the screen in 3 places;
+fixed.** Audited every Supabase/RPC call site across create listing, seller
+setup, checkout, dispute raising, and the seller dashboard. Deliberately
+human-readable trigger errors (missing category details, bank account name
+mismatch, legal name locked) are correctly parsed and shown already — left
+untouched. `orders.ts`/`CheckoutPage.tsx` (checkout) and `buyerOrders.ts`
+(dispute raising) already never show a raw message — confirmed correct, not
+touched. Found and fixed 3 unguarded fallbacks that would have shown a raw
+`error.message` to the user for any unrecognized DB error: `CreateListingPage.tsx`
+(listing insert fallback), `SellerSetupPage.tsx` (customer-link insert and
+seller insert fallback), `SellerDashboardPage.tsx` (`EditProfile` save
+fallback). Added `genericErrorMessage(context, error)` to `sellData.ts` — logs
+the real error to console and returns one fixed friendly string — and wired it
+into all 3 fallbacks. Scoping note: admin screens' equivalent raw-`.message`
+passthroughs were left untouched — admins are trusted internal staff, the task
+named only customer/seller-facing areas, and the pattern is a consistent,
+established convention across every admin screen in this codebase, not an
+oversight specific to marketplace.
+
+Build (`npm run build`) and `npx tsc --noEmit` both pass after all changes.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

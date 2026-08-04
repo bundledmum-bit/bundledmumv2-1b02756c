@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage } from "./sellData";
+import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, UnsupportedImageError } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -60,6 +60,7 @@ export default function CreateListingPage() {
   const [quantity, setQuantity] = useState(1);
   const [identicalOk, setIdenticalOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -190,16 +191,28 @@ export default function CreateListingPage() {
     if (!files) return;
     const chosen = Array.from(files).slice(0, MAX_PHOTOS - photos.length);
     if (chosen.length === 0) return;
-    setPhotoBusy(true);
+    setPhotoBusy(true); setPhotoError(null);
     try {
       // Process each photo now (square crop to fill + watermark + compress) so the
-      // preview shows exactly what gets stored, and the same blob is uploaded.
+      // preview shows exactly what gets stored, and the same blob is uploaded. A
+      // file that cannot be decoded as an image at all (a PDF renamed to .jpg, for
+      // instance) is skipped with a clear message rather than added as a broken
+      // tile or silently carried through to the upload step.
       const next: PhotoDraft[] = [];
+      const failed: string[] = [];
       for (const file of chosen) {
-        const blob = await processListingImage(file);
-        next.push({ blob, url: URL.createObjectURL(blob) });
+        try {
+          const blob = await processListingImage(file);
+          next.push({ blob, url: URL.createObjectURL(blob) });
+        } catch (e) {
+          if (e instanceof UnsupportedImageError) failed.push(file.name || "one file");
+          else throw e;
+        }
       }
       setPhotos((p) => [...p, ...next]);
+      if (failed.length) {
+        setPhotoError(`${failed.length === 1 ? failed[0] : `${failed.length} files`} did not look like a photo and ${failed.length === 1 ? "was" : "were"} skipped. Please choose a JPEG, PNG, WEBP or HEIC image.`);
+      }
     } finally {
       setPhotoBusy(false);
     }
@@ -251,8 +264,13 @@ export default function CreateListingPage() {
     if (hasContactLeak(description, conditionNotes)) { setContactBlocked(true); return; }
 
     setBusy(true);
+
+    // Upload photos first, in their own try/catch, so a storage rejection
+    // (the bucket enforces a 5MB limit and an image-only type allowlist) gets
+    // its own specific message rather than falling into the listing-insert
+    // error handling below, which parses a different, unrelated database error.
+    const urls: string[] = [];
     try {
-      const urls: string[] = [];
       for (let i = 0; i < photos.length; i++) {
         // Already processed on add (square, watermarked, compressed) — upload as is.
         const blob = photos[i].blob;
@@ -262,6 +280,13 @@ export default function CreateListingPage() {
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);
         urls.push(pub.publicUrl);
       }
+    } catch (e) {
+      setBusy(false);
+      setError(describeUploadError(e));
+      return;
+    }
+
+    try {
       const composedNotes = condition ? `${condition}. ${conditionNotes.trim()}` : conditionNotes.trim();
       const stateName = states.find((s) => s.id === stateId)?.name ?? null;
       const { error: insErr } = await sdb.from("marketplace_listings").insert({
@@ -298,7 +323,10 @@ export default function CreateListingPage() {
         setRecovery({ labels, keys });
         return;
       }
-      setError(msg || "Something went wrong. Please try again.");
+      // Any other database error is not meant for a seller to see raw (it can
+      // name a table, column or constraint) — a specific, known pattern is
+      // handled above; anything else gets a generic message, real detail logged.
+      setError(genericErrorMessage("create listing", e));
     }
   }
 
@@ -369,7 +397,11 @@ export default function CreateListingPage() {
           </div>
           {/* No capture attribute, so the phone offers camera or gallery each tap. */}
           <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-          <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
+          {photoError ? (
+            <div className="mkt-errbox"><span className="m">!</span><span>{photoError}</span></div>
+          ) : (
+            <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
+          )}
         </div>
 
         <div className="mkt-field">

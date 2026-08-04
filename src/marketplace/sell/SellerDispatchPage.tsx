@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, compressImage } from "./sellData";
+import { sdb, LISTING_BUCKET, compressImage, describeUploadError } from "./sellData";
 import { fetchSellerOrder, markDispatched } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -58,9 +58,9 @@ export default function SellerDispatchPage() {
         return;
       }
       navigate(`/sell/orders/${order.id}`, { replace: true });
-    } catch {
+    } catch (e) {
       setBusy(false); setConfirmOpen(false);
-      setError("The upload did not complete. Please check your connection and try again.");
+      setError(describeUploadError(e));
     }
   }
 

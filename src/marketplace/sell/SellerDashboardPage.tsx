@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./useSeller";
-import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing } from "./sellData";
+import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing, genericErrorMessage } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -353,7 +353,7 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
       if (mismatch) { setBankNameErr(mismatch); return; }
       const locked = parseLegalNameLockError(error.message);
       if (locked) { setErr(locked); return; }
-      setErr(error.message);
+      setErr(genericErrorMessage("seller profile update", error));
       return;
     }
     onDone();

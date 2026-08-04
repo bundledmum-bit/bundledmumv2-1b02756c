@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, missingNameParts, parseBankNameMismatch, previewDisplayName } from "./sellData";
+import { sdb, missingNameParts, parseBankNameMismatch, previewDisplayName, genericErrorMessage } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
@@ -66,7 +66,7 @@ export default function SellerSetupPage() {
     if (!cid && user) {
       const { data: created, error: cErr } = await sdb
         .from("customers").insert({ auth_user_id: user.id, email: user.email }).select("id").maybeSingle();
-      if (cErr) { setBusy(false); setError(cErr.message); return; }
+      if (cErr) { setBusy(false); setError(genericErrorMessage("customer link", cErr)); return; }
       cid = (created as { id: string } | null)?.id ?? null;
     }
     if (!cid) { setBusy(false); setError("We could not link your account. Please try again."); return; }
@@ -91,7 +91,7 @@ export default function SellerSetupPage() {
       // Never show the raw database error for this case.
       const mismatch = parseBankNameMismatch(sErr.message, legalFirstName, legalLastName);
       if (mismatch) { setBankNameErr(mismatch); return; }
-      setError(sErr.message);
+      setError(genericErrorMessage("seller setup", sErr));
       return;
     }
     await refresh();

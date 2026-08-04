@@ -20,18 +20,44 @@ export function formatNaira(value: number | null | undefined): string {
 }
 
 /**
+ * Raised when a selected file cannot be decoded as an image at all, for
+ * example a PDF or a corrupt file renamed to .jpg. Distinct from every other
+ * failure in the compression pipeline below (a quirky EXIF profile, an
+ * unusual color space), which still fall back to the original file so a
+ * genuine photo is never lost. This one specific case is not recoverable and
+ * must be surfaced to the seller or buyer, not silently swallowed, so a
+ * broken file never quietly becomes part of a listing or a dispute.
+ */
+export class UnsupportedImageError extends Error {}
+
+/** Decodes a file to a bitmap, trying the orientation-aware path first, then
+ * a plain retry. Throws UnsupportedImageError only when BOTH attempts fail,
+ * meaning the file is not a decodable image at all. */
+async function decodeBitmap(file: File): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
+  } catch {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      throw new UnsupportedImageError(`"${file.name || "That file"}" does not look like a photo.`);
+    }
+  }
+}
+
+/**
  * Compresses an image before upload. Phone photos are 3 to 4MB each, and four
  * of them per listing is slow on Nigerian mobile data and wasteful in storage.
  * We draw the photo to a canvas with the longest edge capped at maxEdge and
  * export a moderate quality JPEG. A 3 to 4MB photo typically comes out around
- * 200 to 350KB. Falls back to the original file if anything goes wrong so an
- * upload is never lost.
+ * 200 to 350KB. Falls back to the original file if anything AFTER decoding
+ * goes wrong, so a genuine photo is never lost — but a file that cannot be
+ * decoded as an image at all throws UnsupportedImageError, see decodeBitmap.
  */
 export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): Promise<Blob> {
+  if (typeof createImageBitmap !== "function") return file;
+  const bitmap = await decodeBitmap(file);
   try {
-    if (typeof createImageBitmap !== "function") return file;
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions)
-      .catch(() => createImageBitmap(file));
     const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * scale));
     const h = Math.max(1, Math.round(bitmap.height * scale));
@@ -60,14 +86,15 @@ export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): 
  *    corner luminance, so it stays legible on a white cot sheet and a navy pram.
  *  - exports a moderate-quality JPEG.
  * Baked into the stored file permanently, and only ever called for NEW listing
- * uploads. Dispatch and dispute photos keep the plain compressImage. Falls back to
- * the original file if anything fails so an upload is never lost.
+ * uploads. Dispatch and dispute photos keep the plain compressImage. Falls back
+ * to the original file if anything AFTER decoding fails, so a genuine photo is
+ * never lost — but a file that cannot be decoded at all throws
+ * UnsupportedImageError, see decodeBitmap.
  */
 export async function processListingImage(file: File, size = 1200, quality = 0.82): Promise<Blob> {
+  if (typeof createImageBitmap !== "function") return compressImage(file);
+  const bitmap = await decodeBitmap(file);
   try {
-    if (typeof createImageBitmap !== "function") return compressImage(file);
-    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions)
-      .catch(() => createImageBitmap(file));
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
@@ -90,6 +117,45 @@ export async function processListingImage(file: File, size = 1200, quality = 0.8
   } catch {
     return compressImage(file);
   }
+}
+
+/**
+ * Turns a storage-upload rejection into a specific, human message. The
+ * marketplace-listings bucket enforces a 5MB size limit and an image-only
+ * MIME allowlist (jpeg/png/webp/heic/heif) — the client-side compression
+ * pipeline re-encodes to ~170KB JPEG so this should almost never trigger in
+ * normal use, which is exactly why it must still produce a clear message
+ * rather than a raw error or a silent failure. Any error not matching a known
+ * shape falls back to a generic message and logs the real detail to the
+ * console, never shown to the person uploading.
+ */
+export function describeUploadError(error: unknown): string {
+  if (error instanceof UnsupportedImageError) {
+    return "That file doesn't look like a photo. Please choose a JPEG, PNG, WEBP or HEIC image.";
+  }
+  const raw = String((error as { message?: string } | null)?.message || "");
+  if (/exceed|too large|maximum.*size|payload too large/i.test(raw)) {
+    return "That photo is too large. Please choose one under 5MB, or retake it so it can be compressed again.";
+  }
+  if (/mime type|not supported|invalid.*type|content.type/i.test(raw)) {
+    return "That file type isn't supported. Please choose a JPEG, PNG, WEBP or HEIC photo.";
+  }
+  if (raw) console.error("[marketplace] photo upload failed:", error);
+  return "The upload did not complete. Please check your connection and try again.";
+}
+
+/**
+ * The one place every OTHER, unrecognised database or network error is turned
+ * into something safe to show a customer or seller. Only call this after
+ * checking every known, deliberately-parsed error pattern (a bank name
+ * mismatch, a locked legal name, missing required category details, ...) and
+ * finding none match — those stay their own specific human message. Logs the
+ * real detail to the console so it is never lost for debugging, never shown
+ * on screen.
+ */
+export function genericErrorMessage(context: string, error: unknown): string {
+  console.error(`[marketplace] ${context}:`, error);
+  return "Something went wrong on our end. Please try again, or message us on WhatsApp if it keeps happening.";
 }
 
 /** Rounded-rect path, with a manual fallback for older canvas engines. */
