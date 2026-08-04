@@ -165,7 +165,90 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — seller listing edit gains the six condition questions and per-listing negotiability, plus a display-tag fix
+### This pass — the five policy pages (Terms, Privacy, Buyer/Seller protection, Cookies), design 24a
+New routes in the marketplace tree: `/terms`, `/privacy`, `/buyer-protection`,
+`/seller-protection`, `/cookies`. All five wired into the footer (previously
+omitted, per the footer's own comment, because they had no page) and into a
+new shared `PolicyNav` at the top of each page so a reader can hop sideways
+without going back to the footer.
+- **Every fee and timing amount reads live from `site_settings`**, never
+  hardcoded, via a new `useMarketplacePolicySettings()` hook
+  (`src/marketplace/policy/policySettings.ts`) reading
+  `marketplace_service_fee_naira`, `marketplace_markup_percent`,
+  `marketplace_max_discount_percent`, `marketplace_dispute_window_days`,
+  `marketplace_offer_expiry_hours`, `marketplace_return_confirm_days`,
+  `contact_email` in one query. **Made dynamic**: the ₦ service fee (Terms
+  §4 — the design's own figure was ₦750, stale, live value is ₦1,000, this
+  is the exact failure mode the task called out), the markup percent (Terms
+  §4, Seller protection), the max discount percent (Terms §5), the dispute
+  window in days (Terms §6, Buyer protection, Seller protection), the
+  return-confirm window in days (Terms §9). `marketplace_offer_expiry_hours`
+  is fetched but the design text never states a number for it anywhere on
+  these five pages, so nothing needed swapping there, it stays fetched for
+  when/if a future edit adds it.
+- **Contact email discrepancy, reported not resolved:** `site_settings.contact_email`
+  is `hello@bundledmum.ng`, but `send-transactional-email`'s actual
+  `FROM_EMAIL` is `hello@bundledmum.com` (its own `REPLY_TO` IS
+  `hello@bundledmum.ng`, matching the setting). Two different domains. The
+  policy pages' contact lines (Terms, Privacy, Cookies) use
+  `contact_email` as instructed, which lines up with where a reply
+  actually goes, not where the email visibly comes from — flagged here for
+  a human decision, not silently picked.
+- **Last-updated date is NOT database driven.** No setting for it exists and
+  adding one is out of scope this pass. `POLICY_LAST_UPDATED` is a single
+  exported string constant (`policySettings.ts`), read by all five pages, so
+  there is exactly one line to change rather than five — better than
+  duplicating it, but still a plain string nobody is reminded to update. Not
+  claiming this is maintainable, flagging it honestly per the task's own
+  instruction that a hardcoded date nobody remembers is worse than none.
+- **Design accuracy check, contradictions found and left as-is (not silently
+  corrected), for a human to decide:**
+  - Buyer protection's step 1 says "within 48 hours of it arriving" for
+    reporting a problem. Read `raise_marketplace_dispute` directly: it
+    enforces no such deadline at all, only that the order is still
+    `awaiting_dispatch`/`awaiting_confirmation`. The real mechanism that
+    actually closes the window is `marketplace_dispute_window_days`
+    (currently 3) via the auto-settle path, not a 48-hour post-arrival
+    clock. Left the design's literal "48 hours" text in place (it is not
+    one of the six named settings, so there was nothing to swap it FOR
+    without inventing new policy content) and am reporting the mismatch
+    here instead.
+  - Everything else checked matches actual behaviour exactly, verified
+    against the real deployed code, not assumed: the fee structure (service
+    fee + Paystack fee, non-refundable, confirmed in `CheckoutPage.tsx`);
+    the money flow (buyer pays BundledMum, seller paid after confirm or the
+    dispute window); refunds by bank transfer, never back to the card
+    (`BuyerReturnPage.tsx`); the three dispute outcomes — `rejected` (not
+    upheld), `full_refund` (seller at fault, strike applied), `courier_fault`
+    (nobody at fault, no strike) — read directly off
+    `admin_resolve_dispute`'s actual outcome enum; the three-strike
+    suspension rule, read directly off `auto_suspend_seller_on_strikes`
+    (`strike_count >= 3`); delivery arranged between buyer and seller only
+    after payment, BundledMum never the courier; passwordless magic-link
+    sign in, no stored passwords; guest checkout, buying needs no account.
+- **Layout**: Terms and Privacy are dense reference pages, numbered sections
+  with anchor ids, a 640px reading column, and a sticky right-rail jump-link
+  TOC at `>=1024px` (hidden on mobile, per design). Buyer and Seller
+  protection are the warm/visual treatment, a green hero, tick-row
+  checklist, numbered steps card, and a "what this doesn't cover" /
+  "about strikes" callout, no TOC (design drops it here deliberately).
+  Cookies is short, no TOC, plain sections. All five reuse existing brand
+  CSS variables and several existing component classes (`.mkt-step`,
+  `.mkt-card2-label`) rather than inventing new visual language, plus new
+  `.mkt-policy-*` classes appended to `marketplace.css`.
+- **Footer**: still omits only "Help" (no page exists for it, unchanged).
+- Verified live in the browser: Terms shows ₦1,000 (not the design's stale
+  ₦750), 10% markup, 10% discount cap, 3-day window, all four other pages
+  render with zero console errors, desktop Terms shows the sticky TOC with
+  all 13 sections. `npx tsc --noEmit` and `npm run build` both pass.
+- **Not built, out of scope**: no Supabase migration or edge function
+  changes; no new policy content beyond what design 24a specifies; not
+  added to the storefront. These pages should be reviewed again whenever
+  fee, timing, dispute-outcome or strike behaviour actually changes, since
+  their prose (not just the numbers) describes that behaviour and could
+  drift the same way the ₦750 figure already did.
+
+### Earlier this branch line — seller listing edit gains the six condition questions and per-listing negotiability, plus a display-tag fix
 The seller listing-edit screens (dashboard entry points, price-only live edit,
 full edit reusing create-listing, delist-then-edit) were already built in an
 earlier pass, to design 21a. This pass found that two backend features had

@@ -23,6 +23,11 @@ import BuyerDisputePage from "./checkout/BuyerDisputePage";
 import BuyerReturnPage from "./checkout/BuyerReturnPage";
 import BuyerOfferPage from "./checkout/BuyerOfferPage";
 import SellerOfferPage from "./sell/SellerOfferPage";
+import TermsPage from "./policy/TermsPage";
+import PrivacyPage from "./policy/PrivacyPage";
+import BuyerProtectionPage from "./policy/BuyerProtectionPage";
+import SellerProtectionPage from "./policy/SellerProtectionPage";
+import CookiesPage from "./policy/CookiesPage";
 import "./marketplace.css";
 
 /**
@@ -76,6 +81,12 @@ export default function MarketplaceApp() {
             <Route path="/orders/:orderId" element={<BuyerOrderDetailPage />} />
             <Route path="/orders/:orderId/problem" element={<BuyerDisputePage />} />
             <Route path="/orders/:orderId/return" element={<BuyerReturnPage />} />
+            {/* Policy pages (design 24a) */}
+            <Route path="/terms" element={<TermsPage />} />
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/buyer-protection" element={<BuyerProtectionPage />} />
+            <Route path="/seller-protection" element={<SellerProtectionPage />} />
+            <Route path="/cookies" element={<CookiesPage />} />
           </Routes>
           <MarketplaceFooter />
         </div>

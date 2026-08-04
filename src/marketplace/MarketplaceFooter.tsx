@@ -12,7 +12,8 @@ import logoWhite from "@/assets/logos/BM-LOGO-WHITE.png";
  * the dispatch-upload screen, and the buyer order detail + problem routes, plus
  * /login. On listing detail it gets extra bottom clearance so the fixed Buy now
  * bar cannot obscure the last line. Only links whose destinations exist are shown
- * (Help, Terms and Privacy have no pages, so they are omitted).
+ * (Help still has no page, so it stays omitted; the five policy pages now do,
+ * design 24a, so they are wired in below).
  */
 export default function MarketplaceFooter() {
   const { pathname } = useLocation();
@@ -40,6 +41,11 @@ export default function MarketplaceFooter() {
           <Link to="/sell" className="mkt-ftr-link">Sell</Link>
           <Link to="/orders" className="mkt-ftr-link">My orders</Link>
           {seller && <Link to="/sell/dashboard" className="mkt-ftr-link">Seller dashboard</Link>}
+          <Link to="/buyer-protection" className="mkt-ftr-link">Buyer protection</Link>
+          <Link to="/seller-protection" className="mkt-ftr-link">Seller protection</Link>
+          <Link to="/terms" className="mkt-ftr-link">Terms</Link>
+          <Link to="/privacy" className="mkt-ftr-link">Privacy</Link>
+          <Link to="/cookies" className="mkt-ftr-link">Cookies</Link>
           <a href="/" className="mkt-ftr-link">bundledmum.com</a>
         </nav>
       </div>
