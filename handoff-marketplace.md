@@ -165,7 +165,53 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — display_name now derived by the database, legal name locked once set, commit `f18437b`
+### This pass — per-alert recipients for the 7 internal marketplace emails, commit `783deba`
+Until now all seven internal marketplace alerts shared one address
+(`site_settings.marketplace_payout_digest_email`). Each can now have its own
+recipients on `email_templates.internal_recipients` (text, nullable,
+deployed). Both senders already read `internal_recipients` first and fall
+back to the shared setting only when it is blank — deployed, not touched
+this pass, so a blank field never silently switches an alert off.
+- **New "Recipients per alert" section** added directly below the existing
+  shared-fallback field in `MarketplaceSettings.tsx` (same screen, not a new
+  route) — the two sit next to each other so the fallback relationship is
+  visible without navigating. The 7 slugs, in display order: `..._new_sale`,
+  `..._dispute_raised`, `..._payment_anomaly`, `..._new_seller`,
+  `..._seller_suspended`, `..._payout_digest`, `..._new_listing`. Each row's
+  plain-language name + description is read live from `email_templates.name`
+  / `.description` (already seeded, not hardcoded in the frontend, so an
+  admin editing those elsewhere stays in sync automatically).
+- **Empty is explicitly allowed here** (unlike the shared field, which still
+  requires at least one address) — the read view names the actual current
+  fallback address, "Falls back to bundledmum@gmail.com", not a vague
+  placeholder, so an admin sees exactly where a blank one routes.
+  Validation, chip display, and the confirm-dialog pattern all mirror the
+  existing shared field exactly, just targeting `email_templates` instead of
+  `site_settings`.
+- **Real inconsistency found and reported, not fixed:** `email_templates`'
+  own RLS requires `content/edit_settings`, not `marketplace/manage` (which
+  gates this whole screen) — confirmed by reading both the policy and the
+  existing general-purpose `AdminEmailTemplates.tsx`, itself gated by
+  `content/edit_settings`. Checked `admin_role_defaults`: the standard
+  `admin` role has both granted by default and `super_admin` bypasses
+  everything, so there's no practical gap today for either real role — but a
+  hypothetical narrower custom role granted only `marketplace/manage` would
+  hit an RLS wall here. Worth aligning in a future pass; not fixable without
+  a migration, so left as-is per this pass's non-goals.
+- **Verified live end to end** against the real, already-deployed database:
+  all 7 rows render their real name/description/current recipient; cleared
+  one field and confirmed both the confirm dialog and the saved read view
+  correctly show "Falls back to bundledmum@gmail.com" (DB stored `NULL`,
+  confirmed via SQL); typed an invalid address and got the exact expected
+  inline error naming it; entered two valid addresses and confirmed the
+  confirm dialog ("2 recipients: ..."), the chip display, and the stored
+  value all matched. All test data reverted via SQL afterward; confirmed via
+  a fresh page reload that all 7 are back to their original
+  `bundledmum@gmail.com` value. `npm run build` passes, zero console errors.
+  Every other setting on this screen (markup, fee, dispute window, bank
+  details, categories, locations) untouched and unaffected.
+
+### Earlier this branch line — display_name now derived by the database, legal name locked once set, commit `f18437b`
 Two more backend rules went live, both database-owned, neither rebuilt here.
 - **`display_name` is derived, never typed.** `trg_a_derive_seller_display_name`
   (BEFORE INSERT/UPDATE, deployed) sets `display_name` automatically from
