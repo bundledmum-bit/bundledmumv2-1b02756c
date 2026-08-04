@@ -238,7 +238,7 @@ export default function ListingDetailPage() {
         )}
 
         <div className="mkt-tags">
-          <span className="mkt-tag cond">{conditionLabel(listing.condition_notes)}</span>
+          <span className="mkt-tag cond">{conditionLabel(listing.condition)}</span>
           <span className="mkt-tag loc">{locationLabel(listing)}</span>
           {listing.category?.name ? (
             <span className="mkt-tag cat">{listing.category.name}</span>

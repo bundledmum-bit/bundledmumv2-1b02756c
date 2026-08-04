@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, stripConditionPrefix, UnsupportedImageError } from "./sellData";
+import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -21,6 +21,27 @@ interface CategoryField {
   sort_order: number;
 }
 type AnswerValue = string | number | boolean;
+
+/** One of the six universal condition questions (marketplace_condition_questions,
+ * already deployed, admin-managed but fixed content today). A follow-up text box
+ * appears only when the chosen option is in followup_required_for, and is then
+ * itself required, e.g. picking "Yes, noticeable" for marks requires saying what
+ * and where. Answers are written to condition_answers as {question_key: option,
+ * [question_key]_detail: text}; the database derives condition_notes from this
+ * itself (sync_condition_notes_from_answers), so this form never writes
+ * condition_notes directly. */
+interface ConditionQuestion {
+  id: string;
+  question_key: string;
+  label: string;
+  options: string[];
+  is_required: boolean;
+  help_text: string | null;
+  sort_order: number;
+  followup_required_for: string[];
+  followup_label: string | null;
+  followup_placeholder: string | null;
+}
 // The blob is the processed photo (square, watermarked, compressed). We process
 // on add so the seller sees exactly what will be stored, and upload the same blob.
 // null blob means an already-uploaded photo carried over from the existing
@@ -34,12 +55,14 @@ interface ExistingListing {
   description: string | null;
   condition: string | null;
   condition_notes: string | null;
+  condition_answers: Record<string, string> | null;
   category_id: string | null;
   location_state: string | null;
   location_city: string | null;
   attributes: Record<string, AnswerValue> | null;
   price_naira: number;
   quantity: number;
+  is_negotiable: boolean;
   image_url: string | null;
   gallery_urls: string[] | null;
   rejection_reason: string | null;
@@ -47,14 +70,10 @@ interface ExistingListing {
 
 const CONDITIONS = ["Almost new", "Good", "Fair"];
 // Maps the picker's display label to the structured `condition` enum column, the
-// reliable source used by the browse condition filter. condition_notes stays free
-// text, written alongside as before.
+// reliable source used by the browse condition filter and the display tag.
 const CONDITION_VALUE: Record<string, string> = { "Almost new": "almost_new", "Good": "good", "Fair": "fair" };
 const MIN_PHOTOS = 4;
 const MAX_PHOTOS = 8;
-// Below this many characters the condition notes nudge shows (design 20a,
-// RT7). Not a validation minimum, just a gentle prompt, never blocks submit.
-const SHORT_NOTES_LENGTH = 20;
 
 /**
  * Create listing AND full edit (rejected/delisted/pending_review), reskinned
@@ -96,9 +115,15 @@ export default function CreateListingPage() {
   const [stateId, setStateId] = useState("");
   const [areaName, setAreaName] = useState("");
   const [condition, setCondition] = useState("");
-  const [conditionNotes, setConditionNotes] = useState("");
+  // The six universal condition questions, keyed by question_key, plus
+  // "{key}_detail" for a follow-up's free text. The database derives
+  // condition_notes from this itself once it is non-empty, this form never
+  // writes condition_notes directly.
+  const [conditionAnswers, setConditionAnswers] = useState<Record<string, string>>({});
+  const [conditionInvalidKeys, setConditionInvalidKeys] = useState<Set<string>>(new Set());
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [isNegotiable, setIsNegotiable] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [identicalOk, setIdenticalOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +137,7 @@ export default function CreateListingPage() {
     enabled: isEditMode && !!seller,
     queryFn: async (): Promise<ExistingListing | null> => {
       const { data } = await sdb.from("marketplace_listings")
-        .select("id, status, title, description, condition, condition_notes, category_id, location_state, location_city, attributes, price_naira, quantity, image_url, gallery_urls, rejection_reason")
+        .select("id, status, title, description, condition, condition_notes, condition_answers, category_id, location_state, location_city, attributes, price_naira, quantity, is_negotiable, image_url, gallery_urls, rejection_reason")
         .eq("id", editId as string)
         .eq("seller_id", seller!.id)
         .maybeSingle();
@@ -129,6 +154,8 @@ export default function CreateListingPage() {
   const [recovery, setRecovery] = useState<{ labels: string[]; keys: string[] } | null>(null);
   const questionsRef = useRef<HTMLDivElement | null>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const conditionQuestionsRef = useRef<HTMLDivElement | null>(null);
+  const conditionFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   function changeCategory(id: string) {
     setCategoryId(id);
@@ -162,6 +189,20 @@ export default function CreateListingPage() {
     queryFn: async (): Promise<Category[]> => {
       const { data } = await sdb.from("marketplace_categories").select("id, name").eq("is_allowed", true).order("name");
       return (data ?? []) as unknown as Category[];
+    },
+    staleTime: 60000,
+  });
+
+  // The six universal condition questions (already deployed, same shape as
+  // category questions but not category-scoped, always relevant). Ordered by
+  // sort_order, the same stable shape create-listing already uses elsewhere.
+  const { data: conditionQuestions = [] } = useQuery({
+    queryKey: ["mkt-condition-questions"],
+    queryFn: async (): Promise<ConditionQuestion[]> => {
+      const { data } = await sdb.from("marketplace_condition_questions")
+        .select("id, question_key, label, options, is_required, help_text, sort_order, followup_required_for, followup_label, followup_placeholder")
+        .order("sort_order");
+      return (data ?? []) as unknown as ConditionQuestion[];
     },
     staleTime: 60000,
   });
@@ -203,9 +244,10 @@ export default function CreateListingPage() {
     setStateId(states.find((s) => s.name === existingListing.location_state)?.id || "");
     setAreaName(existingListing.location_city || "");
     setCondition(conditionLabel);
-    setConditionNotes(conditionLabel ? stripConditionPrefix(conditionLabel, existingListing.condition_notes || "") : (existingListing.condition_notes || ""));
+    setConditionAnswers(existingListing.condition_answers || {});
     setDescription(existingListing.description || "");
     setPrice(existingListing.price_naira ? String(Math.round(existingListing.price_naira)) : "");
+    setIsNegotiable(!!existingListing.is_negotiable);
     setQuantity(Math.max(1, existingListing.quantity || 1));
     setIdenticalOk((existingListing.quantity || 1) > 1);
     setAnswers(existingListing.attributes || {});
@@ -275,9 +317,43 @@ export default function CreateListingPage() {
     return out;
   }
 
+  function setConditionAnswer(key: string, value: string) {
+    setConditionAnswers((a) => ({ ...a, [key]: value }));
+    setConditionInvalidKeys((s) => { if (!s.has(key)) return s; const n = new Set(s); n.delete(key); return n; });
+  }
+
+  /** Every condition question with no option chosen yet, or with a required
+   * follow-up (its answer is in followup_required_for) left blank. */
+  function missingConditionAnswers(): ConditionQuestion[] {
+    return conditionQuestions.filter((q) => {
+      const v = conditionAnswers[q.question_key];
+      if (!v) return q.is_required;
+      if (q.followup_required_for.includes(v)) {
+        return !conditionAnswers[`${q.question_key}_detail`]?.trim();
+      }
+      return false;
+    });
+  }
+
+  /** condition_answers payload: only questions actually answered, plus their
+   * follow-up detail when one was given. The database derives condition_notes
+   * from this itself once it is non-empty; this form never writes
+   * condition_notes directly. */
+  function buildConditionAnswers(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const q of conditionQuestions) {
+      const v = conditionAnswers[q.question_key];
+      if (!v) continue;
+      out[q.question_key] = v;
+      const detail = conditionAnswers[`${q.question_key}_detail`]?.trim();
+      if (detail) out[`${q.question_key}_detail`] = detail;
+    }
+    return out;
+  }
+
   const priceNum = Number(price);
   const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
-  const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, !!conditionNotes.trim(), !!description.trim(), priceNum > 0];
+  const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, missingConditionAnswers().length === 0, !!description.trim(), priceNum > 0];
   const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
   async function addPhotos(files: FileList | null) {
@@ -338,7 +414,21 @@ export default function CreateListingPage() {
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
     if (!condition) { setError("Choose the condition."); return; }
-    if (!conditionNotes.trim()) { setError("Add condition notes. Mention any flaw, buyers cannot ask questions before buying."); return; }
+
+    // The six condition questions, same "cannot ask questions later" reasoning
+    // as everything else here. Not database-enforced (only the category
+    // questions are, via enforce_required_category_fields), this check exists
+    // for a good experience and to make sure condition_answers is never sent
+    // half-empty, since a genuinely honest listing answers all six.
+    const missingCondition = missingConditionAnswers();
+    if (missingCondition.length > 0) {
+      setConditionInvalidKeys(new Set(missingCondition.map((q) => q.question_key)));
+      setError(missingCondition.length === 1
+        ? `${missingCondition[0].label} still needs an answer. Buyers cannot ask before buying.`
+        : `A few more condition answers are needed: ${missingCondition.map((q) => q.label).join(", ")}.`);
+      conditionQuestionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
 
     // Required category questions, same "cannot ask questions later" reasoning as
     // photos and condition notes. The database enforces this too (a trigger on
@@ -357,7 +447,8 @@ export default function CreateListingPage() {
     if (!description.trim()) { setError("Add a description."); return; }
     if (!isFinite(priceNum) || priceNum <= 0) { setError("Enter your asking price."); return; }
     if (quantity > 1 && !identicalOk) { setError(`Please confirm all ${quantity} items are identical, or set the quantity back to 1.`); return; }
-    if (hasContactLeak(description, conditionNotes)) { setContactBlocked(true); return; }
+    const conditionDetailTexts = conditionQuestions.map((q) => conditionAnswers[`${q.question_key}_detail`]);
+    if (hasContactLeak(description, ...conditionDetailTexts)) { setContactBlocked(true); return; }
 
     setBusy(true);
 
@@ -383,15 +474,17 @@ export default function CreateListingPage() {
     }
 
     try {
-      const composedNotes = condition ? `${condition}. ${conditionNotes.trim()}` : conditionNotes.trim();
       const stateName = states.find((s) => s.id === stateId)?.name ?? null;
       const payload = {
         category_id: categoryId,
         title: title.trim(),
         description: description.trim(),
-        condition_notes: composedNotes,
+        // condition_notes is NOT sent, the database derives it from
+        // condition_answers itself (sync_condition_notes_from_answers).
+        condition_answers: buildConditionAnswers(),
         condition: CONDITION_VALUE[condition] ?? null,
         price_naira: Math.round(priceNum),
+        is_negotiable: isNegotiable,
         quantity: Math.max(1, Math.round(quantity)),
         location_state: stateName,
         location_city: areaName || null,
@@ -589,17 +682,20 @@ export default function CreateListingPage() {
             </div>
           </div>
 
-          <textarea className="mkt-textarea" value={conditionNotes} onChange={(e) => setConditionNotes(e.target.value)}
-            placeholder="Describe the condition honestly. Mention any scuff, stain or missing part, and what is included." />
-
-          {/* Nudge only, never a validation error: coral, not the error red
-              used elsewhere on this form, and it never blocks Continue. */}
-          {conditionNotes.trim().length > 0 && conditionNotes.trim().length < SHORT_NOTES_LENGTH && (
-            <div className="mkt-notes-nudge">
-              <span className="ic">i</span>
-              <span>That's quite short. Buyers cannot ask you questions, so anything else worth mentioning, marks, missing parts, how long you used it?</span>
-            </div>
-          )}
+          <div ref={conditionQuestionsRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {conditionQuestions.map((q) => (
+              <ConditionQuestionField
+                key={q.id}
+                question={q}
+                value={conditionAnswers[q.question_key]}
+                detail={conditionAnswers[`${q.question_key}_detail`]}
+                invalid={conditionInvalidKeys.has(q.question_key)}
+                onChange={(v) => setConditionAnswer(q.question_key, v)}
+                onDetailChange={(v) => setConditionAnswer(`${q.question_key}_detail`, v)}
+                setRef={(el) => { conditionFieldRefs.current[q.question_key] = el; }}
+              />
+            ))}
+          </div>
           <div className="mkt-help">Do not add a phone number or way to contact you.</div>
         </div>
 
@@ -662,6 +758,18 @@ export default function CreateListingPage() {
             </div>
           </div>
           <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)} per item. BundledMum adds a {markupPct}% markup on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
+        </div>
+
+        <div className="mkt-field">
+          <div className="mkt-field-head">
+            <span className="lbl">Is this price negotiable?</span>
+            <span className="mkt-help">Optional</span>
+          </div>
+          <div className="mkt-chips">
+            <button type="button" className={!isNegotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setIsNegotiable(false)}>No, firm price</button>
+            <button type="button" className={isNegotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setIsNegotiable(true)}>Yes, open to offers</button>
+          </div>
+          <div className="mkt-help">If yes, buyers can ask for a bit off. You always see and choose your own number, never a pressure to accept.</div>
         </div>
 
         {/* Quantity. Invisible weight for the one-off case, defaults to 1. */}
@@ -777,6 +885,50 @@ function QuestionField({ field, value, invalid, onChange, setRef, errorText }: {
       {invalid && (
         <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5 }}>
           <span style={{ fontWeight: 800 }}>!</span>{errorText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A single condition question: an option pick, plus a follow-up text box that
+// appears (and becomes required) only when the picked option is one of the
+// question's followup_required_for values.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ConditionQuestionField({ question, value, detail, invalid, onChange, onDetailChange, setRef }: {
+  question: ConditionQuestion;
+  value: string | undefined;
+  detail: string | undefined;
+  invalid: boolean;
+  onChange: (v: string) => void;
+  onDetailChange: (v: string) => void;
+  setRef: (el: HTMLDivElement | null) => void;
+}) {
+  const needsDetail = !!value && question.followup_required_for.includes(value);
+  const detailMissing = invalid && needsDetail && !detail?.trim();
+  return (
+    <div ref={setRef} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="mkt-uplabel" style={invalid ? { color: "var(--mkt-error)" } : undefined}>{question.label}</span>
+      <div className={invalid && !value ? "mkt-chips error" : "mkt-chips"} style={{ flexWrap: "wrap" }}>
+        {question.options.map((o) => (
+          <button key={o} type="button" className={value === o ? "mkt-chip on" : "mkt-chip"} onClick={() => onChange(o)}>{o}</button>
+        ))}
+      </div>
+      {question.help_text && <div className="mkt-help">{question.help_text}</div>}
+      {needsDetail && (
+        <input
+          className={detailMissing ? "mkt-input error" : "mkt-input"}
+          value={detail || ""}
+          onChange={(e) => onDetailChange(e.target.value)}
+          placeholder={question.followup_placeholder || `Add ${(question.followup_label || "detail").toLowerCase()}`}
+        />
+      )}
+      {invalid && (
+        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontWeight: 800 }}>!</span>
+          {detailMissing ? (question.followup_label || "This detail is needed.") : "This is required. Buyers cannot ask before buying."}
         </div>
       )}
     </div>

@@ -165,7 +165,87 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — per-alert recipients for the 7 internal marketplace emails, commit `783deba`
+### This pass — seller listing edit gains the six condition questions and per-listing negotiability, plus a display-tag fix
+The seller listing-edit screens (dashboard entry points, price-only live edit,
+full edit reusing create-listing, delist-then-edit) were already built in an
+earlier pass, to design 21a. This pass found that two backend features had
+been deployed since then — `marketplace_listings.is_negotiable` and the
+condition_answers/marketplace_condition_questions system — with **no frontend
+ever built against either**, and wired both in.
+
+- **Real prompt/code mismatch found and reported before building:** the task
+  described "condition questions" as something to preserve/reuse from
+  create-listing. They did not exist there. Create-listing only ever had a
+  3-option condition picker (`condition` enum: almost_new/good/fair) plus a
+  single free-text notes box, written straight into `condition_notes`.
+  Separately, and fully deployed already: `marketplace_condition_questions`
+  (6 seeded rows — use_level, marks, works, completeness, cleaned, repaired,
+  each with fixed options and some with a conditional required follow-up text
+  box), `marketplace_listings.condition_answers` (jsonb, `{}` on every listing
+  today), and a trigger `sync_condition_notes_from_answers` that **derives
+  condition_notes from condition_answers itself** the moment it is non-empty
+  (`build_condition_notes`, already deployed, own wording per question).
+  Built the six-question UI into `CreateListingPage.tsx` (shared by create
+  and full-edit) reading this table live, same select→answer pattern already
+  used for the per-category questions. The 3-option condition picker is
+  UNCHANGED, still writes the `condition` enum. The old free-text notes field
+  and its short-notes nudge are gone; the form now sends `condition_answers`
+  and never writes `condition_notes` directly, the database owns that text.
+- **Display-tag fix, found while tracing this:** `conditionLabel()` (used on
+  browse cards and listing detail, `lib/format.ts`) parsed `condition_notes`
+  for words like "good"/"fair" to show a short tag. Once condition_notes
+  starts being database-derived text ("Used a few times, marks: ...") it no
+  longer reliably contains those words, so every listing using the new system
+  would have silently shown "Used" regardless of actual condition. Fixed to
+  read the reliable `condition` enum directly instead (same source the browse
+  filter already uses, per this file's own earlier note not to parse
+  condition_notes). Verified live: browse and listing detail both still show
+  "Almost new" / "Good" correctly, zero console errors.
+- **`is_negotiable`** (boolean, default false, already deployed) is now
+  written by create-listing ("Is this price negotiable?" yes/no, default no)
+  and toggleable on a **live** listing from `SellerPriceEditPage.tsx` —
+  confirmed by reading `guard_seller_listing_edits`' actual current SQL that
+  `is_negotiable` is genuinely absent from its content-changed check, so it
+  saves in the same update as a price drop, no separate write and no delist
+  needed. Verified live with a real listing: updated `price_naira` down and
+  `is_negotiable` to true in one write, succeeded, reverted both, confirmed
+  via a follow-up read. The price field on that screen now also pre-fills
+  with the current price (was blank-with-placeholder before), so a seller can
+  save the toggle alone without being forced to also retype an unchanged
+  price.
+- **Full-edit rejected-listing path tested end to end via SQL** (no seller
+  login available in this environment, same limitation as every other
+  auth-gated screen in this file): set a real live listing to `rejected` with
+  a rejection reason, wrote a realistic `condition_answers` payload matching
+  exactly what `CreateListingPage.tsx`'s new `buildConditionAnswers()`
+  produces, moved status to `pending_review` — confirmed `condition_notes`
+  came back correctly derived by the database ("Used a few times, marks: A
+  small mark on the toe, everything works, all parts included, cleaned
+  before listing."), then reverted the listing completely (status, rejection
+  reason, condition_answers, condition_notes) back to its original values,
+  confirmed via a follow-up read.
+- **Not database-enforced:** `enforce_required_category_fields` only checks
+  `marketplace_category_fields`, not `condition_answers` — the six
+  questions' `is_required` flag is data only, nothing server side blocks an
+  empty answer. Client validation (mirrors the category-questions pattern
+  exactly: missing questions highlighted, scrolled to, submit blocked) is a
+  good-experience layer only, same caveat as the category questions already
+  had.
+- **Design (21a) re-confirmed present and matching** for the 4 explicitly
+  required screens (dashboard entry points per status, price-only live edit
+  incl. blocked-raise state, full edit with rejection reason leading and
+  resubmit, delist-then-edit confirm) — none of those needed rebuilding, only
+  the two new fields layered in. The design does not show the six condition
+  questions or the negotiability toggle at all (predates both), so their UI
+  follows this task's own spec plus the live database shape, not a mock.
+- Preserved untouched: create-listing's photo pipeline, honesty guidance,
+  category questions, contact-leak block, area select; the dashboard's five
+  status groups and per-status edit button labels; the return flow, the
+  make-an-offer negotiation flow and its "offer" wording (out of scope this
+  pass — still says "Make an offer", not renamed); the contextual login.
+  `npx tsc --noEmit` and `npm run build` both pass.
+
+### Earlier this branch line — per-alert recipients for the 7 internal marketplace emails, commit `783deba`
 Until now all seven internal marketplace alerts shared one address
 (`site_settings.marketplace_payout_digest_email`). Each can now have its own
 recipients on `email_templates.internal_recipients` (text, nullable,

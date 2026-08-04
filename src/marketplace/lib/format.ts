@@ -13,21 +13,17 @@ export function locationLabel(listing: MarketplaceListing): string {
 }
 
 /**
- * Derives a SHORT condition tag from the free-text condition_notes. We never
- * dump the full notes on a card. If nothing clean can be derived we fall back
- * to a generic "Used" tag.
+ * Short condition tag for cards and detail, from the structured `condition`
+ * enum column, NOT condition_notes. condition_notes is now derived server
+ * side from condition_answers (see sync_condition_notes_from_answers) and no
+ * longer reliably contains a word like "good" or "fair" to parse, so the
+ * enum is the only trustworthy source here, same reasoning as the browse
+ * filter already using it instead of parsing free text.
  */
-export function conditionLabel(notes: string | null | undefined): string {
-  if (!notes) return "Used";
-  const n = notes.toLowerCase();
-  if (n.includes("brand new") || n.includes("unused") || n.includes("never used")) return "New";
-  // "almost new" is the current picker label; "like new" / "as new" are legacy
-  // rows and map to the same display label so cards stay consistent.
-  if (n.includes("almost new") || n.includes("like new") || n.includes("as new")) return "Almost new";
-  if (n.includes("barely") || n.includes("excellent")) return "Excellent";
-  if (n.includes("very good")) return "Very good";
-  if (n.includes("good")) return "Good";
-  if (n.includes("fair")) return "Fair";
+export function conditionLabel(condition: string | null | undefined): string {
+  if (condition === "almost_new") return "Almost new";
+  if (condition === "good") return "Good";
+  if (condition === "fair") return "Fair";
   return "Used";
 }
 

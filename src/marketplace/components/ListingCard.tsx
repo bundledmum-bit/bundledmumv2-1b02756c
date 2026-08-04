@@ -35,7 +35,7 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
           {verified ? <VerifiedBadge /> : null}
           <span className="mkt-meta">{locationLabel(listing)}</span>
           <span className="mkt-dot">·</span>
-          <span className="mkt-meta">{conditionLabel(listing.condition_notes)}</span>
+          <span className="mkt-meta">{conditionLabel(listing.condition)}</span>
         </div>
       </div>
     </Link>

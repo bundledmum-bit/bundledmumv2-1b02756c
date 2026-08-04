@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -6,7 +6,7 @@ import { useSeller } from "./useSeller";
 import { sdb, buyerPrice, formatNaira, genericErrorMessage, parseListingEditError } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
-interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; status: string }
+interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; status: string; is_negotiable: boolean }
 
 /**
  * Price-only edit for a LIVE listing (design 21a E2/E3). A live listing may
@@ -23,11 +23,13 @@ export default function SellerPriceEditPage() {
   const { loading, isLoggedIn, seller } = useSeller();
 
   const [newPrice, setNewPrice] = useState("");
+  const [negotiable, setNegotiable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [delistOpen, setDelistOpen] = useState(false);
   const [delistBusy, setDelistBusy] = useState(false);
   const [delistError, setDelistError] = useState<string | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
     if (loading) return;
@@ -39,13 +41,23 @@ export default function SellerPriceEditPage() {
     enabled: !!id && !!seller,
     queryFn: async (): Promise<LiveListing | null> => {
       const { data } = await sdb.from("marketplace_listings")
-        .select("id, title, image_url, price_naira, status")
+        .select("id, title, image_url, price_naira, status, is_negotiable")
         .eq("id", id as string)
         .eq("seller_id", seller!.id)
         .maybeSingle();
       return (data as unknown as LiveListing) ?? null;
     },
   });
+
+  // Hydrate once from the loaded listing: the price input starts pre-filled at
+  // the current price (so saving just the negotiability toggle needs no price
+  // edit at all), and the toggle starts at the listing's real value.
+  useEffect(() => {
+    if (hydratedRef.current || !listing) return;
+    hydratedRef.current = true;
+    setNewPrice(String(Math.round(listing.price_naira)));
+    setNegotiable(listing.is_negotiable);
+  }, [listing]);
 
   const { data: markupPct = 10 } = useQuery({
     queryKey: ["mkt-markup"],
@@ -68,7 +80,12 @@ export default function SellerPriceEditPage() {
     if (!isValid) { setError("Enter a price."); return; }
     if (isRaise) { setError("You can lower the price of a live listing, but not raise it. Delist it first if you need to change the price upward."); return; }
     setBusy(true);
-    const { error: updErr } = await sdb.from("marketplace_listings").update({ price_naira: Math.round(priceNum) }).eq("id", listing.id);
+    // is_negotiable is exempt from the live-listing content-change guard (it
+    // changes nothing about the item itself), so it saves in the same update
+    // as the price, no separate write needed.
+    const { error: updErr } = await sdb.from("marketplace_listings")
+      .update({ price_naira: Math.round(priceNum), is_negotiable: negotiable ?? listing.is_negotiable })
+      .eq("id", listing.id);
     setBusy(false);
     if (updErr) {
       setError(parseListingEditError(updErr.message) || genericErrorMessage("update price", updErr));
@@ -144,6 +161,16 @@ export default function SellerPriceEditPage() {
             <div className="see" style={{ textAlign: "left" }}>{formatNaira(preview)}</div>
           </div>
         )}
+
+        {/* Unlike everything else on a live listing, this IS allowed to change
+            here, it does not touch the item's content. */}
+        <div className="mkt-field">
+          <span className="mkt-uplabel">Is this price negotiable?</span>
+          <div className="mkt-chips">
+            <button type="button" className={!negotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setNegotiable(false)}>No, firm price</button>
+            <button type="button" className={negotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setNegotiable(true)}>Yes, open to offers</button>
+          </div>
+        </div>
 
         {isRaise && (
           <div className="mkt-errbox" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
