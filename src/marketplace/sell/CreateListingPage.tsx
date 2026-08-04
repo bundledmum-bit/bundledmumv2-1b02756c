@@ -676,9 +676,8 @@ export default function CreateListingPage() {
           <div className="mkt-honesty">
             <span className="ic">💡</span>
             <div>
-              <p>Buyers cannot ask you anything before they buy. Buy now is the only button they have, so whatever is not written here, they only find out once the parcel is open.</p>
-              <p>Declaring a flaw does not stop it selling, secondhand buyers expect wear. What they do not expect is a surprise. If the item does not match your description, the buyer can report a problem, we review it, and if you were not upfront, they get refunded, you do not get paid, and it counts as a strike. Three strikes and you can no longer sell here.</p>
-              <p>So mention it all: any mark or stain, missing pieces, fading, a stiff or broken zip, worn soles, anything that no longer works, and whether it has been washed. You will still sell it, you just will not lose it.</p>
+              <p>Buyers cannot ask questions before they buy, so anything left out here, they only find out once the parcel is open.</p>
+              <p>Mention every mark, stain, fade or fault, secondhand buyers expect wear, not surprises. If the item does not match your description, you could lose the sale, the payout, and get a strike, three strikes and you can no longer sell here. Be upfront and you will still sell it.</p>
             </div>
           </div>
 
