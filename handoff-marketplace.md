@@ -165,7 +165,69 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — session persistence fixed (off cookies), new-device sign-in alerts, commit `f15858f`
+### This pass — legal name fields + bank account name match, commit `242aade`
+New backend rule: a seller's real first and last name must be on file and
+must genuinely match the name on the bank account they provide, enforced at
+the database level regardless of what the frontend does.
+- **New private columns, distinct from the public `display_name`:**
+  `marketplace_sellers.legal_first_name` / `legal_last_name` (text, nullable).
+  Confirmed absent from `marketplace_sellers_public`'s column list — never
+  shown to buyers, never public anywhere.
+- **Enforced at the database level, not just here:**
+  `trg_enforce_seller_bank_name_match` (BEFORE INSERT/UPDATE on
+  `marketplace_sellers`, already deployed) blocks a write whenever
+  `legal_first_name`, `legal_last_name` and `bank_account_name` are all
+  present but `bank_account_name` does not contain both names
+  (case/punctuation-insensitive — `normalize_name_for_match` strips
+  everything but letters and uppercases). Raises `'The bank account name
+  must include your first and last name. We could not match "X Y" against
+  the account name "Z"'`, which this pass parses and never shows raw.
+- **The existing form has one free-text `display_name` field, not separate
+  first/last inputs.** A DB trigger (`format_seller_display_name`) already
+  keeps only the first token as typed and reduces the last token to a single
+  initial (e.g. "Amaka Okafor" → "Amaka O.") — the full surname was never
+  stored anywhere, which is the exact problem this pass's new columns solve.
+  Rather than parse that free-text field, added two new, clearly-labelled,
+  dedicated fields ("Legal first name" / "Legal last name", tagged Private).
+  `display_name` and its public "Firstname L." formatting are completely
+  unchanged.
+- **`sellData.ts`:** `normalizeNameForMatch` mirrors the database function
+  exactly. `missingNameParts` runs the identical substring check the trigger
+  runs, for live client guidance (never the safety net, the database
+  enforces this regardless). `parseBankNameMismatch` recognises the trigger's
+  exact raised message and turns it into *"The account name needs to include
+  your name, [first] and [last], so we can confirm it is yours."*
+- **`useSeller.ts`:** `SellerRow` + its select gain `legal_first_name`/
+  `legal_last_name` (purely additive; no other consumer of this shared hook
+  destructures them).
+- **`SellerSetupPage.tsx`** (new sellers): an onboarding notice (reuses
+  `.mkt-reassure`, warm tone — *"This protects you as much as it protects
+  buyers... not a suspicion of you specifically"*) sits right above the new
+  fields, inside the bank card, not buried. Live inline guidance on the
+  account-name field once all three fields have content; blocks submit with
+  a specific message if it still doesn't match, before ever hitting the
+  database.
+- **`SellerDashboardPage.tsx`'s `EditProfile` — an EXISTING profile-edit
+  screen, confirmed to already update `bank_account_name`** via the seller
+  dashboard's "Edit profile" panel — gets the identical treatment, since the
+  trigger fires on UPDATE too. This is also where a seller who set up before
+  this change (legal name still null) adds it for the first time.
+- **Verified live against the real, already-deployed database and a real
+  existing seller account** (not just build + code review): opened
+  "Edit profile" on a live seller, confirmed the notice and empty legal-name
+  fields render; typed a wrong last name and saw "This does not look like it
+  includes your last name yet", confirmed it cleared once corrected; Save
+  against the real database succeeded once the names genuinely matched,
+  confirmed via direct SQL read afterward (`legal_first_name`/
+  `legal_last_name` correctly set, `display_name` untouched). Separately
+  called `supabase.update` directly with a deliberate mismatch, bypassing the
+  UI entirely, to confirm the live database's raised error is exactly the
+  format `parseBankNameMismatch` expects, that the parser produces the
+  specified human message from it, and that the trigger correctly rolled the
+  bad write back (`legal_last_name` unchanged in the database afterward, data
+  integrity intact). `npm run build` passes, zero console errors throughout.
+
+### Earlier this branch line — session persistence fixed (off cookies), new-device sign-in alerts, commit `f15858f`
 
 **Diagnosis, confirmed by reading the installed library source, not assumed.**
 Sellers were being signed out unexpectedly, specifically on mobile. Root cause:
