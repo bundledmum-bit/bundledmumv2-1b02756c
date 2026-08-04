@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useSeller } from "./useSeller";
-import { sdb, formatNaira, maskAccount, validateDisplayName, missingNameParts, parseBankNameMismatch, sellerRelistListing } from "./sellData";
+import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -299,7 +299,12 @@ export default function SellerDashboardPage() {
 }
 
 function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnType<typeof useSeller>["seller"]>; onDone: () => void; onCancel: () => void }) {
-  const [displayName, setDisplayName] = useState(seller.display_name || "");
+  // A seller's legal name is locked by the database the moment both parts are
+  // first set (trg_lock_seller_legal_name); only an admin can change it after
+  // that. Every seller who registered before this rule existed has both null,
+  // so this is also where they enter it for the first time.
+  const legalNameLocked = !!(seller.legal_first_name && seller.legal_last_name);
+
   const [legalFirstName, setLegalFirstName] = useState(seller.legal_first_name || "");
   const [legalLastName, setLegalLastName] = useState(seller.legal_last_name || "");
   const [bankName, setBankName] = useState(seller.bank_name || "");
@@ -312,12 +317,11 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
   // Same live guidance as setup: which legal name parts, if any, the account
   // name is missing right now (same substring test the database enforces).
   const missing = missingNameParts(bankAcctName, legalFirstName, legalLastName);
+  const namePreview = !legalNameLocked ? previewDisplayName(legalFirstName, legalLastName) : null;
 
   async function save() {
     setErr(null); setBankNameErr(null);
-    const nErr = validateDisplayName(displayName);
-    if (nErr) { setErr(nErr); return; }
-    if (!legalFirstName.trim() || !legalLastName.trim()) {
+    if (!legalNameLocked && (!legalFirstName.trim() || !legalLastName.trim())) {
       setErr("Please add your legal first and last name, so we can confirm the bank account is genuinely yours.");
       return;
     }
@@ -327,8 +331,11 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
       return;
     }
     setBusy(true);
+    // No display_name here either: the database derives it from the legal
+    // names and overwrites anything sent. Legal names are only sent when this
+    // seller does not have them locked yet, they are read-only inputs
+    // otherwise so their values here are already unchanged from seller.*.
     const { error } = await sdb.from("marketplace_sellers").update({
-      display_name: displayName.trim(),
       legal_first_name: legalFirstName.trim(),
       legal_last_name: legalLastName.trim(),
       bank_name: bankName.trim(),
@@ -337,11 +344,15 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
     }).eq("id", seller.id);
     setBusy(false);
     if (error) {
-      // The database enforces the name match regardless of the check above,
-      // this is the recovery path if a mismatch somehow slips past it. Never
-      // show the raw database error for this case.
+      // Two specific rejections the database can raise here, neither ever
+      // shown raw: a bank-name mismatch (recovery path if it slips past the
+      // check above), or an attempt to change a locked legal name (should not
+      // be reachable through this UI since it's read-only once locked, but
+      // handled defensively regardless).
       const mismatch = parseBankNameMismatch(error.message, legalFirstName, legalLastName);
       if (mismatch) { setBankNameErr(mismatch); return; }
+      const locked = parseLegalNameLockError(error.message);
+      if (locked) { setErr(locked); return; }
       setErr(error.message);
       return;
     }
@@ -350,26 +361,41 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
 
   return (
     <div className="mkt-bankcard">
-      <div className="mkt-field">
-        <div className="mkt-field-head"><span className="lbl">Display name</span><span className="mkt-tag public">Public</span></div>
-        <input className="mkt-input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-      </div>
+      {legalNameLocked ? (
+        <div className="mkt-field">
+          <div className="mkt-field-head"><span className="lbl">Legal name</span><span className="mkt-tag private">Private, locked</span></div>
+          <div className="mkt-input" style={{ background: "var(--mkt-cream)", color: "var(--mkt-muted)" }}>{seller.legal_first_name} {seller.legal_last_name}</div>
+          <div className="mkt-help">
+            Fixed once set, so a payout account can never be quietly moved to someone else's name. Buyers see it as "{seller.display_name}".
+            If this needs correcting,{" "}
+            <a href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hello BundledMum, my legal name on my seller account needs correcting.")}`} target="_blank" rel="noreferrer">message us on WhatsApp</a>.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="mkt-field">
+            <div className="mkt-field-head"><span className="lbl">Legal first name</span><span className="mkt-tag private">Private</span></div>
+            <input className="mkt-input" value={legalFirstName} onChange={(e) => { setLegalFirstName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
+          </div>
+          <div className="mkt-field">
+            <div className="mkt-field-head"><span className="lbl">Legal last name</span><span className="mkt-tag private">Private</span></div>
+            <input className="mkt-input" value={legalLastName} onChange={(e) => { setLegalLastName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
+            <div className="mkt-help">Your real name, as it appears on your bank account. Cannot be changed once saved, buyers only ever see your first name and a last initial.</div>
+          </div>
+          {namePreview && (
+            <div className="mkt-reassure">
+              <div className="mkt-reassure-tick">✓</div>
+              <div className="mkt-reassure-text">Buyers will see: {namePreview}</div>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="mkt-reassure">
         <div className="mkt-reassure-tick">✓</div>
         <div className="mkt-reassure-text">
-          The name on your bank account needs to match your own name below. This protects you as much as it protects buyers, it is how we make sure a payout can only ever go to an account that is genuinely yours.
+          The name on your bank account needs to match your legal name above. This protects you as much as it protects buyers, it is how we make sure a payout can only ever go to an account that is genuinely yours.
         </div>
-      </div>
-
-      <div className="mkt-field">
-        <div className="mkt-field-head"><span className="lbl">Legal first name</span><span className="mkt-tag private">Private</span></div>
-        <input className="mkt-input" value={legalFirstName} onChange={(e) => { setLegalFirstName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
-      </div>
-      <div className="mkt-field">
-        <div className="mkt-field-head"><span className="lbl">Legal last name</span><span className="mkt-tag private">Private</span></div>
-        <input className="mkt-input" value={legalLastName} onChange={(e) => { setLegalLastName(e.target.value); if (bankNameErr) setBankNameErr(null); }} />
-        <div className="mkt-help">Your real name as it appears on your bank account, never shown to buyers.</div>
       </div>
 
       <div className="mkt-field"><span className="mkt-uplabel">Bank</span><input className="mkt-input" value={bankName} onChange={(e) => setBankName(e.target.value)} /></div>

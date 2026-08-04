@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, validateDisplayName, missingNameParts, parseBankNameMismatch } from "./sellData";
+import { sdb, missingNameParts, parseBankNameMismatch, previewDisplayName } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 /**
@@ -17,14 +17,12 @@ export default function SellerSetupPage() {
   const { user, isLoggedIn, loading, customerId, seller, refresh } = useSeller();
   const navigate = useNavigate();
 
-  const [displayName, setDisplayName] = useState("");
   const [legalFirstName, setLegalFirstName] = useState("");
   const [legalLastName, setLegalLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAcctName, setBankAcctName] = useState("");
   const [bankAcctNumber, setBankAcctNumber] = useState("");
-  const [nameErr, setNameErr] = useState<string | null>(null);
   const [bankNameErr, setBankNameErr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,6 +32,9 @@ export default function SellerSetupPage() {
   // substring test the database trigger runs (see missingNameParts). Only
   // shows once all three fields have something in them.
   const missing = missingNameParts(bankAcctName, legalFirstName, legalLastName);
+  // Preview only, the database derives the real display_name from a trigger
+  // the moment both legal names are saved (see previewDisplayName's own doc).
+  const namePreview = previewDisplayName(legalFirstName, legalLastName);
 
   useEffect(() => {
     if (loading) return;
@@ -43,9 +44,6 @@ export default function SellerSetupPage() {
 
   async function submit() {
     setError(null); setBankNameErr(null);
-    const nErr = validateDisplayName(displayName);
-    setNameErr(nErr);
-    if (nErr) return;
     if (!phone.trim() || !bankName.trim() || !bankAcctName.trim() || !bankAcctNumber.trim()) {
       setError("Please fill in your phone and full bank details.");
       return;
@@ -73,9 +71,10 @@ export default function SellerSetupPage() {
     }
     if (!cid) { setBusy(false); setError("We could not link your account. Please try again."); return; }
 
+    // No display_name here: a database trigger derives it from the legal
+    // names the moment both are present, and overwrites anything sent.
     const { error: sErr } = await sdb.from("marketplace_sellers").insert({
       customer_id: cid,
-      display_name: displayName.trim(),
       legal_first_name: legalFirstName.trim(),
       legal_last_name: legalLastName.trim(),
       phone: phone.trim(),
@@ -101,8 +100,6 @@ export default function SellerSetupPage() {
 
   if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
-  const nameBlocked = !!nameErr;
-
   return (
     <>
       <div className="mkt-sell-head">
@@ -117,15 +114,23 @@ export default function SellerSetupPage() {
 
       <div className="mkt-sell-body">
         <div className="mkt-field">
-          <div className="mkt-field-head"><span className="lbl">Display name</span><span className="mkt-tag public">Public</span></div>
-          <input className={nameBlocked ? "mkt-input error" : "mkt-input"} value={displayName}
-            onChange={(e) => { setDisplayName(e.target.value); if (nameErr) setNameErr(null); }} placeholder="e.g. Amaka O." />
-          {nameBlocked ? (
-            <div className="mkt-errbox"><span className="m">!</span><span>{nameErr}</span></div>
-          ) : (
-            <div className="mkt-help">This is the name buyers see on your listings. No numbers, no @ and no links, first name and an initial works best.</div>
-          )}
+          <div className="mkt-field-head"><span className="lbl">Legal first name</span><span className="mkt-tag private">Private</span></div>
+          <input className="mkt-input" value={legalFirstName}
+            onChange={(e) => { setLegalFirstName(e.target.value); if (bankNameErr) setBankNameErr(null); }} placeholder="e.g. Amaka" />
         </div>
+        <div className="mkt-field">
+          <div className="mkt-field-head"><span className="lbl">Legal last name</span><span className="mkt-tag private">Private</span></div>
+          <input className="mkt-input" value={legalLastName}
+            onChange={(e) => { setLegalLastName(e.target.value); if (bankNameErr) setBankNameErr(null); }} placeholder="e.g. Okafor" />
+          <div className="mkt-help">Your real name, as it appears on your bank account. We only ever show buyers your first name and a last initial, never your full surname, this is what confirms your bank account is genuinely yours.</div>
+        </div>
+
+        {namePreview && (
+          <div className="mkt-reassure">
+            <div className="mkt-reassure-tick">✓</div>
+            <div className="mkt-reassure-text">Buyers will see: {namePreview}</div>
+          </div>
+        )}
 
         <div className="mkt-field">
           <div className="mkt-field-head"><span className="lbl">Phone number</span><span className="mkt-tag public">Shared after a sale</span></div>
@@ -142,20 +147,8 @@ export default function SellerSetupPage() {
           <div className="mkt-reassure">
             <div className="mkt-reassure-tick">✓</div>
             <div className="mkt-reassure-text">
-              The name on your bank account needs to match your own name below. This protects you as much as it protects buyers, it is how we make sure a payout can only ever go to an account that is genuinely yours, not a suspicion of you specifically, just something every seller here goes through.
+              The name on your bank account needs to match your name above. This protects you as much as it protects buyers, it is how we make sure a payout can only ever go to an account that is genuinely yours, not a suspicion of you specifically, just something every seller here goes through.
             </div>
-          </div>
-
-          <div className="mkt-field">
-            <div className="mkt-field-head"><span className="lbl">Legal first name</span><span className="mkt-tag private">Private</span></div>
-            <input className="mkt-input" value={legalFirstName}
-              onChange={(e) => { setLegalFirstName(e.target.value); if (bankNameErr) setBankNameErr(null); }} placeholder="e.g. Amaka" />
-          </div>
-          <div className="mkt-field">
-            <div className="mkt-field-head"><span className="lbl">Legal last name</span><span className="mkt-tag private">Private</span></div>
-            <input className="mkt-input" value={legalLastName}
-              onChange={(e) => { setLegalLastName(e.target.value); if (bankNameErr) setBankNameErr(null); }} placeholder="e.g. Okafor" />
-            <div className="mkt-help">Your real name as it appears on your bank account, never shown to buyers, only used to confirm the account is yours.</div>
           </div>
 
           <div className="mkt-field">

@@ -240,3 +240,41 @@ export function parseBankNameMismatch(message: string, legalFirstName: string, l
   if (!/must include your first and last name/i.test(message || "")) return null;
   return `The account name needs to include your name, ${legalFirstName.trim()} and ${legalLastName.trim()}, so we can confirm it is yours.`;
 }
+
+/**
+ * A PREVIEW ONLY of the public name the database will derive from a seller's
+ * legal first and last name (a trigger, derive_seller_display_name, sets
+ * display_name itself on every insert/update once both are present; nothing
+ * the client sends as display_name is ever stored). Ports
+ * format_seller_display_name's exact algorithm: clean to letters, spaces,
+ * apostrophes, hyphens and full stops, collapse whitespace, split on space,
+ * the first token capitalised, the LAST token reduced to a single uppercase
+ * initial, a single-word result (e.g. legal last name left blank) has no
+ * initial. Always re-read the real stored display_name after saving, this is
+ * never the source of truth.
+ */
+export function previewDisplayName(legalFirstName: string, legalLastName: string): string | null {
+  const raw = `${legalFirstName || ""} ${legalLastName || ""}`;
+  const clean = raw.replace(/[^A-Za-z\s'\-.]/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return null;
+  const parts = clean.split(" ");
+  const trimDots = (s: string) => s.replace(/^\.+|\.+$/g, "");
+  const capWords = (s: string) => s.replace(/[A-Za-z]+/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+  const first = capWords(trimDots(parts[0]));
+  if (!first) return null;
+  if (parts.length === 1) return first;
+  const lastToken = trimDots(parts[parts.length - 1]);
+  if (!lastToken) return first;
+  return `${first} ${lastToken[0].toUpperCase()}.`;
+}
+
+/**
+ * Parses the database's legal-name-lock rejection ('Your legal name cannot
+ * be changed once set. Message BundledMum if it needs correcting.') into a
+ * clear message with an obvious next step. Returns null for any other
+ * database error, which the caller shows as-is.
+ */
+export function parseLegalNameLockError(message: string): string | null {
+  if (!/legal name cannot be changed once set/i.test(message || "")) return null;
+  return "Your legal name is locked once set, to keep every payout account genuinely matched to its owner. If it needs correcting, message us on WhatsApp and we will sort it out.";
+}
