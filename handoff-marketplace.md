@@ -117,15 +117,20 @@ the base table's FK). Result, now verified live:
 - `src/marketplace/pages/{BrowsePage,ListingDetailPage}.tsx` — **NEW**.
 - `src/StorefrontApp.tsx` — the previous `App.tsx` body moved verbatim
   (storefront + admin + employee-portal). Untouched this pass.
-- `src/integrations/supabase/authStorage.ts` — builds the Supabase client with
-  cookie storage on bundledmum hosts, `localStorage` elsewhere. **Untouched this
-  pass** (see §5). NOTE: its doc comments still say "cross-subdomain" /
-  "marketplace.bundledmum.com"; those are now stale (single origin) but left
-  as-is to avoid any risk to working auth — tidy in a later dedicated pass.
+- `src/integrations/supabase/authStorage.ts` — builds the Supabase client.
+  **Changed this pass** (session persistence fix, see §5, commit `f15858f`):
+  now always plain `localStorage`, no more cookie branch. Cookies were
+  causing sellers to be silently signed out on mobile (WebKit caps
+  `document.cookie`-set cookies to 7 days regardless of Max-Age).
 - `src/integrations/supabase/client.ts` — auto-generated; one-line delegation to
-  `createBundledmumSupabaseClient(...)`. Untouched this pass.
-- `package.json` / lockfile — `@supabase/ssr@^0.12.4` (added in the prior pass;
-  still used by the retained cookie storage).
+  `createBundledmumSupabaseClient(...)`. Untouched this pass, still correct
+  (the function signature didn't change, only its body).
+- `src/lib/recordLoginEvent.ts` — **NEW** this pass; device fingerprint +
+  `record-login-event` invocation for the new-device sign-in alert.
+- `package.json` / lockfile — `@supabase/ssr@^0.12.4` is now an UNUSED
+  dependency (its only consumer, `authStorage.ts`, no longer imports it).
+  Left in place deliberately, not removed this pass — a tidy-up candidate for
+  later, not worth the lockfile churn risk in a live-bug-fix pass.
 
 ## 4. Failed attempts (with WHY)
 - **Stale "DB-blocked" claim repeated across three sessions — corrected.** This
@@ -160,7 +165,99 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — listing detail displays category answers, commit `df0d443`
+### This pass — session persistence fixed (off cookies), new-device sign-in alerts, commit `f15858f`
+
+**Diagnosis, confirmed by reading the installed library source, not assumed.**
+Sellers were being signed out unexpectedly, specifically on mobile. Root cause:
+the session cookie was written via `document.cookie` in the page's own
+JavaScript (`@supabase/ssr`'s `cookies.js`, `documentCookieSetAll`), not a
+server `Set-Cookie` header — this is a pure client SPA with no server in the
+request path that could set one. **WebKit (Safari on iOS/macOS, and every iOS
+browser, since all iOS browsers are WebKit-based by Apple policy) enforces a
+hard 7-day cap on any cookie set this way, regardless of the Max-Age
+requested.** Neither this app's configured 1-year `maxAge` nor even
+`@supabase/ssr`'s own internal 400-day default (confirmed: the app's value
+was being silently discarded and replaced with the library's own on every
+write, in `cookies.js`'s `setItem`) ever survived that cap. This is exactly
+why the symptom was mobile-specific and silent: after roughly a week without
+the session being actively refreshed (trivially reached by a backgrounded
+mobile tab), the cookie was simply gone, no error, nothing in this app's own
+code did it.
+- **Two other investigative angles were checked and ruled out with evidence:**
+  `autoRefreshToken`/`persistSession` were both already `true`. Cross-tab
+  refresh races: the installed `auth-js` version's own source marks
+  `navigator.locks`-based coordination as **deprecated and a no-op** — *"The
+  auth client coordinates refreshes itself (deduping in-instance callers onto
+  a shared in-flight promise) and lets the GoTrue server resolve
+  cross-instance races... passing `{ lock: navigatorLock }` has no effect."*
+  Not the cause in this supabase-js version (2.111.0), nothing to add. Every
+  `auth.signOut()` call site in the codebase was grepped — all explicit
+  (header button, account page, admin idle timeout), none fire on a
+  mishandled network/auth error.
+- **The fix:** `authStorage.ts` now always builds the plain
+  `localStorage`-backed client (Supabase's own SPA default, the exact config
+  already proven working on localhost/preview in this codebase). The
+  cross-subdomain rationale for cookies is genuinely obsolete now that the
+  marketplace lives on the `/marketplace` path of this same origin —
+  `localStorage` is scoped per-*origin*, not per-*path*, so it already covers
+  every route (`/`, `/marketplace`, `/admin`, `/account`) with zero special
+  config. `localStorage` carries no equivalent hard cap; Safari's separate
+  rule for script-writable storage only evicts after 7 days of the user never
+  visiting the site at all, reset by any return visit — a far more forgiving
+  bar for a returning seller checking their shop periodically.
+- **Known, accepted tradeoff:** this forces a **one-time re-login** for
+  everyone currently holding a cookie session — the exact wave the earlier
+  handoff entry (§ "Auth storage decision") chose to avoid. Accepted this
+  time because the alternative is an unfixable, recurring bug hitting mobile
+  sellers indefinitely. `client.ts` and `package.json`/lockfile untouched
+  (`@supabase/ssr` is now an unused dependency, left in place deliberately —
+  removing it wasn't needed for the fix and risks lockfile churn; a tidy-up
+  candidate for a later dedicated pass, not this one).
+- **Admin boundary respected.** `IdleTimeoutGuard.tsx`, `useIdleTimeout.ts`,
+  `useAdmin.ts`, `AdminLogin.tsx`, `AdminSetPassword.tsx` were read (for the
+  audit) but **not edited**. Both idle-logout mechanisms are pure
+  `setTimeout` timers that call `supabase.auth.signOut()` directly — neither
+  inspects cookie or `localStorage` expiry, so switching the storage medium
+  should not change their behaviour. **Could not verify this live** — admin
+  login is password-gated and no credentials were available in this
+  environment. The admin login page itself was confirmed to render cleanly
+  post-change with zero console errors, but the actual "wait past 20 minutes
+  idle, confirm signed out on schedule" test was **not completed. Flagged as
+  UNVERIFIED — needs a human to sign in as admin, wait past the idle timeout,
+  and confirm it still fires exactly as before**, before this is fully
+  trusted.
+
+**New-device sign-in alert wired in (customer facing only).**
+`record-login-event` (already deployed, `verify_jwt: true`) is called from a
+new `src/lib/recordLoginEvent.ts`: hashes `navigator.userAgent` + screen
+dimensions + timezone (SHA-256 via Web Crypto) into a stable per-device
+fingerprint, then `supabase.functions.invoke("record-login-event", { body })`.
+Fire-and-forget, every error swallowed — never blocks or gates the sign-in it
+follows, exactly as required.
+- Wired into **both** magic-link completion points for the shared customer
+  account: `MarketplaceLoginPage.tsx` and its storefront equivalent,
+  `AccountLoginPage.tsx` (found and wired — same shared customer account
+  either way). Both add a dedicated `onAuthStateChange` listener that fires
+  **only** on the `SIGNED_IN` event: confirmed in `auth-js`'s source that
+  `SIGNED_IN` fires specifically when a sign-in flow (the magic link) just
+  completed, while a page load that finds an already-valid session fires
+  `INITIAL_SESSION` instead — deliberately ignored, so this never fires on
+  every page load or token refresh, only once per genuine new sign-in.
+- **Not** wired into any admin sign-in path — `AdminLogin.tsx` untouched,
+  uses `signInWithPassword` directly with no listener added.
+- No password auth introduced anywhere; magic link stays the only method.
+- Verified live (as much as possible without completing a real magic-link
+  email): both login pages render cleanly with zero console errors under the
+  new client; the device-fingerprint hash (SHA-256, 64 hex chars) runs
+  without error in-browser; a direct unauthenticated `fetch` to
+  `record-login-event` confirmed the function is live and correctly rejects
+  with `401 UNAUTHORIZED_NO_AUTH_HEADER`, proving the endpoint `functions.invoke`
+  targets is reachable and enforcing auth as expected. The actual "magic link
+  → SIGNED_IN fires → email arrives for a genuinely new device" path could
+  not be completed end to end here (no email inbox access), same limitation
+  noted for other auth-gated flows in this handoff.
+
+### Earlier this branch line — listing detail displays category answers, commit `df0d443`
 Listing detail now shows the seller's category-question answers from
 `marketplace_listings.attributes`, read-only, on both mobile and the desktop
 two-column layout. Built to design 17a ("Category details, on listing
@@ -1580,6 +1677,16 @@ walkthrough, still outstanding (see Next steps).
 - **Split signal switched from hostname to path** (`isMarketplace.ts`), marketplace
   router mounted under `basename="/marketplace"` (`MarketplaceApp.tsx`), App/comment
   updates. Lazy split and storefront/admin behaviour unchanged.
+
+### Auth storage decision — SUPERSEDED, see "session persistence fixed" pass above (commit `f15858f`)
+The decision below (cookie storage retained) was reversed in the pass at the
+top of §5, after diagnosing a real, confirmed bug: WebKit caps any
+`document.cookie`-set cookie's real lifetime to 7 days regardless of the
+Max-Age requested, which was silently logging mobile sellers out. Session
+storage is now plain `localStorage` again, same as this section originally
+weighed against. Left the original reasoning below for the historical record
+of why it was retained at the time — it was the right call THEN, given what
+was known then; new evidence changed the tradeoff.
 
 ### Auth storage decision — cookie storage RETAINED (deliberately not reverted)
 The prompt's preferred cleanup was to revert session storage to the plain
