@@ -27,7 +27,7 @@ const FIELD = {
   markup: { key: "marketplace_markup_percent", label: "Markup percentage", help: "Added to the seller price to make the buyer price.", numeric: true, suffix: "%" },
   fee: { key: "marketplace_service_fee_naira", label: "Service fee", help: "Non refundable, charged once per order.", numeric: true, money: true },
   window: { key: "marketplace_dispute_window_days", label: "Dispute window", help: "After this, payout sweeps to the seller.", numeric: true, suffix: " days" },
-  email: { key: "marketplace_payout_digest_email", label: "Internal alert recipients", help: "Every internal alert goes to all of these: the daily payout digest, a new sale, a new dispute, a new seller registering, a seller auto suspended, a payment amount anomaly, and the review backlog nudge. Enter one or more addresses, comma separated.", numeric: false },
+  email: { key: "marketplace_payout_digest_email", label: "Internal alert recipients", help: "The fallback address for any internal alert below that has no recipients of its own: the daily payout digest, a new sale, a new dispute, a new seller registering, a seller auto suspended, a payment amount anomaly, and the review backlog nudge. Enter one or more addresses, comma separated.", numeric: false },
 } as const;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,6 +37,9 @@ function parseEmails(raw: string): string[] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+interface EmailTemplateRow { id: string; slug: string; name: string; description: string | null; internal_recipients: string | null }
+interface PendingTemplateSave { id: string; slug: string; name: string; value: string | null; display: string }
+
 export default function MarketplaceSettings() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
@@ -45,6 +48,15 @@ export default function MarketplaceSettings() {
   const [pendingToggle, setPendingToggle] = useState<PendingToggle | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Per-alert recipient overrides (email_templates.internal_recipients), a
+  // separate edit/error state per slug so editing one alert never disturbs
+  // another. Mirrors the shared-field pattern above, but empty is allowed
+  // here (it means "fall back to the shared default"), never blocked.
+  const [tplEdits, setTplEdits] = useState<Record<string, string>>({});
+  const [tplEditing, setTplEditing] = useState<Record<string, boolean>>({});
+  const [tplErrors, setTplErrors] = useState<Record<string, string>>({});
+  const [pendingTemplateSave, setPendingTemplateSave] = useState<PendingTemplateSave | null>(null);
 
   const settingsQ = useQuery({
     queryKey: ["mkt-settings"],
@@ -64,6 +76,32 @@ export default function MarketplaceSettings() {
       const { data, error } = await adb.from("marketplace_categories").select("id, name, is_allowed").order("name");
       if (error) throw error;
       return (data ?? []) as unknown as Category[];
+    },
+    staleTime: 15000,
+  });
+
+  // The seven internal marketplace alert templates, each can now carry its
+  // own recipients (email_templates.internal_recipients), separate from the
+  // shared fallback above. Ordered live-events-first, digests last, a
+  // deliberate reading order rather than alphabetical by slug.
+  const TEMPLATE_ORDER = [
+    "marketplace_admin_new_sale",
+    "marketplace_admin_dispute_raised",
+    "marketplace_admin_payment_anomaly",
+    "marketplace_admin_new_seller",
+    "marketplace_admin_seller_suspended",
+    "marketplace_admin_payout_digest",
+    "marketplace_admin_new_listing",
+  ];
+  const templatesQ = useQuery({
+    queryKey: ["mkt-alert-templates"],
+    queryFn: async (): Promise<EmailTemplateRow[]> => {
+      const { data, error } = await adb.from("email_templates")
+        .select("id, slug, name, description, internal_recipients")
+        .in("slug", TEMPLATE_ORDER);
+      if (error) throw error;
+      const rows = (data ?? []) as unknown as EmailTemplateRow[];
+      return TEMPLATE_ORDER.map((slug) => rows.find((r) => r.slug === slug)).filter((r): r is EmailTemplateRow => !!r);
     },
     staleTime: 15000,
   });
@@ -120,6 +158,59 @@ export default function MarketplaceSettings() {
     });
   }
 
+  function startTplEdit(slug: string, initial: string) {
+    setTplEdits((e) => ({ ...e, [slug]: initial }));
+    setTplEditing((e) => ({ ...e, [slug]: true }));
+    setTplErrors((e) => ({ ...e, [slug]: "" }));
+  }
+  function cancelTplEdit(slug: string) {
+    setTplEditing((e) => ({ ...e, [slug]: false }));
+  }
+
+  /**
+   * A single alert's own recipients. Unlike the shared fallback field, EMPTY
+   * IS ALLOWED here on purpose, it just means this one alert has no override
+   * and falls back to the shared address, never that the alert stops sending
+   * (both senders already read internal_recipients first, falling back to
+   * marketplace_payout_digest_email when it is blank).
+   */
+  function requestSaveTemplateEmails(row: EmailTemplateRow) {
+    const raw = tplEdits[row.slug] ?? "";
+    const list = parseEmails(raw);
+    const bad = list.find((e) => !EMAIL_RE.test(e));
+    if (bad) {
+      setTplErrors((e) => ({ ...e, [row.slug]: `"${bad}" is not a valid email address. Fix it before saving.` }));
+      return;
+    }
+    const value = list.length ? list.join(", ") : null;
+    setPendingTemplateSave({
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      value,
+      display: list.length === 0
+        ? `Falls back to ${strVal(FIELD.email.key) || "the shared address"}`
+        : list.length === 1 ? list[0] : `${list.length} recipients: ${list.join(", ")}`,
+    });
+  }
+
+  async function confirmTemplateSave() {
+    if (!pendingTemplateSave) return;
+    setBusy(true);
+    const { error } = await adb.from("email_templates")
+      .update({ internal_recipients: pendingTemplateSave.value })
+      .eq("id", pendingTemplateSave.id);
+    setBusy(false);
+    if (error) {
+      setTplErrors((e) => ({ ...e, [pendingTemplateSave.slug]: error.message }));
+      setPendingTemplateSave(null);
+      return;
+    }
+    setTplEditing((e) => ({ ...e, [pendingTemplateSave.slug]: false }));
+    setPendingTemplateSave(null);
+    templatesQ.refetch();
+  }
+
   async function confirmSave() {
     if (!pendingSave) return;
     setBusy(true); setError(null);
@@ -155,7 +246,7 @@ export default function MarketplaceSettings() {
     catsQ.refetch();
   }
 
-  if (settingsQ.isLoading || catsQ.isLoading) {
+  if (settingsQ.isLoading || catsQ.isLoading || templatesQ.isLoading) {
     return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
   }
 
@@ -220,6 +311,57 @@ export default function MarketplaceSettings() {
             </div>
           )}
           <p className="text-[12px] text-text-med mt-2">{FIELD.email.help}</p>
+        </div>
+      </div>
+
+      {/* per-alert recipient overrides */}
+      <div className="mt-4 rounded-2xl border p-4 bg-white" style={{ borderColor: "#F0DDD2" }}>
+        <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Recipients per alert</div>
+        <p className="text-[12px] text-text-med mt-1.5">
+          Each of the seven internal alerts below can go to its own recipients instead of the shared address above. Leave one blank to keep using the shared address for that alert, an empty field never turns an alert off.
+        </p>
+        <div className="mt-3 flex flex-col divide-y" style={{ borderColor: "#F0DDD2" }}>
+          {(templatesQ.data ?? []).map((row) => {
+            const list = parseEmails(row.internal_recipients || "");
+            const tplErr = tplErrors[row.slug];
+            return (
+              <div key={row.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="font-heading font-extrabold text-sm text-foreground">{row.name}</div>
+                {row.description && <p className="text-[12px] text-text-med mt-0.5">{row.description}</p>}
+
+                {tplEditing[row.slug] ? (
+                  <div className="flex flex-col gap-2 mt-2">
+                    <input type="text" inputMode="email" value={tplEdits[row.slug] ?? ""}
+                      onChange={(e) => setTplEdits((s) => ({ ...s, [row.slug]: e.target.value }))}
+                      placeholder="Leave blank to use the shared address, or ops@bundledmum.com, alerts@bundledmum.com"
+                      className="w-full rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
+                    {tplErr && <div className="text-xs" style={{ color: "#D4613C" }}>{tplErr}</div>}
+                    <div className="flex gap-2">
+                      <button onClick={() => cancelTplEdit(row.slug)} className="text-xs font-heading font-bold px-3 py-1.5 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
+                      <button onClick={() => requestSaveTemplateEmails(row)} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2 mt-2">
+                    <div className="flex-1 min-w-0">
+                      {list.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {list.map((e) => (
+                            <span key={e} className="inline-flex items-center text-[12px] font-heading font-bold px-2.5 py-1 rounded-lg break-all" style={{ background: "#D8EFE5", color: "#1A4A33" }}>{e}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-text-light text-sm">
+                          Falls back to {strVal(FIELD.email.key) || <span className="italic">the shared address, not set</span>}
+                        </span>
+                      )}
+                    </div>
+                    <button onClick={() => startTplEdit(row.slug, row.internal_recipients || "")} className="text-xs font-heading font-bold px-3 py-1.5 rounded-lg border flex-none" style={{ borderColor: "#F0DDD2" }}>Edit</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -294,6 +436,23 @@ export default function MarketplaceSettings() {
             <div className="flex gap-2 mt-4">
               <button onClick={() => setPendingSave(null)} disabled={busy} className="flex-1 font-heading font-bold text-sm rounded-xl py-2.5 border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
               <button onClick={confirmSave} disabled={busy} className="flex-1 font-heading font-extrabold text-sm rounded-xl py-2.5 text-white" style={{ background: "#D4613C" }}>{busy ? "Saving..." : "Confirm"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* confirm: per-alert recipient save */}
+      {pendingTemplateSave && (
+        <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center p-4" onClick={() => !busy && setPendingTemplateSave(null)}>
+          <div className="bg-white rounded-2xl border p-5 max-w-sm w-full" style={{ borderColor: "#F0DDD2" }} onClick={(e) => e.stopPropagation()}>
+            <div className="font-heading font-black text-lg">Change where this alert goes?</div>
+            <p className="text-sm text-text-med mt-1">This affects live buyers and sellers.</p>
+            <div className="flex justify-between text-sm py-3 mt-2 border-t border-b" style={{ borderColor: "#EDE6E1" }}>
+              <span>{pendingTemplateSave.name}</span><b className="font-heading text-right">{pendingTemplateSave.display}</b>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setPendingTemplateSave(null)} disabled={busy} className="flex-1 font-heading font-bold text-sm rounded-xl py-2.5 border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
+              <button onClick={confirmTemplateSave} disabled={busy} className="flex-1 font-heading font-extrabold text-sm rounded-xl py-2.5 text-white" style={{ background: "#D4613C" }}>{busy ? "Saving..." : "Confirm"}</button>
             </div>
           </div>
         </div>
