@@ -32,7 +32,7 @@ export default function BuyerOrdersListPage() {
   const { actionNeeded, problem, inProgress, complete } = groupBuyerOrders(orders);
 
   const Row = ({ o, pill, cls, coral }: { o: BuyerOrder; pill: string; cls: string; coral?: boolean }) => (
-    <button className="mkt-lrow" style={coral ? { borderColor: "var(--mkt-coral)", borderWidth: "1.5px" } : undefined} onClick={() => navigate(`/orders/${o.id}`)}>
+    <button className={coral ? "mkt-lrow cta" : "mkt-lrow"} style={coral ? { borderColor: "var(--mkt-coral)", borderWidth: "1.5px" } : undefined} onClick={() => navigate(`/orders/${o.id}`)}>
       <div className="th">{o.listing?.image_url && <img src={o.listing.image_url} alt="" />}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.listing?.title || "Item"}</div>
@@ -43,7 +43,7 @@ export default function BuyerOrdersListPage() {
   );
 
   return (
-    <>
+    <div className="mkt-myorders-page">
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><h1 style={{ flex: 1 }}>My orders</h1></div></div>
       </div>
@@ -85,6 +85,6 @@ export default function BuyerOrdersListPage() {
           </>
         )}
       </div>
-    </>
+    </div>
   );
 }

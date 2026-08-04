@@ -79,7 +79,7 @@ export default function SellerDispatchPage() {
   }
 
   return (
-    <>
+    <div className="mkt-dispatch-page">
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/sell/orders/${order.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Proof you sent it</h1></div></div>
       </div>
@@ -134,6 +134,6 @@ export default function SellerDispatchPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

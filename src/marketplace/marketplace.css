@@ -926,3 +926,132 @@
 .mkt-loc-scrim { position: fixed; inset: 0; z-index: 40; }
 .mkt-loc-panel { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 50; background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; box-shadow: 0 14px 34px rgba(26, 26, 26, 0.16); padding: 14px; display: flex; flex-direction: column; }
 .mkt-loc-allareas { align-self: flex-start; margin-top: 8px; background: none; border: none; padding: 0; font: 700 12px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }
+
+/* ── Genuine desktop, seven screens (design 18a) ──
+   Additive @media (min-width:1024px) rules only, matching how the browse
+   panel and listing detail desktop layouts were done above. Mobile markup is
+   untouched below 1024px: every wrapper introduced for a desktop split uses
+   display:contents by default, and every desktop-only element is hidden by
+   default and only shown inside these media queries. */
+
+/* Left/right split wrappers, shared by the two order-detail screens (D6, D9):
+   layout-invisible on mobile so their children render in the same order and
+   position they always did; become the two columns of a 55/45 grid at
+   desktop, mirroring the .mkt-detail-gallery/.mkt-detail-panel pattern. */
+.mkt-od-left, .mkt-od-right { display: contents; }
+
+/* D5 — My orders: single column, widened and centred (max content 760px). */
+@media (min-width: 1024px) {
+  .mkt-myorders-page .mkt-sell-head .inner,
+  .mkt-myorders-page .mkt-sell-body { max-width: 760px; }
+  .mkt-myorders-page .mkt-lrow.cta .mkt-st.pending {
+    padding: 13px 22px; border-radius: 11px; font-size: 14px;
+  }
+}
+
+/* D6 — Buyer order detail: splits 55/45, item/timeline/dispatch-photo left,
+   countdown/seller-contact/confirm-actions right, sticky at 24px (max
+   content 960px). The confirm/report buttons keep the .mkt-sell-foot class
+   (fixed bottom bar on mobile, unaffected since .mkt-od-right is
+   display:contents there); at desktop they become this column's static foot. */
+@media (min-width: 1024px) {
+  .mkt-order-detail-page .mkt-sell-head .inner { max-width: 960px; }
+  .mkt-order-detail-page .mkt-sell-body {
+    display: grid;
+    grid-template-columns: minmax(0, 55fr) minmax(320px, 45fr);
+    gap: 32px; align-items: start;
+    max-width: 960px; padding: 24px 0 40px;
+  }
+  .mkt-order-detail-page .mkt-od-left,
+  .mkt-order-detail-page .mkt-od-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .mkt-order-detail-page .mkt-od-right { position: sticky; top: 24px; align-self: start; }
+  .mkt-order-detail-page .mkt-sell-foot {
+    position: static; left: auto; right: auto; bottom: auto; z-index: auto;
+    border-top: none; background: transparent; padding: 0; margin: 0;
+  }
+}
+
+/* D7 — Report a problem: single column, centred and widened (max content
+   620px). No grid change needed for the photo tiles, they already wrap in a
+   flex row, so the wider column simply fits more of them per row. */
+@media (min-width: 1024px) {
+  .mkt-dispute-page .mkt-sell-head .inner,
+  .mkt-dispute-page .mkt-sell-body { max-width: 620px; }
+}
+
+/* D8 — Seller dashboard: splits into a persistent 300px left column (owed
+   balance + list-new action) beside the tabs and rows (max content 1080px).
+   The balance card and list button are new desktop-only elements, hidden by
+   default so mobile keeps its existing tab-scoped owed card and fixed
+   footer button exactly as before. */
+.mkt-db-left, .mkt-db-right { display: contents; }
+.mkt-db-balance, .mkt-db-list-btn { display: none; }
+@media (min-width: 1024px) {
+  .mkt-dashboard-page .mkt-sell-head .inner { max-width: 1080px; }
+  .mkt-dashboard-page .mkt-sell-body {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 28px; align-items: start;
+    max-width: 1080px; padding: 22px 0 30px;
+  }
+  .mkt-dashboard-page .mkt-db-left {
+    display: flex; flex-direction: column; gap: 12px; min-width: 0;
+    position: sticky; top: 24px; align-self: start;
+  }
+  .mkt-dashboard-page .mkt-db-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .mkt-dashboard-page .mkt-db-balance {
+    display: flex; flex-direction: column; gap: 3px;
+    background: var(--mkt-green-dark); border-radius: 13px; padding: 14px;
+  }
+  .mkt-dashboard-page .mkt-db-balance .lbl { font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }
+  .mkt-dashboard-page .mkt-db-balance .amt { font: 900 22px/1.3 'Nunito', sans-serif; color: var(--mkt-cream); }
+  .mkt-dashboard-page .mkt-db-list-btn { display: block; }
+  .mkt-dashboard-page .mkt-sell-foot { display: none; }
+}
+
+/* D9 — Seller order detail: splits 55/45, item/payout/buyer-contact left,
+   dispatch-photo/timeline/mark-as-dispatched right (max content 900px). */
+@media (min-width: 1024px) {
+  .mkt-seller-order-page .mkt-sell-head .inner { max-width: 900px; }
+  .mkt-seller-order-page .mkt-sell-body {
+    display: grid;
+    grid-template-columns: minmax(0, 55fr) minmax(300px, 45fr);
+    gap: 30px; align-items: start;
+    max-width: 900px; padding: 22px 0 40px;
+  }
+  .mkt-seller-order-page .mkt-od-left,
+  .mkt-seller-order-page .mkt-od-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .mkt-seller-order-page .mkt-od-right { position: sticky; top: 24px; align-self: start; }
+  .mkt-seller-order-page .mkt-sell-foot {
+    position: static; left: auto; right: auto; bottom: auto; z-index: auto;
+    border-top: none; background: transparent; padding: 0; margin: 0;
+  }
+}
+
+/* D10 — Seller dispatch: single column, centred (max content unchanged at
+   560px), only the photo tile itself grows taller. */
+@media (min-width: 1024px) {
+  .mkt-dispatch-page .mkt-dispatch-drop { min-height: 220px; }
+  .mkt-dispatch-page .mkt-dispatch-preview img { min-height: 220px; object-fit: cover; }
+}
+
+/* D11 — Seller payouts: single column, widened into a table-like list (max
+   content 700px). Each row gains a date and a "to" bank column since there
+   is room; a header row labels them. Both are new desktop-only elements,
+   hidden by default so mobile keeps its current three-part row unchanged. */
+@media (min-width: 1024px) {
+  .mkt-payouts-page .mkt-sell-head .inner,
+  .mkt-payouts-page .mkt-sell-body { max-width: 700px; }
+  .mkt-payouts-page .mkt-payout-thead {
+    display: grid; grid-template-columns: 46px 1.4fr 1fr 1fr 1fr; gap: 10px;
+    padding: 11px 15px; font: 700 10.5px/1 'Lato', sans-serif; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--mkt-muted);
+  }
+  .mkt-payouts-page .mkt-payout-thead span:first-child { visibility: hidden; }
+  .mkt-payouts-page .mkt-payout-thead span:last-child { text-align: right; }
+  .mkt-payouts-page .mkt-lrow { display: grid; grid-template-columns: 46px 1.4fr 1fr 1fr 1fr; gap: 10px; align-items: center; text-align: left; }
+  .mkt-payouts-page .mkt-payout-date,
+  .mkt-payouts-page .mkt-payout-to { display: inline; font: 400 13px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+  .mkt-payouts-page .mkt-lrow .tnum { text-align: right; }
+}
+.mkt-payout-thead, .mkt-payout-date, .mkt-payout-to { display: none; }

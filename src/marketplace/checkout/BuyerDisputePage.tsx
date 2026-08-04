@@ -101,7 +101,7 @@ export default function BuyerDisputePage() {
   }
 
   return (
-    <>
+    <div className="mkt-dispute-page">
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/orders/${order.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Tell us what happened</h1></div></div>
       </div>
@@ -160,6 +160,6 @@ export default function BuyerDisputePage() {
         <button className="mkt-primary" disabled={busy} onClick={submit}>{busy ? "Sending..." : "Send to BundledMum"}</button>
         <div className="helper">A person reviews every report. We reply within one working day.</div>
       </div>
-    </>
+    </div>
   );
 }

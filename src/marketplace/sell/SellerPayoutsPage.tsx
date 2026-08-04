@@ -43,12 +43,16 @@ export default function SellerPayoutsPage() {
         <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.listing?.title || "Item"}</div>
         <div className="meta">{o.paystack_transaction_reference || ""}</div>
       </div>
+      {/* Desktop-only 4th column, a payout history reads like a table with
+          room to spare (design 18a, screen D11); hidden on mobile by default. */}
+      <span className="mkt-payout-date">{new Date(o.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
+      <span className="mkt-payout-to">{bankLine}</span>
       <b className="nun tnum" style={{ font: "900 15px/1 Nunito, sans-serif" }}>{formatNaira(o.seller_share_naira)}</b>
     </button>
   );
 
   return (
-    <>
+    <div className="mkt-payouts-page">
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your payouts</h1></div>
@@ -69,6 +73,12 @@ export default function SellerPayoutsPage() {
         </div>
 
         {orders.length === 0 && <div className="mkt-empty"><div className="box"></div><h3>No payouts yet</h3><p>When you make a sale and dispatch it, your payout will show here.</p></div>}
+
+        {orders.length > 0 && (
+          <div className="mkt-payout-thead">
+            <span>Date</span><span>Order</span><span>To</span><span style={{ textAlign: "right" }}>Amount</span>
+          </div>
+        )}
 
         {inProgress.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -94,6 +104,6 @@ export default function SellerPayoutsPage() {
           <a className="mkt-wa" style={{ width: "auto", padding: "9px 12px" }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat</a>
         </div>
       </div>
-    </>
+    </div>
   );
 }

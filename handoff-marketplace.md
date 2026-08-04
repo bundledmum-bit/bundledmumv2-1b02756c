@@ -1984,6 +1984,68 @@ oversight specific to marketplace.
 
 Build (`npm run build`) and `npx tsc --noEmit` both pass after all changes.
 
+### Genuine desktop, seven screens (design 18a)
+Implemented the approved Claude Design doc's desktop layouts for the seven
+buyer/seller order-management screens that didn't already have one (browse
+and listing detail already had desktop layouts from B4/14a). Same approach as
+those two precedents: additive `@media (min-width:1024px)` rules only, mobile
+markup untouched below 1024px. Screens: my orders, buyer order detail, report
+a problem, seller dashboard, seller order detail, seller dispatch, seller
+payouts.
+
+- **My orders** (`BuyerOrdersListPage.tsx`) — single column, widened to
+  760px, centred. The "needs your action" row's status pill gets a
+  desktop-only button treatment (padding/radius bump via a new `.cta` class),
+  no markup change on mobile.
+- **Buyer order detail** (`BuyerOrderDetailPage.tsx`) — splits 55/45 at
+  960px: item, price breakdown, timeline and dispatch photo left; countdown,
+  seller contact and the confirm/report actions right, sticky at 24px. Body
+  content is re-parented into two new `.mkt-od-left`/`.mkt-od-right` wrapper
+  divs that are `display:contents` below 1024px (same technique as the
+  existing `.mkt-detail-gallery`/`.mkt-detail-panel` split from design 14a),
+  so mobile order and rendering are unchanged. The confirm/report button
+  block keeps its `.mkt-sell-foot` class (still a fixed bottom bar on
+  mobile, since `position:fixed` escapes the `display:contents` ancestor
+  regardless of nesting) and becomes the static foot of the sticky right
+  column at desktop.
+- **Report a problem** (`BuyerDisputePage.tsx`) — single column, widened to
+  620px, centred. No grid change needed for the evidence photo tiles, they
+  already wrap in a flex row, so the wider column just fits more per row
+  (the "4 tiles becomes 6" the design doc describes happens for free).
+- **Seller dashboard** (`SellerDashboardPage.tsx`) — splits into a
+  persistent 300px left column at 1080px: an "owed to you" balance card and
+  a "list something new" button. Both are NEW desktop-only elements
+  (duplicating the equivalent mobile-only "owed" card that lives inside the
+  Orders tab, and the mobile-only fixed "list another item" footer button)
+  rather than moved/hoisted, specifically so the existing tab-scoped mobile
+  behaviour is not touched — they're hidden by default and only shown
+  ≥1024px. Right column holds the existing edit-profile panel, debit
+  warning, tabs and rows unchanged.
+- **Seller order detail** (`SellerOrderDetailPage.tsx`) — same
+  left/right re-parenting technique as buyer order detail, splits 55/45 at
+  900px: item, payout figure and buyer contact left; dispatch photo,
+  timeline and the mark-as-dispatched action right (sticky).
+- **Seller dispatch** (`SellerDispatchPage.tsx`) — max content width is
+  unchanged at 560px per the design doc (a single confirmation step reads
+  better narrow even on a wide screen); only the photo drop/preview tile
+  grows taller (220px) at desktop.
+- **Seller payouts** (`SellerPayoutsPage.tsx`) — single column, widened to
+  700px. Each row gains a date and a "to" bank account column (desktop-only,
+  hidden on mobile) since there's room; a labelled header row sits above the
+  list. Date is `created_at` (no separate payout-sent timestamp exists in the
+  schema); bank is the seller's single account, same for every row.
+
+Every new desktop-only element (balance card, list button, payout date/to
+columns, header row) is hidden by default and shown only inside the
+`@media (min-width:1024px)` blocks, so nothing new renders or is computed
+differently on mobile. Build and typecheck both pass. **Not verified live**:
+this session's browser preview tool is capped at ~453px viewport width and
+these pages need a real login (magic-link auth, no test credentials
+available here), so the ≥1024px layouts have been reviewed by code only, not
+visually confirmed in a browser. Worth a human pass at a real desktop
+viewport, logged in as both a buyer with an order and a seller with
+orders/listings, before calling this fully verified.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

@@ -111,7 +111,7 @@ export default function SellerDashboardPage() {
   const firstName = (seller.display_name || "there").split(/\s+/)[0];
 
   return (
-    <>
+    <div className="mkt-dashboard-page">
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">
@@ -129,6 +129,21 @@ export default function SellerDashboardPage() {
       </div>
 
       <div className="mkt-sell-body">
+        {/* Persistent balance + list-new action, desktop only (design 18a,
+            screen D8); hidden by default so mobile keeps its existing tab-
+            scoped owed card and fixed footer button untouched. */}
+        <div className="mkt-db-left">
+          {owed > 0 && (
+            <div className="mkt-db-balance">
+              <div className="lbl">Owed to you</div>
+              <div className="amt">{formatNaira(owed)}</div>
+              <div className="lbl" style={{ marginTop: 2 }}>to {seller.bank_name || "your bank"} {maskAccount(seller.bank_account_number)}</div>
+            </div>
+          )}
+          <button className="mkt-secondary mkt-db-list-btn" onClick={() => navigate("/sell/new")}>List something new</button>
+        </div>
+
+        <div className="mkt-db-right">
         {editing && <EditProfile seller={seller} onDone={async () => { setEditing(false); await refresh(); }} onCancel={() => setEditing(false)} />}
 
         {debit > 0 && (
@@ -274,6 +289,7 @@ export default function SellerDashboardPage() {
             )}
           </>
         )}
+        </div>
       </div>
 
       <div className="mkt-sell-foot">
@@ -294,7 +310,7 @@ export default function SellerDashboardPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

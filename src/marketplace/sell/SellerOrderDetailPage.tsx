@@ -63,7 +63,7 @@ export default function SellerOrderDetailPage() {
     : <span className="mkt-st sold">{order.order_status}</span>;
 
   return (
-    <>
+    <div className="mkt-seller-order-page">
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">
@@ -80,62 +80,69 @@ export default function SellerOrderDetailPage() {
       </div>
 
       <div className="mkt-sell-body">
-        <div className="mkt-co-summary">
-          <div className="th">{order.listing?.image_url && <img src={order.listing.image_url} alt="" />}</div>
-          <div style={{ flex: 1, minWidth: 0 }}><div className="t">{item}</div><div className="s">Order {ref}</div></div>
-        </div>
-
-        {/* Payout, seller_share only */}
-        <div className="mkt-payout-box">
-          <span className="lbl">You will receive</span>
-          <div className="amt">{formatNaira(order.seller_share_naira)}</div>
-          <div className="note">
-            {completed
-              ? `Paid to ${bankLine}.`
-              : `We are holding the buyer's payment. Once ${buyerName} confirms the item reached them, we transfer this to ${bankLine}.`}
+        <div className="mkt-od-left">
+          <div className="mkt-co-summary">
+            <div className="th">{order.listing?.image_url && <img src={order.listing.image_url} alt="" />}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><div className="t">{item}</div><div className="s">Order {ref}</div></div>
           </div>
-        </div>
 
-        {/* Buyer contact, only when we have a paid order */}
-        {(awaitingDispatch || awaitingConfirm) && (
-          <div className="mkt-buyerbox">
-            <div className="mkt-buyer-head">
-              <div className="av">{(buyerName[0] || "B").toUpperCase()}</div>
-              <div><div className="nm">{buyerName}</div><div className="sub">Buyer</div></div>
+          {/* Payout, seller_share only */}
+          <div className="mkt-payout-box">
+            <span className="lbl">You will receive</span>
+            <div className="amt">{formatNaira(order.seller_share_naira)}</div>
+            <div className="note">
+              {completed
+                ? `Paid to ${bankLine}.`
+                : `We are holding the buyer's payment. Once ${buyerName} confirms the item reached them, we transfer this to ${bankLine}.`}
             </div>
-            <div className="mkt-buyer-note">Agree the drop off with them before you send it.</div>
-            {buyerPhone ? (
-              <div className="mkt-buyer-actions">
-                <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(buyerPhone, waMsg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
-                <a className="mkt-call" href={sellerCallLink(buyerPhone)}>Call</a>
+          </div>
+
+          {/* Buyer contact, only when we have a paid order */}
+          {(awaitingDispatch || awaitingConfirm) && (
+            <div className="mkt-buyerbox">
+              <div className="mkt-buyer-head">
+                <div className="av">{(buyerName[0] || "B").toUpperCase()}</div>
+                <div><div className="nm">{buyerName}</div><div className="sub">Buyer</div></div>
               </div>
-            ) : (
-              <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I need to reach the buyer on order ${ref}.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the buyer via BundledMum</a>
-            )}
-          </div>
-        )}
+              <div className="mkt-buyer-note">Agree the drop off with them before you send it.</div>
+              {buyerPhone ? (
+                <div className="mkt-buyer-actions">
+                  <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(buyerPhone, waMsg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
+                  <a className="mkt-call" href={sellerCallLink(buyerPhone)}>Call</a>
+                </div>
+              ) : (
+                <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I need to reach the buyer on order ${ref}.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the buyer via BundledMum</a>
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Dispatch photo when sent */}
-        {(awaitingConfirm || completed) && order.dispatch_photo_url && (
-          <div className="mkt-card2">
-            <div className="mkt-card2-label">Your dispatch photo</div>
-            <img src={order.dispatch_photo_url} alt="Dispatch proof" style={{ width: "100%", borderRadius: 10, display: "block" }} />
-          </div>
-        )}
+        <div className="mkt-od-right">
+          {/* Dispatch photo when sent */}
+          {(awaitingConfirm || completed) && order.dispatch_photo_url && (
+            <div className="mkt-card2">
+              <div className="mkt-card2-label">Your dispatch photo</div>
+              <img src={order.dispatch_photo_url} alt="Dispatch proof" style={{ width: "100%", borderRadius: 10, display: "block" }} />
+            </div>
+          )}
 
-        {/* Timeline */}
-        <div className="mkt-next">
-          <div className="step"><div className="dot" style={{ background: "var(--mkt-green)" }} /><div><b>Payment held by us</b><span>The buyer has paid, we are holding the money.</span></div></div>
-          <div className="step"><div className="dot" style={{ background: awaitingDispatch ? "var(--mkt-coral)" : "var(--mkt-green)" }} /><div><b>{awaitingDispatch ? "Waiting for you to send it" : "You dispatched it"}</b><span>{awaitingDispatch ? "Please dispatch within a few working days." : "Photo saved as your proof."}</span></div></div>
-          <div className="step todo"><div className="dot todo" style={{ background: completed ? "var(--mkt-green)" : undefined }} /><div><b className={completed ? "" : "todo"}>{completed ? "Paid to your bank" : "Buyer confirms, we pay you"}</b><span>{completed ? bankLine : `Then we transfer your ${formatNaira(order.seller_share_naira)}.`}</span></div></div>
+          {/* Timeline */}
+          <div className="mkt-next">
+            <div className="step"><div className="dot" style={{ background: "var(--mkt-green)" }} /><div><b>Payment held by us</b><span>The buyer has paid, we are holding the money.</span></div></div>
+            <div className="step"><div className="dot" style={{ background: awaitingDispatch ? "var(--mkt-coral)" : "var(--mkt-green)" }} /><div><b>{awaitingDispatch ? "Waiting for you to send it" : "You dispatched it"}</b><span>{awaitingDispatch ? "Please dispatch within a few working days." : "Photo saved as your proof."}</span></div></div>
+            <div className="step todo"><div className="dot todo" style={{ background: completed ? "var(--mkt-green)" : undefined }} /><div><b className={completed ? "" : "todo"}>{completed ? "Paid to your bank" : "Buyer confirms, we pay you"}</b><span>{completed ? bankLine : `Then we transfer your ${formatNaira(order.seller_share_naira)}.`}</span></div></div>
+          </div>
+
+          {/* Fixed bottom bar on mobile (unaffected, .mkt-od-right is
+              display:contents there); becomes the static foot of this sticky
+              column on desktop. */}
+          {awaitingDispatch && (
+            <div className="mkt-sell-foot">
+              <button className="mkt-primary" onClick={() => navigate(`/sell/orders/${order.id}/dispatch`)}>Mark as dispatched</button>
+            </div>
+          )}
         </div>
       </div>
-
-      {awaitingDispatch && (
-        <div className="mkt-sell-foot">
-          <button className="mkt-primary" onClick={() => navigate(`/sell/orders/${order.id}/dispatch`)}>Mark as dispatched</button>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
