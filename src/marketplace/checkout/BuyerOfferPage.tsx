@@ -43,8 +43,8 @@ export default function BuyerOfferPage() {
   if (!offer) {
     return (
       <div className="mkt-center">
-        <div className="mkt-empty-title">No offer here</div>
-        <div className="mkt-empty-sub">You have not made an offer on this listing.</div>
+        <div className="mkt-empty-title">Nothing here yet</div>
+        <div className="mkt-empty-sub">You have not asked for a lower price on this listing.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate(listingId ? `/listing/${listingId}` : "/")}>Back to the listing</button>
       </div>
     );
@@ -68,7 +68,7 @@ export default function BuyerOfferPage() {
       <div className="mkt-center">
         <span className="mkt-st sold" style={{ marginBottom: 4 }}>···</span>
         <div className="mkt-empty-title">This one's gone</div>
-        <div className="mkt-empty-sub">Someone else bought it before the seller replied to your offer. Nothing was charged to you, and your offer closes here.</div>
+        <div className="mkt-empty-sub">Someone else bought it before the seller replied to your request. Nothing was charged to you, and your request closes here.</div>
         <button className="mkt-primary" style={{ maxWidth: 260 }} onClick={() => navigate("/")}>Browse similar items</button>
       </div>
     );
@@ -80,7 +80,7 @@ export default function BuyerOfferPage() {
   if (offer.status === "pending" && !lapsed) {
     return (
       <div className="mkt-offer-page">
-        <div className="mkt-sell-head"><div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listingId}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your offer</h1></div></div></div>
+        <div className="mkt-sell-head"><div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listingId}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your request</h1></div></div></div>
         <div className="mkt-sell-body">
           <div className="mkt-co-summary">
             <div className="th">{image && <img src={image} alt="" />}</div>
@@ -89,7 +89,7 @@ export default function BuyerOfferPage() {
           <div className="mkt-offer-waiting">
             <div className="ic">⏳</div>
             <div className="hl">Waiting on the seller</div>
-            <p>You offered {formatNaira(offer.buyer_discount_naira)} off. They have until {new Date(offer.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} to reply. If they do not, this simply lapses and there's no harm done.</p>
+            <p>You asked for {formatNaira(offer.buyer_discount_naira)} off. They have until {new Date(offer.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} to reply. If they do not, this simply lapses and there's no harm done.</p>
           </div>
           <p style={{ textAlign: "center", font: "400 12px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>You'll hear from us either way, no need to keep checking.</p>
         </div>
@@ -130,7 +130,7 @@ export default function BuyerOfferPage() {
       <div className="mkt-empty-sub">
         {wasDeclined
           ? "No hard feelings, some sellers just cannot move on price. It's still " + formatNaira(listedPrice) + " whenever you're ready."
-          : "Your offer window closed. You can still buy at the listed price whenever you like."}
+          : "Your request window closed. You can still buy at the listed price whenever you like."}
       </div>
       <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate(`/checkout/${listingId}`)}>Buy at {formatNaira(listedPrice)}</button>
       <button className="mkt-secondary" style={{ maxWidth: 240, border: "none" }} onClick={() => navigate("/")}>Keep browsing</button>

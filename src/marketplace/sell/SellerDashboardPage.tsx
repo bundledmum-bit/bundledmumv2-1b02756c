@@ -165,7 +165,7 @@ export default function SellerDashboardPage() {
 
         {offersNeedingAttention.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <div className="mkt-group-title">Offers on your listings</div>
+            <div className="mkt-group-title">Price requests on your listings</div>
             {offersNeedingAttention.map((o) => (
               <button key={o.id} className="mkt-lrow" onClick={() => navigate(`/sell/offers/${o.id}`)}>
                 <div className="th">{o.listing?.image_url && <img src={o.listing.image_url} alt="" />}</div>

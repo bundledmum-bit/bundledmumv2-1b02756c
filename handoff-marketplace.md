@@ -165,7 +165,56 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — the five policy pages (Terms, Privacy, Buyer/Seller protection, Cookies), design 24a
+### This pass — buyer negotiation copy renamed from "offer" to "ask for a lower price"
+Copy-only pass, no identifiers, routes, DB columns or RPCs touched. Landed at
+"Ask for a lower price" instead of the earlier-planned "Negotiate price" —
+that rename was started in a prior pass but **stopped after the design was
+found not to cover it, and was never implemented or committed**, confirmed
+by grepping the code and this file before starting. The live code still said
+"Make an offer" / "offer" everywhere, including several places that were
+already violating the "offer is internal only, never shown to users" rule.
+- **Buyer-facing:** `ListingDetailPage.tsx` button "Ask for a lower price";
+  already-used state "You've already asked for a lower price on this one";
+  the pending/countered entry point "View your request" / "The seller came
+  back with a different price, view it"; accepted-offer banner "The seller
+  said yes to a lower price". `MakeOfferSheet.tsx` heading "Ask for a lower
+  price", sub "You get one ask on this listing...", button "Send request".
+  `BuyerOfferPage.tsx`: no-request state "Nothing here yet" / "You have not
+  asked for a lower price on this listing."; sold-out-mid-request state
+  ("...replied to your request... your request closes here"); waiting state
+  title "Your request" and body "You asked for {X} off..."; lapsed state
+  "Your request window closed...". `marketplaceLogin.ts`'s `offer` reason
+  copy: "To ask for a lower price, we need your email" (the reason KEY
+  itself stays `"offer"`, an internal identifier, only its display copy
+  changed). `CheckoutPage.tsx`'s price-mismatch message: "The price you
+  agreed with the seller could not be applied to this order...".
+  `TermsPage.tsx` §5: "a buyer may ask once for a lower price, capped at
+  X%..." (the section heading "Negotiating a price" and the "Is this price
+  negotiable?" / "Negotiable" wording elsewhere are unchanged, per the task).
+- **Seller-facing, reworded to "buyer asking for less" framing** (also
+  fixing "offer" leaking to sellers, out of the task's named list but
+  directly required by the same "never shown to users" rule the task asked
+  me to confirm): `SellerOfferPage.tsx` title "Someone asked for a lower
+  price" / "Their request"; "Request not found"; "...or suggest a number in
+  between"; "This request has closed"; "You suggested {X}. They'll accept or
+  decline...". `SellerDashboardPage.tsx` group title "Price requests on your
+  listings". The negotiability toggle's Yes option, in both
+  `CreateListingPage.tsx` and `SellerPriceEditPage.tsx`: "Yes, buyers can ask
+  for less" (was "Yes, open to offers"; "No, firm price" unchanged).
+- **Unchanged, exactly as instructed:** the seller's "Is this price
+  negotiable?" question at listing time; the "Negotiable" label beside a
+  price on browse and listing detail; every code identifier (`offerId`,
+  `offers.ts`, `LoginReason = "offer"`, the `?offer=` checkout query param,
+  every `mkt-offer-*` CSS class, every react-query key) — none of these are
+  user-visible copy.
+- **Verified live:** listing detail shows "Ask for a lower price"; the
+  `?reason=offer` login page shows "To ask for a lower price, we need your
+  email"; zero console errors. Re-grepped the whole marketplace tree
+  afterward for any remaining user-visible "offer" string — none found,
+  only internal identifiers remain. `npx tsc --noEmit` and `npm run build`
+  both pass.
+
+### Earlier this branch line — the five policy pages (Terms, Privacy, Buyer/Seller protection, Cookies), design 24a
 New routes in the marketplace tree: `/terms`, `/privacy`, `/buyer-protection`,
 `/seller-protection`, `/cookies`. All five wired into the footer (previously
 omitted, per the footer's own comment, because they had no page) and into a

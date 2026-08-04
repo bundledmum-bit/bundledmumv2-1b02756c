@@ -237,7 +237,7 @@ export default function CheckoutPage() {
     return (
       <div className="mkt-center">
         <div className="mkt-empty-title">We need to sort this out first</div>
-        <div className="mkt-empty-sub">Your negotiated price could not be applied to this order. Nothing has been charged. Please message us and we will get this fixed for you.</div>
+        <div className="mkt-empty-sub">The price you agreed with the seller could not be applied to this order. Nothing has been charged. Please message us and we will get this fixed for you.</div>
         <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
         <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate(`/listing/${listingId}`)}>Back to the listing</button>
       </div>

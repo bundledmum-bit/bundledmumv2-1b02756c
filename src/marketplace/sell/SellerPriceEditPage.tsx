@@ -168,7 +168,7 @@ export default function SellerPriceEditPage() {
           <span className="mkt-uplabel">Is this price negotiable?</span>
           <div className="mkt-chips">
             <button type="button" className={!negotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setNegotiable(false)}>No, firm price</button>
-            <button type="button" className={negotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setNegotiable(true)}>Yes, open to offers</button>
+            <button type="button" className={negotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setNegotiable(true)}>Yes, buyers can ask for less</button>
           </div>
         </div>
 

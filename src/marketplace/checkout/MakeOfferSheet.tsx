@@ -47,8 +47,8 @@ export default function MakeOfferSheet({
     <div className="mkt-offer-sheet-overlay" onClick={() => !busy && onClose()}>
       <div className="mkt-offer-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="grab" />
-        <h3>Make an offer</h3>
-        <p className="sub">You get one offer on this listing, so make it count. The seller can accept, decline, or come back with a different number.</p>
+        <h3>Ask for a lower price</h3>
+        <p className="sub">You get one ask on this listing, so make it count. The seller can accept, decline, or come back with a different number.</p>
 
         <div className="mkt-co-summary">
           <div className="th">{listingImage && <img src={listingImage} alt="" />}</div>
@@ -82,7 +82,7 @@ export default function MakeOfferSheet({
 
         {error && !overCap && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
 
-        <button className="mkt-primary" onClick={send} disabled={busy || !isValid || overCap}>{busy ? "Sending..." : "Send offer"}</button>
+        <button className="mkt-primary" onClick={send} disabled={busy || !isValid || overCap}>{busy ? "Sending..." : "Send request"}</button>
       </div>
     </div>
   );

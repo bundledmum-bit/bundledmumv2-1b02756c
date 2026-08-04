@@ -209,7 +209,7 @@ export default function ListingDetailPage() {
           {offerAccepted && myPrice != null ? (
             <div className="mkt-offer-accepted" style={{ marginBottom: 8 }}>
               <span className="tick">✓</span>
-              <span>The seller said yes to your offer</span>
+              <span>The seller said yes to a lower price</span>
             </div>
           ) : null}
           <div className="mkt-detail-price" style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
@@ -298,19 +298,20 @@ export default function ListingDetailPage() {
 
         <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
 
-        {/* Make an offer (design 23a). Hidden entirely when the feature is
-            off, or once this buyer has spent their one offer here in any
+        {/* Ask for a lower price (design 23a, buyer-facing copy per the
+            "Ask for a lower price" pass). Hidden entirely when the feature is
+            off, or once this buyer has spent their one ask here in any
             direction — both cases simply look like a listing that never had
             one, per design O10, never a broken or greyed-out control. */}
         {offersEnabled && !offerAccepted && (
           offerPendingOrCountered ? (
             <button type="button" className="mkt-offer-entry" onClick={() => navigate(`/listing/${listing.id}/offer`)}>
-              {myOffer?.status === "countered" ? "The seller came back with an offer, view it" : "View your offer"}
+              {myOffer?.status === "countered" ? "The seller came back with a different price, view it" : "View your request"}
             </button>
           ) : offerSpent ? (
-            <div className="mkt-offer-used">You already made an offer on this</div>
+            <div className="mkt-offer-used">You've already asked for a lower price on this one</div>
           ) : (
-            <button type="button" className="mkt-offer-entry" onClick={openOfferSheet}>Make an offer</button>
+            <button type="button" className="mkt-offer-entry" onClick={openOfferSheet}>Ask for a lower price</button>
           )
         )}
       </div>

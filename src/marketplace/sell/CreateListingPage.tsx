@@ -767,7 +767,7 @@ export default function CreateListingPage() {
           </div>
           <div className="mkt-chips">
             <button type="button" className={!isNegotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setIsNegotiable(false)}>No, firm price</button>
-            <button type="button" className={isNegotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setIsNegotiable(true)}>Yes, open to offers</button>
+            <button type="button" className={isNegotiable ? "mkt-chip on" : "mkt-chip"} onClick={() => setIsNegotiable(true)}>Yes, buyers can ask for less</button>
           </div>
           <div className="mkt-help">If yes, buyers can ask for a bit off. You always see and choose your own number, never a pressure to accept.</div>
         </div>

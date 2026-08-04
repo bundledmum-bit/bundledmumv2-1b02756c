@@ -38,7 +38,7 @@ export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "
  */
 export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string }> = {
   offer: {
-    lead: "To make an offer, we need your email",
+    lead: "To ask for a lower price, we need your email",
     sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a link, no password to set.",
   },
   sell: {

@@ -67,7 +67,7 @@ export default function SellerOfferPage() {
   if (!offer) {
     return (
       <div className="mkt-center">
-        <div className="mkt-empty-title">Offer not found</div>
+        <div className="mkt-empty-title">Request not found</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
       </div>
     );
@@ -79,7 +79,7 @@ export default function SellerOfferPage() {
   return (
     <div className="mkt-seller-order-page">
       <div className="mkt-sell-head">
-        <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>{openForResponse ? "Someone made an offer" : "Your offer"}</h1></div></div>
+        <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>{openForResponse ? "Someone asked for a lower price" : "Their request"}</h1></div></div>
       </div>
 
       <div className="mkt-sell-body">
@@ -90,7 +90,7 @@ export default function SellerOfferPage() {
               <span className="amt">{formatNaira(offer.seller_amount_naira)}</span>
               <span className="sub">instead of your usual asking price?</span>
             </div>
-            <p style={{ textAlign: "center", font: "400 12px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>You can accept, say no, or offer a number in between. Whatever you decide is fine, you're doing them a favour either way.</p>
+            <p style={{ textAlign: "center", font: "400 12px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>You can accept, say no, or suggest a number in between. Whatever you decide is fine, you're doing them a favour either way.</p>
             {error && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
             <button className="mkt-primary" style={{ background: "var(--mkt-green)" }} onClick={() => act("accept")} disabled={busy}>Accept {formatNaira(offer.seller_amount_naira)}</button>
             <div style={{ display: "flex", gap: 9 }}>
@@ -101,13 +101,13 @@ export default function SellerOfferPage() {
         )}
 
         {offer.status === "pending" && lapsed && (
-          <div className="mkt-heldbox"><div className="hb-title">This offer has closed</div><div className="hb-line"><span className="hb-tick">✓</span>The window passed with no reply. Nothing for you to do here.</div></div>
+          <div className="mkt-heldbox"><div className="hb-title">This request has closed</div><div className="hb-line"><span className="hb-tick">✓</span>The window passed with no reply. Nothing for you to do here.</div></div>
         )}
 
         {offer.status === "countered" && (
           <div className="mkt-heldbox">
             <div className="hb-title">Waiting on the buyer</div>
-            <div className="hb-line"><span className="hb-tick">✓</span>You offered {formatNaira(offer.counter_seller_amount_naira ?? 0)}. They'll accept or decline, no further back and forth either way.</div>
+            <div className="hb-line"><span className="hb-tick">✓</span>You suggested {formatNaira(offer.counter_seller_amount_naira ?? 0)}. They'll accept or decline, no further back and forth either way.</div>
           </div>
         )}
 
