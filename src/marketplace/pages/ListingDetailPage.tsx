@@ -14,6 +14,7 @@ import {
   sellerInitials,
 } from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
+import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 
 type FieldType = "select" | "text" | "number" | "boolean";
 interface CategoryField {
@@ -159,7 +160,7 @@ export default function ListingDetailPage() {
 
       <div className="mkt-detail-panel">
       <div className="mkt-detail-body">
-        <div>
+        <div className="mkt-detail-priceblock">
           <div className="mkt-detail-price">{formatNaira(listing.final_price_naira)}{multi ? " each" : ""}</div>
           <h1 className="mkt-detail-title">{listing.title}</h1>
           {multi && (
@@ -194,7 +195,7 @@ export default function ListingDetailPage() {
         </div>
 
         {listing.condition_notes ? (
-          <div>
+          <div className="mkt-detail-condition">
             <p className="mkt-section-label">Condition notes</p>
             <p className="mkt-detail-text">{listing.condition_notes}</p>
           </div>
@@ -230,18 +231,12 @@ export default function ListingDetailPage() {
           </div>
         )}
 
-        <div>
+        <div className="mkt-detail-description">
           <p className="mkt-section-label">Description</p>
           <p className="mkt-detail-text">{listing.description}</p>
         </div>
 
-        <div className="mkt-reassure">
-          <div className="mkt-reassure-tick">✓</div>
-          <div className="mkt-reassure-text">
-            Your money is held safely until you confirm the item arrived as
-            described. Seller details are shared right after payment.
-          </div>
-        </div>
+        <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
       </div>
 
       <div className="mkt-buybar">

@@ -2070,6 +2070,51 @@ with); and `SellerOrderDetailPage.tsx`'s "buyer will confirm" copy (seller-
 facing, telling the seller what the buyer needs to do, not a promise made to
 a buyer).
 
+### Listing detail: how-this-works explainer (design 19a), replacing the single green line
+The old one-line reassurance above Buy now ("Your money is held safely until
+you confirm the item arrived as described. Seller details are shared right
+after payment.") is replaced with a collapsible explainer,
+`src/marketplace/components/HowThisWorksExplainer.tsx`, following design 19a
+exactly: collapsed by default, headline + tick always visible with no
+interaction required, tapping opens six numbered steps in place (no
+navigation, no modal). Same position on mobile as the line it replaces
+(directly above the fixed Buy now bar, last item in the body); on desktop it
+stays inside the sticky right purchase panel (never the left gallery
+column), immediately before Buy now in both layouts. Desktop switches to a
+2×3 step grid with shorter step copy instead of the mobile long list, since
+the sticky panel is narrower than a full page but wider than a phone; the
+"every seller checked, every listing reviewed" trust line renders in both
+expanded states. No gendered pronouns anywhere in the copy (the design's own
+mockup illustrates with "Amaka/she", not a literal instruction) — the
+seller's real display name and "they/their" are used instead, consistent
+with the rest of this codebase, which never genders sellers or buyers.
+
+One placement judgement call, flagged in case the literal mockup was wanted:
+the desktop mockup (screens T3/T4) shows the widget positioned immediately
+after the seller row, above condition notes, the spec block and the
+description. That mockup is a zoomed, standalone "purchase card," not the
+full real page, none of those other sections appear in it. Reproducing that
+exact adjacency on the real page would need CSS `order` applied to every
+sibling in `.mkt-detail-body` (fragile: any future new field would silently
+jump ahead of Buy now unless someone remembers to give it an order value
+too). The design's stated requirement is narrower — "not the left column...
+must sit beside Buy now" — which this implementation satisfies without that
+risk, by leaving the widget in its existing last-before-Buy-now position on
+both breakpoints (unchanged from where the old line always sat). Revisit if
+the exact seller-row adjacency turns out to matter.
+
+**Wording mismatch to flag**: the design's headline and step 5 both say
+"confirm it arrived" (not "arrived as described"), folding the described-
+condition nuance into step 6 ("something wrong? report it") instead of the
+promise sentence. This is narrower than the "arrived as described" standard
+just aligned across checkout, the payment-succeeded screen, buyer order
+detail, the footer, and the confirmation email template in the previous
+pass. Implemented the design literally rather than inventing a variant of
+it; flagging so a human can decide whether the explainer's headline/step 5
+should also gain "as described" for full consistency, or whether the
+six-step structure (a short promise plus an explicit dispute step) is
+intentionally a different, acceptable framing for this specific widget.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,
