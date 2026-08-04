@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
 import { mdb } from "../data/mdb";
 import {
@@ -15,6 +16,9 @@ import {
 } from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
 import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
+import MakeOfferSheet from "../checkout/MakeOfferSheet";
+import { fetchBuyerOfferForListing, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
+import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
 type FieldType = "select" | "text" | "number" | "boolean";
 interface CategoryField {
@@ -50,8 +54,30 @@ export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: listing, isLoading, isError } = useListing(id);
+  const { isLoggedIn } = useCustomerAuth();
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [offerSheetOpen, setOfferSheetOpen] = useState(false);
+
+  // Make-an-offer (design 23a): whether the feature is on at all, the naira
+  // cap (never a percentage), and this buyer's own offer here, if they have
+  // made one — at most one ever exists per listing per buyer.
+  const { data: offersEnabled = false } = useQuery({
+    queryKey: ["mkt-offers-enabled"],
+    queryFn: getOffersEnabled,
+    staleTime: 60000,
+  });
+  const { data: maxDiscountPercent = 10 } = useQuery({
+    queryKey: ["mkt-max-discount-percent"],
+    queryFn: getMaxDiscountPercent,
+    enabled: offersEnabled,
+    staleTime: 60000,
+  });
+  const { data: myOffer } = useQuery({
+    queryKey: ["buyer-offer", id],
+    enabled: !!id && isLoggedIn && offersEnabled,
+    queryFn: () => fetchBuyerOfferForListing(id as string),
+  });
 
   // This category's question definitions, so the seller's raw attributes jsonb
   // can be paired with a label, type and sort_order to render. Public readable,
@@ -129,6 +155,25 @@ export default function ListingDetailPage() {
   const verified = isVerifiedSeller(listing);
   const tenure = sellerTenure(listing);
 
+  // Make-an-offer state (design 23a). An accepted/counter_accepted offer is
+  // PRIVATE to this buyer — the listing's public final_price_naira is
+  // unchanged for everyone else, multi-quantity or not, this only overrides
+  // what THIS buyer sees and pays.
+  const maxDiscountNaira = Math.round(listing.final_price_naira * maxDiscountPercent / 100);
+  const offerAccepted = myOffer && (myOffer.status === "accepted" || myOffer.status === "counter_accepted");
+  const myPrice = offerAccepted ? (myOffer.status === "counter_accepted" ? myOffer.counter_buyer_price_naira! : myOffer.buyer_price_naira) : null;
+  const myDiscount = offerAccepted && myPrice != null ? listing.final_price_naira - myPrice : 0;
+  // Anything else already spent this buyer's one offer here (declined, lapsed,
+  // still pending, or awaiting their own reply to a counter) — Buy now stays
+  // open at the listed price regardless, per design O10.
+  const offerSpent = !!myOffer && !offerAccepted;
+  const offerPendingOrCountered = !!myOffer && (myOffer.status === "countered" || (myOffer.status === "pending" && !isLapsed(myOffer)));
+
+  function openOfferSheet() {
+    if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`); return; }
+    setOfferSheetOpen(true);
+  }
+
   return (
     <div className="mkt-detail">
       {/* Gallery + panel are grouped so the desktop layout (>=1024px) can place them
@@ -161,8 +206,23 @@ export default function ListingDetailPage() {
       <div className="mkt-detail-panel">
       <div className="mkt-detail-body">
         <div className="mkt-detail-priceblock">
-          <div className="mkt-detail-price">{formatNaira(listing.final_price_naira)}{multi ? " each" : ""}</div>
+          {offerAccepted && myPrice != null ? (
+            <div className="mkt-offer-accepted" style={{ marginBottom: 8 }}>
+              <span className="tick">✓</span>
+              <span>The seller said yes to your offer</span>
+            </div>
+          ) : null}
+          <div className="mkt-detail-price" style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+            <span>{formatNaira(offerAccepted && myPrice != null ? myPrice : listing.final_price_naira)}{multi ? " each" : ""}</span>
+            {offerAccepted && myPrice != null && (
+              <>
+                <span style={{ font: "400 15px/1 'Lato', sans-serif", color: "var(--mkt-muted-2)", textDecoration: "line-through" }}>{formatNaira(listing.final_price_naira)}</span>
+                <span className="mkt-offer-discount-tag">{formatNaira(myDiscount)} off, just for you</span>
+              </>
+            )}
+          </div>
           <h1 className="mkt-detail-title">{listing.title}</h1>
+          {offerAccepted && <div className="mkt-help">This price is yours alone, everyone else still sees {formatNaira(listing.final_price_naira)}.</div>}
           {multi && (
             <span className={available === 1 ? "mkt-avail low" : "mkt-avail"}>{available === 1 ? "Last one" : `${available} available`}</span>
           )}
@@ -237,18 +297,46 @@ export default function ListingDetailPage() {
         </div>
 
         <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
+
+        {/* Make an offer (design 23a). Hidden entirely when the feature is
+            off, or once this buyer has spent their one offer here in any
+            direction — both cases simply look like a listing that never had
+            one, per design O10, never a broken or greyed-out control. */}
+        {offersEnabled && !offerAccepted && (
+          offerPendingOrCountered ? (
+            <button type="button" className="mkt-offer-entry" onClick={() => navigate(`/listing/${listing.id}/offer`)}>
+              {myOffer?.status === "countered" ? "The seller came back with an offer, view it" : "View your offer"}
+            </button>
+          ) : offerSpent ? (
+            <div className="mkt-offer-used">You already made an offer on this</div>
+          ) : (
+            <button type="button" className="mkt-offer-entry" onClick={openOfferSheet}>Make an offer</button>
+          )
+        )}
       </div>
 
       <div className="mkt-buybar">
         <div className="mkt-buybar-price">
           <small>{multi ? "Price each" : "Price"}</small>
-          <b>{formatNaira(listing.final_price_naira)}</b>
+          <b>{formatNaira(offerAccepted && myPrice != null ? myPrice : listing.final_price_naira)}</b>
         </div>
-        <button className="mkt-buy" onClick={() => navigate(`/checkout/${listing.id}`)}>
-          {multi ? "Buy one now" : "Buy now"}
+        <button className="mkt-buy" onClick={() => navigate(offerAccepted && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`)}>
+          {offerAccepted && myPrice != null ? `Buy now at ${formatNaira(myPrice)}` : multi ? "Buy one now" : "Buy now"}
         </button>
       </div>
       </div>
+
+      {offerSheetOpen && (
+        <MakeOfferSheet
+          listingId={listing.id}
+          listingTitle={listing.title}
+          listingImage={listing.image_url}
+          listingPrice={listing.final_price_naira}
+          maxDiscountNaira={maxDiscountNaira}
+          onClose={() => setOfferSheetOpen(false)}
+          onSent={() => { setOfferSheetOpen(false); navigate(`/listing/${listing.id}/offer`); }}
+        />
+      )}
     </div>
   );
 }

@@ -2330,6 +2330,103 @@ UI as a logged-in seller. Worth a human walkthrough before calling this
 fully done: rejected → edit → resubmit → pending_review, and live → lower
 price / delist → edit → resubmit.
 
+### Make an offer (design 23a) — buyer/seller negotiation, and a real remaining gap
+Backend already deployed (no migrations this pass): `marketplace_offers`
+(`listing_id, buyer_id, seller_id, buyer_discount_naira, buyer_price_naira,
+seller_amount_naira, counter_seller_amount_naira, counter_buyer_price_naira,
+status, expires_at, responded_at`, unique on `(listing_id, buyer_id)` — one
+offer per buyer per listing forever, whichever way it goes). `status` ∈
+`pending, accepted, declined, countered, counter_accepted, counter_declined,
+lapsed, void`. `marketplace_orders` gained `offer_id`, `offer_discount_naira`
+(not yet written by anything, see below). Three RPCs, read in full against
+the live database, not just summarised: `buyer_make_offer({p_listing_id,
+p_discount_naira})`, `seller_respond_to_offer({p_offer_id, p_action,
+p_counter_seller_amount})` (`p_action` ∈ accept/decline/counter),
+`buyer_respond_to_counter({p_offer_id, p_accept})`. Settings, all read live,
+never hardcoded: `marketplace_offers_enabled`, `marketplace_max_discount_percent`
+(the cap is computed against the buyer-facing marked-up price, confirmed
+from the RPC body — this is why the cap is shown to buyers as a naira
+figure derived from that percent, never the percent itself),
+`marketplace_offer_expiry_hours`.
+
+**THE MONEY RULE, enforced by which columns are ever SELECTed, not by
+convention**: `src/marketplace/offers.ts` keeps two disjoint column lists,
+`BUYER_OFFER_SELECT` (never names `seller_amount_naira`/
+`counter_seller_amount_naira`) and `SELLER_OFFER_SELECT` (never names
+`buyer_discount_naira`/`buyer_price_naira`/`counter_buyer_price_naira`) —
+mirrors the existing `BUYER_ORDER_SELECT`/`SELLER_ORDER_SELECT` pattern
+exactly. `SellerOfferPage.tsx` and the dashboard's offers block never fetch
+or render a buyer-facing figure at all; a seller countering enters what
+*they* would take, the buyer price is computed server side inside the RPC,
+this never asks a seller for a buyer number. A seller also never learns the
+buyer's identity at the offer stage (matches this app's whole
+"seller contact only revealed after payment" model) — the design's own
+mockup confirms this ("Someone made an offer", no name).
+
+**`status = 'lapsed'` is never written by anything** — checked every
+function body in the database, same class of gap as `return_requested_at`
+last pass. `seller_respond_to_offer` blocks acting on an offer past
+`expires_at`, but nothing ever flips its `status` column to `'lapsed'`.
+`isLapsed(offer)` in `offers.ts` computes this client side
+(`status === 'pending' && expires_at < now()`) rather than trusting the
+stored value, and both `BuyerOfferPage.tsx` and `SellerOfferPage.tsx` use it
+instead of a raw status check.
+
+**What was built**: `MakeOfferSheet.tsx` (O1, its own overlay class so only
+this sheet becomes a centred desktop modal, no other confirm sheet in the
+app changed); `BuyerOfferPage.tsx` at `/listing/:id/offer` (O2 waiting, O3
+countered, O5 declined/lapsed, O9 sold-out-mid-offer — accepted/
+counter_accepted redirect straight back to listing detail, nothing to show
+here for those); `SellerOfferPage.tsx` at `/sell/offers/:offerId` (O6
+incoming, O7 counter sheet, O8 waiting + outcomes), reusing the seller
+order detail two-column desktop wrapper class for visual consistency (not
+literally embedded in the orders page, offers aren't orders yet). Listing
+detail gained: the entry point (hidden when `offers_enabled` is false, or
+once this buyer has spent their one offer here in any direction — both
+cases render identically to a listing that never had offers, design O10);
+an accepted-offer personal price with strikethrough + "just for you" tag,
+private to that buyer only, the public `final_price_naira` untouched for
+everyone else even on a multi-quantity listing (design O4/edge case).
+Seller dashboard gained an "Offers on your listings" block, own numbers
+only, shown only when one exists.
+
+**The one piece that is genuinely NOT safe to rely on yet — flagging this
+clearly rather than letting it look finished**: "accepted offers lead into
+checkout at the negotiated price" requires `create-marketplace-order` to
+change, and I did not touch it (non-goal, reporting only). I read its full
+deployed source (v5): it derives `item_price_naira` from
+`listing.final_price_naira` and `seller_share_naira` from `listing.price_naira`
+directly off the listing row — **there is no `offer_id` concept in the
+function at all today**. What it needs: accept an optional `offer_id` in
+the request body; when present, verify it belongs to this buyer+listing and
+is `status IN ('accepted','counter_accepted')` and has not already been
+consumed by a prior order; use `counter_buyer_price_naira ?? buyer_price_naira`
+in place of `listing.final_price_naira` and `counter_seller_amount_naira ??
+seller_amount_naira` in place of `listing.price_naira`; write `offer_id` and
+`offer_discount_naira` onto the inserted order; mark the offer consumed
+(`status: 'void'`, the schema's own reserved value for exactly this) so it
+cannot fund a second order.
+
+Until that ships, `createMarketplaceOrder()` (`orders.ts`) already sends
+`offer_id` when checking out from an accepted offer — forward-compatible,
+currently a no-op the function ignores. `CheckoutPage.tsx` shows the
+negotiated price pre-order, but **once the real order comes back from the
+server, it is compared against the expected negotiated price** — today they
+will not match, and checkout deliberately stops before the Pay button ever
+renders, showing "we need to sort this out first" rather than silently
+charging the full listing price after showing the buyer a lower one. Do not
+consider the offer flow safe to advertise to real buyers until the edge
+function change lands and that mismatch stops firing.
+
+**Not verified live**: the make-an-offer entry point and its hide/show
+behaviour under `marketplace_offers_enabled` WERE verified live (screenshots,
+toggled the setting off then back on directly in the database, confirmed and
+reverted). Everything past the login wall — actually sending an offer,
+seller responding, countering, accept/decline, the dashboard offers block —
+could not be walked through, same credential limitation as every other
+authenticated page this session. Verified instead by reading all three RPC
+bodies directly and matching the code's queries/payloads to them exactly.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

@@ -7,6 +7,7 @@ import { useSeller } from "./useSeller";
 import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing, genericErrorMessage } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import { fetchSellerOffersNeedingAttention } from "../offers";
 
 interface MyListing {
   id: string;
@@ -103,6 +104,15 @@ export default function SellerDashboardPage() {
     queryFn: () => fetchSellerOrders(seller!.id),
   });
 
+  // Offers on this seller's listings still awaiting a reply (design 23a),
+  // own numbers only — fetchSellerOffersNeedingAttention never selects a
+  // buyer-facing column.
+  const { data: offersNeedingAttention = [] } = useQuery({
+    queryKey: ["seller-offers-attention", seller?.id],
+    enabled: !!seller?.id,
+    queryFn: () => fetchSellerOffersNeedingAttention(seller!.id),
+  });
+
   if (loading || !seller) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
   const { needsAction, inProgress, complete } = groupSellerOrders(orders);
@@ -150,6 +160,22 @@ export default function SellerDashboardPage() {
           <div className="mkt-debit">
             <span className="m">!</span>
             <span>You owe {formatNaira(debit)} from a refunded order. We will take it off your next payout. New listings are paused until it clears.</span>
+          </div>
+        )}
+
+        {offersNeedingAttention.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="mkt-group-title">Offers on your listings</div>
+            {offersNeedingAttention.map((o) => (
+              <button key={o.id} className="mkt-lrow" onClick={() => navigate(`/sell/offers/${o.id}`)}>
+                <div className="th">{o.listing?.image_url && <img src={o.listing.image_url} alt="" />}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.listing?.title || "Item"}</div>
+                  <div className="meta">Would take {formatNaira(o.seller_amount_naira)}</div>
+                </div>
+                <span className="mkt-st pending">Respond</span>
+              </button>
+            ))}
           </div>
         )}
 

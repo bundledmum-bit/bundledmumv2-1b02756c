@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { WHATSAPP_BASE } from "@/lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
+import { fetchBuyerOffer } from "../offers";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -29,6 +30,8 @@ function friendlyCreateError(code: string): string {
 
 export default function CheckoutPage() {
   const { listingId } = useParams<{ listingId: string }>();
+  const [searchParams] = useSearchParams();
+  const offerId = searchParams.get("offer") || undefined;
   const navigate = useNavigate();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
 
@@ -36,6 +39,20 @@ export default function CheckoutPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+
+  // Checking out from an accepted offer (design 23a). create-marketplace-order
+  // does not yet read offer_id at all (see orders.ts) — it always prices from
+  // the listing row — so the negotiated price is shown here for what it
+  // SHOULD be, then verified below against what the server actually charged
+  // once the order exists, rather than trusted blindly.
+  const { data: offer } = useQuery({
+    queryKey: ["mkt-checkout-offer", offerId],
+    enabled: !!offerId && isLoggedIn,
+    queryFn: () => fetchBuyerOffer(offerId as string),
+  });
+  const negotiatedPrice = offer && (offer.status === "accepted" || offer.status === "counter_accepted")
+    ? (offer.status === "counter_accepted" ? offer.counter_buyer_price_naira! : offer.buyer_price_naira)
+    : null;
 
   // Checkout details. The seller arranges delivery directly, so we need the buyer's
   // name and phone, not just an email. A guest gives all three; a logged-in buyer
@@ -121,9 +138,17 @@ export default function CheckoutPage() {
       email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
       full_name: needName ? nameInput.trim() : undefined,
       phone: needPhone ? phoneInput.trim() : undefined,
+      offerId,
     }),
   });
   const order = orderQ.data?.order;
+  // The one place this is verified rather than trusted: if we arrived from
+  // a negotiated offer, the order the server actually created must charge
+  // that price. It will not, until create-marketplace-order is updated to
+  // read offer_id (see orders.ts and handoff-marketplace.md) — surfacing
+  // that plainly here rather than silently letting checkout continue on a
+  // number that does not match what was promised.
+  const offerPriceMismatch = negotiatedPrice != null && order != null && Number(order.item_price_naira) !== negotiatedPrice;
 
   // Initialise the Paystack transaction to get the authoritative fee, total and
   // hosted page URL. Only when paystack is the active method.
@@ -149,7 +174,9 @@ export default function CheckoutPage() {
     }
   }, [payCode, order, navigate]);
 
-  const itemPrice = Number(listing?.final_price_naira ?? 0);
+  // Prefer the actual order's price once it exists (authoritative); before
+  // that, show the negotiated price if we have one, otherwise the listing's.
+  const itemPrice = order ? Number(order.item_price_naira ?? 0) : negotiatedPrice ?? Number(listing?.final_price_naira ?? 0);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
   // Paystack adds its own fee at payment time (dashboard fee-passing is on), so the
@@ -198,6 +225,21 @@ export default function CheckoutPage() {
         <div className="mkt-empty-sub">Our payment partner is having a moment. This is on our side, not yours, and nothing has been charged.</div>
         <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
         <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
+      </div>
+    );
+  }
+
+  // The order the server actually created does not charge the negotiated
+  // price it should — create-marketplace-order does not read offer_id yet.
+  // Stop here rather than let the buyer pay a number that does not match
+  // what they were promised; nothing has been charged at this point.
+  if (offerPriceMismatch) {
+    return (
+      <div className="mkt-center">
+        <div className="mkt-empty-title">We need to sort this out first</div>
+        <div className="mkt-empty-sub">Your negotiated price could not be applied to this order. Nothing has been charged. Please message us and we will get this fixed for you.</div>
+        <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+        <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate(`/listing/${listingId}`)}>Back to the listing</button>
       </div>
     );
   }

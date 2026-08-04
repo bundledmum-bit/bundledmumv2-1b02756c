@@ -21,6 +21,8 @@ import BuyerOrdersListPage from "./checkout/BuyerOrdersListPage";
 import BuyerOrderDetailPage from "./checkout/BuyerOrderDetailPage";
 import BuyerDisputePage from "./checkout/BuyerDisputePage";
 import BuyerReturnPage from "./checkout/BuyerReturnPage";
+import BuyerOfferPage from "./checkout/BuyerOfferPage";
+import SellerOfferPage from "./sell/SellerOfferPage";
 import "./marketplace.css";
 
 /**
@@ -53,6 +55,7 @@ export default function MarketplaceApp() {
             <Route path="/" element={<BrowsePage />} />
             <Route path="/login" element={<MarketplaceLoginPage />} />
             <Route path="/listing/:id" element={<ListingDetailPage />} />
+            <Route path="/listing/:id/offer" element={<BuyerOfferPage />} />
             {/* Sell side: seller onboarding and listing creation */}
             <Route path="/sell" element={<BecomeSellerPage />} />
             <Route path="/sell/setup" element={<SellerSetupPage />} />
@@ -63,6 +66,7 @@ export default function MarketplaceApp() {
             <Route path="/sell/payouts" element={<SellerPayoutsPage />} />
             <Route path="/sell/orders/:orderId" element={<SellerOrderDetailPage />} />
             <Route path="/sell/orders/:orderId/dispatch" element={<SellerDispatchPage />} />
+            <Route path="/sell/offers/:offerId" element={<SellerOfferPage />} />
             {/* Checkout: Paystack (primary), payment return, transfer fallback */}
             <Route path="/checkout/:listingId" element={<CheckoutPage />} />
             <Route path="/checkout/return" element={<PaymentReturnPage />} />

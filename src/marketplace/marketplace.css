@@ -764,6 +764,39 @@
 .mkt-sheet .kv .r b { font: 700 13px/1 'Lato', sans-serif; }
 .mkt-sheet .back { text-align: center; background: none; border: none; font: 800 14px/1 'Nunito', sans-serif; color: var(--mkt-muted); cursor: pointer; padding: 4px; }
 
+/* Make an offer (design 23a O1/O7) — its own overlay/sheet classes, not
+   .mkt-sheet-overlay, so ONLY this one becomes a centred modal at desktop
+   (per the design's own desktop note) without changing any other confirm
+   sheet in the app. */
+.mkt-offer-sheet-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(26, 26, 26, 0.45); display: flex; align-items: flex-end; justify-content: center; }
+.mkt-offer-sheet { width: 100%; max-width: 560px; background: var(--mkt-cream); border-radius: 22px 22px 0 0; padding: 22px 18px 28px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; }
+.mkt-offer-sheet .grab { width: 44px; height: 4px; border-radius: 2px; background: #E3D4CB; align-self: center; }
+.mkt-offer-sheet h3 { font: 900 22px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; }
+.mkt-offer-sheet .sub { font: 300 13.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+@media (min-width: 1024px) {
+  .mkt-offer-sheet-overlay { align-items: center; }
+  .mkt-offer-sheet { max-width: 420px; border-radius: 20px; box-shadow: 0 24px 60px rgba(26, 26, 26, 0.22); }
+}
+
+/* Buyer's own offer states (design 23a O2/O3) */
+.mkt-offer-waiting { background: var(--mkt-coral-light); border-radius: 13px; padding: 15px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; }
+.mkt-offer-waiting .ic { width: 38px; height: 38px; border-radius: 50%; background: #fff; color: var(--mkt-coral-dark); font: 700 16px/38px 'Lato', sans-serif; text-align: center; }
+.mkt-offer-waiting .hl { font: 900 18px/1.2 'Nunito', sans-serif; }
+.mkt-offer-waiting p { margin: 0; font: 400 12.5px/1.5 'Lato', sans-serif; color: #8C4A34; }
+.mkt-offer-counter { background: var(--mkt-green-light); border-radius: 13px; padding: 15px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; }
+.mkt-offer-counter .lbl { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-dark); }
+.mkt-offer-counter .amt { font: 900 26px/1 'Nunito', sans-serif; letter-spacing: -0.03em; color: var(--mkt-green-dark); }
+.mkt-offer-counter .sub { font: 400 12.5px/1.4 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
+/* Listing detail: accepted-offer personal price (design 23a O4), and the
+   already-used / entry-point row (design O10). */
+.mkt-offer-accepted { background: var(--mkt-green-light); border-radius: 12px; padding: 11px; display: flex; align-items: center; gap: 9px; }
+.mkt-offer-accepted .tick { width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 12px/20px 'Lato', sans-serif; text-align: center; flex: 0 0 20px; }
+.mkt-offer-accepted span:last-child { font: 800 13px/1.3 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-offer-discount-tag { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 800 10.5px/1.3 'Nunito', sans-serif; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+.mkt-offer-entry { background: #fff; border: 1px solid var(--mkt-border); color: var(--mkt-green); font: 800 13.5px/1 'Nunito', sans-serif; padding: 13px; border-radius: 12px; text-align: center; cursor: pointer; width: 100%; }
+.mkt-offer-used { background: var(--mkt-grey-chip); color: var(--mkt-muted); font: 800 13px/1 'Nunito', sans-serif; padding: 12px; border-radius: 11px; text-align: center; }
+
 /* awaiting payment (T2 / T2b) */
 .mkt-pill-sent { align-self: flex-start; background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 9px; border-radius: 6px; }
 .mkt-next { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
