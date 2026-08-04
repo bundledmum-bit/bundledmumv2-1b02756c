@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, UnsupportedImageError } from "./sellData";
+import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, stripConditionPrefix, UnsupportedImageError } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 
@@ -23,7 +23,27 @@ interface CategoryField {
 type AnswerValue = string | number | boolean;
 // The blob is the processed photo (square, watermarked, compressed). We process
 // on add so the seller sees exactly what will be stored, and upload the same blob.
-interface PhotoDraft { blob: Blob; url: string }
+// null blob means an already-uploaded photo carried over from the existing
+// listing being edited — url is its real public URL, nothing to upload again.
+interface PhotoDraft { blob: Blob | null; url: string }
+
+interface ExistingListing {
+  id: string;
+  status: string;
+  title: string;
+  description: string | null;
+  condition: string | null;
+  condition_notes: string | null;
+  category_id: string | null;
+  location_state: string | null;
+  location_city: string | null;
+  attributes: Record<string, AnswerValue> | null;
+  price_naira: number;
+  quantity: number;
+  image_url: string | null;
+  gallery_urls: string[] | null;
+  rejection_reason: string | null;
+}
 
 const CONDITIONS = ["Almost new", "Good", "Fair"];
 // Maps the picker's display label to the structured `condition` enum column, the
@@ -37,18 +57,37 @@ const MAX_PHOTOS = 8;
 const SHORT_NOTES_LENGTH = 20;
 
 /**
- * Create listing, reskinned to the approved design. Photos upload to the
- * marketplace-listings bucket (compressed client-side first), the first becomes
- * image_url and the rest gallery_urls. final_price_naira and markup_percent are
- * DB trigger owned, never written here. Description and condition notes are
- * blocked for contact details before submit. State and area are admin-controlled
- * dependent dropdowns, but the chosen names are still written into the existing
- * location_state and location_city columns so browse keeps working.
+ * Create listing AND full edit (rejected/delisted/pending_review), reskinned
+ * to the approved design (create) and design 21a (edit reuses this same
+ * form, per its own instruction: "Full create-listing form reused as-is").
+ * Edit mode is entered at /sell/listings/:id/edit; create mode at /sell/new
+ * has no :id and behaves exactly as before.
+ *
+ * Photos upload to the marketplace-listings bucket (compressed client-side
+ * first), the first becomes image_url and the rest gallery_urls. In edit
+ * mode, existing photos are carried over as-is (PhotoDraft.blob null, url
+ * already a live public URL) — only newly added ones go through the
+ * upload pipeline. final_price_naira and markup_percent are DB trigger
+ * owned, never written here. Description and condition notes are blocked
+ * for contact details before submit. State and area are admin-controlled
+ * dependent dropdowns, but the chosen names are still written into the
+ * existing location_state and location_city columns so browse keeps
+ * working.
+ *
+ * Edit mode always submits with status: 'pending_review' — the database
+ * (guard_seller_listing_edits) is the actual source of truth for what a
+ * seller may change and when; this mirrors those rules for a good
+ * experience, it never re-implements them as authoritative. A seller can
+ * never reach this form for a 'live' or 'sold' listing (redirected back to
+ * the dashboard), those are handled by SellerPriceEditPage.tsx instead.
  */
 export default function CreateListingPage() {
   const { loading, isLoggedIn, seller, user } = useSeller();
   const navigate = useNavigate();
+  const { id: editId } = useParams<{ id?: string }>();
+  const isEditMode = !!editId;
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const hydratedRef = useRef(false);
 
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -67,6 +106,19 @@ export default function CreateListingPage() {
   const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  const { data: existingListing, isLoading: existingLoading } = useQuery({
+    queryKey: ["mkt-edit-listing", editId],
+    enabled: isEditMode && !!seller,
+    queryFn: async (): Promise<ExistingListing | null> => {
+      const { data } = await sdb.from("marketplace_listings")
+        .select("id, status, title, description, condition, condition_notes, category_id, location_state, location_city, attributes, price_naira, quantity, image_url, gallery_urls, rejection_reason")
+        .eq("id", editId as string)
+        .eq("seller_id", seller!.id)
+        .maybeSingle();
+      return (data as unknown as ExistingListing) ?? null;
+    },
+  });
 
   // Per-category questions (design 16a). Answers are keyed by field_key and reset
   // whenever the category changes, since a different category's field_keys carry
@@ -124,6 +176,44 @@ export default function CreateListingPage() {
     },
     staleTime: 60000,
   });
+
+  // Redirect a listing that can no longer be full-edited (already went live,
+  // or sold) back to the dashboard — this form is never the right place for
+  // either, SellerPriceEditPage.tsx handles live.
+  useEffect(() => {
+    if (!isEditMode || !existingListing) return;
+    if (existingListing.status === "live" || existingListing.status === "sold") {
+      navigate("/sell/dashboard", { replace: true });
+    }
+  }, [isEditMode, existingListing, navigate]);
+
+  // Hydrate the form once from the existing listing, once states have
+  // loaded (needed to resolve location_state's name back to a stateId for
+  // the dependent selects). Guarded so a background refetch of either query
+  // never overwrites what the seller has since typed.
+  useEffect(() => {
+    if (!isEditMode || hydratedRef.current) return;
+    if (!existingListing || states.length === 0) return;
+    if (existingListing.status === "live" || existingListing.status === "sold") return;
+    hydratedRef.current = true;
+
+    const conditionLabel = CONDITIONS.find((c) => CONDITION_VALUE[c] === existingListing.condition) || "";
+    setTitle(existingListing.title || "");
+    setCategoryId(existingListing.category_id || "");
+    setStateId(states.find((s) => s.name === existingListing.location_state)?.id || "");
+    setAreaName(existingListing.location_city || "");
+    setCondition(conditionLabel);
+    setConditionNotes(conditionLabel ? stripConditionPrefix(conditionLabel, existingListing.condition_notes || "") : (existingListing.condition_notes || ""));
+    setDescription(existingListing.description || "");
+    setPrice(existingListing.price_naira ? String(Math.round(existingListing.price_naira)) : "");
+    setQuantity(Math.max(1, existingListing.quantity || 1));
+    setIdenticalOk((existingListing.quantity || 1) > 1);
+    setAnswers(existingListing.attributes || {});
+    const existingPhotos: PhotoDraft[] = [existingListing.image_url, ...(existingListing.gallery_urls || [])]
+      .filter((u): u is string => !!u)
+      .map((url) => ({ blob: null, url }));
+    setPhotos(existingPhotos);
+  }, [isEditMode, existingListing, states]);
 
   const { data: areas = [] } = useQuery({
     queryKey: ["mkt-allowed-areas", stateId],
@@ -223,7 +313,10 @@ export default function CreateListingPage() {
   function removePhoto(i: number) {
     setPhotos((p) => {
       const target = p[i];
-      if (target) URL.revokeObjectURL(target.url);
+      // Only a newly added photo has an object URL to release — an existing
+      // one carried over from the listing is a real remote URL, nothing to
+      // revoke, and doing so would break its preview if re-added.
+      if (target?.blob) URL.revokeObjectURL(target.url);
       return p.filter((_, idx) => idx !== i);
     });
   }
@@ -268,17 +361,17 @@ export default function CreateListingPage() {
 
     setBusy(true);
 
-    // Upload photos first, in their own try/catch, so a storage rejection
-    // (the bucket enforces a 5MB limit and an image-only type allowlist) gets
-    // its own specific message rather than falling into the listing-insert
-    // error handling below, which parses a different, unrelated database error.
+    // Upload only the newly added photos (blob present); an existing photo
+    // carried over from the listing being edited already has a real URL,
+    // nothing to upload again. Order is preserved either way, so the first
+    // photo stays image_url / cover exactly as arranged on screen.
     const urls: string[] = [];
     try {
       for (let i = 0; i < photos.length; i++) {
-        // Already processed on add (square, watermarked, compressed) — upload as is.
-        const blob = photos[i].blob;
+        const draft = photos[i];
+        if (!draft.blob) { urls.push(draft.url); continue; }
         const path = `${user.id}/${Date.now()}-${i}.jpg`;
-        const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
+        const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, draft.blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
         if (upErr) throw upErr;
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);
         urls.push(pub.publicUrl);
@@ -292,8 +385,7 @@ export default function CreateListingPage() {
     try {
       const composedNotes = condition ? `${condition}. ${conditionNotes.trim()}` : conditionNotes.trim();
       const stateName = states.find((s) => s.id === stateId)?.name ?? null;
-      const { error: insErr } = await sdb.from("marketplace_listings").insert({
-        seller_id: seller.id,
+      const payload = {
         category_id: categoryId,
         title: title.trim(),
         description: description.trim(),
@@ -307,8 +399,16 @@ export default function CreateListingPage() {
         image_url: urls[0],
         gallery_urls: urls.slice(1),
         status: "pending_review",
-      });
-      if (insErr) throw insErr;
+      };
+      // Resubmitting a rejected/delisted/pending listing is a direct UPDATE
+      // (no RPC — the seller UPDATE policy + guard_seller_listing_edits own
+      // this), never an insert; seller_id/quantity_sold/reviewed_by are
+      // never touched, and status is always exactly 'pending_review', never
+      // 'live' — only BundledMum can do that.
+      const { error: writeErr } = isEditMode
+        ? await sdb.from("marketplace_listings").update(payload).eq("id", editId as string)
+        : await sdb.from("marketplace_listings").insert({ ...payload, seller_id: seller.id });
+      if (writeErr) throw writeErr;
       setBusy(false); setDone(true);
     } catch (e) {
       setBusy(false);
@@ -326,24 +426,42 @@ export default function CreateListingPage() {
         setRecovery({ labels, keys });
         return;
       }
-      // Any other database error is not meant for a seller to see raw (it can
-      // name a table, column or constraint) — a specific, known pattern is
-      // handled above; anything else gets a generic message, real detail logged.
-      setError(genericErrorMessage("create listing", e));
+      // A known listing-edit rejection (should not normally be reachable,
+      // this form only opens for rejected/delisted/pending listings, but
+      // handled defensively regardless) — never raw, anything else unknown
+      // falls through to the generic message with the real detail logged.
+      const known = parseListingEditError(msg);
+      setError(known || genericErrorMessage(isEditMode ? "edit listing" : "create listing", e));
     }
   }
 
-  if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
+  if (loading || (isEditMode && existingLoading)) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
-  // S3c awaiting review
+  // Edit mode: not found, not this seller's, or already redirected away
+  // (live/sold) — the redirect effect above will navigate, this is just the
+  // frame shown for the instant before that happens, and the genuine
+  // not-found case (bad id, or listing belongs to someone else).
+  if (isEditMode && !existingLoading && (!existingListing || existingListing.status === "live" || existingListing.status === "sold")) {
+    return (
+      <div className="mkt-center">
+        <div className="mkt-empty-title">Listing not found</div>
+        <div className="mkt-empty-sub">It may not exist, or cannot be edited from here.</div>
+        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
+      </div>
+    );
+  }
+
+  // S3c awaiting review / resubmitted (design 21a E6)
   if (done) {
     return (
       <div className="mkt-success">
         <div className="inner">
           <div className="check">✓</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <h1>Well done, it is with our team</h1>
-            <p>Your item is not live yet. Someone from BundledMum is checking the photos and details, usually within a few hours. We will let you know the moment it is approved.</p>
+            <h1>{isEditMode ? "Sent back for review" : "Well done, it is with our team"}</h1>
+            <p>{isEditMode
+              ? "Your changes are with our team now, usually reviewed within a few hours. It is not live yet, we will let you know either way."
+              : "Your item is not live yet. Someone from BundledMum is checking the photos and details, usually within a few hours. We will let you know the moment it is approved."}</p>
           </div>
           <div className="mkt-timeline">
             <div className="mkt-tl"><span className="d done">✓</span><span>Listing received</span></div>
@@ -369,20 +487,35 @@ export default function CreateListingPage() {
     );
   }
 
+  // Three distinct labels per status (design 21a E1), so the scope of the
+  // edit is obvious before the form even loads.
+  const pageTitle = !isEditMode ? "List an item"
+    : existingListing?.status === "rejected" ? "Fix and resend"
+    : "Edit listing";
+
   return (
     <>
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">
             <button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button>
-            <h1 style={{ flex: 1 }}>List an item</h1>
+            <h1 style={{ flex: 1 }}>{pageTitle}</h1>
           </div>
           <div className="mkt-prog"><i style={{ width: `${progress}%` }} /></div>
-          <p className="sub">Buyers cannot ask questions, so tell them everything here.</p>
+          <p className="sub">{isEditMode ? "Changes go back through review before this listing can be live again." : "Buyers cannot ask questions, so tell them everything here."}</p>
         </div>
       </div>
 
       <div className="mkt-sell-body">
+        {/* Rejection reason leads (design 21a E5), the seller is here
+            specifically to fix what this says. */}
+        {isEditMode && existingListing?.status === "rejected" && existingListing.rejection_reason && (
+          <div className="mkt-rejectbanner">
+            <div className="head"><span className="ic">i</span><span>What our team said</span></div>
+            <p>{existingListing.rejection_reason}</p>
+          </div>
+        )}
+
         <div className="mkt-field">
           <div className="mkt-field-head">
             <span className="lbl">Photos</span>
@@ -559,8 +692,8 @@ export default function CreateListingPage() {
       </div>
 
       <div className="mkt-sell-foot">
-        <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : "Send for review"}</button>
-        <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : "Our team checks every listing before it goes live"}</div>
+        <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : isEditMode ? "Resend for review" : "Send for review"}</button>
+        <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : isEditMode ? "Goes back to our review queue, not straight live" : "Our team checks every listing before it goes live"}</div>
       </div>
 
       {/* Server-side rejection recovery (design C4). Client validation should always

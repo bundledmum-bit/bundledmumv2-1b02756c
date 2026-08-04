@@ -194,7 +194,10 @@ export default function SellerDashboardPage() {
                             <span className="mkt-st rejected">Not approved</span>
                           </div>
                           {l.rejection_reason && <div className="mkt-reject">{l.rejection_reason}. Fix this and send it back to us.</div>}
-                          <button className="mkt-secondary" onClick={() => navigate("/sell/new")}>Fix and resend</button>
+                          {/* Fixes the actual problem this whole pass was for: this used to
+                              open a blank new-listing form, a rejected seller had no way to
+                              edit at all (design 21a E1, "Fix listing"). */}
+                          <button className="mkt-secondary" onClick={() => navigate(`/sell/listings/${l.id}/edit`)}>Fix and resend</button>
                         </div>
                       );
                     }
@@ -214,14 +217,38 @@ export default function SellerDashboardPage() {
                           </div>
                           {canRelist ? (
                             <>
-                              <div className="meta" style={{ color: "var(--mkt-muted)" }}>You took this down. You can put it back up, it goes through review again first.</div>
-                              <button className="mkt-secondary" onClick={() => { setRelistError(null); setRelistTarget(l); }}>Put it back up</button>
+                              <div className="meta" style={{ color: "var(--mkt-muted)" }}>You took this down. Put it back up as-is, or edit it first, either way it goes through review again.</div>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => { setRelistError(null); setRelistTarget(l); }}>Put it back up</button>
+                                <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => navigate(`/sell/listings/${l.id}/edit`)}>Edit &amp; resubmit</button>
+                              </div>
                             </>
                           ) : (
                             <>
                               <div className="mkt-reject">{adminRemoved ? "BundledMum removed this listing. You cannot put this one back yourself." : "This listing is off the marketplace. You cannot put this one back yourself."} Message us if you think it should return.</div>
                               <a className="mkt-secondary" style={{ textAlign: "center", textDecoration: "none", display: "block" }} href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, about my delisted listing "${l.title}".`)}`} target="_blank" rel="noreferrer">Ask us about it</a>
                             </>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    if (g.key === "live" || g.key === "pending_review") {
+                      return (
+                        <div className="mkt-lrow" key={l.id}>
+                          <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                            <div className="meta">{meta}</div>
+                          </div>
+                          <span className={`mkt-st ${g.pill}`}>{g.label}</span>
+                          {/* Distinct button label per status (design 21a E1), so the scope of
+                              each edit is obvious before it is even opened: a live listing only
+                              opens the price-only screen, everything else opens the full form. */}
+                          {g.key === "live" ? (
+                            <button className="mkt-lrow-action" onClick={() => navigate(`/sell/listings/${l.id}/price`)}>Lower price</button>
+                          ) : (
+                            <button className="mkt-lrow-action" onClick={() => navigate(`/sell/listings/${l.id}/edit`)}>Edit</button>
                           )}
                         </div>
                       );

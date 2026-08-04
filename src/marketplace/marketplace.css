@@ -626,6 +626,20 @@
 .mkt-notes-nudge .ic { flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-coral-dark); color: var(--mkt-cream); font: 800 10px/16px 'Nunito', sans-serif; text-align: center; }
 .mkt-notes-nudge span:last-child { font: 400 11.5px/1.5 'Lato', sans-serif; color: #8C4A34; }
 
+/* Per-status listing-edit action, live/pending_review rows on the dashboard
+   (design 21a E1) — a small, quiet chip button, distinct from the row's own
+   click target since these rows are not otherwise clickable. */
+.mkt-lrow-action { flex: 0 0 auto; background: #fff; border: 1px solid var(--mkt-input-border); color: var(--mkt-green); font: 800 11px/1 'Nunito', sans-serif; padding: 7px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.mkt-lrow-action:hover { border-color: var(--mkt-green); }
+
+/* Rejection reason banner, leads a rejected listing's edit form (design
+   21a E5) — this is exactly what the seller is here to fix. */
+.mkt-rejectbanner { background: var(--mkt-coral-light); border: 1.5px solid var(--mkt-coral); border-radius: 13px; padding: 13px; display: flex; flex-direction: column; gap: 6px; }
+.mkt-rejectbanner .head { display: flex; align-items: center; gap: 8px; }
+.mkt-rejectbanner .head .ic { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; background: var(--mkt-coral-dark); color: var(--mkt-cream); font: 800 11px/18px 'Nunito', sans-serif; text-align: center; }
+.mkt-rejectbanner .head span:last-child { font: 800 13.5px/1.2 'Nunito', sans-serif; color: #8C4A34; }
+.mkt-rejectbanner p { margin: 0; font: 400 13px/1.5 'Lato', sans-serif; color: #3D3936; }
+
 /* Required/optional pill on a category question (design 16a), reusing the coral
    and neutral-grey chip colours already used site-wide, never the availability
    green so it cannot be mistaken for stock state. */

@@ -10,6 +10,7 @@ import BecomeSellerPage from "./sell/BecomeSellerPage";
 import SellerSetupPage from "./sell/SellerSetupPage";
 import CreateListingPage from "./sell/CreateListingPage";
 import SellerDashboardPage from "./sell/SellerDashboardPage";
+import SellerPriceEditPage from "./sell/SellerPriceEditPage";
 import SellerOrderDetailPage from "./sell/SellerOrderDetailPage";
 import SellerDispatchPage from "./sell/SellerDispatchPage";
 import SellerPayoutsPage from "./sell/SellerPayoutsPage";
@@ -56,6 +57,8 @@ export default function MarketplaceApp() {
             <Route path="/sell" element={<BecomeSellerPage />} />
             <Route path="/sell/setup" element={<SellerSetupPage />} />
             <Route path="/sell/new" element={<CreateListingPage />} />
+            <Route path="/sell/listings/:id/edit" element={<CreateListingPage />} />
+            <Route path="/sell/listings/:id/price" element={<SellerPriceEditPage />} />
             <Route path="/sell/dashboard" element={<SellerDashboardPage />} />
             <Route path="/sell/payouts" element={<SellerPayoutsPage />} />
             <Route path="/sell/orders/:orderId" element={<SellerOrderDetailPage />} />

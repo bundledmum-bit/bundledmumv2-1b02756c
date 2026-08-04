@@ -2244,6 +2244,92 @@ credentials for (buyer/seller magic-link, admin password) — confirmed by
 build + typecheck + code review only. Listing detail's step 6 and checkout's
 4th tick ARE both verified live (screenshots, no console errors).
 
+### Seller listing edit, status-aware (design 21a)
+Sellers previously could not edit a listing at all after submitting — the
+rejection email tells them to fix and resend, and "Fix and resend" on the
+dashboard actually opened a blank new-listing form. That is the bug this
+pass fixes.
+
+Backend was already deployed (no migrations this pass): a "Seller updates
+own listing" UPDATE policy on `marketplace_listings`, plus the
+`guard_seller_listing_edits` trigger enforcing, per status:
+- **`live`**: `price_naira` may only be lowered, nothing else may change
+  (a content change bundled into the same update that also delists it is
+  blocked, so edited content can never sneak back up without review).
+- **`rejected` / `delisted` / `pending_review`**: anything editable, status
+  may only move within that same trio or to `pending_review`.
+- **`sold`**: nothing editable.
+- **Never, any state**: a seller cannot set `status = 'live'` (only admin
+  review does that), nor touch `quantity_sold`, `seller_id`, `reviewed_by`.
+Traced the trigger's actual SQL (not just the prompt's summary) to confirm
+this precisely, including one detail worth flagging: the trigger does not
+itself restrict what `new.status` a seller can set FROM `live` (only price
+and content), which is exactly what makes a plain `{ status: 'delisted' }`
+update — no RPC — the correct, working mechanism for delist-then-edit;
+`track_marketplace_delisting` auto-stamps `delisted_by = 'seller'` on that
+transition. `enforce_required_category_fields` (the existing "Missing
+required details" trigger) fires on UPDATE too whenever status moves into
+`pending_review`, confirmed a resubmit is validated exactly like a fresh
+submission.
+
+**What was built:**
+- **`CreateListingPage.tsx`** now handles both create (`/sell/new`, no
+  `:id`, unchanged behaviour) and full edit (`/sell/listings/:id/edit`) —
+  the design's own instruction was "full create-listing form reused as-is",
+  so this is the same component and JSX, not a duplicate file. Edit mode
+  fetches the existing listing (own listings only, redirects away for
+  `live`/`sold`), pre-fills every field including category answers,
+  reverse-maps the `condition` enum back to its chip label and strips the
+  `"{Label}. "` prefix create-listing composes onto `condition_notes` (new
+  `stripConditionPrefix` in `sellData.ts`) so the notes field shows just the
+  seller's own text, and resolves `location_state`'s name back to a
+  `stateId` for the dependent selects. Existing photos carry over without
+  re-uploading (`PhotoDraft.blob` null vs a newly added one); only new
+  photos go through the compress/upload pipeline, order preserved so the
+  first stays the cover. Submit does a direct `UPDATE` (never an RPC) with
+  `status: 'pending_review'` always, never `seller_id`/`quantity_sold`/
+  `reviewed_by`/`final_price_naira`/`markup_percent`. The rejection reason
+  shows as a prominent banner at the top for a `rejected` listing. Success
+  screen text differs for edit ("Sent back for review... not live yet")
+  from create.
+- **New `SellerPriceEditPage.tsx`** (`/sell/listings/:id/price`) — the
+  live-only price screen: current price struck through, new price input,
+  live buyer-price preview, the rest of the listing shown dimmed with a
+  plain-language "locked while live" explanation, a "Delist it first" link
+  always present (not just when blocked). Raising the price is caught
+  client-side (button disabled, red inline message, an extra "Delist and
+  edit fully" box) and the same database rejection is handled the same way
+  if it ever slips through — `parseListingEditError` (new, `sellData.ts`)
+  passes the three known trigger messages through as human copy, never raw.
+- **Delist-then-edit**: a confirm sheet (this app's existing
+  `.mkt-sheet-overlay` pattern) reachable from both the plain and blocked
+  states on the price-edit screen, honest that it delists immediately and
+  needs review again, then navigates straight into the full edit for that
+  now-delisted listing.
+- **Dashboard** (`SellerDashboardPage.tsx`): three distinct action labels
+  per status group, per the design — "Lower price" (live, new), "Fix and
+  resend" (rejected, now actually goes to the listing being edited instead
+  of a blank form), "Edit & resubmit" (delisted+seller-owned, new, sits
+  alongside the existing "Put it back up" relist-as-is action, doesn't
+  replace it), "Edit" (pending_review, new). Sold rows unchanged, no action.
+
+**Tested against the database directly**: temporarily set a real live
+listing (`8c20a4c1-04c4-4e86-bbcc-d4f2f816e2f8`, "Baby christening/Newborn
+shoe") to `status = 'rejected'` with a `rejection_reason`, confirmed the
+exact field shapes and reverse-mapping logic the edit form depends on
+against that real row (condition/condition_notes prefix strip, location
+state name → id lookup all checked out), then **reverted it to its original
+`status = 'live'`, `rejection_reason = null`** — confirmed by re-reading the
+row after revert. **Could not complete a full browser walkthrough**: no
+active seller session exists in this environment and there are no
+credentials to receive the passwordless magic-link email, same limitation
+as every other authenticated page this session. So: verified by tracing the
+real trigger SQL, verified real data shapes against the code's
+expectations, build + typecheck pass — not verified by clicking through the
+UI as a logged-in seller. Worth a human walkthrough before calling this
+fully done: rejected → edit → resubmit → pending_review, and live → lower
+price / delist → edit → resubmit.
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

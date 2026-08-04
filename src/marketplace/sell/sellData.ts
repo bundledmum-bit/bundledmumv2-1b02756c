@@ -335,6 +335,43 @@ export function previewDisplayName(legalFirstName: string, legalLastName: string
 }
 
 /**
+ * Strips the "{Condition label}. " prefix that create-listing composes onto
+ * condition_notes on submit (see submit() in CreateListingPage.tsx), so
+ * editing an existing listing shows the seller just their own free text
+ * back in the notes field, not the label duplicated inside it. Returns the
+ * notes unchanged if they do not start with that exact prefix (e.g. an
+ * older listing saved before this composition existed).
+ */
+export function stripConditionPrefix(conditionLabel: string, notes: string): string {
+  const prefix = `${conditionLabel}. `;
+  return notes.startsWith(prefix) ? notes.slice(prefix.length) : notes;
+}
+
+/**
+ * Parses the listing-edit rejections guard_seller_listing_edits can raise.
+ * All three are already written as human copy in the database, so this just
+ * confirms the message matches a known shape and passes it through as-is
+ * (never a raw, unrecognised error). Returns null for anything else, which
+ * the caller shows through genericErrorMessage instead.
+ */
+export function parseListingEditError(message: string): string | null {
+  const raw = message || "";
+  if (/can lower the price of a live listing/i.test(raw)) {
+    return "You can lower the price of a live listing, but not raise it. Delist it first if you need to change the price upward.";
+  }
+  if (/delist this listing first, then edit it/i.test(raw)) {
+    return "To change anything other than lowering the price, delist this listing first, then edit it. It will need reviewing again before it goes back up.";
+  }
+  if (/sold listing cannot be edited/i.test(raw)) {
+    return "A sold listing cannot be edited.";
+  }
+  if (/only bundledmum can put a listing live/i.test(raw)) {
+    return "Only BundledMum can put a listing live. Submit it for review instead.";
+  }
+  return null;
+}
+
+/**
  * Parses the database's legal-name-lock rejection ('Your legal name cannot
  * be changed once set. Message BundledMum if it needs correcting.') into a
  * clear message with an obvious next step. Returns null for any other
