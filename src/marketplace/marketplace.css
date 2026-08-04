@@ -1248,3 +1248,69 @@
 .mkt-policy-seealso a { color: var(--mkt-green-dark); font-weight: 700; }
 
 .mkt-policy-cookie-pill { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mkt-green-dark); background: var(--mkt-green-light); padding: 4px 8px; border-radius: 20px; display: inline-block; margin-top: 6px; }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Condition questions (design 25a): content-sized pill chips, one calm card
+   per question, a step count on mobile, a genuine two-column grid plus a
+   sticky "so far" summary rail on desktop. Same six questions/copy/options
+   as before, layout only.
+   ─────────────────────────────────────────────────────────────────────── */
+.mkt-condition-block { display: flex; flex-direction: column; gap: 12px; }
+
+.mkt-condition-head { display: flex; flex-direction: column; gap: 8px; }
+.mkt-condition-head-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mkt-condition-head-top h3 { font: 900 18px/1 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; color: var(--mkt-black); }
+.mkt-condition-count { font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green-dark); background: var(--mkt-green-light); padding: 5px 9px; border-radius: 999px; white-space: nowrap; flex: 0 0 auto; }
+.mkt-condition-bar { height: 4px; border-radius: 2px; background: var(--mkt-grey-chip); overflow: hidden; }
+.mkt-condition-bar i { display: block; height: 100%; background: var(--mkt-green); border-radius: 2px; transition: width 0.25s ease; }
+.mkt-condition-sub { display: none; }
+
+.mkt-condition-grid { display: flex; flex-direction: column; gap: 12px; }
+.mkt-condition-col { display: contents; }
+
+.mkt-condition-q { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 13px 14px; display: flex; flex-direction: column; gap: 9px; }
+.mkt-condition-q.invalid { border-color: var(--mkt-error); }
+.mkt-condition-q-label { display: flex; align-items: center; gap: 8px; }
+.mkt-condition-q-label .q { font: 800 13.5px/1.3 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-condition-check { width: 18px; height: 18px; border-radius: 50%; flex: 0 0 18px; border: 1.5px solid #C9B7AD; font: 700 10.5px/18px 'Lato', sans-serif; text-align: center; color: #fff; }
+.mkt-condition-check.on { background: var(--mkt-green); border-color: var(--mkt-green); }
+.mkt-condition-hint { font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-coral-dark); padding-left: 26px; }
+
+.mkt-condition-chips { display: flex; flex-wrap: wrap; gap: 7px; padding-left: 26px; }
+.mkt-condition-chips .mkt-chip { flex: 0 0 auto; white-space: normal; max-width: 100%; padding: 8px 12px; border-radius: 999px; font-size: 12px; }
+
+.mkt-condition-followup { padding-left: 26px; position: relative; }
+.mkt-condition-followup::before { content: ""; position: absolute; left: 9px; top: -9px; bottom: 8px; width: 2px; background: #BFDECB; border-radius: 1px; }
+.mkt-condition-followup-body { padding-left: 17px; display: flex; flex-direction: column; gap: 4px; }
+.mkt-condition-followup-label { font: 700 10.5px/1 'Lato', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mkt-coral-dark); }
+.mkt-condition-followup-label .req { color: var(--mkt-error); }
+
+.mkt-condition-summary { display: none; }
+
+@media (min-width: 1024px) {
+  .mkt-condition-head-top h3 { font-size: 26px; }
+  .mkt-condition-count::after { content: " answered"; }
+  .mkt-condition-sub { display: block; font: 400 13.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+  .mkt-condition-bar { display: none; }
+
+  .mkt-condition-grid { display: grid; grid-template-columns: 1fr 1fr 280px; gap: 24px; align-items: start; }
+  .mkt-condition-col { display: flex; flex-direction: column; gap: 16px; }
+  .mkt-condition-q { padding: 18px 20px; gap: 11px; border-radius: 16px; }
+  .mkt-condition-q-label { gap: 9px; }
+  .mkt-condition-q-label .q { font-size: 15px; }
+  .mkt-condition-check { width: 20px; height: 20px; flex: 0 0 20px; font-size: 11px; line-height: 20px; }
+  .mkt-condition-hint, .mkt-condition-chips, .mkt-condition-followup { padding-left: 29px; }
+  .mkt-condition-chips .mkt-chip { font-size: 13px; padding: 9px 14px; }
+
+  .mkt-condition-summary { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 20px; background: var(--mkt-green-light); border-radius: 16px; padding: 18px; }
+  .mkt-condition-summary .lbl { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mkt-green-dark); }
+  .mkt-condition-summary-list { display: flex; flex-direction: column; gap: 9px; }
+  .mkt-condition-summary-row { display: flex; gap: 8px; align-items: flex-start; }
+  .mkt-condition-summary-row .dot { width: 15px; height: 15px; border-radius: 50%; flex: 0 0 15px; border: 1.5px solid #8FB6A2; font: 700 9px/15px 'Lato', sans-serif; text-align: center; color: #fff; }
+  .mkt-condition-summary-row .dot.on { background: var(--mkt-green); border-color: var(--mkt-green); }
+  .mkt-condition-summary-row .a { font: 700 11.5px/1.3 'Lato', sans-serif; color: var(--mkt-green-dark); }
+  .mkt-condition-summary-row .a.muted { font-weight: 400; color: #5C7C6D; }
+  .mkt-condition-summary-row .d { font: 400 11px/1.4 'Lato', sans-serif; color: #3D6B54; margin-top: 2px; }
+  .mkt-condition-summary .rule { height: 1px; background: #BFDECB; }
+  .mkt-condition-summary .note { font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); margin: 0; }
+}

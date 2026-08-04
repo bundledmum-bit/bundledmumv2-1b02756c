@@ -335,6 +335,16 @@ export default function CreateListingPage() {
     });
   }
 
+  /** How many of the six condition questions are genuinely done (an option
+   * picked, and its follow-up filled in if that option needs one) — drives
+   * the step count pill, progress bar, and the desktop summary rail. */
+  const conditionAnsweredCount = conditionQuestions.filter((q) => {
+    const v = conditionAnswers[q.question_key];
+    if (!v) return false;
+    if (q.followup_required_for.includes(v)) return !!conditionAnswers[`${q.question_key}_detail`]?.trim();
+    return true;
+  }).length;
+
   /** condition_answers payload: only questions actually answered, plus their
    * follow-up detail when one was given. The database derives condition_notes
    * from this itself once it is non-empty; this form never writes
@@ -681,19 +691,58 @@ export default function CreateListingPage() {
             </div>
           </div>
 
-          <div ref={conditionQuestionsRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {conditionQuestions.map((q) => (
-              <ConditionQuestionField
-                key={q.id}
-                question={q}
-                value={conditionAnswers[q.question_key]}
-                detail={conditionAnswers[`${q.question_key}_detail`]}
-                invalid={conditionInvalidKeys.has(q.question_key)}
-                onChange={(v) => setConditionAnswer(q.question_key, v)}
-                onDetailChange={(v) => setConditionAnswer(`${q.question_key}_detail`, v)}
-                setRef={(el) => { conditionFieldRefs.current[q.question_key] = el; }}
-              />
-            ))}
+          <div ref={conditionQuestionsRef} className="mkt-condition-block">
+            <div className="mkt-condition-head">
+              <div className="mkt-condition-head-top">
+                <h3>Tell us the condition</h3>
+                <span className="mkt-condition-count">{conditionAnsweredCount} of {conditionQuestions.length}</span>
+              </div>
+              <div className="mkt-condition-bar"><i style={{ width: `${conditionQuestions.length ? (conditionAnsweredCount / conditionQuestions.length) * 100 : 0}%` }} /></div>
+              <p className="mkt-condition-sub">Buyers cannot ask you anything before they pay, so say it now or they find out when the parcel opens.</p>
+            </div>
+
+            <div className="mkt-condition-grid">
+              {[conditionQuestions.slice(0, 3), conditionQuestions.slice(3)].map((half, i) => (
+                <div className="mkt-condition-col" key={i}>
+                  {half.map((q) => (
+                    <ConditionQuestionField
+                      key={q.id}
+                      question={q}
+                      value={conditionAnswers[q.question_key]}
+                      detail={conditionAnswers[`${q.question_key}_detail`]}
+                      invalid={conditionInvalidKeys.has(q.question_key)}
+                      onChange={(v) => setConditionAnswer(q.question_key, v)}
+                      onDetailChange={(v) => setConditionAnswer(`${q.question_key}_detail`, v)}
+                      setRef={(el) => { conditionFieldRefs.current[q.question_key] = el; }}
+                    />
+                  ))}
+                </div>
+              ))}
+
+              {/* Desktop only (CSS-hidden on mobile): a live-updating recap of
+                  every answer so far, so the eye has somewhere to land instead
+                  of a bare progress bar. Same data the form already holds. */}
+              <aside className="mkt-condition-summary">
+                <div className="lbl">So far</div>
+                <div className="mkt-condition-summary-list">
+                  {conditionQuestions.map((q) => {
+                    const v = conditionAnswers[q.question_key];
+                    const detail = conditionAnswers[`${q.question_key}_detail`]?.trim();
+                    return (
+                      <div className="mkt-condition-summary-row" key={q.id}>
+                        <span className={v ? "dot on" : "dot"}>{v ? "✓" : ""}</span>
+                        <div>
+                          <div className={v ? "a" : "a muted"}>{v || q.label}</div>
+                          {detail && <div className="d">{detail}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="rule" />
+                <p className="note">This becomes the condition text buyers read on the listing. Answer honestly, they can't ask you anything before they pay.</p>
+              </aside>
+            </div>
           </div>
           <div className="mkt-help">Do not add a phone number or way to contact you.</div>
         </div>
@@ -907,25 +956,34 @@ function ConditionQuestionField({ question, value, detail, invalid, onChange, on
 }) {
   const needsDetail = !!value && question.followup_required_for.includes(value);
   const detailMissing = invalid && needsDetail && !detail?.trim();
+  const answered = !!value && !detailMissing;
   return (
-    <div ref={setRef} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span className="mkt-uplabel" style={invalid ? { color: "var(--mkt-error)" } : undefined}>{question.label}</span>
-      <div className={invalid && !value ? "mkt-chips error" : "mkt-chips"} style={{ flexWrap: "wrap" }}>
+    <div ref={setRef} className={invalid ? "mkt-condition-q invalid" : "mkt-condition-q"}>
+      <div className="mkt-condition-q-label">
+        <span className={answered ? "mkt-condition-check on" : "mkt-condition-check"}>{answered ? "✓" : ""}</span>
+        <span className="q">{question.label}</span>
+      </div>
+      {question.help_text && <span className="mkt-condition-hint">{question.help_text}</span>}
+      <div className="mkt-condition-chips">
         {question.options.map((o) => (
           <button key={o} type="button" className={value === o ? "mkt-chip on" : "mkt-chip"} onClick={() => onChange(o)}>{o}</button>
         ))}
       </div>
-      {question.help_text && <div className="mkt-help">{question.help_text}</div>}
       {needsDetail && (
-        <input
-          className={detailMissing ? "mkt-input error" : "mkt-input"}
-          value={detail || ""}
-          onChange={(e) => onDetailChange(e.target.value)}
-          placeholder={question.followup_placeholder || `Add ${(question.followup_label || "detail").toLowerCase()}`}
-        />
+        <div className="mkt-condition-followup">
+          <div className="mkt-condition-followup-body">
+            <span className="mkt-condition-followup-label">{question.followup_label || "Tell us more"}<span className="req"> *</span></span>
+            <input
+              className={detailMissing ? "mkt-input error" : "mkt-input"}
+              value={detail || ""}
+              onChange={(e) => onDetailChange(e.target.value)}
+              placeholder={question.followup_placeholder || `Add ${(question.followup_label || "detail").toLowerCase()}`}
+            />
+          </div>
+        </div>
       )}
       {invalid && (
-        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5 }}>
+        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5, paddingLeft: 26 }}>
           <span style={{ fontWeight: 800 }}>!</span>
           {detailMissing ? (question.followup_label || "This detail is needed.") : "This is required. Buyers cannot ask before buying."}
         </div>

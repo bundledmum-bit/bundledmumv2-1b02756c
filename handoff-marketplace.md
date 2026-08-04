@@ -165,7 +165,60 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — policy "Last updated" date is admin editable, no longer hardcoded
+### This pass — condition questions, layout fix only (design 25a)
+`CreateListingPage.tsx` + `marketplace.css` only. Same six questions, same
+copy, same chip options and follow-ups as before, purely a visual rework —
+no fields added, removed, or renamed, `condition_answers` still built the
+same way.
+- **Root cause fixed:** every chip in a row was `flex: 1`, forcing equal
+  width regardless of text length, so long options ("Used a few times",
+  "Small marks, shown in the photos") wrapped across 2-3 lines while short
+  ones ("None at all") sat oversized next to them. Chips inside a condition
+  question now size to their own content (`flex: 0 0 auto`, wrap onto a new
+  row via `flex-wrap` on the row, individually wrap internally via
+  `white-space: normal` only if a single option is too long for the row on
+  its own) — scoped under `.mkt-condition-chips .mkt-chip` so every OTHER
+  `.mkt-chip` usage in the app (the condition picker, category yes/no,
+  browse filters, the negotiability toggle) is untouched.
+- **Each question is now its own card** (`.mkt-condition-q`): a check
+  circle that fills green once genuinely answered (main option chosen, and
+  its follow-up filled in if that option needs one), the question label,
+  an optional coral hint line, the chip row, and — when triggered — a
+  follow-up text field connected back to the label with a thin vertical
+  line rather than reading as a separate, unrelated field.
+  `ConditionQuestionField` (the shared component both create and edit use)
+  was rewritten to render this structure; the six questions' data and
+  validation logic (`missingConditionAnswers`, `buildConditionAnswers`)
+  are untouched.
+- **Mobile**: a lightweight header replaces the plain label — "Tell us the
+  condition", a step-count pill ("N of 6"), and a thin progress bar, both
+  driven by a new `conditionAnsweredCount` derived value (counts a question
+  as done only when its follow-up, if required, is also filled in — not
+  just the main chip clicked). All six questions still render in one
+  scrollable column, in order, exactly as before — no pagination, no
+  hidden questions, per the original brief's own scope (layout only).
+- **Desktop (≥1024px)**: a genuine composition, not the mobile column
+  stretched wide. `.mkt-condition-grid` becomes a
+  `grid-template-columns: 1fr 1fr 280px` — two columns of three questions
+  each (split via a plain array slice, `conditionQuestions.slice(0,3)` /
+  `.slice(3)`, since the six are fixed) — plus a third, sticky "So far"
+  summary rail recapping every answer live (a green tick or empty dot per
+  question, the chosen option, and any follow-up detail typed), reading
+  directly off the same `conditionAnswers` state, no separate data source
+  to drift out of sync. Below 1024px the same DOM collapses to the single
+  mobile column via `.mkt-condition-col { display: contents }` (the same
+  pattern already used for the desktop split elsewhere in this app), the
+  summary rail hidden, the header's step count gains "answered" via a CSS
+  `::after` so no extra JSX branching was needed for that one word.
+- **Could not click through live**: `CreateListingPage.tsx` is seller-login
+  gated and redirects with a full-page `window.location.assign` the
+  instant it detects no session, which this environment cannot follow (no
+  seller credentials available, same limitation noted for this exact page
+  throughout this handoff). Verified instead by `npx tsc --noEmit` (clean),
+  `npm run build` (passes), and a careful structural re-read of the final
+  JSX/CSS against the approved design file section by section.
+
+### Earlier this branch line — policy "Last updated" date is admin editable, no longer hardcoded
 The `POLICY_LAST_UPDATED` constant (`policySettings.ts`, was `"1 August
 2026"`, already stale against the live setting's `"04 August 2026"`) is
 **removed entirely** — grepped the whole marketplace tree afterward to
