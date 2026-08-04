@@ -165,7 +165,43 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — buyer negotiation copy renamed from "offer" to "ask for a lower price"
+### This pass — checkout drops the Paystack-fee hedging, all figures verified exact
+Copy-only, `CheckoutPage.tsx` only. The §"checkout shows Paystack fee as an
+ESTIMATE" entry further down this file documented the original reasoning
+(dashboard fee-passing meant our number could differ from what Paystack
+actually charged by rounding); that has now been verified to match exactly,
+so the hedging language is no longer accurate. Nothing about how any figure
+is calculated changed, this is wording only, and the underlying
+`fee_added_by_paystack` branching (merchant-absorbs vs buyer-pays-fee) is
+untouched.
+- **Pay button**: `Pay ${formatNaira(paystackTotal)}` — the `about ` prefix
+  is gone entirely, not conditional on anything anymore.
+- **Fee line**: label "Paystack fee" (was "Payment fee"), sub-line "Payment
+  process fee by paystack" (was "Estimated, added by Paystack" — new wording
+  used verbatim as given, including its lowercase "paystack").
+- **Total line**: label normalised to "Total" (was "You will be charged" in
+  this branch only) so both the fee-added and fee-absorbed branches read the
+  same now that neither hedges. Both amounts lost their "about " prefix.
+- **Removed**: the info line "Paystack adds its fee at the point of payment,
+  so the amount on the next page may differ by a naira or two. That is
+  normal." — this was the one other place on checkout describing the total
+  as subject to change; nothing else matched a grep for
+  estimat/approx/about/may differ/subject to change across the whole
+  `checkout/` folder.
+- **Kept, reworded**: one quiet `.mkt-help` line in the same spot, no icon,
+  no box: *"This fee is set by Paystack, not BundledMum, so it may change if
+  their rates do."* — still true regardless of the estimate/exact question,
+  since Paystack's own rates are genuinely outside BundledMum's control.
+- **Verified live**, not just built: created a real guest order end to end
+  (name/phone/email → order created → `marketplace-initialize-payment`
+  called for real), breakdown rendered "Paystack fee ₦151 / Payment process
+  fee by paystack", "Total ₦3,351", pay button "Pay ₦3,351", the quiet
+  Paystack-rates line present, zero app console errors (only the sandbox's
+  known Vite HMR websocket warning). The test order and the guest customer
+  row it created were deleted afterward, confirmed via a follow-up read.
+- `npx tsc --noEmit` and `npm run build` both pass.
+
+### Earlier this branch line — buyer negotiation copy renamed from "offer" to "ask for a lower price"
 Copy-only pass, no identifiers, routes, DB columns or RPCs touched. Landed at
 "Ask for a lower price" instead of the earlier-planned "Negotiate price" —
 that rename was started in a prior pass but **stopped after the design was

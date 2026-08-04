@@ -179,8 +179,9 @@ export default function CheckoutPage() {
   const itemPrice = order ? Number(order.item_price_naira ?? 0) : negotiatedPrice ?? Number(listing?.final_price_naira ?? 0);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
-  // Paystack adds its own fee at payment time (dashboard fee-passing is on), so the
-  // fee and total are estimates. When it is off, the total is exact.
+  // Whether Paystack's own fee is passed to the buyer (dashboard fee-passing
+  // is on) or absorbed by BundledMum. Figures are server-computed either way
+  // and verified to match what Paystack actually charges, not an estimate.
   const feeAdded = payQ.data ? payQ.data.fee_added_by_paystack !== false : true;
   const transferTotal = itemPrice + serviceFee;
 
@@ -280,9 +281,9 @@ export default function CheckoutPage() {
                 </>
               ) : feeAdded ? (
                 <>
-                  <div className="line"><div><span>Payment fee</span><div className="sub">Estimated, added by Paystack</div></div><b>about {formatNaira(paymentFee)}</b></div>
+                  <div className="line"><div><span>Paystack fee</span><div className="sub">Payment process fee by paystack</div></div><b>{formatNaira(paymentFee)}</b></div>
                   <div className="rule" />
-                  <div className="total"><span>You will be charged</span><b>about {formatNaira(paystackTotal)}</b></div>
+                  <div className="total"><span>Total</span><b>{formatNaira(paystackTotal)}</b></div>
                 </>
               ) : (
                 <>
@@ -293,10 +294,7 @@ export default function CheckoutPage() {
             </div>
 
             {!showDetailsForm && payQ.data && feeAdded && (
-              <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
-                <span>ℹ️</span>
-                <span>Paystack adds its fee at the point of payment, so the amount on the next page may differ by a naira or two. That is normal.</span>
-              </div>
+              <div className="mkt-help">This fee is set by Paystack, not BundledMum, so it may change if their rates do.</div>
             )}
 
             {/* Buyer details, required before we create the order and take payment.
@@ -410,7 +408,7 @@ export default function CheckoutPage() {
         <div className="mkt-sell-foot">
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
-            {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${feeAdded ? "about " : ""}${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
+            {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
           </button>
           <div className="helper">Card, transfer or USSD on Paystack</div>
         </div>
