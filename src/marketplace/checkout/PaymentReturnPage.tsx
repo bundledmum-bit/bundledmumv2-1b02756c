@@ -121,7 +121,7 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
           <h1>Paid, and your money is safe with us</h1>
-          <p>{isLoggedIn && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm your item reached you.</p>
+          <p>{isLoggedIn && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm the item arrived as described.</p>
         </div>
 
         {isLoggedIn

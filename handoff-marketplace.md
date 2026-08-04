@@ -2046,6 +2046,30 @@ visually confirmed in a browser. Worth a human pass at a real desktop
 viewport, logged in as both a buyer with an order and a seller with
 orders/listings, before calling this fully verified.
 
+### Held-funds promise, standardised wording
+The standard, taken from listing detail's how-it-works explainer (already
+live, not changed here): **"...until you confirm the item arrived as
+described."** The email templates were already updated to match in the
+database. This pass aligned every other buyer-facing instance of the same
+promise so it reads identically everywhere:
+- `CheckoutPage.tsx` — the pay-now held-funds box, and the bank-transfer
+  fallback's held-funds box (behind the transfer toggle, still live code).
+- `PaymentReturnPage.tsx` — the payment-succeeded screen's reassurance line.
+- `BuyerOrderDetailPage.tsx` — the timeline's "Payment held by us" step, and
+  the held-reassurance paragraph shown while awaiting dispatch/confirmation.
+- `MarketplaceFooter.tsx` — the sitewide "Sellers checked..." protection line.
+
+Deliberately left alone, because they answer a different question rather
+than restating this promise inconsistently: the disputed-state copy in
+`BuyerOrderDetailPage.tsx`/`BuyerDisputePage.tsx` (describes dispute-review
+timing, not the confirm trigger); the confirm button and confirm-sheet copy
+in `BuyerOrderDetailPage.tsx` (the confirm *prompt* itself, which already
+says "and is as described"); `AwaitingPaymentPage.tsx`'s three-step preview
+(doesn't state a trigger/condition at all, so there's nothing to conflict
+with); and `SellerOrderDetailPage.tsx`'s "buyer will confirm" copy (seller-
+facing, telling the seller what the buyer needs to do, not a promise made to
+a buyer).
+
 ## 6. Next steps
 1. **Checkout is live on Paystack** (checkout, hosted payment, payment-return
    states, seller contact reveal; bank transfer kept behind an admin toggle,

@@ -130,7 +130,7 @@ export default function BuyerOrderDetailPage() {
 
           {/* Timeline */}
           <div className="mkt-next">
-            <div className="step"><div className="dot" style={{ background: "var(--mkt-green)" }} /><div><b>Payment held by us</b><span>Your money is safe with us until you confirm.</span></div></div>
+            <div className="step"><div className="dot" style={{ background: "var(--mkt-green)" }} /><div><b>Payment held by us</b><span>Your money is safe with us until you confirm the item arrived as described.</span></div></div>
             <div className={awaitingDispatch ? "step" : "step"}>
               <div className="dot" style={{ background: awaitingDispatch ? "var(--mkt-coral)" : "var(--mkt-green)" }} />
               <div><b>{awaitingDispatch ? `Waiting on ${sellerName} to send it` : `Dispatched by ${sellerName}`}</b><span>{awaitingDispatch ? "We will show the dispatch photo here once it is sent." : "See the dispatch photo below."}</span></div>
@@ -198,7 +198,7 @@ export default function BuyerOrderDetailPage() {
           {/* Held reassurance while still awaiting */}
           {(awaitingDispatch || awaitingConfirm) && (
             <p style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)", textAlign: "center", margin: 0 }}>
-              Your money stays with us until you confirm{awaitingConfirm ? " or the days run out" : ""}.
+              Your money stays with us until you confirm the item arrived as described{awaitingConfirm ? ", or the days run out" : ""}.
             </p>
           )}
 

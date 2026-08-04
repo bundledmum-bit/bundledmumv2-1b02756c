@@ -322,7 +322,7 @@ export default function CheckoutPage() {
               <div className="hb-title">Your money is held, not sent</div>
               <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to arrange delivery.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item reached you.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
             </div>
 
             {!showDetailsForm && (
@@ -422,7 +422,7 @@ function TransferFallback(props: {
             <div className="lbl">Send to</div>
             <div className="row"><div style={{ flex: 1, minWidth: 0 }}><div className="num">{acctNumber}</div><div className="who">{bankName} · {acctName}</div></div><button className="mkt-copy outline" onClick={() => copy(acctNumber, "acct")}>{copied === "acct" ? "Copied" : "Copy"}</button></div>
           </div>
-          <div className="mkt-heldbox"><div className="hb-title">Your money is held, not sent</div><div className="hb-line"><span className="hb-tick">✓</span>We hold your money, the seller is only paid after you confirm the item reached you.</div></div>
+          <div className="mkt-heldbox"><div className="hb-title">Your money is held, not sent</div><div className="hb-line"><span className="hb-tick">✓</span>We hold your money, the seller is only paid after you confirm the item arrived as described.</div></div>
           {reference && <button className="mkt-primary" style={{ marginTop: 4 }} onClick={onSent}>I have sent the transfer</button>}
         </>
       )}

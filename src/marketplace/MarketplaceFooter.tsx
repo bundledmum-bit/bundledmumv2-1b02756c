@@ -44,7 +44,7 @@ export default function MarketplaceFooter() {
         </nav>
       </div>
 
-      <p className="mkt-ftr-protect">Sellers checked, listings reviewed, and your money held until you confirm the item arrived.</p>
+      <p className="mkt-ftr-protect">Sellers checked, listings reviewed, and your money held until you confirm the item arrived as described.</p>
       <p className="mkt-ftr-legal">© 2026 BundledMum Ltd, Lagos.</p>
     </footer>
   );
