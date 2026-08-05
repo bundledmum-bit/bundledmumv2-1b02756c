@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useSeller } from "./useSeller";
 import { formatNaira, maskAccount } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
@@ -17,6 +17,7 @@ import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 export default function SellerPayoutsPage() {
   const navigate = useNavigate();
   const { seller, loading, isLoggedIn } = useSeller();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   useEffect(() => {
     if (loading) return;
@@ -101,7 +102,7 @@ export default function SellerPayoutsPage() {
 
         <div className="mkt-card2" style={{ flexDirection: "row", alignItems: "center", gap: 11 }}>
           <span style={{ flex: 1, font: "400 12px/1.45 Lato, sans-serif", color: "var(--mkt-muted)" }}>Money should have landed and has not? Talk to us.</span>
-          <a className="mkt-wa" style={{ width: "auto", padding: "9px 12px" }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat</a>
+          <a className="mkt-wa" style={{ width: "auto", padding: "9px 12px" }} href={waContextHref(waNumber, "payout_not_received")} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat</a>
         </div>
       </div>
     </div>

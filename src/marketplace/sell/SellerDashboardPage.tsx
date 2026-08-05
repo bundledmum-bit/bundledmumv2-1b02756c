@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useSeller } from "./useSeller";
 import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing, genericErrorMessage } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
@@ -59,6 +59,7 @@ function OrderRow({ o, coral, pill, onClick }: { o: SellerOrder; coral?: boolean
 export default function SellerDashboardPage() {
   const { loading, isLoggedIn, seller, refresh } = useSeller();
   const navigate = useNavigate();
+  const waNumber = useMarketplaceWhatsAppNumber();
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState<"listings" | "orders">("listings");
 
@@ -252,7 +253,7 @@ export default function SellerDashboardPage() {
                           ) : (
                             <>
                               <div className="mkt-reject">{adminRemoved ? "BundledMum removed this listing. You cannot put this one back yourself." : "This listing is off the marketplace. You cannot put this one back yourself."} Message us if you think it should return.</div>
-                              <a className="mkt-secondary" style={{ textAlign: "center", textDecoration: "none", display: "block" }} href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, about my delisted listing "${l.title}".`)}`} target="_blank" rel="noreferrer">Ask us about it</a>
+                              <a className="mkt-secondary" style={{ textAlign: "center", textDecoration: "none", display: "block" }} href={waContextHref(waNumber, "listing_removed", { item: l.title })} target="_blank" rel="noreferrer">Ask us about it</a>
                             </>
                           )}
                         </div>
@@ -373,6 +374,7 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
   // that. Every seller who registered before this rule existed has both null,
   // so this is also where they enter it for the first time.
   const legalNameLocked = !!(seller.legal_first_name && seller.legal_last_name);
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const [legalFirstName, setLegalFirstName] = useState(seller.legal_first_name || "");
   const [legalLastName, setLegalLastName] = useState(seller.legal_last_name || "");
@@ -437,7 +439,7 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
           <div className="mkt-help">
             Fixed once set, so a payout account can never be quietly moved to someone else's name. Buyers see it as "{seller.display_name}".
             If this needs correcting,{" "}
-            <a href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hello BundledMum, my legal name on my seller account needs correcting.")}`} target="_blank" rel="noreferrer">message us on WhatsApp</a>.
+            <a href={waContextHref(waNumber, "legal_name_change")} target="_blank" rel="noreferrer">message us on WhatsApp</a>.
           </div>
         </div>
       ) : (

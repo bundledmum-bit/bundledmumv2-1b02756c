@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira } from "./orders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
@@ -19,6 +19,7 @@ export default function AwaitingPaymentPage() {
   const { reference } = useParams<{ reference: string }>();
   const navigate = useNavigate();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   useEffect(() => {
     if (authLoading) return;
@@ -41,7 +42,7 @@ export default function AwaitingPaymentPage() {
     refetchOnMount: "always",
   });
 
-  const waMsg = (extra: string) => `${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, ${extra} (order ${reference}).`)}`;
+  const waMsg = (extra: string) => waHref(waNumber, `Hello. ${extra} (order ${reference}).`);
 
   if (authLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
   if (!isLoggedIn) return null;

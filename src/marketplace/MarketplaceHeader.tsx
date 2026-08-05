@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "./lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useSeller } from "./sell/useSeller";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -25,6 +25,7 @@ export default function MarketplaceHeader() {
   const { isLoggedIn, user } = useCustomerAuth();
   const { seller } = useSeller();
   const [open, setOpen] = useState(false);
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const reduced = pathname.startsWith("/checkout");
 
@@ -105,7 +106,7 @@ export default function MarketplaceHeader() {
             ) : (
               <Link className="mkt-primary" to="/login">Log in</Link>
             )}
-            <a className="mkt-wa" href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Help on WhatsApp</a>
+            <a className="mkt-wa" href={waContextHref(waNumber, "generic")} target="_blank" rel="noreferrer"><span className="ic">✆</span>Help on WhatsApp</a>
           </div>
         </div>
       )}

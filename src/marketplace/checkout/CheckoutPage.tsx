@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
@@ -34,6 +34,7 @@ export default function CheckoutPage() {
   const offerId = searchParams.get("offer") || undefined;
   const navigate = useNavigate();
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const { data: listing, isLoading } = useListing(listingId);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -224,7 +225,7 @@ export default function CheckoutPage() {
       <div className="mkt-center">
         <div className="mkt-empty-title">We cannot take payments right now</div>
         <div className="mkt-empty-sub">Our payment partner is having a moment. This is on our side, not yours, and nothing has been charged.</div>
-        <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+        <a className="mkt-wa" style={{ maxWidth: 260 }} href={waContextHref(waNumber, "payment_problem")} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
         <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
       </div>
     );
@@ -239,7 +240,7 @@ export default function CheckoutPage() {
       <div className="mkt-center">
         <div className="mkt-empty-title">We need to sort this out first</div>
         <div className="mkt-empty-sub">The price you agreed with the seller could not be applied to this order. Nothing has been charged. Please message us and we will get this fixed for you.</div>
-        <a className="mkt-wa" style={{ maxWidth: 260 }} href={WHATSAPP_BASE} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+        <a className="mkt-wa" style={{ maxWidth: 260 }} href={waContextHref(waNumber, "order_help", { reference: order?.paystack_transaction_reference })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
         <button className="mkt-secondary" style={{ maxWidth: 240 }} onClick={() => navigate(`/listing/${listingId}`)}>Back to the listing</button>
       </div>
     );
@@ -378,7 +379,7 @@ export default function CheckoutPage() {
             )}
 
             {payCode && payCode !== "This order is already paid" && (
-              <div className="mkt-errbox"><span className="m">!</span><span>We could not start your payment just now. Please try again, or <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us</a>.</span></div>
+              <div className="mkt-errbox"><span className="m">!</span><span>We could not start your payment just now. Please try again, or <a href={waContextHref(waNumber, "payment_problem", { reference: order?.paystack_transaction_reference })} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us</a>.</span></div>
             )}
           </>
         ) : (

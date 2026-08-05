@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waHref, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
 
@@ -57,12 +57,13 @@ export default function PaymentReturnPage() {
 
 /** Generic centred result shell for the non-success calm states. */
 function ResultShell({ tone, title, body, wa, onBack }: { tone: "fail" | "check"; title: string; body: string; wa: string; onBack: () => void }) {
+  const waNumber = useMarketplaceWhatsAppNumber();
   return (
     <div className="mkt-result">
       <div className={tone === "fail" ? "mkt-result-icon fail" : "mkt-result-icon check"}>{tone === "fail" ? "!" : "✓"}</div>
       <h1>{title}</h1>
       <p>{body}</p>
-      <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent("Hello BundledMum, " + wa + ".")}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+      <a className="mkt-wa" href={waHref(waNumber, "Hello. " + wa + ".")} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
       <button className="mkt-secondary" onClick={onBack}>Back to browsing</button>
     </div>
   );
@@ -70,6 +71,7 @@ function ResultShell({ tone, title, body, wa, onBack }: { tone: "fail" | "check"
 
 function FailedState({ orderId, reference, onBrowse }: { orderId?: string; reference: string; onBrowse: () => void }) {
   const navigate = useNavigate();
+  const waNumber = useMarketplaceWhatsAppNumber();
   // Fetch the listing id for this order so retry returns to its checkout.
   const { data: listingId } = useQuery({
     queryKey: ["mkt-order-listing", orderId],
@@ -90,7 +92,7 @@ function FailedState({ orderId, reference, onBrowse }: { orderId?: string; refer
         <div className="mkt-card2-label">Worth trying</div>
         <span style={{ font: "400 13px/1.5 Lato, sans-serif", color: "#3D3936" }}>Check you have enough in the account and that your card is enabled for online payments, then try again. On Paystack you can also pay by transfer or USSD instead of card.</span>
       </div>
-      <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, my payment failed, reference ${reference}. Please help.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Failed more than once? Chat to us</a>
+      <a className="mkt-wa" href={waContextHref(waNumber, "payment_problem", { reference })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Failed more than once? Chat to us</a>
       <button className="mkt-primary" disabled={!listingId} onClick={() => listingId && navigate(`/checkout/${listingId}`, { replace: true })}>
         {listingId ? "Try paying again" : "Back to browsing"}
       </button>
@@ -191,6 +193,7 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
   const item = contact?.listing_title || "your item";
   const phone = contact?.seller_phone || "";
   const msg = `Hello ${name}, I just paid for ${item} on BundledMum (order ${reference}). Please let me know about delivery.`;
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -211,7 +214,7 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
         ) : !loading ? (
           <>
             <div className="mkt-talk-prefill">We could not load the seller's number just now. Message BundledMum and we will connect you.</div>
-            <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I paid for ${item} (order ${reference}) and need the seller's contact.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+            <a className="mkt-wa" href={waContextHref(waNumber, "seller_contact_missing", { reference, item })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
           </>
         ) : null}
       </div>

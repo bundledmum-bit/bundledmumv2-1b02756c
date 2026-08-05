@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { formatNaira, getOrderContact, sellerWhatsAppLink, sellerCallLink } from "./orders";
 import { fetchBuyerOrder, getDisputeWindowDays, confirmDeadline, daysLeft, confirmReceipt, fetchOrderDispute, getReturnConfirmDays } from "./buyerOrders";
@@ -21,6 +21,7 @@ export default function BuyerOrderDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user, loading: authLoading, isLoggedIn } = useCustomerAuth();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -225,7 +226,7 @@ export default function BuyerOrderDetailPage() {
                   <a className="mkt-call" href={sellerCallLink(sellerPhone)}>Call</a>
                 </div>
               ) : (
-                <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I need to reach the seller on order ${ref}.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the seller via BundledMum</a>
+                <a className="mkt-wa" href={waContextHref(waNumber, "cannot_reach_seller", { reference: ref })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the seller via BundledMum</a>
               )}
             </div>
           )}
@@ -243,7 +244,7 @@ export default function BuyerOrderDetailPage() {
             <div className="mkt-heldbox">
               <div className="hb-title">We are on it</div>
               <div className="hb-line"><span className="hb-tick">✓</span>A person is reviewing your report and the seller's payout is paused. We will contact you. Your money stays with us until it is sorted.</div>
-              <a className="mkt-wa" style={{ marginTop: 4 }} href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, about my problem report on order ${ref}.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Message us about this</a>
+              <a className="mkt-wa" style={{ marginTop: 4 }} href={waContextHref(waNumber, "dispute_help", { reference: ref })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Message us about this</a>
             </div>
           )}
 

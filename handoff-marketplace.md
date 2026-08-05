@@ -165,7 +165,79 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — markup can be applied to existing listings, stale warning removed
+### This pass — every WhatsApp link now opens with a contextual pre-filled message
+New shared module `src/marketplace/lib/whatsapp.ts`: `useMarketplaceWhatsAppNumber()`
+(reads `site_settings.whatsapp_number` live, normalises to international
+digits, `2347040667424` fallback only) and `waMessage`/`waHref`/`waContextHref`,
+mirroring the deployed `build_whatsapp_link(p_context, p_reference, p_item,
+p_name)` database function's exact wording client side rather than calling
+it via RPC per button (would mean an async round trip before a link is even
+clickable, on pages that mostly render plainly today). **All marketplace
+`wa.me` links now go through this module; none import the storefront's
+`WHATSAPP_BASE` constant anymore** (confirmed by grep, zero hits left in
+`src/marketplace`).
+- **7 links were bare (opened an empty chat), each given a real message**:
+  `MarketplaceHeader.tsx` "Help on WhatsApp" → generic: *"Hello. I need
+  some help with BundledMum Marketplace."* `SellerPayoutsPage.tsx` "Chat"
+  → payout_not_received, no single order to reference here (it's an
+  aggregate payouts list): *"Hello. My payout has not arrived yet."*
+  `AreaCombobox.tsx` (2 sites, shared by both the seller's create-listing
+  area picker and the buyer's browse location filter, so no order/listing
+  context is available either way) → a bespoke message, not one of the 15
+  named contexts since none fit "area not listed": *"Hello. My area is not
+  listed when I search, please can you add it."* `CheckoutPage.tsx`
+  payments-unavailable state → payment_problem, no order exists yet at
+  that point: *"Hello. I am having trouble paying for my order."*
+  `CheckoutPage.tsx` negotiated-price-mismatch state → order_help with the
+  real order reference (an order does exist by this point). `CheckoutPage.tsx`
+  Paystack-init-failed inline error → payment_problem with the order
+  reference.
+- **9 links already carried a message but used the hardcoded number**,
+  fixed by swapping the number source only, wording largely left alone
+  since it already satisfied the rule: `AwaitingPaymentPage.tsx` (3 sites),
+  `PaymentReturnPage.tsx` (4 sites), `BuyerOrderDetailPage.tsx` (2 sites).
+  Two of these were reworded slightly to match the DB helper's own exact
+  phrasing where a fitting named context existed:
+  `SellerOrderDetailPage.tsx`'s "reach the buyer" link now reads *"I cannot
+  reach the buyer about order X"* (was "I need to reach the buyer on order
+  X"); `PaymentReturnPage.tsx`'s seller-contact-missing fallback now reads
+  *"I need the seller contact details for my order X"* (was "...and need
+  the seller's contact", which also named the item — the DB's
+  `seller_contact_missing` context only takes a reference, not an item, so
+  matching it exactly means that one detail is no longer in the message).
+  `SellerDashboardPage.tsx`'s delisted-listing and legal-name-correction
+  links, same treatment.
+- **Not touched, flagged not fixed**: `CheckoutPage.tsx`'s "Payment details
+  are not set up yet, please message us on WhatsApp" is plain text with no
+  actual `href` at all, not a real link. Left alone per the explicit
+  instruction not to add WhatsApp buttons where none exist, even though
+  the copy already promises one.
+- **Explicitly out of scope, correctly untouched**: the seller/buyer
+  contact blocks (`sellerWhatsAppLink(phone, msg)` in
+  `SellerOrderDetailPage.tsx`, `BuyerOrderDetailPage.tsx`,
+  `PaymentReturnPage.tsx`) message the *other party's own phone number*,
+  not the BundledMum support line, so there was no hardcoding to fix there
+  and their behaviour is unchanged.
+- `src/lib/whatsapp.ts`'s `WHATSAPP_BASE` constant itself (still hardcoded)
+  was deliberately not touched — it is a storefront-shared file used well
+  beyond the marketplace, out of scope for a marketplace-only pass; the fix
+  here was making marketplace components stop importing it, not editing it.
+- **Verified live**: two sites clicked through with a real logged-in
+  session (the header's generic help link, and the seller payouts page's
+  "Chat" button) — both produced the correct number
+  (`wa.me/2347040667424`, matching the live `site_settings.whatsapp_number`)
+  and the correct, correctly URL-encoded message. The remaining sites are
+  behind logins not reachable in this session (seller dashboard's own
+  session unexpectedly required a fresh sign-in partway through, same
+  general limitation as every other seller/buyer-gated screen in this
+  file) — verified for those via `npx tsc --noEmit` (clean), `npm run
+  build` (passes), and a full read of every edited call site's final code.
+- **All marketplace WhatsApp links must keep carrying a real, contextual
+  message going forward, and the number must always come from
+  `site_settings.whatsapp_number`** (via `useMarketplaceWhatsAppNumber()`),
+  never hardcoded again.
+
+### Earlier this branch line — markup can be applied to existing listings, stale warning removed
 `MarketplaceSettings.tsx` only. Two backend functions were already deployed
 and verified live before touching any code:
 `preview_markup_change(p_markup)` (dry-run: listings affected, total buyer

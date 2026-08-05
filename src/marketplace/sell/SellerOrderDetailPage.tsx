@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useSeller } from "./useSeller";
 import { formatNaira, maskAccount } from "./sellData";
 import { sellerWhatsAppLink, sellerCallLink } from "../checkout/orders";
@@ -23,6 +23,7 @@ export default function SellerOrderDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { seller, loading: sellerLoading, isLoggedIn } = useSeller();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -184,7 +185,7 @@ export default function SellerOrderDetailPage() {
                   <a className="mkt-call" href={sellerCallLink(buyerPhone)}>Call</a>
                 </div>
               ) : (
-                <a className="mkt-wa" href={`${WHATSAPP_BASE}?text=${encodeURIComponent(`Hello BundledMum, I need to reach the buyer on order ${ref}.`)}`} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the buyer via BundledMum</a>
+                <a className="mkt-wa" href={waContextHref(waNumber, "cannot_reach_buyer", { reference: ref })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the buyer via BundledMum</a>
               )}
             </div>
           )}

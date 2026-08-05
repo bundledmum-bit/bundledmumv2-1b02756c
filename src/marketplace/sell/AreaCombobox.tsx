@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { WHATSAPP_BASE } from "@/lib/whatsapp";
+import { useMarketplaceWhatsAppNumber, waHref } from "../lib/whatsapp";
+
+/** Not one of build_whatsapp_link's named contexts (there is no "area not
+ * listed" case in that list), so this is a bespoke message rather than a
+ * mirrored one, still reading the number live. */
+const AREA_MISSING_MESSAGE = "Hello. My area is not listed when I search, please can you add it.";
 
 interface Area { id: string; name: string }
 
@@ -30,6 +35,8 @@ export default function AreaCombobox({
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const waNumber = useMarketplaceWhatsAppNumber();
+  const areaMissingHref = waHref(waNumber, AREA_MISSING_MESSAGE);
   const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filtered = useMemo(() => {
@@ -86,7 +93,7 @@ export default function AreaCombobox({
             {filtered.length === 0 ? (
               <div className="mkt-combo-empty">
                 No area matches that. If yours is missing,{" "}
-                <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer">message us on WhatsApp</a> and we will add it.
+                <a href={areaMissingHref} target="_blank" rel="noreferrer">message us on WhatsApp</a> and we will add it.
               </div>
             ) : (
               filtered.map((a, i) => (
@@ -109,7 +116,7 @@ export default function AreaCombobox({
       </div>
       <div className="mkt-combo-note" style={{ marginTop: 6 }}>
         Start typing to find your area. Cannot find it?{" "}
-        <a href={WHATSAPP_BASE} target="_blank" rel="noreferrer">Message us on WhatsApp</a>.
+        <a href={areaMissingHref} target="_blank" rel="noreferrer">Message us on WhatsApp</a>.
       </div>
     </div>
   );
