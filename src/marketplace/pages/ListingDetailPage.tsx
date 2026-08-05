@@ -67,7 +67,7 @@ export default function ListingDetailPage() {
     queryFn: getOffersEnabled,
     staleTime: 60000,
   });
-  const { data: maxDiscountPercent = 10 } = useQuery({
+  const { data: maxDiscountPercent } = useQuery({
     queryKey: ["mkt-max-discount-percent"],
     queryFn: getMaxDiscountPercent,
     enabled: offersEnabled,
@@ -159,7 +159,7 @@ export default function ListingDetailPage() {
   // PRIVATE to this buyer — the listing's public final_price_naira is
   // unchanged for everyone else, multi-quantity or not, this only overrides
   // what THIS buyer sees and pays.
-  const maxDiscountNaira = Math.round(listing.final_price_naira * maxDiscountPercent / 100);
+  const maxDiscountNaira = maxDiscountPercent != null ? Math.round(listing.final_price_naira * maxDiscountPercent / 100) : null;
   const offerAccepted = myOffer && (myOffer.status === "accepted" || myOffer.status === "counter_accepted");
   const myPrice = offerAccepted ? (myOffer.status === "counter_accepted" ? myOffer.counter_buyer_price_naira! : myOffer.buyer_price_naira) : null;
   const myDiscount = offerAccepted && myPrice != null ? listing.final_price_naira - myPrice : 0;
@@ -303,7 +303,7 @@ export default function ListingDetailPage() {
             off, or once this buyer has spent their one ask here in any
             direction — both cases simply look like a listing that never had
             one, per design O10, never a broken or greyed-out control. */}
-        {offersEnabled && !offerAccepted && (
+        {offersEnabled && !offerAccepted && maxDiscountNaira != null && (
           offerPendingOrCountered ? (
             <button type="button" className="mkt-offer-entry" onClick={() => navigate(`/listing/${listing.id}/offer`)}>
               {myOffer?.status === "countered" ? "The seller came back with a different price, view it" : "View your request"}
@@ -327,7 +327,7 @@ export default function ListingDetailPage() {
       </div>
       </div>
 
-      {offerSheetOpen && (
+      {offerSheetOpen && maxDiscountNaira != null && (
         <MakeOfferSheet
           listingId={listing.id}
           listingTitle={listing.title}

@@ -61,7 +61,7 @@ export default function TermsPage() {
 
           <div className="mkt-policy-section" id={SECTIONS[4].id}>
             <h2>5. Negotiating a price</h2>
-            <p>Where a seller marks a listing negotiable, a buyer may ask once for a lower price, capped at {s.maxDiscountPercent}% off the price they see. The seller may accept, decline, or counter once. A buyer who receives a counter may accept or decline it, there is no further back and forth. Any agreed discount reduces the seller's share only, BundledMum's markup is unaffected.</p>
+            <p>Where a seller marks a listing negotiable, a buyer may ask once for a lower price{s.maxDiscountPercent != null ? `, capped at ${s.maxDiscountPercent}% off the price they see` : ", capped at a percentage we set"}. The seller may accept, decline, or counter once. A buyer who receives a counter may accept or decline it, there is no further back and forth. Any agreed discount reduces the seller's share only, BundledMum's markup is unaffected.</p>
           </div>
 
           <div className="mkt-policy-section" id={SECTIONS[5].id}>

@@ -66,7 +66,7 @@ export default function BrowsePage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data, isLoading, isError } = useBrowseListings(filters);
+  const { data, isLoading, isError, refetch } = useBrowseListings(filters);
   const { data: categories = [] } = useAllowedCategories();
   const { data: groups = [] } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
@@ -189,6 +189,7 @@ export default function BrowsePage() {
             <div className="mkt-center">
               <div className="mkt-empty-title">We could not load the marketplace</div>
               <div className="mkt-empty-sub">Please check your connection and try again in a moment.</div>
+              <button className="mkt-secondary" style={{ maxWidth: 220, marginTop: 6 }} onClick={() => refetch()}>Try again</button>
             </div>
           ) : listings.length === 0 ? (
             <div className="mkt-center">

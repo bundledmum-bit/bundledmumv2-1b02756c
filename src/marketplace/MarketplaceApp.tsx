@@ -28,6 +28,7 @@ import PrivacyPage from "./policy/PrivacyPage";
 import BuyerProtectionPage from "./policy/BuyerProtectionPage";
 import SellerProtectionPage from "./policy/SellerProtectionPage";
 import CookiesPage from "./policy/CookiesPage";
+import MarketplaceNotFoundPage from "./MarketplaceNotFoundPage";
 import "./marketplace.css";
 
 /**
@@ -56,6 +57,7 @@ export default function MarketplaceApp() {
         <div className="mkt">
           <MarketplaceScrollManager />
           <MarketplaceHeader />
+          <div className="mkt-main">
           <Routes>
             <Route path="/" element={<BrowsePage />} />
             <Route path="/login" element={<MarketplaceLoginPage />} />
@@ -87,7 +89,9 @@ export default function MarketplaceApp() {
             <Route path="/buyer-protection" element={<BuyerProtectionPage />} />
             <Route path="/seller-protection" element={<SellerProtectionPage />} />
             <Route path="/cookies" element={<CookiesPage />} />
+            <Route path="*" element={<MarketplaceNotFoundPage />} />
           </Routes>
+          </div>
           <MarketplaceFooter />
         </div>
       </BrowserRouter>

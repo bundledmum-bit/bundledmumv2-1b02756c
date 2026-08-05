@@ -3382,3 +3382,112 @@ was checked by reading the code, not by walking it as a logged-in user.
 Treat Part 6 in particular as "the code looks safe for real data," not
 "this was seen rendering real data," since per the task's own premise none
 of those flows has ever produced a real record yet.
+
+## 8. Audit fixes (2026-08-05, same day as §7)
+
+Targeted fixes for the items above that were called out to fix now. No
+redesign, no copy changes beyond what a fix required, no migrations or
+edge functions touched.
+
+**1. Footer not pinned to bottom — fixed.** `.mkt` in `marketplace.css` is
+now `display: flex; flex-direction: column`, and the route content is
+wrapped in a new `.mkt-main { flex: 1 0 auto }` in `MarketplaceApp.tsx`, so
+the footer always sits flush with the end of the document, whether that's
+mid-viewport-height content or a long page. Verified live: `/cookies`
+(short) now shows the footer immediately after content with no trailing
+gap; `/terms` (long) is unaffected, footer still follows naturally after
+all 13 sections. The sticky Buy now bar on listing detail (still
+`position: fixed`, unaffected by a flex ancestor) and the footer-suppressed
+routes (`/checkout*`, dispatch, order-action, `/login`) are untouched — all
+confirmed by reading `MarketplaceFooter.tsx`'s existing suppression logic,
+which was not touched.
+
+**2. No 404 route — fixed.** Added `<Route path="*" element={<MarketplaceNotFoundPage />} />`
+as the last route in `MarketplaceApp.tsx`, and a new
+`src/marketplace/MarketplaceNotFoundPage.tsx`. Copy reuses the same
+`.mkt-center` / `.mkt-empty-title` / `.mkt-empty-sub` pattern as
+`ListingDetailPage.tsx`'s "gone" state, and reads "We cannot find that
+page... The link may be mistyped, or the item it pointed to has sold or
+been taken down," with a "Back to browse" button — deliberately worded so
+a stale listing link doesn't read as a technical error. Verified live at
+`/marketplace/this-does-not-exist`.
+
+**3. Stale fallback values — fixed, by removing the fallbacks rather than
+updating the numbers.** Per the instruction, a number that matches today's
+live value just resets the same drift for next time, so every fallback
+below now resolves to a loading/omitted state instead of a guess, and only
+shows the real number once it has actually loaded:
+- `CheckoutPage.tsx` — `serviceFee` no longer has a `?? 750` fallback
+  (`Number(settings?.marketplace_service_fee_naira) || 0`); the price
+  breakdown already had a "..." loading pattern for other fields, extended
+  to cover this one (`!settingsLoaded` branch added ahead of the existing
+  ones). The bank-transfer panel (`TransferFallback`) got the same
+  treatment plus its own loading branch.
+- `ListingDetailPage.tsx` — `maxDiscountPercent` has no default; the "Ask
+  for a lower price" entry point and the offer sheet now also require
+  `maxDiscountNaira != null` before rendering, so a buyer never sees (or
+  opens a sheet using) a guessed cap.
+- `offers.ts` — `getMaxDiscountPercent()` and `getOfferExpiryHours()` both
+  now return `number | null`, no more `10`/`48` fallback baked in.
+  (`getOfferExpiryHours` turned out to have no callers anywhere in the
+  codebase — fixed anyway for correctness, flagged here as it's currently
+  dead code, worth a look separately.)
+- `policySettings.ts` — `maxDiscountPercent` and `offerExpiryHours` in
+  `MarketplacePolicySettings` are now `number | null`, no fallback,
+  mirroring the existing `policiesUpdatedAt: string | null` pattern already
+  in this same file. `TermsPage.tsx`'s one sentence that uses
+  `maxDiscountPercent` now reads "capped at a percentage we set" in the
+  (rare, load-only-then-resolved) case it's null.  `offerExpiryHours` has
+  no consumer in any of the five policy pages, so nothing else needed
+  changing there.
+- `SellerPriceEditPage.tsx` and `CreateListingPage.tsx` — both `markupPct`
+  queries dropped their `= 10` default. `SellerPriceEditPage.tsx`'s "Buyers
+  will now see" preview card now only renders once `markupPct` has loaded.
+  `CreateListingPage.tsx`'s price card (always visible, so hiding it
+  entirely would jump the layout) now shows "…" for the buyer-facing price
+  and "adds its markup" instead of a guessed percent until the real value
+  is in.
+
+Verified live: Terms page now shows the correct live numbers throughout
+(10% markup, ₦1,000 service fee, 25% discount cap, 3-day dispute window) —
+confirms the removed fallbacks were never masking the correct value, they
+were just a latent risk for the next time a number changes.
+
+**4. Dead ends — fixed for the three listed:**
+- `BrowsePage.tsx` — the generic fetch-error state now has a "Try again"
+  button wired to the query's own `refetch()`.
+- `CheckoutPage.tsx` — the bank-transfer-not-configured message now links
+  to WhatsApp (`waContextHref(waNumber, "payment_problem", { reference })`)
+  instead of naming WhatsApp as plain text. This state is behind the
+  transfer-payment admin toggle, currently off, so it could not be reached
+  live in this environment; verified by reading the change and the
+  passing build.
+- `SellerDashboardPage.tsx` — the relist-failure message now ends with a
+  working WhatsApp link (`listing_removed` context, carrying the listing's
+  title), instead of "Message us and we will help" as plain text.
+
+**5. Small tap targets — fixed.** `.mkt-condition-chips .mkt-chip` (the
+per-question Yes/No buttons) now has `min-height: 44px` on mobile, with
+`display: inline-flex; align-items: center; justify-content: center` so
+the text stays centred at the new height. Verified via a live computed-style
+check: the chip now renders at exactly 44px tall. Because each question's
+chip row is independent, this adds roughly 10-14px per question rather
+than multiplying across the six-question block, so it does not make the
+block dramatically taller.
+
+**Report-only items, not fixed, per instruction:**
+- **Second hand-rolled WhatsApp builder in `orders.ts`.** Worth
+  consolidating into `lib/whatsapp.ts` at some point, but it's low risk
+  (it targets a different number — the seller's own — for a different
+  purpose than the support-line contexts `lib/whatsapp.ts` handles), and
+  not urgent enough to bundle into this pass. Do it as its own small
+  cleanup, not a drive-by inside an unrelated change.
+- **Refunded-order dispute panel briefly blank while loading.** Still low
+  severity — self-resolves the moment the `dispute` query settles, no
+  crash, no wrong number ever shown, just a brief incomplete render for an
+  already-rare page (a refunded order, viewed in the exact window before
+  its dispute record has loaded). Worth a loading guard next time that file
+  is touched for another reason, not worth a dedicated pass on its own.
+
+Build passed (`npm run build`, clean except pre-existing chunk-size
+warnings unrelated to this change). Committed and pushed to `main`.

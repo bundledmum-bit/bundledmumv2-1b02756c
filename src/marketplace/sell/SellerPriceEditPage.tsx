@@ -59,18 +59,21 @@ export default function SellerPriceEditPage() {
     setNegotiable(listing.is_negotiable);
   }, [listing]);
 
-  const { data: markupPct = 10 } = useQuery({
+  // No fallback: a guessed markup would show the seller a "buyers will see"
+  // price that might not match what actually applies, so this preview stays
+  // hidden until the real live value is in (see preview below).
+  const { data: markupPct } = useQuery({
     queryKey: ["mkt-markup"],
     queryFn: async () => {
       const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_markup_percent").maybeSingle();
       const v = Number((data as { value: unknown } | null)?.value);
-      return isFinite(v) ? v : 10;
+      return isFinite(v) ? v : null;
     },
     staleTime: 60000,
   });
 
   const priceNum = Number(newPrice);
-  const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
+  const preview = useMemo(() => (markupPct != null ? buyerPrice(priceNum, markupPct) : null), [priceNum, markupPct]);
   const isRaise = !!listing && newPrice.trim() !== "" && isFinite(priceNum) && priceNum > listing.price_naira;
   const isValid = newPrice.trim() !== "" && isFinite(priceNum) && priceNum > 0;
 
@@ -155,7 +158,7 @@ export default function SellerPriceEditPage() {
           )}
         </div>
 
-        {isValid && !isRaise && (
+        {isValid && !isRaise && preview != null && (
           <div className="mkt-pricecard" style={{ padding: "11px 13px", gap: 3 }}>
             <span className="lbl">Buyers will now see</span>
             <div className="see" style={{ textAlign: "left" }}>{formatNaira(preview)}</div>

@@ -27,16 +27,18 @@ export async function getOffersEnabled(): Promise<boolean> {
   return (data as { value?: unknown } | null)?.value === true;
 }
 
-export async function getMaxDiscountPercent(): Promise<number> {
+/** Null means the setting has not resolved (still loading, or the fetch
+ * failed) — callers should show a loading state rather than guess a number. */
+export async function getMaxDiscountPercent(): Promise<number | null> {
   const { data } = await cdb.from("site_settings").select("value").eq("key", "marketplace_max_discount_percent").maybeSingle();
   const n = Number((data as { value?: unknown } | null)?.value);
-  return isFinite(n) && n > 0 ? n : 10;
+  return isFinite(n) && n > 0 ? n : null;
 }
 
-export async function getOfferExpiryHours(): Promise<number> {
+export async function getOfferExpiryHours(): Promise<number | null> {
   const { data } = await cdb.from("site_settings").select("value").eq("key", "marketplace_offer_expiry_hours").maybeSingle();
   const n = Number((data as { value?: unknown } | null)?.value);
-  return isFinite(n) && n > 0 ? n : 48;
+  return isFinite(n) && n > 0 ? n : null;
 }
 
 /** True once an offer's window has passed, regardless of what its stored

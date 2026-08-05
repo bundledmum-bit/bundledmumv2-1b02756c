@@ -92,7 +92,7 @@ export default function SellerDashboardPage() {
     const ok = await sellerRelistListing(relistTarget.id);
     setRelistBusy(false);
     if (!ok) {
-      setRelistError("We could not put this back up. It may have been removed by our team, or your account has an outstanding balance. Message us and we will help.");
+      setRelistError("We could not put this back up. It may have been removed by our team, or your account has an outstanding balance.");
       return;
     }
     setRelistTarget(null);
@@ -358,7 +358,12 @@ export default function SellerDashboardPage() {
             <div className="grab" />
             <h3>Put {relistTarget.title} back up?</h3>
             <p>It goes back to our team for a quick check first, the same as a new listing, then it returns to browse. Your photos, price and notes are all still there.</p>
-            {relistError && <div className="mkt-errbox"><span className="m">!</span><span>{relistError}</span></div>}
+            {relistError && (
+              <div className="mkt-errbox">
+                <span className="m">!</span>
+                <span>{relistError} <a href={waContextHref(waNumber, "listing_removed", { item: relistTarget.title })} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>Message us and we will help.</a></span>
+              </div>
+            )}
             <button className="mkt-primary" onClick={confirmRelist} disabled={relistBusy}>{relistBusy ? "Sending..." : "Send it for review"}</button>
             <button className="back" onClick={() => setRelistTarget(null)} disabled={relistBusy}>Leave it down</button>
           </div>

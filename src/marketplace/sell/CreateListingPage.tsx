@@ -174,12 +174,14 @@ export default function CreateListingPage() {
     if (!seller) navigate("/sell/setup", { replace: true });
   }, [loading, isLoggedIn, seller, navigate]);
 
-  const { data: markupPct = 10 } = useQuery({
+  // No fallback: a guessed markup would show the seller a wrong "buyers see"
+  // price, so the price card shows a loading placeholder instead below.
+  const { data: markupPct } = useQuery({
     queryKey: ["mkt-markup"],
     queryFn: async () => {
       const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_markup_percent").maybeSingle();
       const v = Number((data as { value: unknown } | null)?.value);
-      return isFinite(v) ? v : 10;
+      return isFinite(v) ? v : null;
     },
     staleTime: 60000,
   });
@@ -362,7 +364,7 @@ export default function CreateListingPage() {
   }
 
   const priceNum = Number(price);
-  const preview = useMemo(() => buyerPrice(priceNum, markupPct), [priceNum, markupPct]);
+  const preview = useMemo(() => (markupPct != null ? buyerPrice(priceNum, markupPct) : null), [priceNum, markupPct]);
   const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, missingConditionAnswers().length === 0, !!description.trim(), priceNum > 0];
   const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
@@ -802,10 +804,10 @@ export default function CreateListingPage() {
             </div>
             <div>
               <div className="lbl">Buyers see</div>
-              <div className="see">{preview > 0 ? formatNaira(preview) : "₦0"}</div>
+              <div className="see">{preview == null ? "…" : preview > 0 ? formatNaira(preview) : "₦0"}</div>
             </div>
           </div>
-          <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)} per item. BundledMum adds a {markupPct}% markup on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
+          <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)} per item. BundledMum adds {markupPct != null ? `a ${markupPct}% markup` : "its markup"} on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
         </div>
 
         <div className="mkt-field">

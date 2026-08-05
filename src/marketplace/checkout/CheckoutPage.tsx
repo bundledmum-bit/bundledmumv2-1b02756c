@@ -119,7 +119,7 @@ export default function CheckoutPage() {
   const settingsLoaded = settings !== undefined;
   const paystackEnabled = settings?.marketplace_payment_paystack_enabled === true;
   const transferEnabled = settings?.marketplace_payment_transfer_enabled === true;
-  const serviceFee = Number(settings?.marketplace_service_fee_naira ?? 750) || 0;
+  const serviceFee = Number(settings?.marketplace_service_fee_naira) || 0;
   const bankName = String(settings?.marketplace_bank_name ?? "").trim();
   const acctName = String(settings?.marketplace_bank_account_name ?? "").trim();
   const acctNumber = String(settings?.marketplace_bank_account_number ?? "").trim();
@@ -267,7 +267,13 @@ export default function CheckoutPage() {
           <>
             <div className="mkt-brk">
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
-              {showDetailsForm ? (
+              {!settingsLoaded ? (
+                <>
+                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Working it out</div></div><b>...</b></div>
+                  <div className="rule" />
+                  <div className="total"><span>Total</span><b>...</b></div>
+                </>
+              ) : showDetailsForm ? (
                 <>
                   <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
                   <div className="rule" />
@@ -388,7 +394,8 @@ export default function CheckoutPage() {
           <TransferFallback
             bankReady={bankReady} bankName={bankName} acctName={acctName} acctNumber={acctNumber}
             reference={order?.paystack_transaction_reference || ""} total={transferTotal}
-            itemPrice={itemPrice} serviceFee={serviceFee} copied={copied} copy={copy}
+            itemPrice={itemPrice} serviceFee={serviceFee} settingsLoaded={settingsLoaded} copied={copied} copy={copy}
+            waHelpHref={waContextHref(waNumber, "payment_problem", { reference: order?.paystack_transaction_reference })}
             onSent={() => setConfirmOpen(true)}
           />
         )}
@@ -439,20 +446,30 @@ export default function CheckoutPage() {
 /** Bank-transfer checkout body, retained behind the transfer toggle. */
 function TransferFallback(props: {
   bankReady: boolean; bankName: string; acctName: string; acctNumber: string;
-  reference: string; total: number; itemPrice: number; serviceFee: number;
-  copied: string | null; copy: (t: string, tag: string) => void; onSent: () => void;
+  reference: string; total: number; itemPrice: number; serviceFee: number; settingsLoaded: boolean;
+  copied: string | null; copy: (t: string, tag: string) => void; onSent: () => void; waHelpHref: string;
 }) {
-  const { bankReady, bankName, acctName, acctNumber, reference, total, itemPrice, serviceFee, copied, copy, onSent } = props;
+  const { bankReady, bankName, acctName, acctNumber, reference, total, itemPrice, serviceFee, settingsLoaded, copied, copy, onSent, waHelpHref } = props;
   return (
     <>
       <div className="mkt-brk">
         <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
-        <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
-        <div className="rule" />
-        <div className="total"><span>Transfer exactly</span><b>{formatNaira(total)}</b></div>
+        {settingsLoaded ? (
+          <>
+            <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
+            <div className="rule" />
+            <div className="total"><span>Transfer exactly</span><b>{formatNaira(total)}</b></div>
+          </>
+        ) : (
+          <>
+            <div className="line"><div><span>Service fee</span><div className="sub">Working it out</div></div><b>...</b></div>
+            <div className="rule" />
+            <div className="total"><span>Transfer exactly</span><b>...</b></div>
+          </>
+        )}
       </div>
       {!bankReady ? (
-        <div className="mkt-errbox"><span className="m">!</span><div><b>Payment details are not set up yet</b><span>Please message us on WhatsApp to complete your purchase.</span></div></div>
+        <div className="mkt-errbox"><span className="m">!</span><div><b>Payment details are not set up yet</b><span>Please <a href={waHelpHref} target="_blank" rel="noreferrer" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>message us on WhatsApp</a> to complete your purchase.</span></div></div>
       ) : (
         <>
           <div className="mkt-ref">
