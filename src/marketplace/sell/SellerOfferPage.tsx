@@ -92,7 +92,7 @@ export default function SellerOfferPage() {
             </div>
             <p style={{ textAlign: "center", font: "400 12px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>You can accept, say no, or suggest a number in between. Whatever you decide is fine, you're doing them a favour either way.</p>
             {error && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
-            <button className="mkt-primary" style={{ background: "var(--mkt-green)" }} onClick={() => act("accept")} disabled={busy}>Accept {formatNaira(offer.seller_amount_naira)}</button>
+            <button className="mkt-primary" style={{ background: "var(--mkt-green)", color: "var(--mkt-cream)" }} onClick={() => act("accept")} disabled={busy}>Accept {formatNaira(offer.seller_amount_naira)}</button>
             <div style={{ display: "flex", gap: 9 }}>
               <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => { setError(null); setCounterAmount(""); setCounterOpen(true); }} disabled={busy}>Counter</button>
               <button className="mkt-secondary" style={{ flex: 1, borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => act("decline")} disabled={busy}>Decline</button>
@@ -138,7 +138,7 @@ export default function SellerOfferPage() {
               <input className="mkt-input" value={counterAmount} onChange={(e) => setCounterAmount(e.target.value.replace(/[^0-9]/g, ""))} placeholder="e.g. 43,000" inputMode="numeric" />
             </div>
             {error && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
-            <button className="mkt-primary" style={{ background: "var(--mkt-green)" }} onClick={sendCounter} disabled={busy}>{busy ? "Sending..." : "Send my counter"}</button>
+            <button className="mkt-primary" style={{ background: "var(--mkt-green)", color: "var(--mkt-cream)" }} onClick={sendCounter} disabled={busy}>{busy ? "Sending..." : "Send my counter"}</button>
             <button className="back" onClick={() => setCounterOpen(false)} disabled={busy}>Cancel</button>
           </div>
         </div>

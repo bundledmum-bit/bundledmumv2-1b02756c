@@ -3751,3 +3751,109 @@ unverified.
 
 Nothing in this pass required a code change, so nothing was built. Only
 this file was touched and committed.
+
+## 10. Fixes for the top three from §9 (2026-08-05, same day)
+
+Before: all three still present, confirmed by re-reading the code fresh
+(not assumed from §9) — `.mkt-buy`/`.mkt-primary` still cream-on-coral, the
+`crumb` span still on Buyer/Seller Protection only, `MarketplaceReview.tsx`
+still `useState<number>(10)`.
+
+**1. Primary button contrast — fixed, black text on coral, kept.**
+Measured both routes before choosing:
+- Black `#1A1A1A` on coral `#F4845F` → **6.89:1**.
+- Cream `#FFF8F4` on coral-dark `#D4613C` → **3.59:1**.
+
+Chose black-on-coral. Reasons: it clears AA (4.5:1) for normal-size text
+outright, where the coral-dark route only clears the large-text bar
+(3:1) — and the button font (`800 16px`) doesn't actually qualify as
+"large text" under WCAG (needs ~18.66px bold), so the coral-dark route
+would still have failed the real requirement. Black-on-coral also leaves
+the coral itself untouched, so the primary action color doesn't change at
+all, only the label on top of it — the smaller, safer edit of the two.
+Hover state (coral-dark, unchanged) with black text measures **4.62:1**,
+also clean.
+
+Changed at the token level in `marketplace.css` so it's one edit per
+class, not per screen: `.mkt-buy`, `.mkt-primary` (buyer + seller, since
+both classes are shared across every screen that uses them — Buy now,
+Sign in, every submit button, confirm/cancel sheets). Also found and
+fixed two more instances of the exact same coral+cream token pairing
+while checking smaller sizes as asked:
+- `.mkt-card-qty.low` — the "only 1 left" badge on a listing card
+  (10px bold, smaller text than the buttons, was already failing worse).
+- `.mkt-home-sell` — the "Sell" pill in the header (13px bold), both its
+  base and `:hover` state.
+
+Two `.mkt-primary` buttons override the background inline to a **darker**
+color (`SellerOfferPage.tsx`'s "Accept" button → green, `SellerPriceEditPage.tsx`'s
+"Delist and edit" → error red) — these correctly need cream text, not
+black, so the base-class change would have broken them. Added an explicit
+`color: var(--mkt-cream)` alongside each background override so they keep
+their own correct (already-passing) contrast rather than inheriting the
+new black default.
+
+Admin reuses the identical coral hex directly (not the CSS variable), six
+places, all `background:"#F4845F"` with Tailwind's `text-white`:
+`MarketplaceListingEdit.tsx` (Save changes), `MarketplaceReview.tsx`
+(Approve and publish), and four Save buttons in `MarketplaceSettings.tsx`.
+Same fix applied — `color: "#1A1A1A"` inline, `text-white` class removed.
+
+**Confirmed applies across buyer, seller, and admin** — the buyer/seller
+fix is a shared-class CSS change (every screen using `.mkt-buy`/`.mkt-primary`
+picks it up automatically, verified live on the browse header's "Sell"
+pill and the listing-detail "Buy now" button), and the admin fix touched
+all six admin call sites individually since admin doesn't share the same
+stylesheet.
+
+**Also found, reported per the instruction, not fixed (different token,
+out of the literal "same coral+cream pair" scope):** `--mkt-coral-dark`
+`#D4613C` with white/cream text is used on several admin "Confirm" buttons
+(`MarketplaceReview.tsx`'s "Confirm rejection", four `MarketplaceSettings.tsx`
+confirm dialogs) at `text-sm` (14px bold, also short of the large-text
+bar). Measured **3.59:1**, same failing ratio as the coral-dark route I
+didn't take above, for the same reason. This is a related but distinct
+color pairing from the one this task named, so it wasn't changed — flagging
+it here as the next thing worth a similar look.
+
+**2. Non-clickable "Policies ›" breadcrumb — removed from both pages.**
+Chose removal over wiring it to a destination because there is no sensible
+place for it to go: the real breadcrumb row directly above it already
+links to all five policy pages, so a second, decorative "Policies" crumb
+would need a new index page to point to, which is a small build, not a
+targeted fix, and this pass's non-goals rule that out. Removed the
+`<span className="crumb">Policies ›</span>` from `BuyerProtectionPage.tsx`
+and `SellerProtectionPage.tsx`, and removed the now-dead `.mkt-policy-hero
+.crumb` CSS rule rather than leave orphaned styles behind. Verified live —
+the green hero now goes straight from the page header into the `<h1>`,
+no gap, no leftover spacing artifact. All five policy pages are now
+consistent (none of them have this element).
+
+**3. Admin review markup fallback — fixed, same "show nothing until
+loaded" treatment as §8.** `MarketplaceReview.tsx`'s `markupPct` is now
+`useState<number | null>(null)`, no `10` default. The "Buyer sees, with
+X% markup" label now reads "Buyer sees, with ...% markup" until the real
+`site_settings` value resolves, then shows the true number. Note: the
+naira amount shown next to that label was never at risk — it's
+`current.final_price_naira`, already computed and stored server-side, not
+derived from `markupPct` client-side — only the percentage in the label
+text could ever have been stale.
+
+**Found while checking the rest of admin for the same pattern, reported
+not fixed (a new instance, not one of the three named for this pass):**
+`MarketplaceListingEdit.tsx:50` has the identical
+`isFinite(v) ? v : 10` fallback for the same `marketplace_markup_percent`
+setting, and unlike the Review screen's cosmetic label, it feeds a real
+computed number — `buyerPreview` (`MarketplaceListingEdit.tsx:128`), the
+live buyer-facing price preview shown while an admin edits a listing.
+Currently matches the live value (10%) so nothing looks wrong today, same
+latent-drift risk as everything else in this family. Worth the identical
+fix next time this file is touched.
+
+Build passed (`npm run build`, `tsc --noEmit` clean). Verified live: the
+button-text fix on the browse header's "Sell" pill and the listing-detail
+"Buy now" button, and the breadcrumb removal on Buyer Protection. The
+admin-side fixes (six buttons + the markup label) could not be verified
+live — no admin credentials in this environment — confirmed by reading the
+compiled output and a passing typecheck/build instead. Committed and
+pushed to `main`.

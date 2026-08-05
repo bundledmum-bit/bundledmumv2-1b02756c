@@ -302,7 +302,7 @@ export default function MarketplaceListingEdit() {
 
         <div className="flex gap-2.5">
           <button onClick={() => navigate("/admin/marketplace/listings")} disabled={busy} className="flex-1 font-heading font-extrabold text-sm rounded-xl py-3 border" style={{ borderColor: "#F0DDD2", background: "#fff" }}>Cancel</button>
-          <button onClick={save} disabled={busy} className="flex-[1.5] font-heading font-extrabold text-sm rounded-xl py-3 text-white" style={{ background: "#F4845F" }}>{busy ? "Saving…" : saved ? "Saved ✓" : "Save changes"}</button>
+          <button onClick={save} disabled={busy} className="flex-[1.5] font-heading font-extrabold text-sm rounded-xl py-3" style={{ background: "#F4845F", color: "#1A1A1A" }}>{busy ? "Saving…" : saved ? "Saved ✓" : "Save changes"}</button>
         </div>
 
         {/* Edit history */}

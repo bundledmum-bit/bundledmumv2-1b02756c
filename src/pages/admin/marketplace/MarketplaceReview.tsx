@@ -14,7 +14,10 @@ import { adb, REVIEW_SELECT, formatNaira, hasContactLeak, type ReviewListing } f
  */
 export default function MarketplaceReview() {
   const { adminUser } = usePermissions();
-  const [markupPct, setMarkupPct] = useState<number>(10);
+  // No fallback: a guessed markup would mislabel the price comparison this
+  // screen exists to show, so the label reads "..." until the real value
+  // loads rather than a possibly-stale number (same pattern as §8).
+  const [markupPct, setMarkupPct] = useState<number | null>(null);
   const [index, setIndex] = useState(0);
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -158,7 +161,7 @@ export default function MarketplaceReview() {
                   <div className="font-heading font-black text-xl tabular-nums">{formatNaira(current.price_naira)}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Buyer sees, with {markupPct}% markup</div>
+                  <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Buyer sees, with {markupPct != null ? `${markupPct}%` : "..."} markup</div>
                   <div className="font-heading font-black text-xl tabular-nums" style={{ color: "#1A4A33" }}>{formatNaira(current.final_price_naira)}</div>
                 </div>
               </div>
@@ -213,7 +216,7 @@ export default function MarketplaceReview() {
                   Reject with reason
                 </button>
                 <button onClick={approve} disabled={busy}
-                  className="order-1 sm:order-2 sm:flex-[1.4] font-heading font-extrabold text-sm rounded-xl py-3.5 text-white" style={{ background: "#F4845F" }}>
+                  className="order-1 sm:order-2 sm:flex-[1.4] font-heading font-extrabold text-sm rounded-xl py-3.5" style={{ background: "#F4845F", color: "#1A1A1A" }}>
                   {busy ? "Working..." : "Approve and publish"}
                 </button>
               </div>

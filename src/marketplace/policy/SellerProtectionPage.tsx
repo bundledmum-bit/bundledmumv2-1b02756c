@@ -14,7 +14,6 @@ export default function SellerProtectionPage() {
       <PolicyNav />
       <div className="mkt-policy-hero">
         <div className="inner">
-          <span className="crumb">Policies ›</span>
           <h1>Selling here is protected too</h1>
           <p className="lead">What we guarantee you, and what we expect back.</p>
           {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}

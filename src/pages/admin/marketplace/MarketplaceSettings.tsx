@@ -450,7 +450,7 @@ export default function MarketplaceSettings() {
             <input type={f.type === "number" ? "number" : "text"} value={edits[f.key] ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [f.key]: e.target.value }))}
               className="flex-1 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
             <button onClick={() => cancelEdit(f.key)} className="text-xs font-heading font-bold px-3 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-            <button onClick={() => requestSave(f)} className="text-xs font-heading font-extrabold px-3 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+            <button onClick={() => requestSave(f)} className="text-xs font-heading font-extrabold px-3 rounded-xl" style={{ background: "#F4845F", color: "#1A1A1A" }}>Save</button>
           </div>
         ) : (
           <div className="flex items-center justify-between mt-2">
@@ -517,7 +517,7 @@ export default function MarketplaceSettings() {
                 placeholder="ops@bundledmum.com, alerts@bundledmum.com" className="w-full rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
               <div className="flex gap-2">
                 <button onClick={() => cancelEdit(FIELD.email.key)} className="text-xs font-heading font-bold px-3 py-1.5 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-                <button onClick={requestSaveEmails} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+                <button onClick={requestSaveEmails} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl" style={{ background: "#F4845F", color: "#1A1A1A" }}>Save</button>
               </div>
             </div>
           ) : (
@@ -564,7 +564,7 @@ export default function MarketplaceSettings() {
                     {tplErr && <div className="text-xs" style={{ color: "#D4613C" }}>{tplErr}</div>}
                     <div className="flex gap-2">
                       <button onClick={() => cancelTplEdit(row.slug)} className="text-xs font-heading font-bold px-3 py-1.5 rounded-xl border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-                      <button onClick={() => requestSaveTemplateEmails(row)} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl text-white" style={{ background: "#F4845F" }}>Save</button>
+                      <button onClick={() => requestSaveTemplateEmails(row)} className="text-xs font-heading font-extrabold px-3 py-1.5 rounded-xl" style={{ background: "#F4845F", color: "#1A1A1A" }}>Save</button>
                     </div>
                   </div>
                 ) : (
@@ -609,7 +609,7 @@ export default function MarketplaceSettings() {
                     className="rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }} />
                   <div className="flex gap-1.5">
                     <button onClick={() => cancelEdit(b.key)} className="flex-1 text-xs font-heading font-bold py-1.5 rounded-lg border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
-                    <button onClick={() => requestSave({ key: b.key, label: b.label })} className="flex-1 text-xs font-heading font-extrabold py-1.5 rounded-lg text-white" style={{ background: "#F4845F" }}>Save</button>
+                    <button onClick={() => requestSave({ key: b.key, label: b.label })} className="flex-1 text-xs font-heading font-extrabold py-1.5 rounded-lg" style={{ background: "#F4845F", color: "#1A1A1A" }}>Save</button>
                   </div>
                 </div>
               ) : (

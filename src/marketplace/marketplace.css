@@ -188,7 +188,7 @@
 }
 /* Availability badge, top-left on the photo, only shown when quantity > 1. */
 .mkt-card-qty { position: absolute; top: 8px; left: 8px; font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.02em; padding: 5px 8px; border-radius: 7px; background: var(--mkt-green); color: var(--mkt-cream); }
-.mkt-card-qty.low { background: var(--mkt-coral); }
+.mkt-card-qty.low { background: var(--mkt-coral); color: var(--mkt-black); }
 .mkt-card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mkt-card-body { padding: 9px 10px 11px; display: flex; flex-direction: column; gap: 5px; }
 .mkt-price {
@@ -415,7 +415,7 @@
   border: none;
   border-radius: 12px;
   background: var(--mkt-coral);
-  color: var(--mkt-cream);
+  color: var(--mkt-black);
   font: 800 16px/1 'Nunito', sans-serif;
   cursor: pointer;
   transition: background 0.12s ease;
@@ -549,7 +549,7 @@
 .mkt-sell-foot .helper.err { color: var(--mkt-error-ink); }
 
 /* Buttons */
-.mkt-primary { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--mkt-coral); color: var(--mkt-cream); font: 800 16px/1 'Nunito', sans-serif; cursor: pointer; }
+.mkt-primary { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--mkt-coral); color: var(--mkt-black); font: 800 16px/1 'Nunito', sans-serif; cursor: pointer; }
 .mkt-primary:hover { background: var(--mkt-coral-dark); }
 .mkt-primary:disabled { background: #F0DDD2; color: #B79C8E; cursor: not-allowed; }
 .mkt-secondary { width: 100%; padding: 13px; border: 1.5px solid var(--mkt-green); border-radius: 12px; background: transparent; color: var(--mkt-green); font: 800 15px/1 'Nunito', sans-serif; cursor: pointer; }
@@ -948,8 +948,8 @@
 /* ── Home header line, browse only (design R3) ── */
 .mkt-home-line { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 12px 4px; max-width: 1180px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 .mkt-home-line h1 { font: 900 22px/1.12 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-green-dark); margin: 0; max-width: 22ch; text-wrap: balance; }
-.mkt-home-sell { flex: 0 0 auto; align-self: center; font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-cream); background: var(--mkt-coral); border-radius: 999px; padding: 9px 16px; text-decoration: none; }
-.mkt-home-sell:hover { background: var(--mkt-coral-dark); color: var(--mkt-cream); }
+.mkt-home-sell { flex: 0 0 auto; align-self: center; font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-black); background: var(--mkt-coral); border-radius: 999px; padding: 9px 16px; text-decoration: none; }
+.mkt-home-sell:hover { background: var(--mkt-coral-dark); color: var(--mkt-black); }
 @media (min-width: 720px) {
   .mkt-home-line h1 { font-size: 26px; max-width: none; }
 }
@@ -1233,7 +1233,6 @@
 /* Buyer/Seller protection: warm, visual, reassurance-first */
 .mkt-policy-hero { background: var(--mkt-green); color: var(--mkt-cream); padding: 22px 16px 26px; }
 .mkt-policy-hero .inner { max-width: 640px; margin: 0 auto; }
-.mkt-policy-hero .crumb { font: 700 12px/1 'Lato', sans-serif; color: var(--mkt-green-light); }
 .mkt-policy-hero h1 { font: 900 24px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 8px 0 6px; }
 .mkt-policy-hero .lead { font: 300 14px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0 0 10px; }
 .mkt-policy-hero .mkt-policy-updated { background: rgba(255,248,244,0.14); color: var(--mkt-green-light); }

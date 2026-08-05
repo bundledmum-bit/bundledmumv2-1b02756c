@@ -215,7 +215,7 @@ export default function SellerPriceEditPage() {
               <div className="r"><span>{listing.title}</span><b>{formatNaira(listing.price_naira)}</b></div>
             </div>
             {delistError && <div className="mkt-errbox"><span className="m">!</span><span>{delistError}</span></div>}
-            <button className="mkt-primary" style={{ background: "var(--mkt-error)" }} onClick={confirmDelist} disabled={delistBusy}>{delistBusy ? "Delisting..." : "Delist and edit"}</button>
+            <button className="mkt-primary" style={{ background: "var(--mkt-error)", color: "var(--mkt-cream)" }} onClick={confirmDelist} disabled={delistBusy}>{delistBusy ? "Delisting..." : "Delist and edit"}</button>
             <button className="back" onClick={() => setDelistOpen(false)} disabled={delistBusy}>Cancel, keep it live for now</button>
           </div>
         </div>

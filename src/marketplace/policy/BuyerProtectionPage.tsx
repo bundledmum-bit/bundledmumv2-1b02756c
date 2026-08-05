@@ -17,7 +17,6 @@ export default function BuyerProtectionPage() {
       <PolicyNav />
       <div className="mkt-policy-hero">
         <div className="inner">
-          <span className="crumb">Policies ›</span>
           <h1>Buying here is protected</h1>
           <p className="lead">A plain explanation of what we promise you, and what we don't.</p>
           {s.policiesUpdatedAt && <span className="mkt-policy-updated">Last updated {s.policiesUpdatedAt}</span>}
