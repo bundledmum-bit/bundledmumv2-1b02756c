@@ -167,6 +167,12 @@ function AccordionSection({
   );
 }
 
+// Temporarily hide the "Buy Now Pay Later" nav links (desktop + mobile) while we
+// prepare our own in-house pay-small-small. The /pay-later route and page stay
+// live and directly reachable — only the nav links are hidden. To restore, set
+// this back to true (and the matching flag in Footer.tsx).
+const SHOW_BNPL_NAV: boolean = false;
+
 export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
@@ -369,12 +375,14 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
             </div>
 
             {/* Direct links */}
-            <Link
-              to="/pay-later"
-              className="rounded-pill px-3 py-2 text-[13px] font-semibold text-white bg-forest hover:bg-forest-deep transition-colors"
-            >
-              Buy Now Pay Later
-            </Link>
+            {SHOW_BNPL_NAV && (
+              <Link
+                to="/pay-later"
+                className="rounded-pill px-3 py-2 text-[13px] font-semibold text-white bg-forest hover:bg-forest-deep transition-colors"
+              >
+                Buy Now Pay Later
+              </Link>
+            )}
 
             <Link
               to="/deals"
@@ -561,7 +569,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
           {/* Flat links row */}
           <div className="mt-1">
             {[
-              { to: "/pay-later", label: "Buy Now Pay Later", variant: "highlight" },
+              ...(SHOW_BNPL_NAV ? [{ to: "/pay-later", label: "Buy Now Pay Later", variant: "highlight" as const }] : []),
               { to: "/deals", label: "Flash Deals", variant: "accent" },
               { to: "/push-gifts", label: "Push Gifts", variant: "default" },
               ...(showSubscribe ? [{ to: "/subscribe", label: "Subscribe", variant: "default" as const }] : []),

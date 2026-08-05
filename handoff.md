@@ -234,3 +234,15 @@ Needs a product decision before building (see Next steps 5-6).
 4. Consider whether cross-device shared links should ever show the promo (session key + landing origin are per-browser).
 5. **suggest_quiz_budget**: decide whether the tailored RPC should drive the budget-step suggestion given gender/multiples/hospital aren't answered yet there (send engine defaults like `quiz_budget_suggestions` does? move the budget question after those? show it later?).
 6. **suggest_quiz_budget / tier**: the RPC needs `p_budget_tier`, but tier is derived from the budget amount — decide whether to call it once per tier (starter/standard/premium) to produce the 3 cards, or use a single assumed tier.
+
+## BNPL nav links hidden (not deleted)
+- "Buy Now Pay Later" (route /pay-later, page PayLaterPage) links are HIDDEN from
+  all three nav surfaces via a `const SHOW_BNPL_NAV: boolean = false;` feature flag
+  in each of Navbar.tsx (desktop Link + mobile flat-links array) and Footer.tsx
+  (Help group). Set both flags back to `true` to restore when the in-house
+  pay-small-small launches.
+- The route and page are UNTOUCHED and still directly reachable:
+  StorefrontApp.tsx:345 `/pay-later` + :346 `/buy-now-pay-later` → `/pay-later`
+  redirect. Any direct link or running ad still works.
+- Note: origin/main was refactored — App.tsx now delegates to StorefrontApp.tsx
+  (marketplace path split); storefront routes live in StorefrontApp.tsx.

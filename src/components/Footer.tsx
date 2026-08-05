@@ -5,6 +5,12 @@ import { useSiteSettings } from "@/hooks/useSupabaseData";
 import PwaInstallButton from "@/components/PwaInstallButton";
 import PushSubscribeToggle from "@/components/PushSubscribeToggle";
 
+// Temporarily hide the "Buy Now Pay Later" footer link while we prepare our own
+// in-house pay-small-small. The /pay-later route and page stay live and directly
+// reachable — only the link is hidden. To restore, set this back to true (and the
+// matching flag in Navbar.tsx).
+const SHOW_BNPL_NAV: boolean = false;
+
 export default function Footer() {
   const { data: settings } = useSiteSettings();
 
@@ -43,7 +49,7 @@ export default function Footer() {
           </div>
           {[
             { title: "Shop", links: [{ label: "Baby Items", to: "/shop?tab=baby" }, { label: "Mum Items", to: "/shop?tab=mum" }, { label: "Bundles & Kits", to: "/bundles" }, { label: "Gift Ideas", to: "/bundles?hospital=gift" }] },
-            { title: "Help", links: [{ label: "FAQs", to: "/contact#faqs" }, { label: "Articles", to: "/articles" }, ...(whatsapp ? [{ label: "WhatsApp Us", to: `https://wa.me/${whatsapp}?text=Hi%20BundledMum!%20I%20have%20a%20question.`, external: true }] : []), { label: "Track Order", to: "/track-order" }, { label: "Returns", to: "/returns" }, { label: "Buy Now Pay Later", to: "/pay-later" }] },
+            { title: "Help", links: [{ label: "FAQs", to: "/contact#faqs" }, { label: "Articles", to: "/articles" }, ...(whatsapp ? [{ label: "WhatsApp Us", to: `https://wa.me/${whatsapp}?text=Hi%20BundledMum!%20I%20have%20a%20question.`, external: true }] : []), { label: "Track Order", to: "/track-order" }, { label: "Returns", to: "/returns" }, ...(SHOW_BNPL_NAV ? [{ label: "Buy Now Pay Later", to: "/pay-later" }] : [])] },
             { title: "Company", links: [{ label: "Our Story", to: "/about" }, { label: "Contact", to: "/contact" }, { label: "Blog", to: "/blog" }] },
           ].map(col => (
             <div key={col.title}>
