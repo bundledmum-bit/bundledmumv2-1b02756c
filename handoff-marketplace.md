@@ -3857,3 +3857,74 @@ admin-side fixes (six buttons + the markup label) could not be verified
 live — no admin credentials in this environment — confirmed by reading the
 compiled output and a passing typecheck/build instead. Committed and
 pushed to `main`.
+
+## 11. Login screen redesign (2026-08-05)
+
+Implemented from a Claude Design file (`BundledMum Marketplace.dc.html`,
+screens L1-L7, project `0afda8cc-a981-4d3a-9e96-76e4ca05ec27`), read via the
+DesignSync MCP tool (`get_project`/`list_files`/`get_file`, read-only —
+this project is `PROJECT_TYPE_PROJECT` not a design-system project, so it
+doesn't show up in `list_projects`, but direct file reads by path still
+worked). The design file itself is a much larger canvas covering many
+future screens (condition questions, offers, seller edit flows, returns,
+policy pages, admin) — only the login section (L1-L7) was in scope here
+and is what got built; the rest is that project's own future work, not
+touched.
+
+**What changed**, same eight-headline contextual-copy system, same
+passwordless-magic-link mechanism, both untouched:
+- A reason-specific icon-in-circle above the headline (₦ for offer/payment,
+  a shopping bag for sell/seller, a package for orders/return, a flag for
+  dispute, an arrow for the generic/no-reason case). Colors and glyph live
+  in `marketplaceLogin.ts`'s new `LOGIN_REASON_ICON` map, next to the
+  existing copy map, same "closed union, add a case or fall back to
+  generic" pattern.
+- The CTA ("Send my sign in link", copy changed from "Email me a login
+  link") is now always enabled rather than disabled-until-the-field-looks-
+  valid; validation runs on submit, and a live green border + checkmark
+  shows once the typed address looks valid, before submitting.
+- The blank cream space below the form is now a "Why we sign you in this
+  way" card (three reassurance lines), filling what used to be empty.
+  When a *submit* actually fails (valid address, API/network error) that
+  same card slot becomes an error card instead; a *format* error (bad
+  address) stays a small inline message under the input, card unchanged —
+  two different failure shapes get two different treatments, matching the
+  design file's own L3/L5 distinction.
+- The sent state dropped the borrowed `.mkt-heldbox` (the same card used
+  for held-funds messaging elsewhere) and got its own full-bleed dark-green
+  identity on mobile: an envelope icon, "Check {email}", a waiting card,
+  and a single resend button that toggles between a live `m:ss` countdown
+  and "Resend the link" rather than swapping between a span and a button.
+- A "‹ Back" link now exists (there wasn't one before). Every gate that
+  sends someone here passes its own page as `returnTo`, so `returnTo`
+  doubles safely as "back" for every named reason — worded "Back to
+  listing" specifically for `offer` since that's a real listing page,
+  plain "Back" otherwise. The bare `/login` case (header's "Log in" link,
+  no reason, no reliable `returnTo`) uses real browser-history back
+  instead, rather than force it to `returnTo`'s "/orders" default, which
+  isn't necessarily where that person actually came from.
+- Desktop (≥1024px) gets a real two-pane shell — a fixed 42% green trust
+  rail (brand promise + 3 checkmarks, or the sent-state copy) beside the
+  form column — instead of the same mobile card just centered on a wider
+  page. Rail and form column stretch to equal height via flexbox rather
+  than the design file's fixed 760px mock frame, since real content height
+  varies by stage (an error line, a longer headline) and a fixed height
+  would risk clipping.
+
+**One judgment call, not in the source file**: the design file's own note
+says "a flag for dispute" but never mocks a dispute screen, so there was
+no color pairing to copy. Gave it the same error-tinted pair
+(`--mkt-error-bg`/`--mkt-error`) already used everywhere else in the
+marketplace for "something needs attention," kept deliberately muted
+rather than alarming, since landing on this screen isn't itself bad news.
+
+New CSS lives in its own `/* Marketplace login, redesigned shell */`
+section at the end of `marketplace.css`, all `.mkt-login-*` classes (no
+existing shared classes were touched, so nothing else that reuses
+`.mkt-sell-head`/`.mkt-sell-body`/`.mkt-primary`/`.mkt-heldbox` elsewhere
+was put at risk).
+
+Verified live at 390px and 1440px: offer/dispute/generic reasons, the
+live valid-checkmark state, the format-error state, and a real send
+through to the full sent state (both breakpoints) via an actual
+`signInWithOtp` call. `npm run build` and `tsc --noEmit` both clean.

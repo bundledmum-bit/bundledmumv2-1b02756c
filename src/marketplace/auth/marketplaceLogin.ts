@@ -68,6 +68,27 @@ export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string 
 };
 
 /**
+ * The small context icon shown above the headline, one per reason group:
+ * money-related (offer/payment) and delivery-related (orders/return) both
+ * read as green, selling-related (sell/seller) reads as coral, matching
+ * their meaning elsewhere in the product. Dispute has no precedent in the
+ * design file this was built from — it borrows the same error-tinted pair
+ * already used for every other "something needs attention" moment in the
+ * marketplace (see marketplace.css's --mkt-error-bg usage), kept deliberately
+ * muted rather than alarming since arriving here isn't itself bad news.
+ */
+export const LOGIN_REASON_ICON: Record<LoginReason | "generic", { glyph: string; bg: string; fg: string }> = {
+  offer: { glyph: "₦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  payment: { glyph: "₦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  sell: { glyph: "🛍", bg: "var(--mkt-coral-light)", fg: "var(--mkt-coral-dark)" },
+  seller: { glyph: "🛍", bg: "var(--mkt-coral-light)", fg: "var(--mkt-coral-dark)" },
+  orders: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  return: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  dispute: { glyph: "🚩", bg: "var(--mkt-error-bg)", fg: "var(--mkt-error)" },
+  generic: { glyph: "→", bg: "var(--mkt-grey-chip)", fg: "var(--mkt-muted)" },
+};
+
+/**
  * Full-page navigation to the marketplace login, carrying the intended
  * destination and, optionally, why. Full nav (not react-router) so it works
  * from any gate, including those firing in effects before the router is

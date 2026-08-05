@@ -1319,3 +1319,103 @@
   .mkt-condition-summary .rule { height: 1px; background: #BFDECB; }
   .mkt-condition-summary .note { font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); margin: 0; }
 }
+
+/* ── Marketplace login, redesigned shell (Claude Design "BundledMum
+   Marketplace.dc.html", screens L1-L7). Mobile is a single cream column;
+   ≥1024px gets a real two-pane shell via .mkt-login-rail, hidden on mobile. */
+.mkt-login-page { flex: 1; display: flex; flex-direction: column; }
+
+.mkt-login-formcol { flex: 1; display: flex; flex-direction: column; }
+
+.mkt-login-form { flex: 1; padding: 20px 16px 32px; display: flex; flex-direction: column; gap: 18px; max-width: 440px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+.mkt-login-back { align-self: flex-start; font: 700 14px/1 'Lato', sans-serif; color: var(--mkt-muted); background: none; border: none; cursor: pointer; padding: 4px 0; }
+
+.mkt-login-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 700 22px/1 'Lato', sans-serif; flex: 0 0 52px; }
+
+.mkt-login-headtext { display: flex; flex-direction: column; gap: 7px; }
+.mkt-login-headline { font: 900 26px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; text-wrap: pretty; margin: 0; color: var(--mkt-black); }
+.mkt-login-subline { font: 400 14px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+
+.mkt-login-fieldgroup { display: flex; flex-direction: column; gap: 7px; }
+.mkt-login-uplabel { font: 700 11px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-muted); }
+.mkt-login-inputwrap { position: relative; }
+.mkt-login-input { width: 100%; box-sizing: border-box; background: #fff; border: 1.5px solid var(--mkt-input-border); border-radius: 12px; height: 52px; padding: 0 40px 0 15px; font: 400 15px/1 'Lato', sans-serif; color: var(--mkt-black); }
+.mkt-login-input::placeholder { color: var(--mkt-muted-2); }
+.mkt-login-input:focus { outline: none; border-color: var(--mkt-coral); box-shadow: 0 0 0 3px var(--mkt-coral-light); }
+.mkt-login-input.valid { border-color: var(--mkt-green); }
+.mkt-login-input.error { border-color: var(--mkt-error); }
+.mkt-login-inputwrap .tick { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--mkt-green); font: 700 13px/1 'Lato', sans-serif; }
+
+.mkt-login-fielderr { display: flex; gap: 8px; align-items: flex-start; background: var(--mkt-error-bg); border-radius: 9px; padding: 9px 11px; }
+.mkt-login-fielderr .m { color: var(--mkt-error); font: 800 11px/1 'Lato', sans-serif; }
+.mkt-login-fielderr span:last-child { font: 400 12px/1.4 'Lato', sans-serif; color: var(--mkt-error-ink); }
+
+.mkt-login-cta { width: 100%; background: var(--mkt-coral); color: var(--mkt-black); border: none; border-radius: 12px; padding: 16px; text-align: center; font: 800 16px/1 'Nunito', sans-serif; cursor: pointer; }
+.mkt-login-cta:hover { background: var(--mkt-coral-dark); }
+.mkt-login-cta:disabled { opacity: 0.65; cursor: not-allowed; }
+
+.mkt-login-howitworks { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 15px; display: flex; flex-direction: column; gap: 9px; }
+.mkt-login-howitworks .t { font: 800 12.5px/1 'Nunito', sans-serif; letter-spacing: 0.04em; color: var(--mkt-black); }
+.mkt-login-howitworks .row { display: flex; gap: 9px; align-items: flex-start; }
+.mkt-login-howitworks .row .ic { width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 9.5px/16px 'Lato', sans-serif; text-align: center; flex: 0 0 16px; }
+.mkt-login-howitworks .row span:last-child { font: 400 12px/1.5 'Lato', sans-serif; color: #3D3936; }
+
+.mkt-login-senderr { background: #fff; border: 1px solid var(--mkt-error); border-radius: 14px; padding: 15px; display: flex; gap: 10px; align-items: flex-start; }
+.mkt-login-senderr .m { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-error-bg); color: var(--mkt-error); font: 800 11px/20px 'Lato', sans-serif; text-align: center; }
+.mkt-login-senderr span:last-child { font: 400 13px/1.5 'Lato', sans-serif; color: var(--mkt-error-ink); }
+
+/* Sent, mobile: full-bleed dark identity, dropped the borrowed .mkt-heldbox */
+.mkt-login-sent { flex: 1; background: var(--mkt-green); padding: 32px 22px; display: flex; flex-direction: column; gap: 18px; box-sizing: border-box; }
+.mkt-login-sent .mkt-login-sent-icon { width: 56px; height: 56px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font: 700 24px/1 'Lato', sans-serif; color: var(--mkt-green); }
+.mkt-login-sent h1 { font: 900 26px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); margin: 0; text-wrap: pretty; }
+.mkt-login-sent p.lead { font: 400 14.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+.mkt-login-sent-card { background: var(--mkt-green-dark); border-radius: 13px; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+.mkt-login-sent-card .waiting { display: flex; align-items: center; gap: 9px; }
+.mkt-login-sent-card .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #8FB6A2; flex: 0 0 18px; box-sizing: border-box; }
+.mkt-login-sent-card .waiting span { font: 700 12.5px/1.3 'Lato', sans-serif; color: var(--mkt-green-light); }
+.mkt-login-sent-card hr { border: none; height: 1px; background: var(--mkt-green); margin: 0; }
+.mkt-login-sent-card .note { font: 400 12px/1.5 'Lato', sans-serif; color: #9DBFAF; margin: 0; }
+.mkt-login-sent-resend { border: 1.5px solid #6E9682; background: none; color: #8FB6A2; border-radius: 12px; padding: 13px; text-align: center; font: 800 14px/1 'Nunito', sans-serif; cursor: pointer; }
+.mkt-login-sent-resend:disabled { cursor: default; opacity: 0.9; }
+.mkt-login-sent-diff { text-align: center; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green-light); background: none; border: none; cursor: pointer; padding: 4px; }
+
+/* Desktop rail, decorative trust panel, hidden on mobile */
+.mkt-login-rail { display: none; }
+
+@media (min-width: 1024px) {
+  .mkt-login-back { display: none; } /* the rail replaces the need for a way back on desktop */
+
+  /* Natural height (stretches to the taller of rail/form column), not the
+     design file's fixed 760px mock frame — real content length varies by
+     stage (an error line, a longer headline) and must never clip. */
+  .mkt-login-page { flex-direction: row; align-items: stretch; justify-content: center; max-width: 1180px; width: calc(100% - 112px); margin: 40px auto; border-radius: 16px; overflow: hidden; box-shadow: 0 18px 42px rgba(26, 26, 26, .10); }
+
+  .mkt-login-rail { display: flex; flex: 0 0 42%; background: var(--mkt-green); flex-direction: column; justify-content: center; padding: 56px; gap: 22px; box-sizing: border-box; }
+  .mkt-login-rail.sent { background: var(--mkt-green-dark); gap: 18px; }
+  .mkt-login-rail-brand { font: 900 19px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); }
+  .mkt-login-rail-brand small { font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #8FB6A2; margin-left: 6px; }
+  .mkt-login-rail h2 { font: 900 34px/1.15 'Nunito', sans-serif; letter-spacing: -0.03em; color: var(--mkt-cream); margin: 0; text-wrap: pretty; }
+  .mkt-login-rail.sent h2 { font-size: 32px; }
+  .mkt-login-rail ul { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+  .mkt-login-rail ul li { display: flex; gap: 11px; align-items: flex-start; font: 400 13.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); }
+  .mkt-login-rail ul li .ic { width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 11px/20px 'Lato', sans-serif; text-align: center; flex: 0 0 20px; }
+  .mkt-login-rail p { font: 400 14px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+  .mkt-login-rail .mkt-login-sent-icon { width: 60px; height: 60px; font-size: 26px; }
+
+  .mkt-login-formcol { flex: 1; display: flex; align-items: center; justify-content: center; padding: 56px; background: var(--mkt-cream); box-sizing: border-box; }
+  .mkt-login-form { flex: none; max-width: 380px; padding: 0; }
+
+  /* Sent, desktop: the rail carries the identity, the form column stays cream */
+  .mkt-login-sent { flex: none; background: none; padding: 0; gap: 16px; max-width: 380px; margin: 0 auto; }
+  .mkt-login-sent .mkt-login-sent-icon { display: none; }
+  .mkt-login-sent h1 { color: var(--mkt-black); }
+  .mkt-login-sent p.lead { display: none; }
+  .mkt-login-sent-card { background: var(--mkt-green-light); }
+  .mkt-login-sent-card .waiting span { color: var(--mkt-green-dark); }
+  .mkt-login-sent-card .dot { border-color: var(--mkt-green); }
+  .mkt-login-sent-card hr { background: #BFDECB; }
+  .mkt-login-sent-card .note { color: #3D6B54; }
+  .mkt-login-sent-resend { border-color: var(--mkt-input-border); color: var(--mkt-muted-2); }
+  .mkt-login-sent-diff { color: var(--mkt-green); }
+}
