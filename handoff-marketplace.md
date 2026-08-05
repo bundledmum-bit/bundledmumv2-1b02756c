@@ -174,11 +174,12 @@ resolved), not just the final one.
   `serviceFee + paymentFee` (both still sourced from
   `marketplace-initialize-payment`'s response, nothing computed a different
   way, `service_fee_naira`/`paystack_fee_naira` still stored separately on
-  the order row, unchanged). Sub-line: *"Covers BundledMum's service fee
-  and Paystack's payment processing, non refundable."* — names both parties
-  explicitly, which is the whole point: unmerged, a buyer could see two
-  numbers and know which is BundledMum's; merged, that distinction has to
-  live in the sub-line or it silently disappears.
+  the order row, unchanged). Sub-line: **"Non refundable"** — a follow-up
+  request simplified this from the original longer wording ("Covers
+  BundledMum's service fee and Paystack's payment processing, non
+  refundable"), which had explicitly named both parties. The quiet line
+  below the box (see next bullet) is now the only place the Paystack-vs-
+  BundledMum split is disclosed.
 - **Kept the existing quiet line separate**, not folded in: *"This fee is
   set by Paystack, not BundledMum, so it may change if their rates do."*
   Judged that folding a second idea (rate drift) into the same sub-line

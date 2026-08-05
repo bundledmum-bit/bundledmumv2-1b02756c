@@ -280,7 +280,7 @@ export default function CheckoutPage() {
                 </>
               ) : feeAdded ? (
                 <>
-                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Covers BundledMum's service fee and Paystack's payment processing, non refundable</div></div><b>{formatNaira(serviceFee + paymentFee)}</b></div>
+                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee + paymentFee)}</b></div>
                   <div className="rule" />
                   <div className="total"><span>Total</span><b>{formatNaira(paystackTotal)}</b></div>
                 </>
