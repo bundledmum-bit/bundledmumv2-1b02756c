@@ -41,7 +41,6 @@ export default function BecomeSellerPage() {
         <div className="inner">
           <div className="row">
             <button className="mkt-sell-back" onClick={() => navigate("/")} aria-label="Back to marketplace">‹</button>
-            <div className="mkt-sell-brand">BundledMum <small>Marketplace</small></div>
           </div>
           <div className="hero">Sell your used baby and toddler items without wahala</div>
           <p className="sub">No more "is it still available?" that leads nowhere, and no dragging your baby to meet a stranger who says he will transfer and never does. You get exactly the price you asked for, we take nothing from it.</p>
