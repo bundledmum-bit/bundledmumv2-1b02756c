@@ -25,9 +25,9 @@ interface SettingField {
   integer?: boolean;
   suffix?: string;
   options?: Array<{ value: string; label: string }>;
-  /** A standing caution shown under the field regardless of its value, not
-   * a validation error, e.g. the markup-percent disconnect below. */
-  warning?: string;
+  /** A standing, neutral line shown under the field regardless of its
+   * value. Information, not a warning, never error red. */
+  note?: string;
   /** A text field may be saved empty on purpose (e.g. the policies
    * last-updated date, where empty means "hide the line", not an error). */
   allowEmpty?: boolean;
@@ -54,7 +54,7 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
       {
         key: "marketplace_markup_percent", label: "Markup percentage", type: "number", percent: true,
         help: "Percentage added to the seller asking price to produce the buyer-facing price.",
-        warning: "Does not currently reprice anything: final_price_naira is computed per listing from that listing's OWN stored markup_percent column, which defaults to a fixed 10% and is not written from this setting when a listing is created or edited. Changing this only updates the buyer-price preview a seller sees while listing, not what is actually charged, for existing OR new listings. Needs a code fix (out of scope here) before it does what it looks like it does.",
+        note: "Editing this number alone affects new listings only. Existing listings only change when you use Apply to existing listings below.",
       },
       { key: "marketplace_service_fee_naira", label: "Service fee", type: "number", money: true, help: "Flat non-refundable service fee charged to the buyer per marketplace order." },
       { key: "marketplace_buyer_pays_paystack_fee", label: "Buyer pays the Paystack fee", type: "toggle", help: "Show the Paystack transaction fee as a separate line charged to the buyer at marketplace checkout." },
@@ -118,6 +118,17 @@ function parseEmails(raw: string): string[] {
 interface EmailTemplateRow { id: string; slug: string; name: string; description: string | null; internal_recipients: string | null }
 interface PendingTemplateSave { id: string; slug: string; name: string; value: string | null; display: string }
 
+/** Row shape from preview_markup_change(p_markup), already deployed. */
+interface MarkupPreview {
+  listings_affected: number;
+  current_total_buyer_value: number;
+  new_total_buyer_value: number;
+  example_title: string | null;
+  example_seller_gets: number | null;
+  example_price_now: number | null;
+  example_price_after: number | null;
+}
+
 export default function MarketplaceSettings() {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
@@ -135,6 +146,20 @@ export default function MarketplaceSettings() {
   const [tplEditing, setTplEditing] = useState<Record<string, boolean>>({});
   const [tplErrors, setTplErrors] = useState<Record<string, string>>({});
   const [pendingTemplateSave, setPendingTemplateSave] = useState<PendingTemplateSave | null>(null);
+
+  // Apply-markup-to-existing-listings: its own deliberate flow, entirely
+  // separate from the plain edit above (which only ever affects new
+  // listings). Two steps in one panel: enter a markup and preview it for
+  // real via preview_markup_change, then confirm via
+  // admin_apply_markup_to_listings. Never triggered by saving the number.
+  const [markupApplyOpen, setMarkupApplyOpen] = useState(false);
+  const [markupApplyValue, setMarkupApplyValue] = useState("");
+  const [markupIncludeDelisted, setMarkupIncludeDelisted] = useState(false);
+  const [markupPreview, setMarkupPreview] = useState<MarkupPreview | null>(null);
+  const [markupPreviewLoading, setMarkupPreviewLoading] = useState(false);
+  const [markupApplyBusy, setMarkupApplyBusy] = useState(false);
+  const [markupApplyError, setMarkupApplyError] = useState<string | null>(null);
+  const [markupApplyResult, setMarkupApplyResult] = useState<{ listings_updated: number; new_markup: number } | null>(null);
 
   const settingsQ = useQuery({
     queryKey: ["mkt-settings"],
@@ -348,6 +373,43 @@ export default function MarketplaceSettings() {
     catsQ.refetch();
   }
 
+  function openMarkupApply() {
+    setMarkupApplyValue(strVal("marketplace_markup_percent"));
+    setMarkupIncludeDelisted(false);
+    setMarkupPreview(null);
+    setMarkupApplyError(null);
+    setMarkupApplyResult(null);
+    setMarkupApplyOpen(true);
+  }
+
+  async function previewMarkup() {
+    const n = Number(markupApplyValue);
+    if (markupApplyValue.trim() === "" || !isFinite(n) || n < 0 || n > 100) {
+      setMarkupApplyError("Enter a markup between 0 and 100.");
+      return;
+    }
+    setMarkupPreviewLoading(true); setMarkupApplyError(null);
+    const { data, error } = await adb.rpc("preview_markup_change", { p_markup: n });
+    setMarkupPreviewLoading(false);
+    if (error) { setMarkupApplyError(error.message); return; }
+    const row = (Array.isArray(data) ? data[0] : data) as MarkupPreview | null;
+    setMarkupPreview(row ?? null);
+  }
+
+  /** Only reachable once a preview has been fetched for this exact value,
+   * so an admin can never apply a number they have not seen the effect of. */
+  async function confirmMarkupApply() {
+    const n = Number(markupApplyValue);
+    if (!markupPreview || !isFinite(n) || n < 0 || n > 100) return;
+    setMarkupApplyBusy(true); setMarkupApplyError(null);
+    const { data, error } = await adb.rpc("admin_apply_markup_to_listings", { p_markup: n, p_include_delisted: markupIncludeDelisted });
+    setMarkupApplyBusy(false);
+    if (error) { setMarkupApplyError(error.message); return; }
+    const row = (Array.isArray(data) ? data[0] : data) as { listings_updated: number; new_markup: number } | null;
+    setMarkupApplyResult(row ?? null);
+    settingsQ.refetch();
+  }
+
   if (settingsQ.isLoading || catsQ.isLoading || templatesQ.isLoading) {
     return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
   }
@@ -403,8 +465,17 @@ export default function MarketplaceSettings() {
         )}
 
         <p className="text-[12px] text-text-med mt-2">{f.help}</p>
-        {f.warning && (
-          <p className="text-[12px] mt-2 pt-2 border-t" style={{ color: "#C0392B", borderColor: "#F0DDD2" }}>{f.warning}</p>
+        {f.note && (
+          <p className="text-[12px] mt-2 pt-2 border-t text-text-med" style={{ borderColor: "#F0DDD2" }}>{f.note}</p>
+        )}
+        {f.key === "marketplace_markup_percent" && (
+          <button
+            onClick={openMarkupApply}
+            className="mt-3 w-full text-xs font-heading font-extrabold px-3 py-2 rounded-xl border"
+            style={{ borderColor: "#2D6A4F", color: "#2D6A4F" }}
+          >
+            Apply to existing listings
+          </button>
         )}
       </div>
     );
@@ -579,6 +650,81 @@ export default function MarketplaceSettings() {
 
       {/* locations */}
       <MarketplaceLocations />
+
+      {/* apply markup to existing listings */}
+      {markupApplyOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/45 flex items-center justify-center p-4" onClick={() => !markupApplyBusy && setMarkupApplyOpen(false)}>
+          <div className="bg-white rounded-2xl border p-5 max-w-md w-full" style={{ borderColor: "#F0DDD2" }} onClick={(e) => e.stopPropagation()}>
+            {markupApplyResult ? (
+              <>
+                <div className="font-heading font-black text-lg">Done</div>
+                <p className="text-sm text-text-med mt-1">
+                  {markupApplyResult.listings_updated} listing{markupApplyResult.listings_updated === 1 ? "" : "s"} now carry a {markupApplyResult.new_markup}% markup. New listings will match too.
+                </p>
+                <button onClick={() => setMarkupApplyOpen(false)} className="mt-4 w-full font-heading font-extrabold text-sm rounded-xl py-2.5 text-white" style={{ background: "#2D6A4F" }}>Done</button>
+              </>
+            ) : (
+              <>
+                <div className="font-heading font-black text-lg">Apply markup to existing listings</div>
+                <p className="text-sm text-text-med mt-1">Sellers keep exactly what they asked for, this only changes what buyers pay on top.</p>
+
+                <div className="mt-4">
+                  <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med mb-1">New markup</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" value={markupApplyValue}
+                      onChange={(e) => { setMarkupApplyValue(e.target.value); setMarkupPreview(null); }}
+                      className="flex-1 rounded-xl border px-3 py-2 text-sm" style={{ borderColor: "#F0DDD2" }}
+                    />
+                    <span className="text-sm font-heading font-bold">%</span>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2 mt-3 text-sm">
+                  <input
+                    type="checkbox" checked={markupIncludeDelisted}
+                    onChange={(e) => { setMarkupIncludeDelisted(e.target.checked); setMarkupPreview(null); }}
+                    className="mt-0.5"
+                  />
+                  <span>Also update delisted listings, so they carry the new markup if relisted</span>
+                </label>
+
+                {markupApplyError && <div className="mt-3 text-xs" style={{ color: "#C0392B" }}>{markupApplyError}</div>}
+
+                {!markupPreview ? (
+                  <button onClick={previewMarkup} disabled={markupPreviewLoading} className="mt-4 w-full font-heading font-extrabold text-sm rounded-xl py-2.5 border" style={{ borderColor: "#2D6A4F", color: "#2D6A4F" }}>
+                    {markupPreviewLoading ? "Working it out..." : "See what this changes"}
+                  </button>
+                ) : (
+                  <>
+                    <div className="mt-4 rounded-xl p-3" style={{ background: "#FFF8F4" }}>
+                      <div className="flex justify-between text-sm"><span>Listings affected</span><b>{markupPreview.listings_affected}</b></div>
+                      <div className="flex justify-between text-sm mt-1"><span>Total buyer value now</span><b>{formatNaira(markupPreview.current_total_buyer_value)}</b></div>
+                      <div className="flex justify-between text-sm mt-1"><span>Total buyer value after</span><b>{formatNaira(markupPreview.new_total_buyer_value)}</b></div>
+                      {markupPreview.example_title && (
+                        <div className="mt-3 pt-3 border-t" style={{ borderColor: "#F0DDD2" }}>
+                          <div className="text-[11px] text-text-med">For example, "{markupPreview.example_title}"</div>
+                          <div className="text-sm mt-1">Buyer price: {formatNaira(markupPreview.example_price_now ?? 0)} → {formatNaira(markupPreview.example_price_after ?? 0)}</div>
+                          <div className="text-sm mt-1" style={{ color: "#1A4A33" }}>Seller still gets {formatNaira(markupPreview.example_seller_gets ?? 0)}, unchanged</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-3 rounded-xl p-3 text-sm" style={{ background: "#FDE8DF", color: "#D4613C" }}>
+                      This changes what every live buyer sees immediately. Anyone who saw or shared a price on one of these listings will find it different.
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={() => setMarkupApplyOpen(false)} disabled={markupApplyBusy} className="flex-1 font-heading font-bold text-sm rounded-xl py-2.5 border" style={{ borderColor: "#F0DDD2" }}>Cancel</button>
+                      <button onClick={confirmMarkupApply} disabled={markupApplyBusy} className="flex-1 font-heading font-extrabold text-sm rounded-xl py-2.5 text-white" style={{ background: "#D4613C" }}>{markupApplyBusy ? "Applying..." : "Apply now"}</button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* confirm: setting save */}
       {pendingSave && (

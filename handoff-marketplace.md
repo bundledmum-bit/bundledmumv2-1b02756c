@@ -165,7 +165,64 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — checkout merges service fee + Paystack fee into one line
+### This pass — markup can be applied to existing listings, stale warning removed
+`MarketplaceSettings.tsx` only. Two backend functions were already deployed
+and verified live before touching any code:
+`preview_markup_change(p_markup)` (dry-run: listings affected, total buyer
+value before/after, one worked example including the seller's unchanged
+amount) and `admin_apply_markup_to_listings(p_markup, p_include_delisted)`
+(the real write, admin-permission gated). Also verified live: the earlier
+disconnect this screen used to warn about is genuinely fixed —
+`marketplace_listings.markup_percent`'s column default is no longer a
+hardcoded `10`, and a new trigger (`trg_aa_set_listing_markup`) now stamps
+it from the live `marketplace_markup_percent` setting on insert whenever
+the caller hasn't set one. So the old red warning was not just imprecise,
+it was actively wrong by the time this pass started.
+- **Removed** the red warning under Markup percentage entirely (it was the
+  only field in this file using the `warning` mechanism, so the mechanism
+  itself was retired rather than left unused).
+- **Replaced with a neutral, non-red line** (plain muted text, no red, no
+  green, no box): *"Editing this number alone affects new listings only.
+  Existing listings only change when you use Apply to existing listings
+  below."* Information, not a warning, per the brief.
+- **New "Apply to existing listings" button** on the markup card, opening a
+  panel that requires seeing the real effect before it can be confirmed:
+  enter a markup, an off-by-default "Also update delisted listings"
+  checkbox, then "See what this changes" calls `preview_markup_change` for
+  real and shows listings affected, total buyer value before/after, and the
+  one worked example with the seller's amount explicitly called out as
+  unchanged. Only once that preview has loaded does an "Apply now" button
+  appear (changing the number or the checkbox after previewing clears the
+  stale preview, so an admin can never apply a figure they have not
+  actually seen the effect of).
+- **Confirm step is honest about the consequence**, styled coral (not error
+  red — this is a real but intentional effect of a deliberate action, not a
+  problem): *"This changes what every live buyer sees immediately. Anyone
+  who saw or shared a price on one of these listings will find it
+  different."*
+- **Editing the plain number, unchanged**: still goes through the existing
+  edit-save-confirm path, still only writes `site_settings`, still affects
+  new listings only. The two are entirely separate code paths — applying
+  to existing listings is never a side effect of saving the number.
+- **Verified live against the real database** (not just built): called
+  `preview_markup_change(15)` directly — returned exactly the figures this
+  task's own brief quoted (30 listings, ₦484,000 → ₦506,000, the Graco pram
+  ₦74,800 → ₦78,200, seller unchanged at ₦68,000) — confirming both the
+  function and this screen's parsing of its response are correct. Did
+  **not** call `admin_apply_markup_to_listings` live, since that would
+  actually reprice 30 real listings, a real consequential write beyond what
+  proving the UI wiring needed. `npx tsc --noEmit` and `npm run build` both
+  pass; the settings route itself is admin-login gated, same
+  no-credentials limitation as every other admin screen in this file.
+- Preserved: every other setting and its own confirm step, the
+  confirm-day-vs-dispute-window and both-payment-methods-off warnings
+  (still red, still valid, untouched), categories, locations, per-alert
+  recipients, bank details. `price_naira` (the seller's asking price) is
+  never touched anywhere in this pass — `admin_apply_markup_to_listings`
+  only ever writes `markup_percent`, which the price-compute trigger then
+  uses to recompute `final_price_naira`, the buyer-facing figure.
+
+### Earlier this branch line — checkout merges service fee + Paystack fee into one line
 `CheckoutPage.tsx` only, display change, nothing computed differently.
 Breakdown goes from four lines to three: item price, "Service & Paystack
 fee", total. Applies in every load state (details-pending, order-created,
