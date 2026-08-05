@@ -266,27 +266,27 @@ export default function CheckoutPage() {
           <>
             <div className="mkt-brk">
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
-              <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
               {showDetailsForm ? (
                 <>
-                  <div className="line"><div><span>Payment fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
+                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Shown at the next step</div></div><b>...</b></div>
                   <div className="rule" />
                   <div className="total"><span>Total</span><b>...</b></div>
                 </>
               ) : !payQ.data ? (
                 <>
-                  <div className="line"><div><span>Payment fee</span><div className="sub">Working it out</div></div><b>...</b></div>
+                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Working it out</div></div><b>...</b></div>
                   <div className="rule" />
                   <div className="total"><span>Total</span><b>...</b></div>
                 </>
               ) : feeAdded ? (
                 <>
-                  <div className="line"><div><span>Paystack fee</span><div className="sub">Payment process fee by paystack</div></div><b>{formatNaira(paymentFee)}</b></div>
+                  <div className="line"><div><span>Service &amp; Paystack fee</span><div className="sub">Covers BundledMum's service fee and Paystack's payment processing, non refundable</div></div><b>{formatNaira(serviceFee + paymentFee)}</b></div>
                   <div className="rule" />
                   <div className="total"><span>Total</span><b>{formatNaira(paystackTotal)}</b></div>
                 </>
               ) : (
                 <>
+                  <div className="line"><div><span>Service fee</span><div className="sub">Non refundable</div></div><b>{formatNaira(serviceFee)}</b></div>
                   <div className="rule" />
                   <div className="total"><span>Total</span><b>{formatNaira(paystackTotal)}</b></div>
                 </>

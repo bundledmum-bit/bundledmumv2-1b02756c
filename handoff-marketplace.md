@@ -165,7 +165,68 @@ the base table's FK). Result, now verified live:
 
 ## 5. Changes made
 
-### This pass — condition questions, layout fix only (design 25a)
+### This pass — checkout merges service fee + Paystack fee into one line
+`CheckoutPage.tsx` only, display change, nothing computed differently.
+Breakdown goes from four lines to three: item price, "Service & Paystack
+fee", total. Applies in every load state (details-pending, order-created,
+resolved), not just the final one.
+- **New line**: label "Service & Paystack fee", amount
+  `serviceFee + paymentFee` (both still sourced from
+  `marketplace-initialize-payment`'s response, nothing computed a different
+  way, `service_fee_naira`/`paystack_fee_naira` still stored separately on
+  the order row, unchanged). Sub-line: *"Covers BundledMum's service fee
+  and Paystack's payment processing, non refundable."* — names both parties
+  explicitly, which is the whole point: unmerged, a buyer could see two
+  numbers and know which is BundledMum's; merged, that distinction has to
+  live in the sub-line or it silently disappears.
+- **Kept the existing quiet line separate**, not folded in: *"This fee is
+  set by Paystack, not BundledMum, so it may change if their rates do."*
+  Judged that folding a second idea (rate drift) into the same sub-line
+  would stop it being "one short line, warm not legalistic" as asked, so
+  two short lines each doing one job stays clearer than one longer one
+  doing two.
+- **One deliberate exception, not in the prompt, flagged here:** when
+  `marketplace_buyer_pays_paystack_fee` is off (Paystack's fee absorbed by
+  BundledMum instead of the buyer), the line reverts to plain "Service fee"
+  at `serviceFee` alone, not merged. Merging there would show a number that
+  doesn't match item price + fee = total (the buyer genuinely isn't paying
+  a Paystack portion in that state), which would reintroduce a real
+  arithmetic mismatch worse than the trust-cost problem this pass fixes.
+  The setting currently defaults `true` (buyer pays) in `site_settings`, so
+  this branch is dormant today, live only if an admin switches it off.
+- **Verified live, real order, not just built:** created a real guest
+  checkout order, breakdown showed "Service & Paystack fee" with the new
+  sub-line, amount ₦1,151 (= ₦1,000 + ₦151, confirmed arithmetically
+  correct), Total unchanged at ₦3,351, pay button unchanged at "Pay
+  ₦3,351", the quiet Paystack-rates line still present below the box. Test
+  order and its guest customer row deleted afterward, confirmed via
+  read-back.
+- **Other places the two fees still appear split, reported, NOT changed
+  here (each needs its own decision):**
+  - `BuyerOrderDetailPage.tsx` (lines ~157-158): "Service fee" and "Payment
+    fee" as two separate lines, reading `order.service_fee_naira` /
+    `order.paystack_fee_naira` directly. Inconsistent with checkout now.
+  - `TermsPage.tsx` §4: describes them separately in prose — "Buyers also
+    pay a {service fee} service fee per order, which is non refundable,
+    plus Paystack's own processing fee." Inconsistent with checkout now.
+  - **The buyer order confirmation email is a bigger finding than a simple
+    split-vs-merged question.** `send-marketplace-order-confirmation`
+    (edge function) prepares `{{item_price}}`, `{{service_fee}}`,
+    `{{payment_fee}}` as separate template placeholders. But the live
+    `marketplace_order_confirmation` template's actual `html_body` never
+    references any of the three — it uses `{{item_card}}` and
+    `{{contact_block}}` instead, neither of which this function's `fill()`
+    replaces (it only replaces `{{seller_contact_block}}`, a different
+    name). So today this email likely sends with unresolved `{{item_card}}`
+    / `{{contact_block}}` text, showing no fee breakdown at all, split or
+    merged. This is a pre-existing mismatch between the function and the
+    template, unrelated to today's change, surfaced only because this pass
+    went looking for every place the two fees appear. Not touched, per the
+    explicit instruction not to change email templates here — flagging for
+    a separate fix.
+- `npx tsc --noEmit` and `npm run build` both pass.
+
+### Earlier this branch line — condition questions, layout fix only (design 25a)
 `CreateListingPage.tsx` + `marketplace.css` only. Same six questions, same
 copy, same chip options and follow-ups as before, purely a visual rework —
 no fields added, removed, or renamed, `condition_answers` still built the
