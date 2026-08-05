@@ -1,23 +1,13 @@
-import { useNavigate } from "react-router-dom";
+import { useMarketplaceWhatsAppNumber } from "./lib/whatsapp";
+import NotFoundOrGoneScreen from "./components/NotFoundOrGoneScreen";
 
 /**
- * Catch-all for any marketplace URL that matches no route. The most likely
- * real cause is a shared or bookmarked listing link that has since sold or
- * been taken down, so the copy stays warm rather than reading as a broken
- * page, matching ListingDetailPage's own "gone" state.
+ * Catch-all for any marketplace URL that matches no route — a true 404,
+ * case 3 of the four "not live" situations (see NotFoundOrGoneScreen). No
+ * listing id to look up, so nothing about what the visitor wanted is known:
+ * the most generic of the four, no similar items, a plain route back.
  */
 export default function MarketplaceNotFoundPage() {
-  const navigate = useNavigate();
-
-  return (
-    <div className="mkt-center">
-      <div className="mkt-empty-title">We cannot find that page</div>
-      <div className="mkt-empty-sub">
-        The link may be mistyped, or the item it pointed to has sold or been taken down. There is plenty more to see.
-      </div>
-      <button className="mkt-buy" style={{ maxWidth: 220 }} onClick={() => navigate("/")}>
-        Back to browse
-      </button>
-    </div>
-  );
+  const waNumber = useMarketplaceWhatsAppNumber();
+  return <NotFoundOrGoneScreen c={{ kind: "wrongUrl" }} waNumber={waNumber} />;
 }

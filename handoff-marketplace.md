@@ -4041,3 +4041,138 @@ Not exercised live: the Disputes section and the `?disputeId=` deep link
 `tsc`/build-verified only for that path.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 13. Not found / gone listing, four distinct situations (2026-08-05)
+
+Implemented from the Claude Design file (screens N1-N5, section `28a`).
+Replaces the single blanket "Ah, this one has gone" message with four
+situations that actually differ: **sold** (knows the item, shows similar
+live items), **removed/delisted/rejected** (never says why, may come back),
+**wrong URL** (a true 404, knows nothing, most generic), and **the
+seller's own view** of their dead listing (different information,
+reasonable to tell them why since it's their item).
+
+**The button bug, fixed at the root.** `.mkt-buy` is `flex: 1`, correct
+inside its real home (`.mkt-buybar`'s horizontal row), but two screens
+reused it inside `.mkt-center` (`flex-direction: column; min-height:
+70vh`) — in a vertical flex container, `flex:1` makes the item grow to
+fill the column, which is what inflated the button to ~800px tall. Both
+occurrences (`ListingDetailPage.tsx`'s old gone-state, and
+`MarketplaceNotFoundPage.tsx`, the same bug in two places) are replaced by
+the new screen, whose buttons (`.mkt-notfound-cta` / `--primary` in
+`marketplace.css`) are explicitly sized: `min-height: 52px`, `width:
+auto`, an explicit `max-width` (320px mobile, 260px desktop), never
+`flex` or `width: 100%`. Measured, not eyeballed: **52px at both 390px and
+1440px**, confirmed via `getBoundingClientRect()`.
+
+**Backend, read only, not touched**:
+`get_gone_listing_context(p_listing_id)` (only returns a row for
+`sold`/`delisted`/`rejected` — a live or `pending_review` id returns
+nothing, which is indistinguishable from an id that doesn't exist at all,
+so both correctly fall through to the generic wrong-URL case per the
+routing rule) and `get_similar_live_listings(p_listing_id, p_limit)`
+(same-category first, falls back to the wider category group, flagged via
+`from_same_category`). Both confirmed `SECURITY DEFINER` with `anon`
+`EXECUTE` granted, read directly via `pg_get_functiondef` before trusting
+either claim.
+
+**How the four cases are told apart** (`ListingDetailPage.tsx`): when
+`useListing()` returns null, `get_gone_listing_context` runs. No row →
+wrong URL. `status: 'sold'` → sold. `'delisted'`/`'rejected'` → removed.
+**Ownership is decided by the database, not the client** — a second,
+separate query (`fetchOwnListingIfMine`) reads `marketplace_listings`
+directly, scoped to `.eq("seller_id", seller.id)`; this only ever returns
+a row when the id genuinely belongs to the logged-in seller (confirmed
+live via `pg_policies`: `"Seller reads own listings"` grants this
+regardless of status). When it returns a row, that wins over whatever
+`get_gone_listing_context` said — case 4 instead of case 1/2. This is why
+case 4 can safely show `rejection_reason` (surfaced only for the seller's
+own rejected listing) even though `get_gone_listing_context` deliberately
+never exposes it to a buyer.
+
+**One live-verified negative case worth recording**: a seller session was
+active while testing (rare in this environment) — visiting *another*
+seller's delisted listing correctly rendered the generic removed case,
+not the seller's-own case, confirming the ownership check doesn't
+false-positive.
+
+**Similar items, `from_same_category` used exactly as the task described,
+with one refinement found while testing live**: the design doesn't word
+same-category vs. wider-group cards differently, so the cards themselves
+are identical either way — but the section heading and the body sentence
+needed to agree with each other, and initially didn't. Live-tested with a
+real listing (a rejected "Baby Cot" whose exact category has zero other
+live items): the heading correctly said "More like this" instead of
+naming a category none of the shown items are actually from, but the
+body sentence still said "...here's more in cots and cribs" — a real,
+caught-live inconsistency, fixed so both the heading and the body key off
+the same `anySameCategory` signal, and the primary CTA no longer offers
+to "Browse {category}" when that exact category is empty (would have been
+a dead end), widening to "Browse everything" instead. **Empty result**
+(zero rows from either source): the whole similar-items block is dropped,
+matching N2b, verified by code (a plain `.length > 0` gate) rather than
+found live — the current seed data always has at least a wider-group
+fallback to show.
+
+**Missing images degrade gracefully**: sold listing photos are purged 30
+days after sale, so `image_url` on a gone listing may be null or dead.
+The gone-listing's own thumbnail already handles null (shows the coral
+striped placeholder, no `<img>` rendered at all); similar-items cards
+additionally get an `onError` handler that hides a genuinely broken image
+rather than showing a broken-image glyph — fixing, in new code, the exact
+gap the §9 audit flagged as missing on `ListingCard.tsx` (that one
+remains unfixed, out of scope here, but nothing new repeats the pattern).
+
+**WhatsApp, every buyer-facing case, deliberately not the seller's-own
+case**: pre-filled messages naming the item per case (sold: "...do you
+know if similar ones come up often?"; removed: "...is it likely to come
+back..."; wrong URL: "...can you help me find what I was after?"), number
+read live via `useMarketplaceWhatsAppNumber()` (`site_settings.whatsapp_number`),
+confirmed live at case 3 (`wa.me/2347040667424?text=...`, correctly
+encoded). **Case 4 (seller's own view) has no WhatsApp button** — the
+design's own N4 mockup shows only "Go to my dashboard" / "List something
+new", no green button, even though the prompt said "every version." Went
+with the design: a seller doesn't need to message support about their own
+sold item from this screen, they have dashboard access. Reported rather
+than built to satisfy the word "every" literally.
+
+**Desktop is a real second layout, not a stretch**: `.mkt-notfound-wrap`
+is `max-width: 1000px`, a 360px message column beside the similar-items
+grid (`repeat(3, 1fr)`) when both are present, or `.single` (column,
+centered, 640px max) when there's nothing to show beside the message —
+matching N5's own stated rule that this is the shared skeleton for all
+four cases, not just sold. Verified live at 1440px: two-column for sold
+(`flex-direction: row`, wrap width exactly 1000px) and for the
+wider-group-fallback case, single-column-centered for wrong URL (wrap
+width exactly 640px). `scrollWidth` measured equal to `clientWidth` at
+both 390px and 1440px on every case checked — no horizontal overflow.
+
+**Also added, additive and backward compatible**: `BrowsePage.tsx` now
+reads an optional `?category=<id>` param as its initial filter (it had no
+URL-driven filtering at all before), needed so a gone-listing's "Browse
+{category}" button actually lands filtered rather than on the full grid.
+
+**Found, not fixed, reported instead**: `.mkt-wa`'s icon
+(`marketplace.css`) references `url("../assets/whatsapp-logo.svg")`,
+which resolves to `src/marketplace/assets/...` — a path that doesn't
+exist; the real asset lives at `src/assets/whatsapp-logo.svg`. Used
+across 7 files site-wide, the icon has silently never rendered. Not part
+of this task's scope, so left alone; the new WhatsApp buttons built here
+import the real asset properly (`import waLogo from "@/assets/whatsapp-logo.svg"`)
+rather than repeat the broken relative path.
+
+**Not exercised live, code-reviewed and RLS-confirmed only**: the
+positive case-4 path (a seller viewing their *own* sold/removed listing)
+— no test seller account currently has a sold/delisted/rejected listing
+of their own, and deliberately did not mutate a real seller's listing
+status just to force the scenario. The negative path (confirmed above)
+and the direct SQL confirmation of the `"Seller reads own listings"` RLS
+policy stand in for it.
+
+New files: `src/marketplace/lib/goneListing.ts` (RPC wrappers, category
+count, ownership check), `src/marketplace/components/NotFoundOrGoneScreen.tsx`
+(the shared shell for all four cases). Edited: `ListingDetailPage.tsx`,
+`MarketplaceNotFoundPage.tsx` (now case 3, same catch-all route, not
+replaced), `BrowsePage.tsx` (category param), `marketplace.css`.
+
+`npm run build` and `tsc --noEmit` both clean.

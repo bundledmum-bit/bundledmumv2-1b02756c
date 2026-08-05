@@ -1419,3 +1419,67 @@
   .mkt-login-sent-resend { border-color: var(--mkt-input-border); color: var(--mkt-muted-2); }
   .mkt-login-sent-diff { color: var(--mkt-green); }
 }
+
+/* ── Not found / gone listing, four cases (sold, removed, wrong URL, the
+   seller's own view). Buttons are EXPLICITLY sized — min-height, width:auto,
+   an explicit max-width — never flex or width:100%, which is what let the
+   old single shared button inflate to ~800px tall inside a centered flex
+   column (.mkt-buy's flex:1 was meant for the horizontal .mkt-buybar, not
+   this vertical layout). Do not reintroduce flex-grow on these. */
+.mkt-notfound-wrap { padding: 22px 20px 40px; display: flex; flex-direction: column; gap: 18px; max-width: 600px; margin: 0 auto; box-sizing: border-box; width: 100%; }
+.mkt-notfound-message { display: flex; flex-direction: column; gap: 16px; }
+.mkt-notfound-similar { display: flex; flex-direction: column; gap: 12px; }
+
+.mkt-notfound-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font: 700 22px/1 'Lato', sans-serif; flex: 0 0 52px; }
+.mkt-notfound-headtext { display: flex; flex-direction: column; gap: 6px; }
+.mkt-notfound-headline { font: 900 24px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; text-wrap: pretty; color: var(--mkt-black); }
+.mkt-notfound-sub { font: 400 13.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+
+.mkt-notfound-cta-row { display: flex; flex-wrap: wrap; gap: 9px; }
+.mkt-notfound-cta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-sizing: border-box; min-height: 52px; width: auto;
+  border-radius: 12px; padding: 14px 18px;
+  font: 800 13.5px/1 'Nunito', sans-serif; color: #3D3936;
+  background: #fff; border: 1.5px solid var(--mkt-input-border);
+  cursor: pointer; text-decoration: none;
+}
+.mkt-notfound-cta--primary {
+  min-height: 52px; width: auto; max-width: 320px;
+  background: var(--mkt-coral); color: var(--mkt-black); border: none;
+  padding: 15px 22px; font: 800 15px/1 'Nunito', sans-serif;
+  white-space: nowrap; text-align: center;
+}
+.mkt-notfound-cta--primary:hover { background: var(--mkt-coral-dark); }
+.mkt-notfound-wa-ic { width: 22px; height: 22px; flex: 0 0 22px; background-size: contain; background-position: center; background-repeat: no-repeat; border-radius: 50%; }
+
+.mkt-notfound-rule { height: 1px; background: var(--mkt-border); margin: 2px 0; }
+.mkt-notfound-similar-h { font: 800 13px/1 'Nunito', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mkt-muted); }
+.mkt-notfound-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mkt-notfound-card { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; overflow: hidden; text-decoration: none; color: inherit; display: block; }
+.mkt-notfound-card .th { aspect-ratio: 1/1; background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 8px, var(--mkt-cream) 8px 16px); }
+.mkt-notfound-card .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-notfound-card .body { padding: 9px 10px 11px; display: flex; flex-direction: column; gap: 4px; }
+.mkt-notfound-card .price { font: 900 15px/1 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-notfound-card .title { font: 400 12.5px/1.3 'Lato', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mkt-black); }
+.mkt-notfound-seeall { align-self: flex-start; text-align: center; font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-green); background: none; border: none; cursor: pointer; padding: 4px 0; text-decoration: none; }
+
+.mkt-notfound-own-card { background: #fff; border: 1px solid var(--mkt-border); border-radius: 13px; padding: 12px; display: flex; gap: 11px; align-items: center; }
+.mkt-notfound-own-card .th { width: 44px; height: 44px; border-radius: 9px; flex: 0 0 44px; background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 6px, var(--mkt-cream) 6px 12px); overflow: hidden; }
+.mkt-notfound-own-card .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-notfound-own-card .t { font: 400 12.5px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-notfound-own-card .p { font: 900 15px/1.35 'Nunito', sans-serif; color: var(--mkt-black); }
+
+@media (min-width: 1024px) {
+  .mkt-notfound-wrap { max-width: 1000px; flex-direction: row; align-items: flex-start; gap: 36px; padding: 56px 32px; }
+  .mkt-notfound-wrap.single { max-width: 640px; flex-direction: column; align-items: center; text-align: center; }
+  .mkt-notfound-message { flex: 0 0 360px; }
+  .mkt-notfound-wrap.single .mkt-notfound-message { flex: none; width: 100%; align-items: center; }
+  .mkt-notfound-wrap.single .mkt-notfound-cta-row { justify-content: center; }
+  .mkt-notfound-similar { flex: 1; min-width: 0; }
+  .mkt-notfound-cta-row { flex-direction: column; align-items: flex-start; gap: 9px; }
+  .mkt-notfound-cta--primary { max-width: 260px; padding: 15px 24px; }
+  .mkt-notfound-cta:not(.mkt-notfound-cta--primary) { min-height: 48px; padding: 12px 16px; font-size: 13px; border-radius: 11px; }
+  .mkt-notfound-wa-ic { width: 20px; height: 20px; flex: 0 0 20px; }
+  .mkt-notfound-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+}

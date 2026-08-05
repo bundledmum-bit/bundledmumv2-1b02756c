@@ -19,6 +19,10 @@ import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
 import { fetchBuyerOfferForListing, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import { useSeller } from "../sell/useSeller";
+import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
+import { fetchGoneListingContext, fetchOwnListingIfMine } from "../lib/goneListing";
+import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundOrGoneScreen";
 
 type FieldType = "select" | "text" | "number" | "boolean";
 interface CategoryField {
@@ -55,9 +59,27 @@ export default function ListingDetailPage() {
   const navigate = useNavigate();
   const { data: listing, isLoading, isError } = useListing(id);
   const { isLoggedIn } = useCustomerAuth();
+  const { seller, loading: sellerLoading } = useSeller();
+  const waNumber = useMarketplaceWhatsAppNumber();
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [offerSheetOpen, setOfferSheetOpen] = useState(false);
+
+  // Not live: figure out which of the four situations this is. Ownership is
+  // decided by the database (RLS on marketplace_listings), not client-side —
+  // fetchOwnListingIfMine only ever returns a row when this id genuinely
+  // belongs to the logged-in seller, regardless of status.
+  const goneEnabled = !!id && !isLoading && (isError || !listing);
+  const { data: goneContext, isLoading: goneLoading } = useQuery({
+    queryKey: ["mkt-gone-context", id],
+    enabled: goneEnabled,
+    queryFn: () => fetchGoneListingContext(id as string),
+  });
+  const { data: ownListing, isLoading: ownLoading } = useQuery({
+    queryKey: ["mkt-own-listing", id, seller?.id],
+    enabled: goneEnabled && !sellerLoading && !!seller?.id,
+    queryFn: () => fetchOwnListingIfMine(id as string, seller!.id),
+  });
 
   // Make-an-offer (design 23a): whether the feature is on at all, the naira
   // cap (never a percentage), and this buyer's own offer here, if they have
@@ -115,21 +137,36 @@ export default function ListingDetailPage() {
   }
 
   // A sold-out item (last unit gone, status flipped to 'sold') is no longer
-  // publicly readable, so a saved or shared link resolves here to null. Show a
-  // warm "this one has gone" state with a clear route back to browse.
+  // publicly readable, so a saved or shared link resolves here to null.
+  // Which of the four situations this is (sold / removed / wrong URL / the
+  // seller's own view) is still resolving — wait for both queries rather
+  // than flash the buyer-facing case before we know it's the seller's own.
   if (isError || !listing) {
-    return (
-      <div className="mkt-center">
-        <span className="mkt-st sold" style={{ marginBottom: 4 }}>Sold out</span>
-        <div className="mkt-empty-title">Ah, this one has gone</div>
-        <div className="mkt-empty-sub">
-          It sold or was taken down. Things move fast here, especially the good ones. There is plenty more to see.
+    if (goneLoading || sellerLoading || (!!seller && ownLoading)) {
+      return (
+        <div className="mkt-center">
+          <BMLoadingAnimation size={160} />
         </div>
-        <button className="mkt-buy" style={{ maxWidth: 220 }} onClick={() => navigate("/")}>
-          See what else is there
-        </button>
-      </div>
-    );
+      );
+    }
+
+    let notFoundCase: NotFoundCase;
+    if (ownListing) {
+      notFoundCase = ownListing.status === "sold"
+        ? { kind: "ownSold", title: ownListing.title, price: ownListing.final_price_naira, imageUrl: ownListing.image_url }
+        : { kind: "ownRemoved", title: ownListing.title, imageUrl: ownListing.image_url, rejectionReason: ownListing.status === "rejected" ? ownListing.rejection_reason : null };
+    } else if (goneContext?.status === "sold") {
+      notFoundCase = { kind: "sold", listingId: id as string, title: goneContext.title, price: goneContext.final_price_naira, categoryId: goneContext.category_id, categoryName: goneContext.category_name, imageUrl: goneContext.image_url };
+    } else if (goneContext?.status === "delisted" || goneContext?.status === "rejected") {
+      notFoundCase = { kind: "removed", listingId: id as string, title: goneContext.title, categoryId: goneContext.category_id, categoryName: goneContext.category_name, imageUrl: goneContext.image_url };
+    } else {
+      // No row: either the id is genuinely unknown, or it exists but is
+      // live/pending_review — get_gone_listing_context only ever returns a
+      // row for sold/delisted/rejected, so both read as the generic case.
+      notFoundCase = { kind: "wrongUrl" };
+    }
+
+    return <NotFoundOrGoneScreen c={notFoundCase} waNumber={waNumber} />;
   }
 
   const qty = Number(listing.quantity ?? 1);
@@ -137,15 +174,14 @@ export default function ListingDetailPage() {
   const multi = qty > 1;
 
   // Belt and braces: a live listing with no stock left (should not happen, the
-  // trigger flips it to 'sold') still shows the gone state rather than a dead Buy.
+  // trigger flips it to 'sold') still shows the sold state rather than a dead
+  // Buy. All the data the sold case needs is already in hand, no RPC needed.
   if (available <= 0) {
     return (
-      <div className="mkt-center">
-        <span className="mkt-st sold" style={{ marginBottom: 4 }}>Sold out</span>
-        <div className="mkt-empty-title">Ah, this one has gone</div>
-        <div className="mkt-empty-sub">The last one was just bought. There is plenty more to see.</div>
-        <button className="mkt-buy" style={{ maxWidth: 220 }} onClick={() => navigate("/")}>See what else is there</button>
-      </div>
+      <NotFoundOrGoneScreen
+        c={{ kind: "sold", listingId: listing.id, title: listing.title, price: listing.final_price_naira, categoryId: listing.category_id, categoryName: listing.category?.name ?? null, imageUrl: listing.image_url }}
+        waNumber={waNumber}
+      />
     );
   }
 

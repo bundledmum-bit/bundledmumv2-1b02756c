@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -55,7 +55,11 @@ function groupCategories(categories: CategoryOption[], groups: CategoryGroup[]) 
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
 
 export default function BrowsePage() {
-  const [filters, setFilters] = useState<BrowseFilters>(EMPTY);
+  // Optional deep link, e.g. from a gone listing's "Browse {category}" CTA:
+  // ?category=<id> preselects that category filter. Additive only — a plain
+  // /marketplace visit is unaffected, EMPTY still governs the default.
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState<BrowseFilters>({ ...EMPTY, categoryId: searchParams.get("category") || "" });
   const [searchInput, setSearchInput] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const { isLoggedIn } = useCustomerAuth();
