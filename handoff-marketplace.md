@@ -3491,3 +3491,263 @@ block dramatically taller.
 
 Build passed (`npm run build`, clean except pre-existing chunk-size
 warnings unrelated to this change). Committed and pushed to `main`.
+
+## 9. Pre-launch design and UX audit, second pass (2026-08-05)
+
+Report only, no code changed. Screens actually loaded in the Browser pane at
+390px and 1440px (768/1100 checked where a layout genuinely changes width);
+where a screen sits behind login and could not be reached, that is stated
+plainly below and the note is code-review only, not a claim of having seen
+it render. Does not repeat anything from §7/§8 that is already fixed and
+still holds (footer pinning, the 404 route, browse's retry button, the
+checkout/relist WhatsApp links, mobile tap targets, the removed stale
+fallbacks) — those were spot-checked live again and are all still correct.
+
+One methodology note: partway through this pass the screenshot tool in this
+environment started returning stale/cached captures after a click (a repeat
+of the same downscaled-desktop-screenshot issue noted in §7). Where that
+happened, findings below were confirmed a different way — DOM text
+(`get_page_text`), computed layout (`getBoundingClientRect`), or a fresh
+full navigation — never left as an unverified guess from a stale image.
+
+### Site-wide (found on public screens, but the same CSS/classes are shared everywhere)
+
+- **Primary button text fails contrast — highest-impact finding in this
+  pass.** `.mkt-primary` / `.mkt-buy` (used for Buy now, Sign in, every
+  seller/buyer submit button, and reused as-is on the admin "Approve and
+  publish" button) is cream text `#FFF8F4` on coral `#F4845F`. Measured
+  contrast ratio ≈ **2.4:1**. WCAG AA needs 4.5:1 for normal text or 3:1
+  for large/bold text — this fails even the relaxed large-text bar, and
+  these buttons are the single most-tapped element on the entire site.
+  **High.** Fix: darken the button background (e.g. use `--mkt-coral-dark
+  #D4613C`, which the pill/tag components already use) or use `--mkt-black`
+  text instead of cream on the current coral — either clears 4.5:1.
+- **Small pill/tag text is also under contrast**, same root cause, smaller
+  scale: `--mkt-coral-dark` text on `--mkt-coral-light` background (area
+  tags, condition badges, discount tags, the "pending" status pill) ≈
+  **3.19:1**. These are small (10-12px) and mostly bold, so they don't
+  qualify as "large text" under WCAG either — fails AA. **Medium.** Same
+  fix direction, needs a slightly darker foreground or lighter background.
+- Also measured and clean, no action needed: muted body text on cream
+  (6.15:1), cream on the green header (6.08:1), footer link green-on-green
+  (8.4:1), black headings on cream (16.56:1). One borderline: the small
+  grey meta line under a listing card ("Ogudu · Fair", `--mkt-muted-2`) on
+  cream is 3.91:1 — fails AA for normal text by a small margin. **Low.**
+- **Focus states are fine** — verified properly this time with real Tab-key
+  navigation (an earlier programmatic `.focus()` check gave a false
+  negative, corrected before reporting). Listing cards get the browser's
+  default focus ring, form inputs and the search bar get a custom coral
+  ring via `:focus-within` on their wrapper. No fix needed.
+- **Mobile keyboard types are handled correctly everywhere I checked** —
+  `inputMode`/`type` set appropriately across 10 files (email, tel,
+  numeric) for phone, price, and OTP-style fields. No fix needed.
+- **Broken images have no fallback.** Three seed listings (Avent Bottle
+  Set, Chicco Bravo Stroller, Ride-on Push Car) hotlink to dead Unsplash
+  URLs and render as a raw broken-image glyph with the alt text showing as
+  visible on-card text, over the card's coral-stripe placeholder
+  background. `ListingCard.tsx`'s `<img>` has no `onError` handler.
+  **Medium** — these three are very likely seed/demo data rather than
+  something a real seller will hit, but the missing fallback is real: any
+  future photo host hiccup on a genuine listing would show the same raw,
+  unpolished result. Fix: an `onError` that swaps to a simple placeholder
+  icon rather than a bare broken image.
+
+### Browse (public, `/marketplace`)
+
+- Would a first-time visitor understand it cold? **Yes** — title, search,
+  location, six category tiles, and a "checked by our team" trust line are
+  all above the fold on mobile.
+- Filters sheet (mobile) is well built: sort, category groups with live
+  counts, price range, condition, a sticky "Show N items" footer that
+  updates as you tap. No dedicated close/✕ button, only tap-outside and
+  "Clear all" — a normal bottom-sheet pattern, not flagging as a defect,
+  just noting there's no visible way to back out without submitting or
+  clearing if a user doesn't know backdrop-tap closes it. **Low.**
+- Desktop (1440px): persistent left filter panel + a genuine 4-column grid,
+  not a stretched single mobile column — uses the width properly.
+- The three broken-image listings noted above live here (site-wide finding).
+
+### Listing detail (public)
+
+- Would a cold visitor understand it? **Yes** — price, condition, seller
+  card with verified badge, "held until you confirm" reassurance, and the
+  buy bar are all visible without much scrolling on mobile.
+- **Duplicate gallery thumbnail on at least one live listing.** The sample
+  listing's `image_url` is also present inside its own `gallery_urls`, so
+  `images = [image_url, ...gallery]` (`ListingDetailPage.tsx`) shows the
+  same photo twice in the thumbnail strip. **Low-medium**, and
+  data-dependent rather than guaranteed on every listing, but worth a
+  defensive dedup where that array is built.
+- Two-column desktop layout (gallery + sticky purchase panel) still holds
+  correctly, re-verified via computed layout.
+- One sample listing's own content is rough — title "Generic- Baby
+  Starter-chair" (stray hyphen), one-line description ("Age 0-12"). This is
+  seller-authored content, not an app bug, so not a "fix this code" item,
+  but worth a product note: nothing in `CreateListingPage.tsx` nudges a
+  seller toward a substantive description the way it already nudges toward
+  condition honesty — worth considering, not urgent.
+
+### The five policy pages (public)
+
+- **"Policies ›" crumb looks tappable but isn't, and is inconsistent
+  across the five pages.** `BuyerProtectionPage.tsx` and
+  `SellerProtectionPage.tsx` both render `<span className="crumb">Policies
+  ›</span>` in the green hero — styled like a breadcrumb, with a trailing
+  chevron that implies "tap to go back to a policies index," but it's a
+  plain `<span>` with no `href`/`onClick`. Terms, Privacy, and Cookies
+  don't have this element at all. **Medium** — a first-time user (exactly
+  this product's audience) tapping a thing that looks like a link and
+  getting nothing is a small trust cost, and it's inconsistent besides.
+  Fix: either wire it to a real destination or drop the trailing "›" so it
+  reads as a plain label, and make it consistent across all five pages.
+- Buyer Protection and Seller Protection both contain one comma-spliced
+  sentence each — "Simply changing your mind isn't covered, this
+  protection is for items that don't match their listing, not preference
+  after the fact" and "Arranging payment outside the platform breaks these
+  protections for both of you" (the latter is fine; the spliced one is
+  "...isn't covered either, that's exactly why we ask..."). **Low** — could
+  be an intentional conversational-voice choice, but reads as a run-on.
+  Worth a copy pass to split these two into two sentences.
+- Everything else re-checked clean: correct live values throughout (10%
+  markup, ₦1,000 fee, 25% discount cap, 3-day windows), no em-dashes,
+  consistent sentence case, footer pins correctly on every one of these
+  (all five are "short" pages and were exactly what the footer bug used to
+  affect).
+
+### 404 and login (public)
+
+- 404 re-verified live at a nonsense URL: correct copy, working "Back to
+  browse" button, footer/header intact. Clean.
+- Login re-verified live: the redirect copy is contextual per route ("To
+  see your orders, we need your email" from `/orders`, "To start selling,
+  we need your email" from `/sell`) rather than one generic message — a
+  genuinely good detail, calling it out as something done right, not a
+  defect.
+- The disabled "Email me a login link" button (before a valid email is
+  typed) is very low contrast, light-tan-on-cream. **Very low** — WCAG
+  explicitly exempts disabled controls from the contrast requirement, and
+  it becomes the full-contrast coral button (same finding as above) the
+  moment the email is valid, so this is a note, not a "before launch" item.
+
+### Buyer screens — code-reviewed only
+
+`/checkout`, `/checkout/return`, `/checkout/awaiting/:reference`, `/orders`,
+`/orders/:id`, `/orders/:id/problem`, `/orders/:id/return` all sit behind
+the marketplace's passwordless email-link login. No credentials exist in
+this environment, and there is no way to receive the login email here, so
+none of these were seen rendering live in this pass — confirmed by hitting
+`/orders` directly and getting the contextual login prompt above, not a
+guess. §7 already did a thorough code read of this whole area (Parts 1, 4,
+and 6), and re-reading it now, the state matches: every dispute/write goes
+through an RPC, every dead-end from §7 already has a fix from §8, and the
+money-rendering code still guards nulls/NaN the way §7 found. The one
+addition from this pass: the site-wide button-contrast finding above
+applies to every primary action on these screens too (Buy now, "I have
+sent the transfer," confirm receipt, submit a dispute/return), since they
+all share `.mkt-primary`/`.mkt-buy`.
+
+### Seller screens — code-reviewed only
+
+Same access limit — `/sell/setup`, `/sell/new`, `/sell/dashboard`, and
+everything under it require a logged-in seller. `/sell` itself (become a
+seller) and its back-button fix were both already verified live earlier
+this session and are not re-litigated here. Re-reading the dashboard,
+create-listing, price-edit, dispatch, payouts, and offer-response code
+against §7/§8: nothing new found beyond the same site-wide button-contrast
+issue applying here too (every "Send it for review," "Buy now," "Approve"
+style CTA).
+
+### Admin marketplace — code-reviewed only, could not load a single admin screen live
+
+`/admin/marketplace` requires a real email + password sign-in (confirmed by
+navigating there directly — a proper login form, not a bypass or an
+unauthenticated peek at anything). No admin credentials exist in this
+environment. Everything below is from reading `MarketplaceDashboard.tsx`,
+`MarketplaceReview.tsx`, `MarketplaceDisputes.tsx`, `MarketplaceSellers.tsx`,
+`MarketplaceListings.tsx`, `MarketplaceOrders.tsx`, `MarketplaceMoneyOwed.tsx`,
+`MarketplacePayouts.tsx`, `MarketplaceReturns.tsx`, `MarketplaceSettings.tsx`,
+`MarketplaceCategoryFields.tsx`, and `MarketplaceLocations.tsx` — not from
+seeing them rendered, so treat spacing/layout/responsive claims here as
+unverified.
+
+- **Design language is Tailwind + inline styles, not the customer-facing
+  `.mkt-*` stylesheet — but it does reuse the same brand tokens** (coral
+  `#F4845F`/`#D4613C`, green `#1A4A33`/`#2D6A4F`, cream `#FFF8F4`, Nunito
+  headings) throughout. So it reads as related to the customer side, just
+  built with a denser component system appropriate for an internal tool,
+  not a disconnected one. Not a defect, noting it because the brief asked
+  specifically whether admin feels related to the customer side.
+- **Same button-contrast issue is present here too** —
+  `MarketplaceReview.tsx`'s "Approve and publish" button is
+  `background:"#F4845F"` with white text, the identical ~2.4:1 pairing
+  flagged above. Confirms this is a genuine site-wide token issue, not a
+  customer-side-only one.
+- **The review queue (`MarketplaceReview.tsx`) looks well designed on
+  read** — one listing at a time, seller-asking vs. buyer-sees price shown
+  side by side, an automatic contact-leak warning ("a phone number pattern
+  was found") before approving, and rejection requires a written reason.
+  No defects found in the code; genuinely could not verify how it looks
+  rendered.
+- **`MarketplaceReview.tsx:17`** — `useState<number>(10)` as the initial
+  value for the markup-percent label shown on every listing ("Buyer sees,
+  with {markupPct}% markup"), before the real `site_settings` value loads.
+  This is the exact stale-fallback pattern fixed on the customer side in
+  §8 (`CheckoutPage.tsx`, `ListingDetailPage.tsx`, etc.), just not applied
+  here. Currently matches the live value (10%) so nothing looks wrong
+  today, but it's the same latent drift risk the moment an admin changes
+  markup — and this screen is precisely where an admin would be looking at
+  that number while approving listings. **Medium**, same fix as before: no
+  fallback, or an explicit loading state for that one line.
+- **Empty and loading states are consistent and good** — every list screen
+  uses a shared `OpsEmpty` component with an explanation of why it's empty
+  and what makes it fill (e.g. payouts: "Rows appear here once a buyer
+  confirms receipt, or the dispute window elapses after dispatch"), not
+  just "nothing here." Loading is a consistent centered spinner everywhere.
+  No fix needed.
+- **Raw database error messages are shown to the admin user** on most
+  write failures — `setError(err.message)` / `setError(error.message)`
+  appears across `MarketplaceListingEdit.tsx`, `MarketplaceCategoryFields.tsx`,
+  `MarketplaceLocations.tsx`, `MarketplaceListings.tsx`, `MarketplaceSellers.tsx`,
+  `MarketplaceSettings.tsx`, `MarketplaceReview.tsx`, `MarketplaceDisputes.tsx`,
+  `MarketplaceReturns.tsx`, `MarketplacePayouts.tsx`, and
+  `MarketplaceMoneyOwed.tsx`. **Low** — this is an internal tool for staff,
+  not a customer, so a raw Postgres message is a more acceptable audience
+  than on the customer side, but it's a consistent pattern across nearly
+  every admin write path, matching what the brief asked to flag ("a raw
+  technical message").
+- **Dashboard (`MarketplaceDashboard.tsx`) reads well** — a held-funds hero
+  card leading (correctly framed as buyer money, not seller money) plus
+  four tiles (payouts due, review queue, open disputes, refunds pending),
+  each tapping straight into its own queue. Good "glanceable ops picture"
+  structure on read; could not verify the actual rendered spacing.
+- Could not check at all, and saying so plainly rather than guessing: any
+  admin screen's actual visual spacing/alignment, responsive behaviour at
+  390 vs. 1440, hover/interaction states, or how any screen looks with a
+  genuinely large dataset rather than whatever is currently in the table.
+
+### Opinions beyond defects
+
+- The seller-entered content quality problem noted under listing detail
+  (typo'd titles, one-line descriptions) is the kind of thing that will
+  matter more at real scale than any of the visual findings above — worth
+  more product thought than this pass gives it room for.
+- The admin review queue's contact-leak detector and side-by-side
+  seller/buyer price display are genuinely good ideas, better than what
+  most marketplaces ship at this stage — calling that out since the brief
+  asked for opinions, not only defects.
+
+### What I'd fix first, if only three
+
+1. **The site-wide coral/cream button contrast** (2.4:1) — one CSS token
+   change fixes every primary button across buyer, seller, and admin at
+   once, and it's the most-used interactive element on the whole product.
+2. **Missing `onError` fallback on listing images** — cheap fix, and
+   directly affects how trustworthy a browse page looks the moment any
+   photo fails to load, seed data or real.
+3. **The non-clickable "Policies ›" crumb** — small, but it's exactly the
+   "looks tappable, isn't" trap that costs trust with a first-time,
+   unfamiliar-with-online-marketplaces user, which is this product's
+   actual audience.
+
+Nothing in this pass required a code change, so nothing was built. Only
+this file was touched and committed.
