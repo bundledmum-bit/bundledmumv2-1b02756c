@@ -3171,3 +3171,214 @@ destination handling is untouched. No console errors on any of the above.
    only do it deliberately (e.g. alongside comms), not as a drive-by cleanup.
    Also refresh the now-stale "cross-subdomain" comments in `authStorage.ts`.
 8. Watch the `client.ts` regeneration risk above after any Lovable-side change.
+
+## 7. Pre-launch audit (2026-08-05)
+
+Full six-part audit, report-only except Part 1 (which needed no change). No
+design or copy was changed. No migrations or edge functions touched. Some
+screens are login-gated and could only be checked by reading the code, not
+by walking them live — flagged below wherever that's the case.
+
+### Part 1 — dispute/return/offer writes, RPC vs direct insert
+
+**No fix needed.** `raiseDispute()` in `checkout/buyerOrders.ts` already
+calls `cdb.rpc("raise_marketplace_dispute", { p_order_id, p_reason,
+p_evidence })` — it was never a direct insert, so removing the direct-INSERT
+policy on `marketplace_disputes` closed a hole the frontend was never using.
+Checked every other write to a marketplace table:
+- `offers.ts` — `buyer_make_offer`, `buyer_respond_to_counter`,
+  `seller_respond_to_offer`, all RPCs.
+- `sellerOrders.ts` — `mark_marketplace_order_dispatched`,
+  `seller_confirm_return_received`, both RPCs.
+- `buyerOrders.ts` — `confirm_marketplace_order_receipt`,
+  `buyer_mark_return_sent`, both RPCs.
+- Direct `.insert()`/`.update()` calls exist only on `marketplace_sellers`
+  (`SellerSetupPage.tsx:76`, `SellerDashboardPage.tsx:409`) and
+  `marketplace_listings` (`SellerPriceEditPage.tsx:103`,
+  `CreateListingPage.tsx:512-513`) — confirmed live via `pg_policies` that
+  both tables still grant seller-scoped INSERT/UPDATE, so these are
+  intentional and still work.
+
+Nothing was built or committed for this part.
+
+### Part 2 — hardcoded values that have a `site_settings` key
+
+Live values confirmed by direct query, not assumed from the task prompt
+(one mismatch found: the task said offer expiry is "currently 2," live is
+actually 24 hours):
+
+| Setting | Live value | Stale fallback found |
+|---|---|---|
+| `marketplace_service_fee_naira` | 1000 | `CheckoutPage.tsx:122` — `?? 750` |
+| `marketplace_max_discount_percent` | 25 | `ListingDetailPage.tsx:70` default `10`; `policySettings.ts` `num(..., 10)` |
+| `marketplace_offer_expiry_hours` | 24 | `offers.ts:39` fallback `48` |
+| `marketplace_markup_percent` | 10 | `SellerPriceEditPage.tsx:62`, `CreateListingPage.tsx:177` both default `10` — matches today, but drifts silently the next time markup is changed (same latent pattern, now more likely to bite given "apply to existing listings" is a normal admin action) |
+
+`policySettings.ts`'s `maxDiscountPercent`/`offerExpiryHours` fallbacks are
+higher severity than the page-level ones above because they feed the
+**public** `TermsPage.tsx`, which is likely to be read literally by a buyer
+during a dispute.
+
+No `site_settings` key exists at all for two of the values the task asked
+about, so these are hardcoded by necessity, not a "not reading live" bug —
+worth flagging as a possible future configurability gap rather than fixing
+now:
+- Minimum photo count — `CreateListingPage.tsx:75`, `const MIN_PHOTOS = 4`.
+- Strike threshold — enforced only inside the `auto_suspend_seller_on_strikes`
+  DB trigger (`strike_count >= 3`); referenced in prose in `TermsPage.tsx`,
+  `SellerProtectionPage.tsx`, `CreateListingPage.tsx`. No single source of
+  truth if the DB threshold ever changes.
+
+Low severity, not user-visible: stale "₦750" mentioned in code comments only
+in `BecomeSellerPage.tsx:11` and `TermsPage.tsx:25`.
+
+Also found, not part of the ask but adjacent: two live `site_settings` keys
+(`marketplace_confirm_nudge_1_hours` = 24, `marketplace_confirm_nudge_2_hours`
+= 48) exist in the DB but aren't exposed anywhere in the admin Settings
+screen.
+
+Nothing fixed in this pass, per instruction.
+
+### Part 3 — visual/layout walkthrough
+
+- **Footer not pinned to bottom on short pages — confirmed still present.**
+  `.mkt` in `marketplace.css` is still only `min-height: 100vh`, no
+  flex-column layout to pin the footer. Verified live at 1280×900 on
+  `/marketplace/cookies`: footer sits mid-page with a large empty gap below
+  it. The later footer-content-reorganization commit only changed what's
+  inside the footer, not the root layout, so this is unchanged from when it
+  was first flagged. **Medium-high** — affects every short static/policy
+  page (cookies, privacy, buyer/seller protection, and any browse result
+  with very few matches, e.g. the "0 items" search state, though that one
+  currently has enough content above the footer to avoid it in practice).
+  Fix: give `.mkt` `display: flex; flex-direction: column; min-height: 100vh`
+  and let the main content area take `flex: 1`.
+- **No 404 / not-found route inside the marketplace SPA.** `MarketplaceApp.tsx`'s
+  `<Routes>` (lines 60-89) has no wildcard `<Route path="*">`. Navigating to
+  any unmatched marketplace URL (mistyped or stale link) renders only the
+  header and footer with a totally blank content area between them — no
+  message, no link back. **Medium.** Fix: add a catch-all route with a
+  simple "page not found, back to browse" state.
+- **Mobile tap targets on condition-question Yes/No chips are small.**
+  `.mkt-condition-chips .mkt-chip` (`marketplace.css:1280`) is `padding: 8px
+  12px; font-size: 12px` on mobile — the actual clickable Yes/No buttons for
+  each condition question in `CreateListingPage.tsx:926-928` and `:969`, not
+  just decorative chips. Effective tap height is roughly 30px, under the
+  ~44px usual minimum, on what the task calls out as a specifically
+  important control. **Medium.** Fix: bump mobile padding/min-height on this
+  specific chip variant.
+- **Filters button is 38px tall on mobile** (`marketplace.css:985`,
+  `.mkt-filters-btn`, `height: 38px`). Smaller than ideal but not drastically
+  so. **Low.**
+- **Desktop listing-detail two-column layout at 1024–1200px: confirmed
+  holding correctly.** Measured live at 1100px viewport width — gallery
+  column 511px + detail panel 480px sit side by side with no wrap, no
+  overflow (verified via computed layout, not just a screenshot — the
+  in-tool screenshot renderer produced a visually misleading
+  downscaled/stale-looking capture at this viewport size that did not match
+  the live DOM measurements; trust the DOM numbers here).
+- **No horizontal scroll found** on listing detail at 375px mobile width
+  (`scrollWidth`/`clientWidth` equal) or on the browse empty-results state.
+- **Browse empty-results state (search with no matches) is clean** — "Nothing
+  matches just now" copy plus a working "Clear all filters" button, verified
+  live.
+- **Not checked live (login-gated), code-reviewed only:** seller dashboard
+  no-listings empty state, buyer orders list empty state, admin queue empty
+  states, admin loading/skeleton behavior generally. No credentials were
+  available in this environment to reach these as a real seller/buyer/admin
+  session. Cannot claim these were visually verified.
+- **Not separately re-checked this pass:** long-content overflow for very
+  long listing titles/seller names/category names beyond what the sample
+  listing happened to have, and loading-state (blank vs skeleton) behavior
+  across screens generally — spot-checked nothing broken on the pages
+  visited live, but not exhaustively swept.
+
+### Part 4 — dead ends (no way forward)
+
+- **`CheckoutPage.tsx:455`** — bank-transfer-not-configured state: "Please
+  message us on WhatsApp to complete your purchase" is plain text, no link.
+  Buyer is fully stuck. **High** (already flagged once before, still
+  unfixed as of this pass, since this pass's own scope was report-only).
+- **`SellerDashboardPage.tsx:95`** (relist-failure error inside the relist
+  confirm sheet, rendered ~line 361) — "Message us and we will help" as
+  plain text, no WhatsApp link anywhere in that sheet, only retry/cancel.
+  **Medium.**
+- **`BrowsePage.tsx:188-192`** — generic fetch-error state ("Please check
+  your connection and try again in a moment") has no retry button and no
+  `refetch()` wiring, on the single highest-traffic page in the whole
+  marketplace. **High.**
+- **No 404 route** (see Part 3) is also a dead end in the same sense — a
+  mistyped/stale link leaves the visitor on a blank page with no way out
+  except browser back.
+- Checked clean, has a working exit every time: `ListingDetailPage.tsx`,
+  `CheckoutPage.tsx`'s other error states (listing-gone, own-listing,
+  payments-down, offer-mismatch — all carry a WhatsApp link + back button),
+  `BuyerOrderDetailPage.tsx`, `BuyerDisputePage.tsx`, `BuyerReturnPage.tsx`,
+  `BuyerOfferPage.tsx`, `SellerOfferPage.tsx`, `SellerOrderDetailPage.tsx`,
+  `SellerDispatchPage.tsx`, `SellerPriceEditPage.tsx`, `CreateListingPage.tsx`
+  not-found states, `PaymentReturnPage.tsx`, `AwaitingPaymentPage.tsx`,
+  `MarketplaceLoginPage.tsx`, `AreaCombobox.tsx`, `SellerPayoutsPage.tsx`'s
+  empty state (no CTA needed, nothing actionable to offer there).
+
+### Part 5 — consistency
+
+- **WhatsApp pre-fill: effectively consistent**, one structural note —
+  `checkout/orders.ts:178-181` hand-rolls its own `sellerWhatsAppLink()` /
+  `wa.me` builder with its own phone-number normalizer, separate from
+  `lib/whatsapp.ts`'s `waHref`/`normalizeNumber`. Used for buyer↔seller
+  contact (different number than the support line, so the duplication may
+  be intentional), but it's a second parallel implementation that could
+  drift. **Low.** Consider folding into `lib/whatsapp.ts` as the one source
+  of truth, or leave a comment explaining why it's deliberately separate.
+- **Held-funds wording: consistent** across `MarketplaceFooter.tsx`,
+  `HowThisWorksExplainer.tsx`, `CheckoutPage.tsx`, `BuyerOrderDetailPage.tsx`,
+  `BuyerProtectionPage.tsx`, `TermsPage.tsx` — always "held, not sent" /
+  "released once you confirm." No contradictions found.
+- **The word "offer" is fully hidden from users.** Buyer copy says "ask for
+  a lower price" / "request"; seller copy says "price request" / "would you
+  take." The literal word only appears in code identifiers, comments, and
+  route paths, never in rendered text.
+- **Price formatting: consistent.** Every rendered price goes through
+  `formatNaira()` (`sell/sellData.ts`), which coerces via `Number()` and
+  falls back to `₦0` rather than rendering `NaN`. Raw `₦` literals found are
+  only static labels next to numeric inputs, not actual price renders.
+- **No em-dashes found in user-facing text** — every `—` match in the
+  codebase is inside a `//` or `/* */` comment.
+- **Heading case: consistent sentence case** across every heading sampled.
+
+### Part 6 — untested paths (dispute / return / payout)
+
+Read in full: `BuyerDisputePage.tsx`, `BuyerReturnPage.tsx`,
+`BuyerOrderDetailPage.tsx`'s dispute/return rendering, `SellerPayoutsPage.tsx`.
+
+- No null-rendered-as-blank or NaN-arithmetic issues found. Money always
+  goes through `formatNaira()` (falls back to `₦0` on a non-finite value,
+  `sell/sellData.ts:16-20`); dates are always guarded
+  (`field ? new Date(...).toLocaleDateString() : ""`); `maskAccount()`
+  returns `"Not set"` for an empty account number; `SellerPayoutsPage.tsx`'s
+  bank line falls back to `"your bank"` if `bank_name` is null.
+- `SellerPayoutsPage.tsx:76` has an explicit "No payouts yet" empty state.
+- `BuyerDisputePage.tsx` / `BuyerReturnPage.tsx` both guard on `!order` and
+  on invalid order state before rendering the form, with a clear way back —
+  no path to a broken mid-form state.
+- **One soft risk, low severity:** `BuyerOrderDetailPage.tsx`'s return-flow
+  booleans (`returnNeeded`, `returnWaiting`, `returnReleased`,
+  `returnSentBack`, `refundedNoReturn`, lines 87-91) are derived from the
+  fetched `dispute` record. If `order.order_status === "refunded"` and the
+  `dispute` query is still loading, none of these booleans are true yet, so
+  none of the refunded-state boxes (lines 251-295) render for a moment — the
+  right column briefly shows nothing but the held-funds reassurance line.
+  Self-resolves once the query settles; no crash, no `NaN`. Fix: show a
+  loading state (or skip the block) until `dispute` has loaded whenever
+  `order_status` is `disputed`/`refunded`.
+
+### What could not be verified live
+
+No admin, seller, or buyer login credentials are available in this
+environment. Everything gated behind a real session — seller dashboard with
+real listings, buyer order history, any admin queue, and any dispute/return/
+payout screen actually rendering real (as opposed to hypothetical) data —
+was checked by reading the code, not by walking it as a logged-in user.
+Treat Part 6 in particular as "the code looks safe for real data," not
+"this was seen rendering real data," since per the task's own premise none
+of those flows has ever produced a real record yet.
