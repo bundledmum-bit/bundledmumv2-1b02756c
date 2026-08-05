@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira, resolveDispute, DISPUTE_OUTCOMES, type DisputeOutcome } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, StatusPill, ConfirmDialog } from "./opsUi";
@@ -91,6 +92,15 @@ export default function MarketplaceDisputes() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = useMemo(() => (disputes ?? []).find((d) => d.id === selectedId) || null, [disputes, selectedId]);
+
+  // Optional deep link from Buyers (or anywhere else): ?disputeId=<id>
+  // pre-selects it, same as clicking the row. Only works for an OPEN
+  // dispute, since this screen never fetches resolved ones. Additive only.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const wanted = searchParams.get("disputeId");
+    if (wanted && !selectedId && (disputes ?? []).some((d) => d.id === wanted)) setSelectedId(wanted);
+  }, [searchParams, disputes, selectedId]);
 
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 

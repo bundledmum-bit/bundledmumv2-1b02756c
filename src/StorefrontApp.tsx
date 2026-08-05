@@ -165,6 +165,7 @@ import MarketplacePayouts from "@/pages/admin/marketplace/MarketplacePayouts";
 import MarketplaceDisputes from "@/pages/admin/marketplace/MarketplaceDisputes";
 import MarketplaceReturns from "@/pages/admin/marketplace/MarketplaceReturns";
 import MarketplaceSellers from "@/pages/admin/marketplace/MarketplaceSellers";
+import MarketplaceBuyers from "@/pages/admin/marketplace/MarketplaceBuyers";
 import MarketplaceListings from "@/pages/admin/marketplace/MarketplaceListings";
 import MarketplaceListingEdit from "@/pages/admin/marketplace/MarketplaceListingEdit";
 import MarketplaceOrders from "@/pages/admin/marketplace/MarketplaceOrders";
@@ -500,6 +501,7 @@ const StorefrontApp = () => (
                 <Route path="marketplace/disputes" element={<PermissionGate module="marketplace" action="manage"><MarketplaceDisputes /></PermissionGate>} />
                 <Route path="marketplace/returns" element={<PermissionGate module="marketplace" action="manage"><MarketplaceReturns /></PermissionGate>} />
                 <Route path="marketplace/sellers" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSellers /></PermissionGate>} />
+                <Route path="marketplace/buyers" element={<PermissionGate module="marketplace" action="manage"><MarketplaceBuyers /></PermissionGate>} />
                 <Route path="marketplace/listings" element={<PermissionGate module="marketplace" action="manage"><MarketplaceListings /></PermissionGate>} />
                 <Route path="marketplace/listings/:id/edit" element={<PermissionGate module="marketplace" action="manage"><MarketplaceListingEdit /></PermissionGate>} />
                 <Route path="marketplace/orders" element={<PermissionGate module="marketplace" action="manage"><MarketplaceOrders /></PermissionGate>} />

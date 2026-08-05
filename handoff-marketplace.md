@@ -3928,3 +3928,116 @@ Verified live at 390px and 1440px: offer/dispute/generic reasons, the
 live valid-checkmark state, the format-error state, and a real send
 through to the full sent state (both breakpoints) via an actual
 `signInWithOtp` call. `npm run build` and `tsc --noEmit` both clean.
+
+## 12. Admin, Buyers screen (2026-08-05)
+
+New: `src/pages/admin/marketplace/MarketplaceBuyers.tsx`. Read only, the
+counterpart to Sellers, built to match its exact shape (two-pane
+list/detail, `hidden lg:...` breakpoint collapse, local types + query in
+the file rather than centralized in `opsData.ts`) rather than inventing a
+new pattern. Wired into `AdminLayout.tsx`'s `MARKETPLACE_NAV` right after
+Sellers (new `Contact` icon, since `Users` was already Sellers') and into
+`StorefrontApp.tsx` as `marketplace/buyers`, gated by the same
+`has_admin_permission('marketplace','manage')` `PermissionGate` every
+other marketplace admin route uses.
+
+**Backend, read only, not touched**: `public.marketplace_buyers` (one row
+per customer with ≥1 marketplace order — verified live, exactly 3 rows
+today, all test accounts, zero paid orders, zero disputes) and
+`admin_buyer_purchases(p_customer_id)` (SECURITY DEFINER, already checks
+`has_admin_permission` internally, orders newest-first). The view has
+`security_invoker=true`, confirmed by reading `pg_class.reloptions` before
+trusting it — its own broad `anon`/`authenticated` GRANT looked concerning
+at first glance, but with `security_invoker` on, the underlying
+`customers` RLS (admin-wide read via `has_admin_permission('orders','view')`,
+or own-row only for a regular customer) genuinely applies per querying
+user, so this is not a data exposure. Confirmed via `pg_get_functiondef`
+and `pg_get_viewdef` directly, not assumed.
+
+**first_name/last_name**: present on the row type but never used in this
+file. `full_name` is the only name shown anywhere (list, detail header,
+the WhatsApp message). The view derives first/last by splitting on the
+first space, per its own comment a one-word name yields no surname and a
+middle name folds into the last — exactly why nothing here lays a buyer's
+name out as two fields.
+
+**The disputes_open / disputes_raised distinction**: the design's own
+framing for this screen, matched exactly. `disputes_open > 0` is the only
+thing that gets error red — a card border on the list row, a `StatusPill`,
+the section header on detail. `disputes_raised` (or the non-open
+remainder, `disputes_raised - disputes_open`) is always plain grey text
+sitting next to order count and spend, same weight, no pill, no colour.
+No score, rating, or risk label anywhere.
+
+**Two things in the prompt that didn't match the code, resolved and
+reported rather than built silently**:
+- **WhatsApp/Call use the buyer's own number**
+  (`whatsapp_number ?? phone` from the view), not `site_settings` as the
+  prompt literally said. `site_settings.whatsapp_number` is BundledMum's
+  own support line, a single global number — it can't be the target of a
+  "message this buyer" button, and the design itself shows the buyer's own
+  number in the contact card. The message is pre-filled and names the
+  buyer plus their most recent order reference (from
+  `admin_buyer_purchases`, already newest-first): `"Hello {full_name},
+  this is BundledMum regarding your order {reference}."` Verified live —
+  correct international-format `wa.me`/`tel:` links, correct message text.
+- **A resolved dispute has nowhere to link to.** `MarketplaceDisputes.tsx`
+  only ever fetches `outcome IS NULL` (open) disputes; there is no
+  historical-dispute view anywhere in the current admin. Building one is a
+  real, separate feature, not part of "add a Buyers screen," so it wasn't
+  built. An **open** dispute row on the buyer detail page genuinely
+  deep-links (see below); a **resolved** one renders as plain read-only
+  text (reference, reason snippet, outcome via the existing
+  `DISPUTE_OUTCOMES` title mapping) with no arrow and no link, rather than
+  linking to nothing.
+
+**Two small, additive changes to existing screens**, needed to make
+"linking through to that order/dispute" actually work, both backward
+compatible (do nothing when their param is absent), both verified live:
+- `MarketplaceOrders.tsx` now reads `?order=<id>` and scrolls/highlights
+  that row (coral-light background). Verified live: clicking a purchase
+  row lands on Orders with the right order highlighted.
+- `MarketplaceDisputes.tsx` now reads `?disputeId=<id>` and auto-selects
+  it if it's among the (open-only) fetched disputes — reuses the existing
+  two-pane detail view entirely, no new UI. Not exercised live this pass
+  since none of the 3 test buyers currently has a dispute; verified by
+  code and `tsc`/build only.
+
+**Purchase-history status pills reuse `orderMoneyState()`** (the same
+helper Orders itself uses), not new copy — `admin_buyer_purchases` doesn't
+return `settlement_status`, so it's fetched with one small extra query
+against `marketplace_orders` for the returned order ids, keeping the pill
+on a buyer's purchase row identical to what the same order shows on the
+Orders screen. `had_dispute` (a separate boolean the RPC does return) adds
+a small "· previously disputed" note when true but the order's current
+status isn't itself `disputed` — the fact isn't lost once a dispute
+resolves, without inventing a new coloured state for it.
+
+**A real bug found and fixed during verification, not by design review**:
+the detail panel overflowed horizontally on mobile (390px viewport
+measured 425px of content) — a classic Tailwind `truncate`-inside-flex
+issue, where `truncate` needs `min-width:0` on every flex ancestor to
+actually constrain instead of forcing the row wider. Fixed by adding
+`min-w-0` up the chain (the grid container, the detail root, the purchase
+and dispute row buttons, the truncating spans themselves). Confirmed via
+`document.documentElement.scrollWidth` before (425px) and after (390px,
+exactly matching the viewport) — not just a visual glance, since a
+slightly-too-wide layout is easy to miss on a screenshot alone.
+
+**Verified live** (a real admin session was available in this environment
+this pass, unlike most of this session's other admin work): list renders
+all 3 real buyers with correct stats; search filters by name/email; every
+sort (newest/most spent/most orders/open disputes) reorders correctly;
+the near-empty note shows with the live count; detail panel shows correct
+contact info (WhatsApp falling back to `phone` since `whatsapp_number` is
+null for all 3 today), correct 2×2 stats, correct purchase history
+(including unpaid/awaiting-payment orders, since the RPC doesn't filter
+on payment status); WhatsApp/Call hrefs are correct; a purchase row
+click lands on the highlighted order in Orders; the nav shows "Buyers"
+right after "Sellers" on both desktop and mobile; the mobile overflow bug
+above was caught and fixed live, not just assumed fixed from the diff.
+Not exercised live: the Disputes section and the `?disputeId=` deep link
+(none of the 3 test buyers has ever raised one) — code-reviewed and
+`tsc`/build-verified only for that path.
+
+`npm run build` and `tsc --noEmit` both clean.

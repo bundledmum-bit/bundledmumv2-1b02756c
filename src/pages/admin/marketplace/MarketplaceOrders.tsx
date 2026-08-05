@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira, orderMoneyState } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
@@ -30,6 +31,11 @@ const FILTERS = ["Awaiting payment", "Funds held", "Payout released", "Refunded"
  */
 export default function MarketplaceOrders() {
   const [filter, setFilter] = useState<string>("all");
+  // Optional deep link from Buyers (or anywhere else): ?order=<id> highlights
+  // and scrolls to that one row. Additive only — nothing changes when absent.
+  const [searchParams] = useSearchParams();
+  const highlightId = searchParams.get("order");
+  const highlightRef = useRef<HTMLTableRowElement | null>(null);
 
   const { data: rows, isLoading } = useQuery({
     queryKey: ["mkt-orders-ledger"],
@@ -68,6 +74,10 @@ export default function MarketplaceOrders() {
   }, [withState]);
   const filtered = filter === "all" ? withState : withState.filter((r) => r.state.label === filter);
 
+  useEffect(() => {
+    if (highlightId && highlightRef.current) highlightRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlightId, filtered.length]);
+
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
   return (
@@ -92,7 +102,7 @@ export default function MarketplaceOrders() {
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: "#F0DDD2" }}>
+                  <tr key={r.id} ref={r.id === highlightId ? highlightRef : undefined} className="border-t" style={{ borderColor: "#F0DDD2", background: r.id === highlightId ? "#FDE8DF" : undefined }}>
                     <Td>
                       <div className="font-heading font-bold text-foreground">{r.paystack_transaction_reference || "-"}</div>
                       <div className="text-[11px] text-text-med">{new Date(r.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</div>
