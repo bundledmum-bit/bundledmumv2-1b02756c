@@ -137,7 +137,7 @@ export default function SellerSetupPage() {
         <div className="mkt-field">
           <div className="mkt-field-head"><span className="lbl">Phone number</span><span className="mkt-tag public">Shared after a sale</span></div>
           <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803..." inputMode="tel" />
-          <div className="mkt-help">After a buyer pays, we share this number with them so the two of you can arrange delivery, and you get theirs too. It is never shown on a public listing. Required, this is how buyers reach you.</div>
+          <div className="mkt-help">After a buyer pays, we share this number with them so the two of you can agree delivery, in person or by post, and who covers the cost if you're posting it. You get their number too. It is never shown on a public listing. Required, this is how buyers reach you.</div>
         </div>
 
         <div className="mkt-bankcard">

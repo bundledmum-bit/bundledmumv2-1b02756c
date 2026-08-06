@@ -210,7 +210,7 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
         </div>
         {phone ? (
           <>
-            <div className="mkt-talk-prefill">Message them to agree whether you'll collect it in person or have it sent, and roughly when. Opens ready to send, with your item and order number.</div>
+            <div className="mkt-talk-prefill">Message them to agree whether you'll collect it in person or have it sent, who covers the cost if sent, and roughly when. Opens ready to send, with your item and order number.</div>
             <div className="mkt-talk-actions">
               <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(phone, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
               <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>

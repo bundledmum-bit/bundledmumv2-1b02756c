@@ -4368,3 +4368,78 @@ explicitly out of scope this pass):**
   instruction, flagging for a separate pass.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 16. Shipping cost stated, and sellers told delivery is theirs to arrange too (2026-08-05)
+
+Follow-up to §15, which only covered the buyer side and never mentioned
+who pays for delivery if the seller sends it. This pass adds the
+shipping-cost clause to all four §15 buyer locations, and — new — tells
+sellers the same thing at three points, which previously said nothing at
+all about it.
+
+**Buyer side, cost clause folded into the existing §15 line at each spot
+(no new lines added anywhere on this side):**
+- Listing detail (`HowThisWorksExplainer.tsx`, step 4 of 7): *"You agree
+  with them directly, collect it in person or have them send it, cost
+  agreed between you."*
+- Checkout (`CheckoutPage.tsx` held-box, still exactly 4 lines): *"You get
+  the seller's contact once you sign in, to collect it yourself or agree
+  a send and who covers it."*
+- Payment succeeded (`PaymentReturnPage.tsx`): *"Message them to agree
+  whether you'll collect it in person or have it sent, who covers the
+  cost if sent, and roughly when."*
+- Buyer order detail, awaiting dispatch (`BuyerOrderDetailPage.tsx`):
+  *"Their details are yours now. Agree whether you'll collect it in
+  person or have them send it, who covers the cost if sent, and roughly
+  when."*
+
+**Seller side, previously silent on this entirely, now three places:**
+- **Sell pitch** (`BecomeSellerPage.tsx`) — the existing lead paragraph
+  ("You get exactly the price you asked for, we take nothing from it")
+  was left untouched as instructed. The 4-step "nobody can run off with
+  your item" list gained one step (now 5): step 2 changed from "while you
+  send the item" to the delivery-neutral "while you get it to them," and
+  a new step 3 was inserted: *"You agree delivery together, in person or
+  by post, and who covers the cost."* The list already keys its
+  highlighted final step off `steps.length - 1` rather than a hardcoded
+  index, so no off-by-one risk from the extra step (unlike
+  `HowThisWorksExplainer.tsx` in §15, which hardcodes the index and had
+  to be fixed by hand — this file didn't need that).
+- **Seller setup** (`SellerSetupPage.tsx`) — the existing phone-number
+  help text edited in place: "...so the two of you can arrange delivery,
+  and you get theirs too" → *"...so the two of you can agree delivery, in
+  person or by post, and who covers the cost if you're posting it. You
+  get their number too."*
+- **Seller order screen** (`SellerOrderDetailPage.tsx`), the exact seller-side
+  counterpart of `BuyerOrderDetailPage.tsx`'s note, same treatment: "Agree
+  the drop off with them before you send it." → *"Message them to agree
+  collection or a send, and who covers the cost if you're sending, then
+  mark it dispatched."*
+
+**Email templates: already fixed, not by this pass.** Checked live in the
+`email_templates` table (not source-controlled) rather than assumed:
+`marketplace_order_confirmation` and `marketplace_seller_sale` both
+already state collection vs. sending and "who covers the postage,
+BundledMum does not handle delivery or its cost" — someone updated these
+directly in the DB since §15 flagged them. Nothing to report as
+outstanding.
+
+**Tone**: same as §15, a normal two-mums arrangement, never framed as a
+limitation or disclaimer — "who covers it" / "who covers the cost," never
+"unfortunately" or "please note." The money-held and dispute-review
+promises are untouched and stated separately at every spot.
+
+**Verified live**: listing detail (expanded step text confirmed via
+computed DOM read, final-step highlight still on the correct step, Buy
+now bar's `getBoundingClientRect()` confirmed fixed at the same position
+regardless), checkout (held-box still exactly 4 lines via `get_page_text`,
+"Continue to payment" unaffected), and the sell pitch page (5-step list
+renders correctly, final step still highlighted green via the dynamic
+index, existing lead paragraph unchanged, "Log in to start selling" CTA
+still present and reachable, not hidden). `SellerSetupPage.tsx` and
+`SellerOrderDetailPage.tsx` are both login-gated and no session was
+active this pass — code-reviewed and `tsc`/build-verified only for those
+two, consistent with how every other login-gated screen in this handoff
+has been reported.
+
+`npm run build` and `tsc --noEmit` both clean.

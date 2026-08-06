@@ -25,7 +25,8 @@ export default function BecomeSellerPage() {
 
   const steps = [
     "The buyer pays BundledMum, never you directly",
-    "We hold that money while you send the item",
+    "We hold that money while you get it to them",
+    "You agree delivery together, in person or by post, and who covers the cost",
     "The buyer confirms it arrived",
     "We transfer your money to your bank",
   ];
