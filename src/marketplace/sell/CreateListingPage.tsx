@@ -985,6 +985,7 @@ function ConditionQuestionField({ question, value, detail, invalid, onChange, on
               onChange={(e) => onDetailChange(e.target.value)}
               placeholder={question.followup_placeholder || `Add ${(question.followup_label || "detail").toLowerCase()}`}
             />
+            <span className="mkt-help">A few words is enough, we turn it into a sentence for you.</span>
           </div>
         </div>
       )}

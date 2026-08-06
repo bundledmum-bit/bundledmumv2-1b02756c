@@ -4443,3 +4443,51 @@ two, consistent with how every other login-gated screen in this handoff
 has been reported.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 17. Condition question copy: confirmed live from the database, one guidance line added (2026-08-05)
+
+**Audited first, nothing was hardcoded.** `CreateListingPage.tsx`'s
+`ConditionQuestionField` (the six universal condition questions) selects
+`label, options, is_required, help_text, followup_required_for,
+followup_label, followup_placeholder` straight from
+`marketplace_condition_questions` and renders every one of them from that
+row — `question.label`, `question.help_text`, `question.options.map(...)`,
+`question.followup_label`, `question.followup_placeholder`. The only
+literal strings in the component are graceful fallbacks for a genuinely
+null DB value (`|| "Tell us more"`, `|| \`Add ${...}\``), never a
+substitute for real content. Same finding for `QuestionField` (the
+category-specific questions, `marketplace_category_fields`): `field.label`,
+`field.options`, and `field.help_text` (line 938) are all read live too.
+Confirmed the two updated placeholders directly in the database rather
+than assuming: `completeness` → "One cup holder, and the rain cover",
+`marks` → "A small stain on the left sleeve, and fading on the back" —
+both fragments now, both will render the moment the create-listing page
+is loaded (or the question query's 60s `staleTime` expires), no code
+change needed or made for this part.
+
+**The one real change**: a short guidance line added under every
+follow-up input (`ConditionQuestionField`, next to the placeholder), since
+a placeholder alone doesn't stop a seller answering a question with a full
+sentence out of habit. Exact wording: *"A few words is enough, we turn it
+into a sentence for you."* Styled with the existing `.mkt-help` class
+(small, muted grey, already used throughout this same page for every
+other secondary hint) rather than anything alarming or coral — deliberately
+calm, so the field doesn't read as more demanding than it is. No
+validation was added forcing a fragment; a seller who writes a full
+sentence can still submit, exactly as instructed.
+
+**Not verified live**: create-listing is behind seller login, no session
+was active this pass — confirmed by hitting `/marketplace/sell/new` and
+landing on the sign-in gate. The finding above (nothing hardcoded, the
+two placeholders already correct) is confirmed directly against the live
+database, and the new hint line is `tsc`/build-verified only, not seen
+rendered.
+
+**Record for future changes**: condition question labels, options, help
+text, and follow-up label/placeholder are ALL read live from
+`marketplace_condition_questions`; category question labels, options, and
+help text are ALL read live from `marketplace_category_fields`. Neither
+needs a frontend deploy when an admin edits either table — confirmed by
+this audit, not assumed.
+
+`npm run build` and `tsc --noEmit` both clean.
