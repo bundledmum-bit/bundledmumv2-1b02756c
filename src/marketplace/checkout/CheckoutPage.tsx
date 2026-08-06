@@ -374,7 +374,7 @@ export default function CheckoutPage() {
             <div className="mkt-heldbox">
               <div className="hb-title">Your money is held, not sent</div>
               <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to arrange delivery.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to collect it yourself or agree a send.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>Not as described? Send it back and get refunded the same day it arrives with the seller.</div>
             </div>

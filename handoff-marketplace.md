@@ -4290,3 +4290,81 @@ can't be reused as-is for this either). Not fixed this pass, as
 instructed.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 15. Buyers told delivery is arranged directly with the seller (2026-08-05)
+
+**Before**: nothing told a buyer, before paying, that BundledMum is not a
+courier — `HowThisWorksExplainer.tsx`'s step 4 ("They ship and upload a
+photo of the parcel") assumed shipping was the only method; checkout's
+held-box said only "...to arrange delivery," no mention collection is an
+option; `PaymentReturnPage.tsx`'s seller-contact reveal and
+`BuyerOrderDetailPage.tsx`'s awaiting-dispatch note both said only "agree
+where and when," not what the two actual options are. `TermsPage.tsx`
+already states this explicitly ("BundledMum is not a courier...") but
+that's legal fine print, not something read pre-purchase.
+
+**Fixed, four places, edited existing lines wherever possible rather than
+adding new ones:**
+
+- **Listing detail** (`HowThisWorksExplainer.tsx`) — one new step inserted
+  into the existing 6-step list (now 7): *"You agree with them directly,
+  collect it in person or have them send it"* (short: *"Collect in person
+  or have them send it, you two agree"*). The list is collapsed by default
+  behind a tap, and the Buy now bar is `position: fixed`, so this adds zero
+  visible content until a buyer chooses to expand it and has zero effect on
+  the buy button's position either way — confirmed live (screenshot at
+  390px, button still pinned at the same spot, expanded or not). The
+  "confirm and paid" step's highlighted-final-step index had to move from
+  4 to 5 to stay pointed at the right step now that the list is longer —
+  easy to miss, checked and fixed.
+- **Checkout** (`CheckoutPage.tsx`) held-box — **edited the existing line
+  in place, zero new lines added**: "You get the seller's contact once you
+  sign in, to arrange delivery." → *"You get the seller's contact once you
+  sign in, to collect it yourself or agree a send."* Still exactly 4
+  lines. Nothing was cut because nothing needed to grow — confirmed live,
+  "Continue to payment" still directly follows with no added gap.
+- **Payment succeeded** (`PaymentReturnPage.tsx`'s `SellerContact`, where
+  the seller's contact is actually revealed) — this one genuinely has more
+  room per the instruction, so a real sentence was added ahead of the
+  existing prefill-message caption: *"Message them to agree whether you'll
+  collect it in person or have it sent, and roughly when. Opens ready to
+  send, with your item and order number."*
+- **Buyer order detail, awaiting dispatch** (`BuyerOrderDetailPage.tsx`) —
+  same reasoning, same treatment. "Their details are yours now. Agree
+  where and when it reaches you." → *"Their details are yours now. Agree
+  whether you'll collect it in person or have them send it, and roughly
+  when."*
+
+**Tone**: written as a normal two-mums arrangement, not a disclaimer — no
+"unfortunately," no "please note," no suggestion BundledMum won't help
+(the money-held/protection promise is untouched and still stated
+separately at each of these spots).
+
+**Verified live**: listing detail (expanded steps render correctly at the
+right position, final-step highlight confirmed still on the correct step
+via computed class check, Buy now bar unaffected) and checkout (held-box
+still 4 lines, submit button unaffected) — both loaded and read at 390px.
+`PaymentReturnPage.tsx` and `BuyerOrderDetailPage.tsx` could not be
+exercised live (both require a real completed payment and a signed-in
+session with an order in progress, neither available in this
+environment) — code-reviewed and `tsc`/build-verified only for those two.
+
+**Other places that would benefit, reported, not changed (all seller-facing,
+explicitly out of scope this pass):**
+- `BecomeSellerPage.tsx` (the sell pitch) says nothing about delivery at
+  all, from either side.
+- `SellerSetupPage.tsx` already has "...so the two of you can arrange
+  delivery," same gap as checkout had — doesn't name collection as an
+  option.
+- `SellerProtectionPage.tsx` uses shipping-only phrasing twice ("before
+  you ship," "when you ship").
+- `SellerDispatchPage.tsx` assumes a courier waybill, consistent with the
+  same shipping-only framing.
+- **Email template** `marketplace_order_confirmation` (stored in the
+  `email_templates` DB table, not source-controlled) has the identical
+  gap: "Message {{seller_name}} and agree how your item reaches you...
+  They have been emailed too and asked to **send it** and photograph the
+  parcel as proof" — never mentions collection. Not touched, per
+  instruction, flagging for a separate pass.
+
+`npm run build` and `tsc --noEmit` both clean.

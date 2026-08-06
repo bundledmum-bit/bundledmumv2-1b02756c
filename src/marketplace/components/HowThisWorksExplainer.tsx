@@ -19,6 +19,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
     `You pay BundledMum, never ${sellerName} directly`,
     `We hold it, ${sellerName} does not have it yet`,
     "Their contact is shared with you right after payment",
+    "You agree with them directly, collect it in person or have them send it",
     "They ship and upload a photo of the parcel",
     "You confirm it arrived, only then are they paid",
     "Not as described? Report it and send it back, once they confirm it arrived your refund goes out the same day",
@@ -27,6 +28,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
     `You pay us, not ${sellerName}`,
     "We hold it, they do not",
     "Their contact comes to you after payment",
+    "Collect in person or have them send it, you two agree",
     "They ship with a photo as proof",
     "You confirm, then they are paid",
     "Not as described? Send it back, refunded the same day it arrives",
@@ -56,7 +58,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
 
           <div className="mkt-howworks-steps long">
             {longSteps.map((text, i) => (
-              <div className={i === 4 ? "mkt-howworks-step final" : "mkt-howworks-step"} key={i}>
+              <div className={i === 5 ? "mkt-howworks-step final" : "mkt-howworks-step"} key={i}>
                 <span className="num">{i + 1}</span>
                 <span>{text}</span>
               </div>
@@ -64,7 +66,7 @@ export default function HowThisWorksExplainer({ sellerName }: { sellerName: stri
           </div>
           <div className="mkt-howworks-steps short">
             {shortSteps.map((text, i) => (
-              <div className={i === 4 ? "mkt-howworks-step final" : "mkt-howworks-step"} key={i}>
+              <div className={i === 5 ? "mkt-howworks-step final" : "mkt-howworks-step"} key={i}>
                 <span className="num">{i + 1}</span>
                 <span>{text}</span>
               </div>

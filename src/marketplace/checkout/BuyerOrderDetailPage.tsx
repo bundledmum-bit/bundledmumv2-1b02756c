@@ -222,7 +222,7 @@ export default function BuyerOrderDetailPage() {
                 <div className="av">{(sellerName[0] || "S").toUpperCase()}</div>
                 <div><div className="nm">{sellerName}</div><div className="sub">Seller</div></div>
               </div>
-              <div className="mkt-buyer-note">Their details are yours now. Agree where and when it reaches you.</div>
+              <div className="mkt-buyer-note">Their details are yours now. Agree whether you'll collect it in person or have them send it, and roughly when.</div>
               {sellerPhone ? (
                 <div className="mkt-buyer-actions">
                   <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(sellerPhone, waMsg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
