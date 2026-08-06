@@ -17,7 +17,141 @@ routes and **must not be conflated**.
 
 ---
 
+## CURRENT STATE — read this first (accurate as of 2026-08-05)
+
+Everything from §1 onward is a chronological build log spanning many
+sessions. Large parts of it, especially §1 through §6, describe an early
+state of the project that no longer matches the code: checkout was a
+"coming soon" placeholder, admin had three screens, create-listing didn't
+read category questions yet, and auth used cookie storage. All of that has
+since changed and is superseded below. **Treat any specific technical
+claim further down in this file — a file path, a query, a "not yet
+built" — as needing a fresh check against the actual code before being
+repeated, not as established fact.** §4 records the exact incident (a
+stale "DB-blocked" claim, repeated across three sessions before being
+caught) that made this rule necessary, and this pass found a second one
+(§5, marked in place, also see §17/§18) — there may be others not yet
+found.
+
+### What's built and working
+Full buyer flow: browse (search, category/location/price/condition
+filters), listing detail (gallery, condition Q&A, ask-for-a-lower-price
+negotiation), checkout (Paystack primary, bank transfer behind an
+admin-off toggle), payment return, buyer orders list + detail (confirm
+receipt, report a problem, return an item), and the four gone/404 states
+(sold, removed, wrong URL, seller's own view).
+
+Full seller flow: the sell pitch, seller setup, create/edit listing
+(condition questions and category-specific questions, both fully
+database-driven), seller dashboard, price edit, dispatch (proof-of-send
+upload), payouts, responding to a price request.
+
+Full admin marketplace: dashboard, payout queue, listing review queue,
+disputes, returns, sellers, buyers, listings, orders, money owed,
+category-question manager, settings.
+
+Five policy pages (Terms, Privacy, Buyer protection, Seller protection,
+Cookies), per-route browser tab titles across all of the above (§14), and
+delivery-arrangement plus shipping-cost copy on both the buyer and seller
+sides (§15, §16).
+
+### Genuinely still open
+- Admin's coral-dark confirm-dialog buttons (`MarketplaceReview.tsx`'s
+  "Confirm rejection", four `MarketplaceSettings.tsx` confirm dialogs)
+  measure roughly 3.59:1 contrast, short of AA — found and explicitly
+  reported-not-fixed in §10.
+- Meta description and Open Graph tags are one static value across every
+  marketplace page — worse than the old title problem, since `og:url` on
+  a marketplace page currently points at the storefront homepage. Found
+  in §14, deliberately not fixed.
+- Pricing isn't rounded: `final_price_naira` shows raw markup figures like
+  ₦17,600, unlike the storefront catalogue's rounded prices. Open since
+  §6, never addressed since.
+- `useIdleTimeout.ts`, a second, unused idle-timeout implementation,
+  confirmed dead code but not removed.
+- `.mkt-wa`'s icon references a path that doesn't exist
+  (`src/marketplace/assets/...`), so it silently never renders, across 7
+  files — found in §13, not fixed (the newer gone/404 screens import the
+  real asset correctly instead of repeating the broken path).
+- Seller-facing copy on `SellerProtectionPage.tsx` and
+  `SellerDispatchPage.tsx` still uses shipping-only language ("before you
+  ship") — §16 fixed three other seller-facing spots but explicitly left
+  these two as report-only.
+- No `site_settings` key exists for minimum photo count or the strike
+  threshold, so both stay hardcoded by necessity — a possible future
+  configurability gap, not a bug.
+- `marketplace_confirm_nudge_1_hours`/`_2_hours` exist in `site_settings`
+  but aren't exposed anywhere in the admin Settings screen.
+- A second, hand-rolled WhatsApp link builder in `orders.ts` duplicates
+  `lib/whatsapp.ts` — reported in §9, not consolidated.
+- A refunded order's dispute panel can briefly render blank before its
+  own query resolves — low severity, reported in §9, not fixed.
+- `enforce_required_category_fields` only checks category questions, not
+  the six condition-question answers — noted in §5, not addressed.
+- Whether admin's older error/negative states (built before `#C0392B` was
+  adopted) are visually consistent with it — flagged as worth a sweep in
+  §6, never followed up on either way since.
+
+**Two claims that were handed into this pass as still-open, and are not**
+— kept here because if a stale claim slipped through once, it can again:
+- Primary button (coral+cream) contrast was fixed in §10 — black text on
+  coral, 6.89:1, applied at the token level (`.mkt-buy`, `.mkt-primary`)
+  plus six individual admin call sites. Confirmed still present in the
+  live CSS this pass, not just recorded as done.
+- Marketplace page titles were fixed in §14 — every route has a distinct,
+  often dynamic title. Confirmed still present in the live code this
+  pass.
+
+### Deliberately unverified, and why
+No buyer, seller, or admin login credentials exist in this environment.
+Every screen behind a login — the entire seller flow, buyer orders, and
+every admin screen — is built and passes `tsc`/`npm run build`, but has
+been **code-reviewed, not watched rendering**, unless a specific section
+says otherwise (a few sessions found an already-active browser session
+mid-task and spot-checked live; those moments are called out explicitly
+where they happen). Read "verified" anywhere in this file as "verified
+against what could be reached that session," and check the section for
+what that was, rather than assuming a screen has been seen live just
+because it's described in detail.
+
+Separately: **no order has ever been paid** (0 rows in
+`marketplace_orders` with `payment_status='paid'`, confirmed live). The
+entire chain after payment — the confirmation email, seller contact
+reveal, dispatch, buyer confirmation, a dispute, a return, a payout — has
+never executed against real data. Every screen in that chain is built and
+code-reviewed against what it's supposed to do, not observed doing it.
+
+Admin's idle timeout was audited after the cookie→localStorage auth
+change and confirmed unaffected (its own storage key is independent of
+Supabase's own session storage) — but the full real-time 20-minute firing
+itself has still never been watched happen end to end. That's a separate,
+always-true caveat, not something the storage change specifically put at
+risk.
+
+Storefront (non-marketplace) admin RPC functions are genuinely
+anon-callable — confirmed directly this pass via
+`information_schema.routine_privileges` — and are understood to each
+guard internally via `has_admin_permission`/`is_admin` checks in the
+function body, which is why this is treated as defence in depth rather
+than an open door. This pass did not re-read every individual function
+body to confirm each guard.
+
+### Numbers, verified live just now
+11 live listings, 6 active sellers, 0 paid orders, 0 disputes, 34 active
+`marketplace_*` email templates, 26 active cron jobs project-wide.
+
+---
+
 ## 1. Goal
+
+**Historical from here through §6.** The six sections below are the
+original build log — router split, the very first browse/detail screens,
+early auth decisions — and describe the project as it stood well before
+checkout, the seller flow, or most of admin existed. Left intact because
+the reasoning in it (why the subdomain was abandoned, why cookie storage
+was tried and later reverted, the RLS/view design for seller identity) is
+still useful background. Do not read anything in §1–§6 as a description
+of what the app does today — see CURRENT STATE above for that.
 Stand up the runtime plumbing that lets one build serve two experiences from one
 origin, split by URL path:
 - `bundledmum.com/*` (everything except `/marketplace`) → existing storefront +
@@ -28,7 +162,7 @@ This pass is **plumbing only**: `/marketplace` renders a throwaway "Coming soon"
 placeholder confirming the split works. No marketplace screens, listings, seller
 dashboards, or checkout yet.
 
-## 2. Current state (what's wired now)
+## 2. Current state as of that early pass (historical — not current; see "CURRENT STATE" at the top)
 - **Path split at the router root.** `src/App.tsx` is a thin shell that resolves
   `isMarketplace()` once and lazy-loads exactly one route tree.
   - `isMarketplace()` is `true` when `window.location.pathname` is `"/marketplace"`
@@ -1242,7 +1376,15 @@ in full on the retry.
   'manage')`, same pattern as every other admin table here.
   `marketplace_listings.attributes jsonb NOT NULL` also exists — **nothing
   writes to it yet, and the seller create-listing form does not read these
-  question definitions yet either. Both are a later phase.** This screen only
+  question definitions yet either. Both are a later phase.**
+  [**CORRECTED, this claim is stale**: that later phase landed —
+  commit `af7677d`, documented below at "create-listing renders and
+  submits category questions." Create-listing has rendered and required
+  these questions for a long time; this exact stale claim (in a
+  paraphrased form, "help_text is fetched but never rendered") was
+  carried into a later task before being traced and found wrong — see §17
+  and §18. If you're reading this section for current behaviour, don't:
+  see CURRENT STATE at the top of this file instead.] This screen only
   manages question DEFINITIONS.
 - **Real seeded data this pass (verified live, not placeholder):** 39
   categories across the 7 groups, 66 questions total. `reason_for_selling`
@@ -3174,6 +3316,12 @@ destination handling is untouched. No console errors on any of the above.
 
 ## 7. Pre-launch audit (2026-08-05)
 
+**Historical — a findings snapshot, not current status.** Most of Part 2
+and Part 3's findings were fixed the same day in §8. Read this section for
+what was *found*, not for what's still true — check CURRENT STATE at the
+top of this file, or §8, before treating any specific item here as still
+open.
+
 Full six-part audit, report-only except Part 1 (which needed no change). No
 design or copy was changed. No migrations or edge functions touched. Some
 screens are login-gated and could only be checked by reading the code, not
@@ -3493,6 +3641,17 @@ Build passed (`npm run build`, clean except pre-existing chunk-size
 warnings unrelated to this change). Committed and pushed to `main`.
 
 ## 9. Pre-launch design and UX audit, second pass (2026-08-05)
+
+**Historical — a findings snapshot, not current status.** The three items
+this section itself picked as top priority were fixed the same day in
+§10 (primary button contrast, the non-clickable "Policies ›" crumb, the
+admin markup-percent stale fallback) — §10's own "before" check re-read
+the code fresh and confirmed all three were still present at that point,
+so trust §10 over this section for those three specifically. The 404
+button-inflation bug found here was fixed later in §13 alongside a larger
+rebuild. Everything else below is exactly what it says: found, reported,
+left unfixed at the time — check CURRENT STATE at the top of this file
+before assuming any specific item is still open today.
 
 Report only, no code changed. Screens actually loaded in the Browser pane at
 390px and 1440px (768/1100 checked where a layout genuinely changes width);
