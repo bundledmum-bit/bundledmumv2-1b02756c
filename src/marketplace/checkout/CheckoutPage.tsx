@@ -191,7 +191,14 @@ export default function CheckoutPage() {
     try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked */ }
   }
 
-  if (authLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
+  // settingsLoaded is included here, not just below on paymentsDown: without
+  // it, paystackEnabled defaults to false while site_settings is still in
+  // flight, so the render further down would briefly pick the transfer-
+  // fallback branch (and its "payment details are not set up yet" message)
+  // even when Paystack is genuinely on. "Not loaded yet" must never render
+  // as "loaded and unavailable" — same fix shape as the stale numeric
+  // fallbacks removed in §8.
+  if (authLoading || isLoading || !settingsLoaded) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
   const ownListing = createCode === "You cannot buy your own listing";
   const listingGone = !listing || createCode === "This item is no longer available" || payCode === "This item is no longer available";

@@ -4528,3 +4528,74 @@ session available this pass — `tsc --noEmit` and `npm run build` clean
 only.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 19. Checkout no longer flashes "payment not set up" while settings load (2026-08-05)
+
+**The race, precisely.** `CheckoutPage.tsx`'s payment-settings `useQuery`
+(no `enabled` gate, fires on mount) leaves `settings` as `undefined` until
+it resolves. `paystackEnabled = settings?.marketplace_payment_paystack_enabled
+=== true` reads as `false` during that window — correctly `false` once
+truly off, but indistinguishable from "not loaded yet." The
+`paymentsDown` early-return was already correctly gated on `settingsLoaded`
+(`settingsLoaded && !paystackEnabled && !transferEnabled`), so that
+wasn't the bug. The actual bug was one ternary further down, in the main
+render: `{paystackEnabled ? <PaystackUI/> : <TransferFallback .../>}` —
+this has no `settingsLoaded` gate at all, so while settings are loading it
+picks the transfer-fallback branch (since `paystackEnabled` reads false),
+which then evaluates `bankReady` — also derived from the same not-yet-loaded
+settings, also `false` — and renders its own `!bankReady` state: *"Payment
+details are not set up yet... message us on WhatsApp to complete your
+purchase."* Two settings-driven branch points, only one of them guarded.
+
+**Fix**: extended the existing top-of-render early loading return
+(`if (authLoading || isLoading) return <spinner>`) to also cover
+`!settingsLoaded`. Nothing downstream — the `paystackEnabled` ternary
+included — can render until settings are genuinely known, so the wrong
+branch can no longer be picked. One line changed, same pattern as §8's
+stale-numeric-fallback fix (never render "not loaded yet" as a real
+value), reusing the exact loading treatment already used for
+auth/listing.
+
+**Audited for the same pattern elsewhere in the marketplace, one other
+candidate found, correctly not fixed**: `offersEnabled` in
+`ListingDetailPage.tsx` (`{ data: offersEnabled = false }`) drives whether
+the "Ask for a lower price" entry point renders at all — while loading it
+renders **nothing**, not a wrong state, matching the one case this task
+explicitly says to report rather than fix. `feeAdded` in `CheckoutPage.tsx`
+is already nested behind its own `!payQ.data` loading check, no exposure.
+No other boolean settings toggle is read anywhere else in the marketplace
+frontend. The numeric settings already addressed in §8 (markup, discount
+cap, dispute/return windows) display a *number*, never pick between two
+different UI branches, so they're a different class of bug and untouched
+here.
+
+**Verified with the network genuinely slow, not just at normal speed, as
+required** — real DevTools throttling isn't exposed by the tools
+available here, so this was simulated deterministically instead: a
+temporary `await new Promise(r => setTimeout(r, N))` was added directly
+inside the settings `queryFn` (removed before commit, confirmed absent
+via `git diff` and a `grep` for the word `TEMP`), then the page was
+hard-reloaded fresh each time so react-query's cache couldn't mask the
+delay.
+- **Before the fix**, mid-delay: item summary and price render correctly,
+  but the payment section shows "Transfer exactly ..." (the wrong
+  section entirely — Paystack is what's actually on) with a red
+  *"Payment details are not set up yet, please message us on WhatsApp to
+  complete your purchase"* box. Screenshotted live at this exact moment,
+  confirming the bug precisely as described, not inferred from code alone.
+- **After the fix**, mid-delay: the full page shows only the same
+  BundledMum loading animation already used for auth/listing loading —
+  no payment section, no error, no empty gap. Once the delay elapses it
+  resolves straight into the correct Paystack checkout (item price,
+  details form, the four-line held-box, "Continue to payment") with no
+  flash of the wrong state at any point in between. Confirmed both the
+  mid-delay state and the eventual correct resolution, not just the end
+  state.
+
+**Preserved, confirmed unbroken**: the genuinely-unavailable state
+(`paymentsDown`, untouched, still fires once settings are loaded and both
+methods are actually off), the transfer fallback behind
+`marketplace_payment_transfer_enabled`, the four-line breakdown, the Pay
+button, the negotiated-price path, guest checkout.
+
+`npm run build` and `tsc --noEmit` both clean.
