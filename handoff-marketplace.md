@@ -4491,3 +4491,40 @@ needs a frontend deploy when an admin edits either table — confirmed by
 this audit, not assumed.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 18. Category-question help text no longer disappears on error (2026-08-05)
+
+§17's premise turned out to be wrong (traced to an earlier report that was
+passed on without independent verification) — `help_text` was never
+"fetched and discarded," it was already rendering in `QuestionField`
+(`CreateListingPage.tsx`). The real, narrower bug, found while checking
+that claim: it was gated on `!invalid`, so it disappeared the instant a
+field failed validation — exactly the moment a seller most wants "Required,
+buyers cannot ask before buying" (Size's own `help_text`), not less.
+
+**Fixed**: removed the `!invalid` guard, so `field.help_text` now renders
+unconditionally (still only for non-`select` types — unchanged, and still
+a no-op today since zero `select` fields carry `help_text`). The two no
+longer compete: `fieldErrorText()` used to reuse a field's own `help_text`
+as the error message when present, which would now have shown the exact
+same line twice (once calm, once red) the moment a field went invalid.
+Changed it to always return the generic "This is required. Buyers cannot
+ask before buying." — the specific guidance and the generic alert are now
+two distinct, complementary lines rather than one repeated. The error
+line also got `fontWeight: 700` (on top of its existing red colour and "!"
+icon) so it stays the visually louder of the two regardless of order —
+help text above, in muted grey; error below, bold and red.
+
+**Condition questions checked for the same pattern, found clean**:
+`ConditionQuestionField`'s `question.help_text` (line 975) and the
+follow-up's "A few words is enough..." hint (added in §17) were both
+already unconditional, no `!invalid` guard on either — nothing to fix
+there. Its own error line doesn't reuse `help_text` either (it uses
+`followup_label` or a generic string), so no duplication risk existed
+there to begin with.
+
+**Not verified live**: create-listing remains seller-login-gated, no
+session available this pass — `tsc --noEmit` and `npm run build` clean
+only.
+
+`npm run build` and `tsc --noEmit` both clean.

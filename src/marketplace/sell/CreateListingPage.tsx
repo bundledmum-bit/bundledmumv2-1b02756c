@@ -288,8 +288,11 @@ export default function CreateListingPage() {
   });
   const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
 
+  // A generic reason, always, never the field's own help_text: that now
+  // renders on its own right above this (see QuestionField), so reusing it
+  // here would just repeat the same line twice when a field goes invalid.
   function fieldErrorText(f: CategoryField): string {
-    return f.help_text || "This is required. Buyers cannot ask before buying.";
+    return "This is required. Buyers cannot ask before buying.";
   }
 
   /** Every required question with no real answer yet: text/select need a non-empty
@@ -935,9 +938,9 @@ function QuestionField({ field, value, invalid, onChange, setRef, errorText }: {
         </div>
       )}
 
-      {field.help_text && field.field_type !== "select" && !invalid && <div className="mkt-help">{field.help_text}</div>}
+      {field.help_text && field.field_type !== "select" && <div className="mkt-help">{field.help_text}</div>}
       {invalid && (
-        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5 }}>
+        <div className="mkt-help" style={{ color: "var(--mkt-error)", display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
           <span style={{ fontWeight: 800 }}>!</span>{errorText}
         </div>
       )}
