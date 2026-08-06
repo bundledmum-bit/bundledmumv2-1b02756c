@@ -7,6 +7,7 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { formatNaira, getOrderContact, sellerWhatsAppLink, sellerCallLink } from "./orders";
 import { fetchBuyerOrder, getDisputeWindowDays, confirmDeadline, daysLeft, confirmReceipt, fetchOrderDispute, getReturnConfirmDays } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Buyer order detail (design T3/T3b tracking + T4 confirm-or-dispute + T4c
@@ -64,6 +65,7 @@ export default function BuyerOrderDetailPage() {
   if (!order) {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Order not found" />
         <div className="mkt-empty-title">Order not found</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/orders")}>Back to my orders</button>
       </div>
@@ -134,6 +136,7 @@ export default function BuyerOrderDetailPage() {
 
   return (
     <div className="mkt-order-detail-page">
+      <MarketplaceTitle title={ref ? `Order ${ref}` : "My order"} />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

@@ -6,6 +6,7 @@ import { useMarketplaceWhatsAppNumber, waHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira } from "./orders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 interface OrderRow { id: string; amount_naira: number; order_status: string; payment_status: string; created_at: string; paystack_transaction_reference: string; listing_id: string }
 
@@ -53,6 +54,7 @@ export default function AwaitingPaymentPage() {
   if (!order) {
     return (
       <>
+        <MarketplaceTitle title="Order not found" />
         <div className="mkt-sell-head"><div className="inner"><h1>We could not find this order</h1><p className="sub">If you have just sent a transfer, give it a moment and refresh. If it still does not show, message us and we will help.</p></div></div>
         <div className="mkt-sell-body">
           <a className="mkt-wa" href={waMsg("I sent a transfer but cannot see my order")}><span className="ic">✆</span>Chat to BundledMum</a>
@@ -68,6 +70,7 @@ export default function AwaitingPaymentPage() {
 
   return (
     <>
+      <MarketplaceTitle title={delayed ? "Still checking your transfer" : "Awaiting your transfer"} />
       <div className="mkt-sell-head">
         <div className="inner">
           <span className="mkt-pill-sent">Sent, awaiting check</span>

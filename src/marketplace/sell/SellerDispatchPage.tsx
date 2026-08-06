@@ -6,6 +6,7 @@ import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, compressImage, describeUploadError } from "./sellData";
 import { fetchSellerOrder, markDispatched } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Mark as dispatched, with a required proof photo (design O3 + confirm O3b). The
@@ -66,11 +67,12 @@ export default function SellerDispatchPage() {
 
   if (sellerLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
   if (!order) {
-    return <div className="mkt-center"><div className="mkt-empty-title">Order not found</div><button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button></div>;
+    return <div className="mkt-center"><MarketplaceTitle title="Order not found" /><div className="mkt-empty-title">Order not found</div><button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button></div>;
   }
   if (order.order_status !== "awaiting_dispatch") {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Not awaiting dispatch" />
         <div className="mkt-empty-title">This order is not awaiting dispatch</div>
         <div className="mkt-empty-sub">It may already be on its way.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate(`/sell/orders/${order.id}`)}>View the order</button>
@@ -80,6 +82,7 @@ export default function SellerDispatchPage() {
 
   return (
     <div className="mkt-dispatch-page">
+      <MarketplaceTitle title="Proof you sent it" />
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/sell/orders/${order.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Proof you sent it</h1></div></div>
       </div>

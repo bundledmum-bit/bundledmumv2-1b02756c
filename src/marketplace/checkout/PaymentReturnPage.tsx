@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMarketplaceWhatsAppNumber, waHref, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Payment return, where Paystack sends the buyer back with ?reference=. It
@@ -34,6 +35,7 @@ export default function PaymentReturnPage() {
   if (verifyQ.isLoading || !status) {
     return (
       <div className="mkt-result">
+        <MarketplaceTitle title="Checking your payment" />
         <div className="mkt-spinner" />
         <h1>Checking your payment</h1>
         <p>A few seconds while Paystack confirms it with us. Please stay on this page and do not pay again.</p>
@@ -60,6 +62,7 @@ function ResultShell({ tone, title, body, wa, onBack }: { tone: "fail" | "check"
   const waNumber = useMarketplaceWhatsAppNumber();
   return (
     <div className="mkt-result">
+      <MarketplaceTitle title={title} />
       <div className={tone === "fail" ? "mkt-result-icon fail" : "mkt-result-icon check"}>{tone === "fail" ? "!" : "✓"}</div>
       <h1>{title}</h1>
       <p>{body}</p>
@@ -84,6 +87,7 @@ function FailedState({ orderId, reference, onBrowse }: { orderId?: string; refer
 
   return (
     <div className="mkt-sell-body" style={{ paddingTop: 24 }}>
+      <MarketplaceTitle title="Payment did not go through" />
       <div className="mkt-result-icon fail" style={{ alignSelf: "flex-start" }}>!</div>
       <h1 style={{ font: "900 26px/1.12 Nunito, sans-serif", letterSpacing: "-0.03em", margin: 0 }}>That payment did not go through</h1>
       <p style={{ font: "300 15px/1.6 Lato, sans-serif", color: "var(--mkt-muted)", margin: 0 }}>You were not charged, so nothing has left your account. Cards get declined for all sorts of reasons and it is rarely anything you did wrong.</p>
@@ -113,11 +117,12 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
   });
 
   if (authLoading) {
-    return <div className="mkt-result"><div className="mkt-spinner" /><h1>Confirming your payment</h1></div>;
+    return <div className="mkt-result"><MarketplaceTitle title="Confirming your payment" /><div className="mkt-spinner" /><h1>Confirming your payment</h1></div>;
   }
 
   return (
     <div className="mkt-success">
+      <MarketplaceTitle title="Payment received" />
       <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
         <div className="check">✓</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

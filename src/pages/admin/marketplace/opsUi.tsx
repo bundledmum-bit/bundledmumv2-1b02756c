@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import type { PillTone } from "./opsData";
 
 /**
@@ -23,10 +24,15 @@ export function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
   );
 }
 
-/** Page heading used across the ops screens. */
+/** Page heading used across the ops screens. Also sets the browser tab
+ * title, title-only (like the customer marketplace's MarketplaceTitle) —
+ * every screen that renders <OpsHeader> gets this for free, one place
+ * rather than repeating it per screen. Every admin marketplace page here
+ * uses this header, so this single component covers all of them. */
 export function OpsHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 flex-wrap">
+      <Helmet><title>{`${title} · BundledMum Marketplace Admin`}</title></Helmet>
       <div>
         <h1 className="font-heading font-black text-2xl tracking-tight text-foreground">{title}</h1>
         {subtitle && <p className="text-sm text-text-med mt-1 max-w-2xl">{subtitle}</p>}

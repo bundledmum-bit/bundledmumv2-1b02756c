@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings } from "./policySettings";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Buyer protection (design 24a, screen 1). Warm, visual, reassurance-first,
@@ -14,6 +15,7 @@ export default function BuyerProtectionPage() {
 
   return (
     <>
+      <MarketplaceTitle title="Buyer protection" />
       <PolicyNav />
       <div className="mkt-policy-hero">
         <div className="inner">

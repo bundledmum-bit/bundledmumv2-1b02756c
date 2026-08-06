@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Helmet } from "react-helmet-async";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { Switch } from "@/components/ui/switch";
 import { adb, formatNaira } from "./data";
@@ -483,6 +484,7 @@ export default function MarketplaceSettings() {
 
   return (
     <div>
+      <Helmet><title>Settings · BundledMum Marketplace Admin</title></Helmet>
       <h1 className="font-heading font-black text-2xl tracking-tight text-foreground">Settings</h1>
       <p className="text-sm text-text-med mt-1">Changes here affect live buyers and sellers, so each saves behind a confirm step.</p>
 

@@ -8,6 +8,7 @@ import { formatNaira, maskAccount } from "./sellData";
 import { sellerWhatsAppLink, sellerCallLink } from "../checkout/orders";
 import { fetchSellerOrder, getSellerOrderContact, fetchOrderDispute, sellerConfirmReturnReceived, getReturnConfirmDays } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Seller order detail. Shows only the seller's payout (seller_share_naira),
@@ -62,6 +63,7 @@ export default function SellerOrderDetailPage() {
   if (!order) {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Order not found" />
         <div className="mkt-empty-title">Order not found</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
       </div>
@@ -114,6 +116,7 @@ export default function SellerOrderDetailPage() {
 
   return (
     <div className="mkt-seller-order-page">
+      <MarketplaceTitle title={ref ? `Order ${ref}` : "Order"} />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

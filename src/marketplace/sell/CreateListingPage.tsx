@@ -6,6 +6,7 @@ import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
@@ -549,6 +550,7 @@ export default function CreateListingPage() {
   if (isEditMode && !existingLoading && (!existingListing || existingListing.status === "live" || existingListing.status === "sold")) {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Listing not found" />
         <div className="mkt-empty-title">Listing not found</div>
         <div className="mkt-empty-sub">It may not exist, or cannot be edited from here.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
@@ -560,6 +562,7 @@ export default function CreateListingPage() {
   if (done) {
     return (
       <div className="mkt-success">
+        <MarketplaceTitle title={isEditMode ? "Sent back for review" : "Sent for review"} />
         <div className="inner">
           <div className="check">✓</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -600,6 +603,7 @@ export default function CreateListingPage() {
 
   return (
     <>
+      <MarketplaceTitle title={pageTitle} />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

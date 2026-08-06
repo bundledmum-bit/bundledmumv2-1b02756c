@@ -4,6 +4,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, missingNameParts, parseBankNameMismatch, previewDisplayName, genericErrorMessage } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Seller setup, reskinned to the design. Creates the marketplace_sellers row
@@ -102,6 +103,7 @@ export default function SellerSetupPage() {
 
   return (
     <>
+      <MarketplaceTitle title="Set up your seller account" />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

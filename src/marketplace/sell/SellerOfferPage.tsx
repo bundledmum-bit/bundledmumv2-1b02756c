@@ -6,6 +6,7 @@ import { useSeller } from "./useSeller";
 import { formatNaira } from "./sellData";
 import { fetchSellerOffer, sellerRespondToOffer, isLapsed } from "../offers";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Seller's own view of an incoming offer (design 23a O6 incoming, O7
@@ -67,6 +68,7 @@ export default function SellerOfferPage() {
   if (!offer) {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Request not found" />
         <div className="mkt-empty-title">Request not found</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
       </div>
@@ -78,6 +80,7 @@ export default function SellerOfferPage() {
 
   return (
     <div className="mkt-seller-order-page">
+      <MarketplaceTitle title={openForResponse ? "A price request" : "Their request"} />
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>{openForResponse ? "Someone asked for a lower price" : "Their request"}</h1></div></div>
       </div>

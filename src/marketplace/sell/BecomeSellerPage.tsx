@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Become a seller, /marketplace/sell (design R1). Leads with the one true promise,
@@ -37,6 +38,7 @@ export default function BecomeSellerPage() {
 
   return (
     <>
+      <MarketplaceTitle title="Sell your used baby and toddler items" />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

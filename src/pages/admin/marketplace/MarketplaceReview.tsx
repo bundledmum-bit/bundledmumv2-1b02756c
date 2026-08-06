@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Helmet } from "react-helmet-async";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, REVIEW_SELECT, formatNaira, hasContactLeak, type ReviewListing } from "./data";
@@ -105,6 +106,7 @@ export default function MarketplaceReview() {
 
   return (
     <div>
+      <Helmet><title>Review queue · BundledMum Marketplace Admin</title></Helmet>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-heading font-black text-2xl tracking-tight text-foreground">Review queue</h1>

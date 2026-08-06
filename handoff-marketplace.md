@@ -4176,3 +4176,117 @@ count, ownership check), `src/marketplace/components/NotFoundOrGoneScreen.tsx`
 replaced), `BrowsePage.tsx` (category param), `marketplace.css`.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 14. Per-route browser tab titles (2026-08-05)
+
+**Before**: every marketplace page — all 24 routes — inherited the one
+static `<title>` in `index.html`
+("BundledMum: Hospital Bags & Baby Bundles for Nigerian Mums"), confirmed
+live on `/marketplace/terms`, `/privacy`, `/cookies`. No per-route title
+handling existed anywhere in `src/marketplace`. Admin marketplace screens
+had the exact same problem — `AdminLayout.tsx` sets PWA/theme-color meta
+tags via `Helmet` but never a `<title>`.
+
+**The storefront already has a mechanism**: `src/components/Seo.tsx`, a
+`react-helmet-async`-based component used on every storefront page, that
+sets title, description, canonical link, Open Graph, Twitter tags, and
+BreadcrumbList JSON-LD all from one `title`/`description` pair.
+
+**Deliberately NOT reused as-is** — two real reasons, not a style
+preference:
+1. `Seo`'s canonical link and `og:url` are built from
+   `useLocation().pathname`. The marketplace router is mounted with
+   `basename="/marketplace"`, so inside it `useLocation()` returns the
+   path with that basename already stripped (confirmed: every `navigate()`
+   call in this codebase already omits it). Reusing `Seo` as-is would have
+   emitted a canonical/`og:url` missing `/marketplace` — for a route like
+   `/terms` that would collide with the storefront's own top-level page at
+   the same bare path.
+2. `Seo` requires a `description` and always renders `og:title`/`og:description`.
+   Using it would have fixed Open Graph as a side effect, which this task
+   explicitly says not to do this pass.
+
+**What was built instead**: `src/marketplace/components/MarketplaceTitle.tsx`
+— same underlying library (`react-helmet-async`), scoped to only
+`<title>`, so it structurally cannot touch canonical/OG/description. Every
+title is composed as `{page} · BundledMum Marketplace` (the suffix lives
+in one place inside the component, so it can't be forgotten per-page), and
+defensively truncated to 60 chars before the suffix if a dynamic value
+(a listing title) ever runs long. One component, no mix of approaches.
+
+**Every marketplace route covered** (24 total): Browse ("Buy and sell used
+baby and toddler items"), listing detail (dynamic, the listing's own
+`title`), all four gone/404 cases from §13 (title lives *inside*
+`NotFoundOrGoneScreen` itself, keyed to the case — "{title} has sold",
+"{title} isn't available", "Page not found", "{title} is off the
+marketplace" for the seller's own view — never claims the item is still
+available, and this one change covers every place that screen is used:
+`ListingDetailPage`'s sold/removed/own-view states, the belt-and-braces
+sold-out branch, and `MarketplaceNotFoundPage`), the five policy pages
+(each named distinctly), login (contextual: "Sign in" / "Check your
+email"), checkout and all its dead-end states, all of `PaymentReturnPage`'s
+branches (checking / paid / mismatch / failed / no-reference) plus
+`AwaitingPaymentPage`'s two states, my orders, buyer order detail
+(dynamic, `Order {reference}`, falls back to "My order" before it loads),
+report a problem, send it back, the ask-for-a-lower-price screens (titled
+around "your request" / "their counter", never the word "offer" — matches
+the established §9 rule that the word stays hidden from users), the sell
+pitch page, seller setup, create/edit listing (three distinct labels
+reusing the page's own existing `pageTitle` variable — "List an item" /
+"Fix and resend" / "Edit listing" — plus its own not-found and
+sent-for-review states), price edit, seller dashboard, payouts, seller
+order detail (dynamic, same reference pattern), dispatch, and the seller's
+side of a price request.
+
+**Admin marketplace, confirmed it shared the same problem, fixed it
+too** — 13 registered routes (`MarketplaceLocations.tsx` looked like a
+14th file but has no route of its own, it's a sub-section rendered inside
+Settings, correctly not given its own title). 11 of the 13 already share
+one component, `OpsHeader` (`src/pages/admin/marketplace/opsUi.tsx`), so
+adding one `<Helmet>` there covers Dashboard, Payouts, Disputes, Returns,
+Sellers, Buyers, Listings, the listing-edit sub-route (dynamic, "Edit
+{title}"), Orders, Money owed, and Categories all at once, suffixed
+`· BundledMum Marketplace Admin` (deliberately distinct from the
+customer-facing suffix — an internal tool, not a public marketplace page).
+The remaining two (Review queue, Settings) don't use `OpsHeader` and got
+the same one-line `<Helmet>` added directly.
+
+**Verified on real in-app navigation, not fresh loads, as required** —
+loaded `/marketplace` once, then: clicked a real listing card
+(`document.title` went from "Buy and sell used baby and toddler items ·
+BundledMum Marketplace" to "B Fashion Baby Girl Cover Shoes · BundledMum
+Marketplace", confirmed against `location.href` changing to that
+listing's URL with no page reload), then clicked the footer's Terms link
+from the listing detail page (title correctly became "Terms and
+conditions · BundledMum Marketplace"). Two consecutive client-side
+navigations, two correct title changes, checked via `document.title`
+directly rather than trusting the browser tool's own tab-label report —
+which, worth recording, showed one stale/incorrect reading during this
+check (briefly reporting a listing title while `location.href` still said
+`/marketplace`), the same class of tool-side staleness already noted in
+§9; re-checking with a direct JS read resolved it immediately and it did
+not recur. Admin marketplace titles could not be verified live (no admin
+credentials in this environment, confirmed the login gate is real by
+navigating to `/admin/marketplace` and getting the email+password form) —
+code-reviewed and `tsc`-clean only for that side.
+
+**Meta description**: confirmed it has the exact same one-static-value
+problem as titles did. Live-checked on `/marketplace/terms`: `<meta
+name="description">` reads the storefront homepage's own description
+("Curated maternity and baby bundles for Nigerian mums...") verbatim.
+Not fixed this pass, as instructed.
+
+**Open Graph**: also static and, worse, actively wrong rather than just
+generic — live-checked the same page: `og:title` is literally the
+storefront homepage's title, `og:image` is the storefront's default image,
+and `og:url` is literally `https://bundledmum.com/` on a
+`/marketplace/terms` page. A shared marketplace listing link would preview
+with the wrong title, the wrong image, and a canonical URL pointing at the
+storefront homepage instead of the listing. Same class of problem as the
+title bug this pass fixed, same fix shape (a per-route value, and for the
+canonical/`og:url` specifically, built with the `/marketplace` basename
+put back — see the `MarketplaceTitle.tsx` docstring for exactly why `Seo`
+can't be reused as-is for this either). Not fixed this pass, as
+instructed.
+
+`npm run build` and `tsc --noEmit` both clean.

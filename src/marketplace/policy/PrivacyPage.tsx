@@ -1,6 +1,7 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings } from "./policySettings";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 const SECTIONS = [
   { id: "what-we-collect", label: "What we collect and why" },
@@ -20,6 +21,7 @@ export default function PrivacyPage() {
 
   return (
     <>
+      <MarketplaceTitle title="Privacy policy" />
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Privacy policy</h1>

@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, buyerPrice, formatNaira, genericErrorMessage, parseListingEditError } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; status: string; is_negotiable: boolean }
 
@@ -116,6 +117,7 @@ export default function SellerPriceEditPage() {
   if (!listing || listing.status !== "live") {
     return (
       <div className="mkt-center">
+        <MarketplaceTitle title="Listing not found" />
         <div className="mkt-empty-title">Listing not found</div>
         <div className="mkt-empty-sub">It may not exist, or is not live right now.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
@@ -125,6 +127,7 @@ export default function SellerPriceEditPage() {
 
   return (
     <div className="mkt-price-edit-page">
+      <MarketplaceTitle title="Update your price" />
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Update your price</h1></div></div>
       </div>

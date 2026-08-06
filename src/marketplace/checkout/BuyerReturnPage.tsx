@@ -6,6 +6,7 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { sdb, LISTING_BUCKET, compressImage, describeUploadError } from "../sell/sellData";
 import { fetchBuyerOrder, fetchOrderDispute, buyerMarkReturnSent } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Buyer marks a return sent (design 20a, RT1). Only reachable once the admin
@@ -99,6 +100,7 @@ export default function BuyerReturnPage() {
   return (
     <div className="mkt-return-page">
       <div className="mkt-sell-head">
+        <MarketplaceTitle title="Send the item back" />
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/orders/${order.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Send the item back</h1></div></div>
       </div>
 

@@ -9,6 +9,7 @@ import {
   type SimilarListing,
 } from "../lib/goneListing";
 import { waHref } from "../lib/whatsapp";
+import MarketplaceTitle from "./MarketplaceTitle";
 
 /**
  * The four "not live" situations, one shared shell. Case-specific copy,
@@ -70,8 +71,12 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
   let primaryTo = "/";
   let waLabel: string | null = null;
   let waMessage = "";
+  // Never claims the item is still available, per case, matching what's on
+  // screen — no generic "gone" title standing in for all four situations.
+  let pageTitle = "";
 
   if (c.kind === "sold") {
+    pageTitle = `${c.title} has sold`;
     headline = "This one's found a home";
     sub = hasSimilar
       ? `The ${c.title} you were looking at sold for ${formatNaira(c.price)}.${anySameCategory ? ` Good news for the marketplace, bad timing for you, here's what else is around.` : " Nothing else left in that exact category, but here's what's close."}`
@@ -81,6 +86,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
     waLabel = "Ask if more are coming";
     waMessage = `Hi, I was looking at the ${c.title} and it's sold. Do you know if similar ones come up often?`;
   } else if (c.kind === "removed") {
+    pageTitle = `${c.title} isn't available`;
     headline = "This listing isn't available right now";
     sub = hasSimilar
       ? `The ${c.title} you were looking at has been taken down. It may come back later${anySameCategory ? `, in the meantime here's more in ${categoryLabel}.` : ", in the meantime here's what's close."}`
@@ -90,6 +96,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
     waLabel = "Ask about this item";
     waMessage = `Hi, I was looking at ${c.title} and it's no longer available. Is it likely to come back, or is there something similar you'd recommend?`;
   } else if (c.kind === "wrongUrl") {
+    pageTitle = "Page not found";
     headline = "We can't find that page";
     sub = "The link might be old or mistyped. Let's get you back to browsing instead.";
     primaryLabel = "Go to browse";
@@ -97,11 +104,13 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
     waLabel = "Ask us to help find it";
     waMessage = "Hi, I followed a link on BundledMum Marketplace and it didn't work, can you help me find what I was after?";
   } else if (c.kind === "ownSold") {
+    pageTitle = `${c.title} has sold`;
     headline = "This one's yours, and it's sold";
     sub = `Your ${c.title} sold for ${formatNaira(c.price)}. It's no longer public since there's nothing left to buy, but you can find it in your dashboard any time.`;
     primaryLabel = "Go to my dashboard";
     primaryTo = "/sell/dashboard";
   } else {
+    pageTitle = `${c.title} is off the marketplace`;
     headline = "This one's yours, and it's off the marketplace";
     sub = `Your ${c.title} is off the marketplace right now, you can edit and resend it for review from your dashboard.${c.rejectionReason ? ` Reason given: ${c.rejectionReason}` : ""}`;
     primaryLabel = "Go to my dashboard";
@@ -113,6 +122,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
 
   return (
     <div className={single ? "mkt-notfound-wrap single" : "mkt-notfound-wrap"}>
+      <MarketplaceTitle title={pageTitle} />
       <div className="mkt-notfound-message">
         <div className="mkt-notfound-icon" style={{ background: icon.bg, color: icon.fg }}>{icon.glyph}</div>
         <div className="mkt-notfound-headtext">

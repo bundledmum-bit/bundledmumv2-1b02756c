@@ -17,6 +17,7 @@ import {
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 import AreaCombobox from "../sell/AreaCombobox";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * BROWSE, rebuilt to the design (13a B1-B4). Six category tiles then the grid on
@@ -90,6 +91,7 @@ export default function BrowsePage() {
 
   return (
     <>
+      <MarketplaceTitle title="Buy and sell used baby and toddler items" />
       {/* Desktop (>=1024px) renders this as one consolidated green bar, design B4:
           logo + tagline + search + location + nav. Mobile keeps the shared header
           above and stacks the tagline, search and location rows. */}

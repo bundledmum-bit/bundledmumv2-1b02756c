@@ -1,6 +1,7 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings, naira } from "./policySettings";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 const SECTIONS = [
   { id: "who-we-are", label: "Who we are" },
@@ -31,6 +32,7 @@ export default function TermsPage() {
 
   return (
     <>
+      <MarketplaceTitle title="Terms and conditions" />
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Terms and conditions</h1>

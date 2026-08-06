@@ -23,6 +23,7 @@ import { useSeller } from "../sell/useSeller";
 import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
 import { fetchGoneListingContext, fetchOwnListingIfMine } from "../lib/goneListing";
 import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundOrGoneScreen";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 type FieldType = "select" | "text" | "number" | "boolean";
 interface CategoryField {
@@ -212,6 +213,7 @@ export default function ListingDetailPage() {
 
   return (
     <div className="mkt-detail">
+      <MarketplaceTitle title={listing.title} />
       {/* Gallery + panel are grouped so the desktop layout (>=1024px) can place them
           as two columns. On mobile both wrappers are display:contents, so the hero,
           thumbs, body and buy bar lay out exactly as before, single column. */}

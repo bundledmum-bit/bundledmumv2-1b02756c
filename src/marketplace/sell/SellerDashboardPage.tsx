@@ -8,6 +8,7 @@ import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch,
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { fetchSellerOffersNeedingAttention } from "../offers";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 interface MyListing {
   id: string;
@@ -123,6 +124,7 @@ export default function SellerDashboardPage() {
 
   return (
     <div className="mkt-dashboard-page">
+      <MarketplaceTitle title="Seller dashboard" />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

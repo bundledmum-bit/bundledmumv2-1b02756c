@@ -5,6 +5,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { recordLoginEvent } from "@/lib/recordLoginEvent";
 import { safeReturnTo, LOGIN_REASON_COPY, LOGIN_REASON_ICON, type LoginReason } from "./marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /** True for any string that is actually one of our known reason keys,
  * narrowing an arbitrary URL param down to a safe lookup key. An unknown or
@@ -149,6 +150,7 @@ export default function MarketplaceLoginPage() {
 
   return (
     <div className="mkt-login-page">
+      <MarketplaceTitle title={stage === "sent" ? "Check your email" : "Sign in"} />
       <div className={stage === "sent" ? "mkt-login-rail sent" : "mkt-login-rail"}>
         {stage === "sent" ? (
           <>

@@ -7,6 +7,7 @@ import { useSeller } from "./useSeller";
 import { formatNaira, maskAccount } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
+import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
  * Payouts (design O5). Shows only the seller's own payout figures
@@ -54,6 +55,7 @@ export default function SellerPayoutsPage() {
 
   return (
     <div className="mkt-payouts-page">
+      <MarketplaceTitle title="Your payouts" />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row"><button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your payouts</h1></div>
