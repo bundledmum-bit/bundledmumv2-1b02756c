@@ -5027,3 +5027,74 @@ other admin screen. Code-reviewed against the design and against
 `OpsHeader`, Tailwind, inline hex styles) only.
 
 `npm run build` clean.
+
+## 23. Browse home "See more categories" and per-category "no stock yet" notify flow (design 31a) (2026-08-07)
+
+**See more, `BrowsePage.tsx`**: the 6 featured tiles are unchanged; below
+them, "See more categories `N` ▾" reveals the remainder 6 at a time, in
+place, no navigation, no scroll position lost. Everything needed
+(`categories`, `groups`) was already fetched client side by the existing
+`useAllowedCategories()`/`useCategoryGroups()` hooks, so a tap never
+triggers a fetch — a `revealCount` state just grows by 6 and slices
+further into an already-in-hand `remainderCats` array. Ordering: the
+remainder is `defaultTileCats` (the existing group-then-category
+`sort_order` computation, already used as the featured-tiles fallback)
+minus whatever's currently featured — matches the design's stated logic
+exactly, no deviation to report. A small uppercase group-label header is
+inserted wherever the group changes within the currently-revealed slice
+(computed from the slice itself, so a header is never dangling without at
+least one tile under it). Once every category is shown, the control is
+replaced by the design's closing line, a centred rule plus "That's all
+`N`, for now" — not just removed with dead space beneath it. Revealed
+tiles reuse `.mkt-cat`/`.ic`/`.nm` completely unchanged from the featured
+ones, no visual split, per the design's explicit "a visible split would
+read as second class categories."
+
+**Live-verified end to end** (mobile, 375px): tapping through revealed
+"Clothing and shoes group" → "Feeding group" → ... → "Bath and care
+group" in the correct order, count pill decrementing 33 → 27 → ... → 0,
+landing on "That's all 39, for now" with the control gone.
+
+**One number in the task prompt didn't match live data**: it assumed 37
+allowed categories; the real count is 39 (confirmed both live in the UI
+and via `count(*) from marketplace_categories where is_allowed`). Not a
+bug to fix, since the count is read live everywhere, never hardcoded —
+flagging only because a stale assumption repeated as fact is exactly the
+kind of thing this handoff has burned on before (§4).
+
+**No stock yet, `CategoryNoStockYet.tsx` (new) + `categoryInterest.ts`
+(new)**: shown inside `BrowsePage.tsx`'s existing zero-results branch, but
+only when a `categoryOnly` gate is true — the category filter is the
+**only** active filter (no search, price, condition or location also
+set). A combined filter that happens to return zero results still falls
+through to the pre-existing, untouched "Nothing matches just yet" state —
+confirmed live by searching a nonsense string (no category set): still
+shows the old generic message and "Clear all filters", not the notify
+form. This was deliberate, matching the task's explicit instruction not
+to conflate the two.
+
+Submitting calls `register_category_interest(p_category_id, p_email)`
+(anon-executable, `SECURITY DEFINER`, confirmed writing into
+`marketplace_category_notify_requests` with an
+`on conflict (category_id, email) do nothing`). The only error surfaced
+is the database's own `'Please enter a valid email address'`, shown
+verbatim inline, matching the existing `buyerMakeOffer`-style error
+mapping convention; anything else is logged and shown as a generic retry
+prompt. A first-time and a repeat submission for the same (email,
+category) both land on the identical success confirmation — verified live
+by submitting a real test email against a genuinely empty category
+(`Cots and cribs`), confirming the row landed in
+`marketplace_category_notify_requests`, then deleting that test row
+afterward so no fake data was left behind.
+
+Because the RPC is silently idempotent (same `true` regardless of
+first-time or repeat), the design's "returning visitor, already watching"
+state (no form, just a confirmation chip) can only come from a **client
+side** signal — a localStorage flag
+(`bm_mkt_category_interest_<categoryId>` → the submitted email), written
+at the moment of a successful submit, read on mount. Live-verified: after
+submitting once, reloading the same category URL immediately shows "Still
+nothing here, but you'll know first" with the stored email in a chip and
+no email field, not the form again.
+
+`npm run build` clean.

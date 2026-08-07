@@ -19,6 +19,7 @@ import {
 import ListingCard from "../components/ListingCard";
 import AreaCombobox from "../sell/AreaCombobox";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import CategoryNoStockYet from "../components/CategoryNoStockYet";
 
 /**
  * BROWSE, rebuilt to the design (13a B1-B4). Six category tiles then the grid on
@@ -83,8 +84,6 @@ export default function BrowsePage() {
 
   const anyFilter = !!(filters.categoryId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 
-  const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
-
   // Home tiles: an admin's curated pick for browse_home (marketplace_featured_categories),
   // in sort_order. Falls back to the previous default — group display order, first 6 —
   // whenever nothing has been curated yet (or every curated id no longer resolves to a
@@ -96,6 +95,25 @@ export default function BrowsePage() {
     const curated = featured.map((f) => byId.get(f.category_id)).filter((c): c is CategoryOption => !!c);
     return curated.length > 0 ? curated : defaultTileCats;
   }, [featured, categories, defaultTileCats]);
+
+  // See more (design 31a): the remaining 31-ish categories not already shown as a
+  // tile, in the same group-then-category sort order the fallback tiles already
+  // use, revealed 6 at a time. Everything is already in hand client side
+  // (categories/groups above), so a tap never triggers a fetch.
+  const [revealCount, setRevealCount] = useState(0);
+  const remainderCats = useMemo(() => {
+    const shown = new Set(tileCats.map((c) => c.id));
+    return defaultTileCats.filter((c) => !shown.has(c.id));
+  }, [defaultTileCats, tileCats]);
+  const revealedCats = remainderCats.slice(0, revealCount);
+  const remainingCount = remainderCats.length - revealedCats.length;
+
+  const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
+  const catIcon = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.icon ?? null, [categories, filters.categoryId]);
+  // Genuinely one category and nothing else, e.g. a home tile tap or the browse
+  // category filter alone, distinct from a combined filter that also happens to
+  // return zero results (that stays the existing generic empty state).
+  const categoryOnly = !!filters.categoryId && !filters.state && !filters.city && filters.minPrice == null && filters.maxPrice == null && !filters.conditions.length && !filters.search;
 
   function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 
@@ -167,6 +185,40 @@ export default function BrowsePage() {
         </div>
       )}
 
+      {/* See more categories (design 31a): the remaining categories reveal in
+          batches of 6, in place, grouped by the same 7 category groups used
+          everywhere else. Reuses .mkt-cat unchanged, no visual split from the
+          featured 6 above — a visible split would read as "second class". */}
+      {!anyFilter && revealedCats.length > 0 && (
+        <div className="mkt-cats-more">
+          {revealedCats.map((c, i) => {
+            const prev = i > 0 ? revealedCats[i - 1] : null;
+            const showHeader = c.group_id !== (prev?.group_id ?? null);
+            const group = groups.find((g) => g.id === c.group_id);
+            return (
+              <div key={c.id} style={{ display: "contents" }}>
+                {showHeader && group && <div className="mkt-cat-group-h">{group.name} group</div>}
+                <button className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
+                  <span className="ic" aria-hidden style={{ background: (tileCats.length + i) % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
+                  <span className="nm">{c.name}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!anyFilter && remainingCount > 0 && (
+        <button className="mkt-cat-seemore" onClick={() => setRevealCount((n) => n + 6)}>
+          See more categories <span className="n">{remainingCount}</span> ▾
+        </button>
+      )}
+      {!anyFilter && remainderCats.length > 0 && remainingCount === 0 && (
+        <div className="mkt-cats-done">
+          <span className="rule" aria-hidden />
+          <span>That's all {defaultTileCats.length}, for now</span>
+        </div>
+      )}
+
       {/* Count + sort + filters (mobile) */}
       <div className="mkt-fbar">
         <span className="mkt-count" style={{ padding: 0 }}>{count} {count === 1 ? "item" : "items"}, checked by our team</span>
@@ -207,6 +259,13 @@ export default function BrowsePage() {
               <div className="mkt-empty-sub">Please check your connection and try again in a moment.</div>
               <button className="mkt-secondary" style={{ maxWidth: 220, marginTop: 6 }} onClick={() => refetch()}>Try again</button>
             </div>
+          ) : listings.length === 0 && categoryOnly ? (
+            <CategoryNoStockYet
+              categoryId={filters.categoryId}
+              categoryName={catName}
+              categoryIcon={catIcon}
+              onClearCategory={() => setFilters((f) => ({ ...f, categoryId: "" }))}
+            />
           ) : listings.length === 0 ? (
             <div className="mkt-center">
               <div className="mkt-empty-title">Nothing matches just yet</div>
