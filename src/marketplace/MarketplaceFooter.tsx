@@ -37,7 +37,7 @@ export default function MarketplaceFooter() {
             <img src={logoWhite} alt="BundledMum" className="mkt-ftr-logo" />
             <span className="mkt-ftr-market">Marketplace</span>
           </div>
-          <p className="mkt-ftr-protect">Sellers checked, listings reviewed, and your money held until you confirm the item arrived as described.</p>
+          <p className="mkt-ftr-protect">Every seller checked. Every listing reviewed. Your money held safe until you confirm it arrived as described.</p>
         </div>
 
         <div className="mkt-ftr-groups">
