@@ -383,7 +383,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               href="https://bundledmum.com/marketplace"
               className="rounded-pill px-3 py-2 text-[13px] font-semibold text-white bg-forest hover:bg-forest-deep transition-colors"
             >
-              Marketplace
+              Buy or Sell Used Items
             </a>
 
             {SHOW_BNPL_NAV && (
@@ -586,7 +586,7 @@ export default function Navbar({ topOffset = 0 }: { topOffset?: number }) {
               href="https://bundledmum.com/marketplace"
               className="flex items-center justify-between px-5 py-3.5 text-[15px] font-semibold border-b border-border/50 hover:bg-forest-light transition-colors text-forest"
             >
-              Marketplace
+              Buy or Sell Used Items
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </a>
             {[
