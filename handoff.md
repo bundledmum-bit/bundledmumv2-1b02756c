@@ -246,3 +246,15 @@ Needs a product decision before building (see Next steps 5-6).
   redirect. Any direct link or running ad still works.
 - Note: origin/main was refactored — App.tsx now delegates to StorefrontApp.tsx
   (marketplace path split); storefront routes live in StorefrontApp.tsx.
+
+## Marketplace nav link added (highlighted)
+- "Marketplace" link added to the desktop header (Navbar.tsx, forest pill reusing
+  the old BNPL highlight classes: `rounded-pill … text-white bg-forest
+  hover:bg-forest-deep`), the mobile menu (flat-links row, "highlight"/text-forest
+  treatment), and the footer (Footer.tsx "Shop" group, brighter/bold vs the faded
+  siblings via a new `fullPage` render branch).
+- Points to `https://bundledmum.com/marketplace` via a FULL-PAGE `<a href>` (not a
+  client `<Link>`, no target=_blank → same tab). Required because /marketplace is a
+  separate top-level app tree gated by `isMarketplace()` at App mount; the
+  storefront router has no customer /marketplace route, so a client Link can't
+  reach it. Verified live: 3 anchors, correct classes, desktop pill highlighted.

@@ -48,14 +48,18 @@ export default function Footer() {
             </div>
           </div>
           {[
-            { title: "Shop", links: [{ label: "Baby Items", to: "/shop?tab=baby" }, { label: "Mum Items", to: "/shop?tab=mum" }, { label: "Bundles & Kits", to: "/bundles" }, { label: "Gift Ideas", to: "/bundles?hospital=gift" }] },
+            { title: "Shop", links: [{ label: "Marketplace", to: "https://bundledmum.com/marketplace", fullPage: true }, { label: "Baby Items", to: "/shop?tab=baby" }, { label: "Mum Items", to: "/shop?tab=mum" }, { label: "Bundles & Kits", to: "/bundles" }, { label: "Gift Ideas", to: "/bundles?hospital=gift" }] },
             { title: "Help", links: [{ label: "FAQs", to: "/contact#faqs" }, { label: "Articles", to: "/articles" }, ...(whatsapp ? [{ label: "WhatsApp Us", to: `https://wa.me/${whatsapp}?text=Hi%20BundledMum!%20I%20have%20a%20question.`, external: true }] : []), { label: "Track Order", to: "/track-order" }, { label: "Returns", to: "/returns" }, ...(SHOW_BNPL_NAV ? [{ label: "Buy Now Pay Later", to: "/pay-later" }] : [])] },
             { title: "Company", links: [{ label: "Our Story", to: "/about" }, { label: "Contact", to: "/contact" }, { label: "Blog", to: "/blog" }] },
           ].map(col => (
             <div key={col.title}>
               <div className="text-primary-foreground font-semibold text-[13px] mb-3.5">{col.title}</div>
               {col.links.map(l => (
-                'external' in l && l.external ? (
+                'fullPage' in l && l.fullPage ? (
+                  // Full-page anchor (separate app tree), given brighter emphasis
+                  // so it stands out among the faded footer links.
+                  <a key={l.label} href={l.to} className="block text-primary-foreground text-xs font-semibold mb-2 cursor-pointer hover:text-primary-foreground/80 transition-colors">{l.label}</a>
+                ) : 'external' in l && l.external ? (
                   <a key={l.label} href={l.to} target="_blank" rel="noopener noreferrer" className="block text-primary-foreground/40 text-xs mb-2 cursor-pointer hover:text-primary-foreground/70 transition-colors">{l.label}</a>
                 ) : (
                   <Link key={l.label} to={l.to} className="block text-primary-foreground/40 text-xs mb-2 cursor-pointer hover:text-primary-foreground/70 transition-colors">{l.label}</Link>
