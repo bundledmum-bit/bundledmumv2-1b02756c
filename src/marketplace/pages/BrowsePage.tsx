@@ -107,8 +107,8 @@ export default function BrowsePage() {
 
           <div className="mkt-home-line" style={{ padding: 0, maxWidth: "none" }}>
             <h1>
-              <span className="mkt-hl-long">Sell the baby &amp; children's items you don't need, or buy cheap secondhand for yours</span>
-              <span className="mkt-hl-short">Sell what you don't need, buy cheap secondhand</span>
+              <span className="mkt-hl-long">Buy or sell used baby and toddler items</span>
+              <span className="mkt-hl-short">Buy or sell used baby items</span>
             </h1>
             <Link to="/sell" className="mkt-home-sell">Sell</Link>
           </div>

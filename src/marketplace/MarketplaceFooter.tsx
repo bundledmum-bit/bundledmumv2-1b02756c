@@ -37,7 +37,7 @@ export default function MarketplaceFooter() {
             <img src={logoWhite} alt="BundledMum" className="mkt-ftr-logo" />
             <span className="mkt-ftr-market">Marketplace</span>
           </div>
-          <p className="mkt-ftr-protect">Every seller checked. Every listing reviewed. Your money held safe until you confirm it arrived as described.</p>
+          <p className="mkt-ftr-protect">Sell the baby &amp; children's items you don't need, or buy cheap secondhand for yours.</p>
         </div>
 
         <div className="mkt-ftr-groups">
