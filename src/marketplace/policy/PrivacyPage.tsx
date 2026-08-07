@@ -42,7 +42,9 @@ export default function PrivacyPage() {
 
           <div className="mkt-policy-section" id={SECTIONS[2].id}>
             <h2>3. Who we share it with</h2>
-            <p>Paystack processes payments and receives what is needed to do so. Resend sends our emails, including sign in links and order updates. We plan to add an SMS provider for delivery notifications in future. We do not sell personal data to anyone.</p>
+            <p>Paystack processes payments and receives what is needed to do so. Resend sends our emails, including sign in links and order updates. We plan to add an SMS provider for delivery notifications in future.</p>
+            <p>Advertising. If you interact with our marketplace after arriving from a Facebook or Instagram ad, we may share your email address and phone number with Meta in a one-way encrypted (hashed) form, so they cannot read the original value, to help us measure and improve our advertising. This is separate from sharing your details with Paystack for payment processing. You can opt out of this by adjusting your ad preferences on Facebook or Instagram, or by contacting us.</p>
+            <p>We do not sell personal data to anyone.</p>
           </div>
 
           <div className="mkt-policy-section" id={SECTIONS[3].id}>

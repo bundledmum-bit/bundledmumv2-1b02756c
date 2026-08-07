@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
 import { mdb } from "../data/mdb";
+import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import {
   formatNaira,
   locationLabel,
@@ -59,7 +61,7 @@ export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: listing, isLoading, isError } = useListing(id);
-  const { isLoggedIn } = useCustomerAuth();
+  const { isLoggedIn, user } = useCustomerAuth();
   const { seller, loading: sellerLoading } = useSeller();
   const waNumber = useMarketplaceWhatsAppNumber();
 
@@ -128,6 +130,49 @@ export default function ListingDetailPage() {
   );
   const reasonField = categoryFields.find((f) => f.field_key === REASON_KEY);
   const reasonAnswer = reasonField && isAnswered(reasonField, attributes) ? String(attributes[REASON_KEY]) : null;
+
+  // A signed-in buyer's phone, for ViewContent's optional CAPI fields — email
+  // comes straight off the auth user, phone needs the customers row (same
+  // lookup checkout's own profileQ already does).
+  const { data: buyerPhone } = useQuery({
+    queryKey: ["mkt-viewcontent-phone"],
+    enabled: isLoggedIn,
+    staleTime: 60000,
+    queryFn: async () => {
+      const { data: auth } = await mdb.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return null;
+      const { data } = await mdb.from("customers").select("phone").eq("auth_user_id", uid).maybeSingle();
+      return (data as { phone: string | null } | null)?.phone ?? null;
+    },
+  });
+
+  // ViewContent, fired once per genuinely live view — never on the gone,
+  // sold, removed or 404 states below, which is why this is gated on the
+  // same stock check those branches use, not just "listing loaded". Fire
+  // and forget: never blocks render, and any failure is swallowed silently,
+  // never visible to the visitor.
+  const isLiveView = !isLoading && !isError && !!listing
+    && (Number(listing.quantity ?? 1) - Number(listing.quantity_sold ?? 0)) > 0;
+  const viewContentFired = useRef(false);
+  useEffect(() => {
+    if (!isLiveView || !listing || viewContentFired.current) return;
+    viewContentFired.current = true;
+    const eventId = crypto.randomUUID();
+    const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
+    const phone = buyerPhone ?? undefined;
+    track("ViewContent", { content_ids: [listing.id], content_name: listing.title, value: listing.final_price_naira, currency: "NGN" }, eventId);
+    sendMarketplaceConversionEvent({
+      event_name: "ViewContent",
+      event_id: eventId,
+      event_source_url: window.location.href,
+      content_id: listing.id,
+      content_name: listing.title,
+      value: listing.final_price_naira,
+      email,
+      phone,
+    });
+  }, [isLiveView, listing?.id]);
 
   if (isLoading) {
     return (

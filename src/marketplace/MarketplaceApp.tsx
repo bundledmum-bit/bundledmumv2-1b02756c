@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import PixelRouteListener from "@/components/PixelRouteListener";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -45,6 +46,10 @@ import "./marketplace.css";
  */
 
 const MARKETPLACE_BASENAME = "/marketplace";
+// The marketplace's own Meta pixel — a separate property from the
+// storefront's, tracked server side via site_settings.meta_pixel_id and
+// proven working through the Conversions API. See PixelRouteListener.
+const MARKETPLACE_PIXEL_ID = "1737624674564707";
 
 const marketplaceQueryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, retry: 1 } },
@@ -55,6 +60,7 @@ export default function MarketplaceApp() {
     <QueryClientProvider client={marketplaceQueryClient}>
       <BrowserRouter basename={MARKETPLACE_BASENAME}>
         <div className="mkt">
+          <PixelRouteListener pixelId={MARKETPLACE_PIXEL_ID} />
           <MarketplaceScrollManager />
           <MarketplaceHeader />
           <div className="mkt-main">

@@ -43,7 +43,15 @@
   <meta property="og:description" content="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos in 1 to 2 days.">
   <meta name="twitter:description" content="Curated maternity and baby bundles for Nigerian mums. Take the quiz, shop pre-packed hospital bags, or build your own. Delivered in Lagos in 1 to 2 days.">
 
-  <!-- Meta Pixel Code -->
+  <!-- Meta Pixel loader. Only sets up the window.fbq queue function and
+       loads fbevents.js — no init() and no track() here. The storefront and
+       marketplace are separate Meta pixels by design, and which one applies
+       is only known once React has resolved which app tree is rendering, so
+       each tree calls fbq('init', ...) itself with its own pixel ID (see
+       PixelRouteListener, mounted once per tree in StorefrontApp.tsx /
+       MarketplaceApp.tsx). Firing init/PageView here, before that split, is
+       what previously logged every marketplace page view against the
+       storefront's pixel too. -->
   <script>
     !function(f,b,e,v,n,t,s)
     {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -53,10 +61,8 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window,document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '947693044571219');
-    fbq('track', 'PageView');
   </script>
-  <!-- End Meta Pixel Code -->
+  <!-- End Meta Pixel loader -->
 </head>
 
   <body>

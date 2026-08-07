@@ -37,8 +37,27 @@ function safeFbq(...args: unknown[]): void {
   }
 }
 
-export function track(event: StandardEvent, params?: Record<string, unknown>): void {
-  if (params) safeFbq("track", event, params);
+/**
+ * Initialises the pixel for the CURRENT app tree only. Callers must pass
+ * their own app's pixel ID (storefront vs marketplace are separate Meta
+ * pixels by design) — this file itself holds no pixel ID literal, so it
+ * stays safe to share between both trees without leaking one app's ID into
+ * the other's bundle.
+ */
+export function initPixel(pixelId: string): void {
+  safeFbq("init", pixelId);
+}
+
+/**
+ * `eventID` (Meta's 4th fbq argument) lets a browser Pixel fire and a
+ * server-side Conversions API call be deduplicated as one event, as long as
+ * both target the same pixel and share this id.
+ */
+export function track(event: StandardEvent, params?: Record<string, unknown>, eventID?: string): void {
+  const opts = eventID ? { eventID } : undefined;
+  if (params && opts) safeFbq("track", event, params, opts);
+  else if (params) safeFbq("track", event, params);
+  else if (opts) safeFbq("track", event, {}, opts);
   else safeFbq("track", event);
 }
 

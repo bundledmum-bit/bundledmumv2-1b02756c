@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
 import { fetchBuyerOffer } from "../offers";
+import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 
 /**
@@ -34,7 +36,7 @@ export default function CheckoutPage() {
   const [searchParams] = useSearchParams();
   const offerId = searchParams.get("offer") || undefined;
   const navigate = useNavigate();
-  const { isLoggedIn, loading: authLoading } = useCustomerAuth();
+  const { isLoggedIn, loading: authLoading, user } = useCustomerAuth();
   const waNumber = useMarketplaceWhatsAppNumber();
 
   const { data: listing, isLoading } = useListing(listingId);
@@ -186,6 +188,33 @@ export default function CheckoutPage() {
   // and verified to match what Paystack actually charges, not an estimate.
   const feeAdded = payQ.data ? payQ.data.fee_added_by_paystack !== false : true;
   const transferTotal = itemPrice + serviceFee;
+
+  // InitiateCheckout, fired once per checkout load once a real order exists
+  // and its total is the authoritative figure the buyer actually sees below
+  // (paystackTotal once Paystack has priced it, or transferTotal on the bank
+  // fallback) — never a value computed separately here. Guarded by a ref, not
+  // sessionStorage, since this only needs to not re-fire within this one page
+  // load. Fire and forget: never blocks render, failures are swallowed.
+  const checkoutTotal = paystackEnabled ? paystackTotal : transferTotal;
+  const totalReady = paystackEnabled ? !!payQ.data : true;
+  const initiateCheckoutFired = useRef(false);
+  useEffect(() => {
+    if (!order || !totalReady || initiateCheckoutFired.current) return;
+    initiateCheckoutFired.current = true;
+    const eventId = crypto.randomUUID();
+    const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
+    const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
+    track("InitiateCheckout", { content_ids: [listingId], value: checkoutTotal, currency: "NGN" }, eventId);
+    sendMarketplaceConversionEvent({
+      event_name: "InitiateCheckout",
+      event_id: eventId,
+      event_source_url: window.location.href,
+      content_id: listingId as string,
+      value: checkoutTotal,
+      email,
+      phone,
+    });
+  }, [order, totalReady, checkoutTotal]);
 
   async function copy(text: string, tag: string) {
     try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked */ }

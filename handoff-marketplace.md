@@ -4758,3 +4758,111 @@ methods are actually off), the transfer fallback behind
 button, the negotiated-price path, guest checkout.
 
 `npm run build` and `tsc --noEmit` both clean.
+
+## 20. Meta Pixel scoped per app, ViewContent + InitiateCheckout wired, Privacy Policy discloses it (2026-08-07)
+
+**The storefront and marketplace are two separate Meta pixels by design**,
+not a config mistake to reconcile:
+- Storefront (bundledmum.com): `947693044571219`
+- Marketplace (`/marketplace`): `1737624674564707`, already configured
+  server side via `site_settings.meta_pixel_id` and already sending a real
+  `Purchase` event through the Conversions API (unchanged by this pass).
+
+**The bug this pass fixed**: `index.html` is the shared HTML shell for
+both apps (see `App.tsx`'s `isMarketplace()` split — one React root, two
+lazy-loaded trees, only one of which ever mounts per page load). It
+hardcoded `fbq('init', '947693044571219')` and `fbq('track', 'PageView')`
+directly in the `<head>`, unconditionally, before React ever runs and
+before it's known which app is being requested. Every marketplace page
+load was therefore also logging a PageView against the storefront's
+pixel — cross-contamination in one direction (marketplace → storefront
+pixel), silent because nothing downstream ever checked.
+
+**Fix**: `index.html` now only loads the `fbq` queue function and
+`fbevents.js` — no `init`, no `track`. Pixel init moved into
+`PixelRouteListener.tsx` (`src/components/PixelRouteListener.tsx`),
+generalised to take a required `pixelId` prop: it calls `initPixel(pixelId)`
+once (via a ref, not re-initing on every route change) then fires
+`track("PageView")` on every route change, same as before. Each app tree
+mounts its own instance with its own literal pixel ID —
+`StorefrontApp.tsx` passes `947693044571219`, `MarketplaceApp.tsx` (new
+import, mounted inside its own `<BrowserRouter>` alongside
+`MarketplaceScrollManager`) passes `1737624674564707`. Because the two
+trees are separate lazy-loaded chunks (confirmed in the build output:
+`StorefrontApp-*.js` and `MarketplaceApp-*.js` are already distinct
+bundles) and neither pixel ID literal lives in a file both trees import,
+a storefront visitor's browser never even downloads the marketplace pixel
+ID and vice versa — not just "doesn't fire to it," genuinely never sees
+it. `src/lib/metaPixel.ts` itself stays pixel-ID-agnostic (no ID literal
+in that file at all), so it was safe to keep shared and just extend:
+added `initPixel(pixelId)` and gave `track()` a third, optional `eventID`
+parameter (Meta's `fbq` 4th argument), backward compatible with every
+existing call site.
+
+**Known, deliberately unaddressed edge case**: the `<noscript>` pixel
+`<img>` fallback in `index.html` still hardcodes the storefront ID and
+fires unconditionally for no-JS requests. Not fixed, because a no-JS
+visitor to `/marketplace` never renders anything at all (the whole route
+split lives in React) — the only traffic this could affect is bots/no-JS
+crawlers hitting a blank marketplace page, which is a negligible, already
+degenerate case, not a real visitor seeing marketplace content logged as
+a storefront view.
+
+**ViewContent** (`ListingDetailPage.tsx`) and **InitiateCheckout**
+(`CheckoutPage.tsx`) are now wired, dedup-meaningful since both sides
+target the same real pixel:
+- Both fire a browser Pixel event (`track(..., eventId)`) **and** a
+  server-side Conversions API call
+  (`src/marketplace/lib/metaConversion.ts`'s
+  `sendMarketplaceConversionEvent`, POSTing to the already-deployed
+  `send-meta-conversion-event` edge function) with the **same**
+  `crypto.randomUUID()` `event_id`, so Meta dedups them into one event on
+  the marketplace pixel.
+- **ViewContent**: gated on a `isLiveView` check
+  (`!isLoading && !isError && !!listing && available > 0`) computed
+  *before* the loading/gone/sold/404 early returns (hooks can't follow a
+  conditional return), guarded by a `useRef` so it fires at most once per
+  mount. Sends `content_id`/`content_name`/`value` from the listing, plus
+  email (from `useCustomerAuth()`'s `user.email`) and phone (a new,
+  small `customers` lookup, same shape as checkout's existing
+  `profileQ`) only for a signed-in buyer — never prompted, never blocks.
+- **InitiateCheckout**: fires once a real `order` exists and the total is
+  the *authoritative* figure the breakdown itself displays —
+  `paystackTotal` (from `payQ.data`) once Paystack has priced it, or
+  `transferTotal` on the bank-transfer fallback — never a value computed
+  separately. Guarded by a `useRef`, not `sessionStorage` (this only
+  needs to not re-fire within one page load, unlike the storefront's
+  session-scoped `checkoutTracking.ts` pattern, which was not reused here
+  since it doesn't carry an `event_id`/CAPI dedup story at all). Email and
+  phone come from the signed-in buyer's profile, or from the guest
+  `emailInput`/`phoneInput` fields *if already filled at the moment the
+  effect fires* — never blocking on them, simply omitted if empty then.
+
+**Master switch (Part 4 equivalent)**: chose to always call the edge
+function and let it self-skip, rather than also gating client side. The
+function already checks `site_settings.meta_conversions_api_enabled`
+(note: **not** `marketplace_conversions_api_enabled` — that key does not
+exist; the real key is un-prefixed) and returns a clean `{ skipped }` when
+off or unconfigured, so a client-side check would only save one network
+call while adding a second settings read and another place this exact
+class of stale-value race (§8, §19) could recur. No Supabase changes made
+this pass — both pixel IDs and the master switch were already correctly
+configured.
+
+**Privacy Policy**: added the Meta advertising disclosure as its own
+paragraph in the "Who we share it with" section
+(`PrivacyPage.tsx`, section 3), between the Paystack/Resend/SMS paragraph
+and "We do not sell personal data to anyone" — exact wording as given.
+`site_settings.marketplace_policies_updated_at` bumped from
+`04 August 2026` to `07 August 2026` via direct `UPDATE`, same mechanism
+prior policy-copy changes have used.
+
+**Preserved, confirmed unbroken**: the storefront's own Pixel tracking,
+unaffected in behaviour (still inits `947693044571219` and fires PageView
+on every route change, just via a prop now instead of a hardcoded value);
+the backend `Purchase`/`CompleteRegistration`/`Lead` events already firing
+server side against the marketplace pixel; listing detail's gone/sold/
+removed/404 states and the how-it-works explainer; checkout's four-line
+breakdown, Pay button, and negotiated-price path.
+
+`npm run build` clean.

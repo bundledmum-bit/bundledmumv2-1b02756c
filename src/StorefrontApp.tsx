@@ -411,7 +411,7 @@ const StorefrontApp = () => (
           <BrowserRouter>
             <PageTracker>
             <ScrollToTop />
-            <PixelRouteListener />
+            <PixelRouteListener pixelId="947693044571219" />
             <AnalyticsRouteListener />
             <AuthAnalyticsListener />
             <WhatsAppClickListener />
