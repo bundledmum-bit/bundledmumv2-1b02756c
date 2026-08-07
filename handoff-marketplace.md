@@ -4946,3 +4946,84 @@ handling, create-listing/seller-setup/every other seller screen downstream
 the principle already established for browse's icons.
 
 `npm run build` clean.
+
+## 22. Admin featured categories manager (design 30a), wired into browse home and the sell page (2026-08-07)
+
+**New admin screen**: `/admin/marketplace/featured-categories`
+(`src/pages/admin/marketplace/MarketplaceFeaturedCategories.tsx`, sidebar
+entry "Featured categories" right after "Categories" in `AdminLayout.tsx`,
+gated `PermissionGate module="marketplace" action="manage"` like every
+other marketplace admin screen). Curates `marketplace_featured_categories`
+(deployed ahead of this pass, not built here) for two independent
+surfaces — `browse_home` and `sell_page` — mobile tabs / desktop
+side-by-side columns per the design, up/down buttons to reorder (swaps
+`sort_order` between adjacent rows, same pattern
+`MarketplaceCategoryFields.tsx`'s `moveField` already uses — no drag
+library exists anywhere in this codebase, and the task this shipped from
+explicitly allowed either), a ✕ to remove, and a search-and-pick add
+sheet sorted by live count (highest first), reusing the
+`BulkApplyDialog`-style modal shell.
+
+**Live counts**: one query, not one per category —
+`marketplace_listings.select("category_id").eq("status","live")`,
+aggregated into a `Record<category_id, count>` client side, reused across
+both tabs and the add picker, refetched after any mutation. With order-of-
+tens of live listings today this is trivial; a per-category count loop or
+a realtime subscription would both have been overkill.
+
+**Duplicate prevention**: the add picker excludes categories already
+featured on that surface (the primary defence — a duplicate is simply
+never offered). The database's own unique `(surface, category_id)`
+constraint is the backstop for a race between two admins; if it fires,
+the insert's Postgres error code (`23505`) is caught and shown as "That
+category is already featured on this surface." rather than the raw
+constraint error.
+
+**Zero-stock styling differs deliberately by surface**, per the design:
+on `browse_home` a 0-live category gets a red border and a red count pill
+(a quiet nudge, since the whole point of that surface is showing what
+actually exists); on `sell_page` the same 0-live count renders as a
+neutral grey pill, since that surface sells category breadth to a
+prospective seller, not current stock, and 0 there is a perfectly valid
+pick.
+
+**Both consuming surfaces switched, with a fallback each, verified live**:
+- **Browse home** (`BrowsePage.tsx`): the "6 home tiles" row used to be
+  `groupCategories(categories, groups).grouped.flatMap(...).slice(0, 6)`
+  unconditionally. Now tries `useFeaturedCategories("browse_home")` first
+  (joined against the already-fetched allowed-categories list for
+  name/icon, filtering out anything that fails to resolve); **falls back
+  to the exact same old computation** whenever the curated list is empty.
+  Live-verified at 375px: tiles now read "Baby carriers and wraps, Baby
+  shoes, Baby bath and grooming, Feeding bottles and accessories, Diaper
+  bags, Cot and nursery furniture" — exactly the seeded `browse_home` rows
+  in `sort_order`, not the old group-order default.
+- **Sell page** (`BecomeSellerPage.tsx`): the 7 `groupTiles` used to
+  always be one-per-group with a synthetic label (the group's own name,
+  icon borrowed from that group's first category). Now tries
+  `useFeaturedCategories("sell_page")` first, showing the curated
+  category's own real name and icon (not a group label, since a featured
+  row is a specific category, not a group); **falls back to the exact
+  same old one-per-group computation** whenever nothing is curated. Live-
+  verified: tiles now read "Baby clothing, Feeding bottles and
+  accessories, Strollers and prams, Nursery decor, Toys and games,
+  Maternity wear, Baby bath and grooming" — the real category names from
+  the seeded `sell_page` rows, not the old group names.
+- Neither fallback is new code — both are the exact pre-existing
+  computation each page already had, simply no longer short-circuited
+  when there's something curated to prefer instead. Neither page can ever
+  render its category section empty just because admin hasn't configured
+  it yet.
+
+**Auto-removal on disable**: `trg_remove_disallowed_from_featured`
+(deployed ahead of this pass) already drops a category out of every
+featured list the moment it's disabled elsewhere in admin — confirmed
+present via `information_schema.triggers`, nothing new needed here.
+
+**Not live-verified**: the admin manager screen itself — no admin login
+credentials exist in this environment, same standing limitation as every
+other admin screen. Code-reviewed against the design and against
+`MarketplaceCategoryFields.tsx`'s established conventions (`adb` client,
+`OpsHeader`, Tailwind, inline hex styles) only.
+
+`npm run build` clean.

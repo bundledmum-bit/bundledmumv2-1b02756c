@@ -10,6 +10,7 @@ import {
   useCategoryGroups,
   useAllowedStates,
   useAreasForState,
+  useFeaturedCategories,
   type BrowseFilters,
   type BrowseSort,
   type CategoryOption,
@@ -75,6 +76,7 @@ export default function BrowsePage() {
   const { data: categories = [] } = useAllowedCategories();
   const { data: groups = [] } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
+  const { data: featured = [] } = useFeaturedCategories("browse_home");
 
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
@@ -83,9 +85,17 @@ export default function BrowsePage() {
 
   const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
 
-  // Flat list in group display order, for the six home tiles (their design is
-  // unchanged; only the source order now follows the groups).
-  const tileCats = useMemo(() => groupCategories(categories, groups).grouped.flatMap((x) => x.items), [categories, groups]);
+  // Home tiles: an admin's curated pick for browse_home (marketplace_featured_categories),
+  // in sort_order. Falls back to the previous default — group display order, first 6 —
+  // whenever nothing has been curated yet (or every curated id no longer resolves to a
+  // currently-allowed category), so this section never renders empty just because admin
+  // hasn't configured it.
+  const defaultTileCats = useMemo(() => groupCategories(categories, groups).grouped.flatMap((x) => x.items), [categories, groups]);
+  const tileCats = useMemo(() => {
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const curated = featured.map((f) => byId.get(f.category_id)).filter((c): c is CategoryOption => !!c);
+    return curated.length > 0 ? curated : defaultTileCats;
+  }, [featured, categories, defaultTileCats]);
 
   function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 

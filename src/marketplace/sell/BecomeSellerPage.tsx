@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
-import { useAllowedCategories, useCategoryGroups } from "../data/useListings";
+import { useAllowedCategories, useCategoryGroups, useFeaturedCategories } from "../data/useListings";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 
 const CATEGORY_FALLBACK_ICON = "🏷️";
@@ -36,13 +36,14 @@ export default function BecomeSellerPage() {
 
   const { data: categories = [] } = useAllowedCategories();
   const { data: groups = [] } = useCategoryGroups();
+  const { data: featured = [] } = useFeaturedCategories("sell_page");
 
-  // The 7 category-group tiles: one per group, in the group's own sort_order,
-  // read live so a group renamed or an icon changed in admin shows here with
-  // no deploy. Groups themselves carry no icon column, so each tile's icon is
-  // its group's first allowed category (by the category's own sort_order,
-  // then name) — the only live, non-hardcoded source there is.
-  const groupTiles = useMemo(() => {
+  // Default (fallback) tiles: one per group, in the group's own sort_order.
+  // Groups themselves carry no icon column, so each tile's icon is its
+  // group's first allowed category (by the category's own sort_order, then
+  // name) — the only live, non-hardcoded source there is. Used only when
+  // nothing has been curated for sell_page yet.
+  const defaultGroupTiles = useMemo(() => {
     return groups
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order)
@@ -53,6 +54,21 @@ export default function BecomeSellerPage() {
         return { id: g.id, name: g.name, icon: inGroup[0]?.icon || CATEGORY_FALLBACK_ICON };
       });
   }, [groups, categories]);
+
+  // Admin's curated pick for sell_page (marketplace_featured_categories), in
+  // sort_order, shown as its own real category name and icon (not a synthetic
+  // group label). Falls back to defaultGroupTiles whenever nothing is curated
+  // yet, or every curated id no longer resolves to a currently-allowed
+  // category, so this section never renders empty just because admin hasn't
+  // configured it.
+  const groupTiles = useMemo(() => {
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    const curated = featured
+      .map((f) => byId.get(f.category_id))
+      .filter((c): c is NonNullable<typeof c> => !!c)
+      .map((c) => ({ id: c.id, name: c.name, icon: c.icon || CATEGORY_FALLBACK_ICON }));
+    return curated.length > 0 ? curated : defaultGroupTiles;
+  }, [featured, categories, defaultGroupTiles]);
 
   const startCta = () => {
     if (loading) return;

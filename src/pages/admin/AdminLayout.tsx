@@ -11,7 +11,7 @@ import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
-  Smartphone, Banknote, Gavel, Coins, ClipboardCheck, ListTree, Contact,
+  Smartphone, Banknote, Gavel, Coins, ClipboardCheck, ListTree, Contact, Star,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
@@ -95,6 +95,7 @@ function AdminLayoutInner() {
     { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
     { label: "Money owed", to: "/admin/marketplace/money-owed", icon: Coins },
     { label: "Categories", to: "/admin/marketplace/categories", icon: ListTree },
+    { label: "Featured categories", to: "/admin/marketplace/featured-categories", icon: Star },
     { label: "Settings", to: "/admin/marketplace/settings", icon: Settings },
   ];
   const [mobileOpen, setMobileOpen] = useState(false);

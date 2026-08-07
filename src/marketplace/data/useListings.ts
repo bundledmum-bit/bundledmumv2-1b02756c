@@ -154,6 +154,26 @@ export function useCategoryGroups() {
   });
 }
 
+export type FeaturedSurface = "browse_home" | "sell_page";
+export interface FeaturedCategoryRow { category_id: string; sort_order: number; }
+
+/** Admin-curated category picks for one surface (browse home's tile strip or
+ * the sell page's category showcase), in sort_order. Public-readable, empty
+ * by default until an admin curates it — callers are expected to fall back
+ * to their own default ordering when this comes back empty, never to render
+ * a blank section just because nothing has been picked yet. */
+export function useFeaturedCategories(surface: FeaturedSurface) {
+  return useQuery({
+    queryKey: ["marketplace", "featured-categories", surface],
+    queryFn: async (): Promise<FeaturedCategoryRow[]> => {
+      const { data } = await mdb.from("marketplace_featured_categories")
+        .select("category_id, sort_order").eq("surface", surface).order("sort_order");
+      return (data ?? []) as FeaturedCategoryRow[];
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
 /** Allowed states for the location filter (id + name; id feeds the area lookup). */
 export function useAllowedStates() {
   return useQuery({
