@@ -4866,3 +4866,83 @@ removed/404 states and the how-it-works explainer; checkout's four-line
 breakdown, Pay button, and negotiated-price path.
 
 `npm run build` clean.
+
+## 21. Become-a-seller (/marketplace/sell) rebuilt as a conversion landing page (design 29a) (2026-08-07)
+
+**Replaced** the old value-screen version of `BecomeSellerPage.tsx` with the
+design's frame 29a: a hero (singular decluttering message, "Sell the baby &
+children's items you don't need anymore"), a live category showcase, four
+core-message cards, a distinct reseller callout, a closing CTA, and (mobile)
+a sticky footer CTA. No buyer-side fees, price breakdown, calculator, or
+invented stats anywhere — carried forward from the version this replaces.
+
+**Category showcase reads live, no hardcoding**: reused the existing
+`useAllowedCategories()` / `useCategoryGroups()` hooks
+(`src/marketplace/data/useListings.ts`), the same source already driving
+browse's filter accordion —
+`marketplace_categories.select("id, name, icon, group_id, sort_order").eq("is_allowed", true)`
+joined client side to `marketplace_category_groups.select("id, name, sort_order")`.
+The 7 tiles are the 7 groups, in `sort_order`; each tile's icon is that
+group's first allowed category (by the category's own `sort_order`, then
+name) since `marketplace_category_groups` itself has no icon column — the
+only way to source a "group icon" without hardcoding one. **Known deviation
+from the design mockup**: the mockup's hand-picked icons for Travel &
+carriers (🚼) and Nursery (🛏️) don't match what this live rule actually
+returns today (🍼 and 🌙 — Travel's first category, "Strollers and prams,"
+happens to share an icon with Feeding). The other 5 groups match. A
+per-group icon map would fix this but means hardcoding, which the task
+explicitly forbade — left as-is, live and correct by rule, not by the
+mockup's specific emoji.
+
+**Logged-in-seller behaviour changed, not just restyled**: the old page
+auto-redirected an existing seller straight to `/sell/dashboard` on mount
+(`useEffect` + `navigate(..., {replace:true})`) before they ever saw this
+page. The design's own seller state (S2) is different in kind — it keeps
+the seller on `/sell` with its own small hero ("Got something else to
+sell?"), two CTAs (List a new item → `/sell/new`, My dashboard →
+`/sell/dashboard`), and skips the category showcase/message
+cards/reseller section entirely. Implemented per the design: the
+auto-redirect effect is gone, replaced with a conditional render on
+`seller` from `useSeller()`.
+
+**CSS is a new, dedicated `.mkt-sl-*` prefix**, not a reuse of
+`.mkt-sell-head`/`.mkt-sell-body`/`.mkt-sell-foot` — those three are shared
+across the dashboard, payouts, order detail, dispute and price-edit
+screens with their own page-scoped overrides, so restyling this page under
+the same class names would have risked bleeding into all of them. Buttons
+are explicit-sized (`min-height`, `width: auto`, never `flex:1` or
+`width:100%` other than the mobile sticky bar's own full-width button),
+the same fix shape as `.mkt-notfound-cta` (§11/§12), not the stretch bug it
+fixed.
+
+**A real bug found and fixed during live verification, not just a code
+review**: the page initially blew out to 640px wide on a 375px mobile
+viewport (headline unwrapped, horizontal scroll on the whole page).
+Root cause: `.mkt-main` (the shared route container) is `display:flex;
+flex-direction:column`, and `.mkt-sell-landing` — sized only with
+`max-width:640px; margin:0 auto`, no explicit `width` — resolved to a
+shrink-to-fit width based on its widest descendant's max-content size (the
+horizontally-scrolling category row's ~732px of un-wrapped tiles) rather
+than stretching to the container's actual 375px. Fixed by adding
+`width: 100%; box-sizing: border-box;` alongside the existing
+`max-width`/`margin: 0 auto` — the same pattern `.mkt-notfound-wrap`
+already uses for exactly this reason. Confirmed via
+`document.documentElement.scrollWidth === window.innerWidth` at 375px,
+and separately at 1280px (desktop hero, 2×2 icon preview, full 7-across
+grid, 4-across message row) with no horizontal overflow at either.
+
+**Verified live** (public page, no login needed) at 375px mobile — hero
+wraps correctly, category row scrolls within its own bounds, all 4 message
+cards, reseller callout, closing CTA, and sticky footer CTA all render —
+and at 1280px desktop — row-direction hero, 1100px max content width, no
+overflow. The logged-in-seller state (S2) was **not** live-verified — no
+seller login credentials exist in this environment — code-reviewed against
+`useSeller()`'s `seller` value only.
+
+**Preserved, confirmed unbroken**: the seller login gate
+(`sendToMarketplaceLogin("/sell", "sell")`) and its return-destination
+handling, create-listing/seller-setup/every other seller screen downstream
+(none of their files were touched), category data still reading live per
+the principle already established for browse's icons.
+
+`npm run build` clean.

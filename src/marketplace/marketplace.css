@@ -572,6 +572,86 @@
 .mkt-info .tick { flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 12px/20px 'Lato', sans-serif; text-align: center; }
 .mkt-info .txt { font: 400 12px/1.55 'Lato', sans-serif; color: #3D3936; }
 
+/* Become-a-seller landing page (design 29a). Deliberately its own, dedicated
+ * class prefix (.mkt-sl-*) rather than reusing .mkt-sell-head/-body/-foot,
+ * which are shared across the dashboard, payouts, order detail, dispute and
+ * price-edit screens with their own page-scoped overrides — a new landing
+ * page under those same class names risks bleeding into all of them. Buttons
+ * are explicit-sized (min-height, width:auto, no flex:1/width:100%), the same
+ * fix shape as .mkt-notfound-cta (§11/§12), not the stretch bug it fixed. */
+.mkt-sell-landing { width: 100%; max-width: 640px; box-sizing: border-box; margin: 0 auto; padding-bottom: 92px; }
+.mkt-sell-landing--seller { padding-bottom: 0; }
+
+.mkt-sl-hero { background: var(--mkt-green); color: var(--mkt-cream); padding: 28px 20px 30px; display: flex; flex-direction: column; }
+.mkt-sl-hero-copy { display: flex; flex-direction: column; gap: 13px; min-width: 0; }
+.mkt-sl-hero--seller { border-radius: 16px; margin: 16px; padding: 24px 20px 26px; }
+.mkt-sl-headline { font: 900 29px/1.12 'Nunito', sans-serif; letter-spacing: -0.03em; text-wrap: pretty; }
+.mkt-sl-sub { font: 300 14.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+.mkt-sl-cta-row { display: flex; gap: 9px; flex-wrap: wrap; }
+
+.mkt-sl-hero-tiles { display: none; }
+
+.mkt-sl-cta { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 52px; width: auto; border: none; border-radius: 12px; padding: 15px 24px; font: 800 16px/1 'Nunito', sans-serif; cursor: pointer; align-self: flex-start; text-decoration: none; }
+.mkt-sl-cta--primary { background: var(--mkt-coral); color: var(--mkt-black); }
+.mkt-sl-cta--primary:hover { background: var(--mkt-coral-dark); }
+.mkt-sl-cta--ghost-on-green { background: transparent; border: 1.5px solid var(--mkt-green-light); color: var(--mkt-cream); min-height: 52px; font-size: 13.5px; padding: 14px 16px; }
+.mkt-sl-cta--outline { background: #fff; border: 1.5px solid var(--mkt-green); color: var(--mkt-green); min-height: 44px; padding: 11px 18px; font-size: 13.5px; }
+.mkt-sl-cta--full { width: 100%; align-self: stretch; }
+
+.mkt-sl-section { padding: 18px 16px 4px; display: flex; flex-direction: column; gap: 9px; }
+.mkt-sl-section-head { display: flex; flex-direction: column; gap: 4px; }
+.mkt-sl-section-title { font: 900 19px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-sl-section-sub { font: 400 12.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+.mkt-sl-categories { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+.mkt-sl-category { flex: 0 0 96px; display: flex; flex-direction: column; align-items: center; gap: 7px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 14px 8px; box-sizing: border-box; cursor: pointer; }
+.mkt-sl-category .ic { font-size: 26px; }
+.mkt-sl-category .lbl { font: 800 11px/1.2 'Nunito', sans-serif; text-align: center; color: var(--mkt-black); }
+
+.mkt-sl-message { padding: 16px 16px 4px; display: flex; flex-direction: column; gap: 11px; }
+.mkt-sl-message-card { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.mkt-sl-message-num { width: 34px; height: 34px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 900 15px/34px 'Nunito', sans-serif; text-align: center; flex: 0 0 34px; }
+.mkt-sl-message-title { font: 800 15px/1.25 'Nunito', sans-serif; }
+.mkt-sl-message-body { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin-top: 2px; }
+
+.mkt-sl-reseller { margin: 4px 16px 4px; background: var(--mkt-cream); border: 1.5px solid var(--mkt-green-light); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.mkt-sl-reseller-tag { align-self: flex-start; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 800 10px/1.3 'Nunito', sans-serif; letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 8px; border-radius: 6px; }
+.mkt-sl-reseller-title { font: 800 17px/1.25 'Nunito', sans-serif; margin-top: 4px; }
+.mkt-sl-reseller-body { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
+
+.mkt-sl-closing { padding: 18px 16px 24px; display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center; }
+.mkt-sl-closing-title { font: 900 21px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-sl-closing .mkt-sl-cta { max-width: 320px; align-self: center; }
+
+.mkt-sl-sticky-cta { position: fixed; left: 0; right: 0; bottom: 0; border-top: 1px solid var(--mkt-border); background: #fff; padding: 11px 16px 18px; z-index: 20; }
+
+@media (min-width: 1024px) {
+  .mkt-sell-landing { max-width: 1100px; padding-bottom: 40px; }
+  .mkt-sl-hero { flex-direction: row; align-items: center; gap: 40px; padding: 44px 48px; border-radius: 0; }
+  .mkt-sl-hero-copy { flex: 1; display: flex; flex-direction: column; gap: 14px; }
+  .mkt-sl-headline { font-size: 40px; max-width: 560px; }
+  .mkt-sl-sub { font-size: 16px; max-width: 440px; }
+  .mkt-sl-cta--primary { margin-top: 6px; max-width: 260px; }
+  .mkt-sl-hero-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 0 0 300px; }
+  .mkt-sl-hero-tile { background: var(--mkt-green-dark); border-radius: 13px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .mkt-sl-hero-tile .ic { font-size: 28px; }
+  .mkt-sl-hero-tile .lbl { font: 800 11px/1.2 'Nunito', sans-serif; color: var(--mkt-green-light); text-align: center; }
+
+  .mkt-sl-section { padding: 36px 48px 8px; }
+  .mkt-sl-section-title { font-size: 25px; }
+  .mkt-sl-categories { overflow-x: visible; display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+  .mkt-sl-category { flex: none; padding: 16px 6px; }
+
+  .mkt-sl-message { padding: 30px 48px 40px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .mkt-sl-message-card { flex-direction: column; padding: 18px; }
+
+  .mkt-sl-reseller { margin: 0 48px 40px; flex-direction: row; align-items: center; gap: 28px; padding: 26px; }
+  .mkt-sl-reseller-copy { flex: 1; }
+  .mkt-sl-reseller .mkt-sl-cta { white-space: nowrap; }
+
+  .mkt-sl-closing { display: none; }
+  .mkt-sl-sticky-cta { display: none; }
+}
+
 /* Fields */
 .mkt-field { display: flex; flex-direction: column; gap: 7px; }
 .mkt-field-head { display: flex; align-items: baseline; justify-content: space-between; }
