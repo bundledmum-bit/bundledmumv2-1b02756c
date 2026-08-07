@@ -28,6 +28,12 @@ export interface MarketplaceListing {
   id: string;
   title: string;
   description: string;
+  /** Trigger-maintained: identical to description once it's 40+ characters
+   * (the seller's own words, untouched); otherwise composed from the short
+   * description plus category question answers and the condition summary,
+   * into a real sentence. What "About this item" renders — never description
+   * directly. */
+  display_description: string;
   condition_notes: string | null;
   /** Structured condition, the reliable source for the browse filter. Null when
    * the seller's old free text did not map cleanly. */

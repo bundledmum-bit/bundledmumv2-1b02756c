@@ -376,7 +376,7 @@ export default function ListingDetailPage() {
 
         <div className="mkt-detail-description">
           <p className="mkt-section-label">Description</p>
-          <p className="mkt-detail-text">{listing.description}</p>
+          <p className="mkt-detail-text">{listing.display_description}</p>
         </div>
 
         <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
