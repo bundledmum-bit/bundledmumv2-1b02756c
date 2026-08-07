@@ -1153,7 +1153,14 @@
 .mkt-fsheet-foot .mkt-primary { width: 100%; }
 
 @media (min-width: 1024px) {
+  /* Home category section (featured tiles + See more) is mobile only by
+   * deliberate decision — desktop already browses by category via the
+   * persistent filter panel below, so the whole section, not just the
+   * featured 6, is hidden here. */
   .mkt-cats { display: none; }
+  .mkt-cats-more { display: none; }
+  .mkt-cat-seemore { display: none; }
+  .mkt-cats-done { display: none; }
   .mkt-filters-btn { display: none; }
   .mkt-browse { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; max-width: 1240px; margin: 0 auto; }
   .mkt-fpanel { display: block; align-self: start; position: sticky; top: 16px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 18px; }

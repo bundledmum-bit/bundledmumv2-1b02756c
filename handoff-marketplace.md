@@ -5098,3 +5098,33 @@ nothing here, but you'll know first" with the stored email in a chip and
 no email field, not the form again.
 
 `npm run build` clean.
+
+## 24. Home page category section (featured tiles + See more) made mobile only (2026-08-07)
+
+**Deliberate decision, not a bug fix to the data**: the whole home
+category section from §23 — the 6 featured tiles, the "See more
+categories" button, its grouped expansion, and the "That's all N, for
+now" closing line — no longer renders on desktop at any width. Desktop
+browsers by category via the persistent filter panel instead
+(`.mkt-fpanel`, already existed, untouched).
+
+**The gap this closed**: `.mkt-cats` (the featured 6) was already hidden
+at `@media (min-width: 1024px)`, the one breakpoint used throughout
+`marketplace.css` for every mobile/desktop layout difference — but
+`.mkt-cats-more`, `.mkt-cat-seemore` and `.mkt-cats-done` (all added in
+§23) were not in that same rule, so a desktop visitor saw no featured
+tiles yet still saw a floating "See more categories" button, and could
+expand the grouped list beneath it. Fixed by adding the three missing
+selectors to the existing hide list — same breakpoint, same `display:
+none` mechanism, no new breakpoint introduced. `BrowsePage.tsx` itself is
+untouched: the data fetching and reveal state still run on desktop, they
+just render into elements CSS removes from layout.
+
+**Verified live**: at 1280px, the section (tiles, button, expansion) is
+completely absent — no DOM element renders, confirmed via
+`getComputedStyle(...).display === 'none'` — and the gap between the
+green topbar and the results bar measures 0px, no leftover spacing. At
+375px mobile, the section is pixel-for-pixel unchanged: 6 featured tiles
+plus "See more categories 33 ▾" render exactly as in §23.
+
+`npm run build` clean.
