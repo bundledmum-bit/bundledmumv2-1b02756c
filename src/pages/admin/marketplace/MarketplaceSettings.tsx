@@ -24,6 +24,8 @@ interface SettingField {
   percent?: boolean;
   /** Whole numbers only (day/hour counts). */
   integer?: boolean;
+  /** Must be strictly greater than zero, not just non-negative. */
+  positive?: boolean;
   suffix?: string;
   options?: Array<{ value: string; label: string }>;
   /** A standing, neutral line shown under the field regardless of its
@@ -57,7 +59,18 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
         help: "Percentage added to the seller asking price to produce the buyer-facing price.",
         note: "Editing this number alone affects new listings only. Existing listings only change when you use Apply to existing listings below.",
       },
-      { key: "marketplace_service_fee_naira", label: "Service fee", type: "number", money: true, help: "Flat non-refundable service fee charged to the buyer per marketplace order." },
+      {
+        key: "marketplace_service_fee_threshold_naira", label: "Service fee threshold", type: "number", money: true, integer: true, positive: true,
+        help: "The item price that decides which service fee tier applies. At this price and above, the higher fee applies; below it, the lower fee applies.",
+      },
+      {
+        key: "marketplace_service_fee_below_naira", label: "Service fee, below threshold", type: "number", money: true, integer: true, positive: true,
+        help: "Non-refundable service fee charged to the buyer when the item price is below the threshold.",
+      },
+      {
+        key: "marketplace_service_fee_at_or_above_naira", label: "Service fee, at or above threshold", type: "number", money: true, integer: true, positive: true,
+        help: "Non-refundable service fee charged to the buyer when the item price is at or above the threshold.",
+      },
       { key: "marketplace_buyer_pays_paystack_fee", label: "Buyer pays the Paystack fee", type: "toggle", help: "Show the Paystack transaction fee as a separate line charged to the buyer at marketplace checkout." },
     ],
   },
@@ -226,7 +239,7 @@ export default function MarketplaceSettings() {
   /** Handles the numeric and plain-text fields (bank details, sender ID).
    * Percentages validate 0-100; day/hour counts must be a positive whole
    * number; a plain fee only needs to be non negative. */
-  function requestSave(f: { key: string; label: string; type?: FieldType; percent?: boolean; integer?: boolean; money?: boolean; suffix?: string; allowEmpty?: boolean }) {
+  function requestSave(f: { key: string; label: string; type?: FieldType; percent?: boolean; integer?: boolean; positive?: boolean; money?: boolean; suffix?: string; allowEmpty?: boolean }) {
     const raw = (edits[f.key] ?? "").trim();
     let value: string | number = raw;
     const isNumeric = f.type === "number" || f.money || f.percent || f.integer;
@@ -234,6 +247,7 @@ export default function MarketplaceSettings() {
       const n = Number(raw);
       if (raw === "" || !isFinite(n)) { setError(`${f.label} must be a number.`); return; }
       if (n < 0) { setError(`${f.label} cannot be negative.`); return; }
+      if (f.positive && n <= 0) { setError(`${f.label} must be greater than zero.`); return; }
       if (f.percent && n > 100) { setError(`${f.label} must be between 0 and 100.`); return; }
       if (f.integer && !Number.isInteger(n)) { setError(`${f.label} must be a whole number.`); return; }
       value = n;
@@ -422,6 +436,10 @@ export default function MarketplaceSettings() {
   const paystackOn = val("marketplace_payment_paystack_enabled") === true;
   const transferOn = val("marketplace_payment_transfer_enabled") === true;
   const noPaymentMethod = !paystackOn && !transferOn;
+  const feeThreshold = Number(val("marketplace_service_fee_threshold_naira"));
+  const feeBelow = Number(val("marketplace_service_fee_below_naira"));
+  const feeAtOrAbove = Number(val("marketplace_service_fee_at_or_above_naira"));
+  const feeTiersResolved = isFinite(feeThreshold) && isFinite(feeBelow) && isFinite(feeAtOrAbove);
 
   /** One setting card: number/text share the edit-save-cancel pattern already
    * used for the bank fields; toggle/select act on the first interaction,
@@ -496,6 +514,11 @@ export default function MarketplaceSettings() {
           <div className="mt-2 grid gap-4 md:grid-cols-2">
             {group.fields.map(renderField)}
           </div>
+          {group.title === "Pricing and fees" && feeTiersResolved && (
+            <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#D8EFE5", background: "#F0FAF6", color: "#1A4A33" }}>
+              As one structure: below {formatNaira(feeThreshold)}, buyers pay {formatNaira(feeBelow)}. At {formatNaira(feeThreshold)} and above, they pay {formatNaira(feeAtOrAbove)}.
+            </div>
+          )}
           {group.title === "Orders and disputes" && confirmVsDisputeClash && (
             <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#C0392B", background: "#FDECEA", color: "#8C2A1F" }}>
               The confirm-receipt prompt fires on day {confirmDay}, at or after the {disputeDays}-day dispute window that auto releases the payout. A buyer gets prompted the same moment their money is already releasing. This has happened before, lower the prompt day or raise the dispute window so the prompt lands first.

@@ -5484,3 +5484,68 @@ Code-reviewed against the real deployed schema (`legal_first_name`,
 `marketplace_sellers_customer_id_fkey` embed name) rather than assumed.
 
 `npm run build` clean.
+
+## 31. Frontend migrated to the tiered service fee, the old flat setting audited and left in place (2026-08-08)
+
+**Backend already deployed and correct** (not built here):
+`marketplace_service_fee_threshold_naira` (10000),
+`marketplace_service_fee_below_naira` (500),
+`marketplace_service_fee_at_or_above_naira` (1000) — `create-marketplace-order`
+already charges from these three. The old flat `marketplace_service_fee_naira`
+(still ₦1,000 in the database) was deliberately left in place specifically so
+this pass could find every surviving reference to it.
+
+**Full audit, every hit found and resolved**:
+- `CheckoutPage.tsx` — this is where the real bug was, not just a stale
+  display. The Paystack path's actual **total** was already correct
+  (server-authoritative via `initializePayment`), but the itemized "Service
+  fee" line shown above it was still computed from the old flat setting —
+  so a sub-₦10,000 order showed a line reading "Service fee ₦1,000" sitting
+  over a total that only actually contained ₦500 of it. The bank-transfer
+  path was worse: `transferTotal` itself (the amount a buyer is told to
+  send) was wrong for any item under the threshold. Fixed by computing
+  `serviceFee` from `itemPrice >= feeThreshold ? feeAtOrAbove : feeBelow`
+  right where `itemPrice` becomes known, the same threshold logic the
+  server already uses, on the same price — so the two can't disagree.
+  Live-verified against two real listings, matching the task's own
+  verification: a real ₦1,800 item now shows the ₦500 tier (visible inside
+  the combined "₦536 Service & Paystack fee" line, ₦500 service + ₦36
+  Paystack's own), a real ₦90,000 item shows the ₦1,000 tier (inside
+  "₦2,488", ₦1,000 + ₦1,488 Paystack). `BuyerOrderDetailPage.tsx`'s
+  `order.service_fee_naira` was already correct and untouched — that reads
+  the real order's own stored column, the actual historical charge, never
+  the flat setting.
+- `policySettings.ts` — `serviceFeeNaira` (one number) replaced with
+  `serviceFeeThresholdNaira` / `serviceFeeBelowNaira` /
+  `serviceFeeAtOrAboveNaira`, reading the three new keys.
+- `TermsPage.tsx` §4 — the fee sentence now states both tiers plainly,
+  reading live values, no hardcoded numbers: "₦500 for items under
+  ₦10,000, ₦1,000 for items ₦10,000 and above." Live-verified.
+- `BecomeSellerPage.tsx` — a stale code comment ("the ₦750 fee is the
+  buyer's" — already wrong before this pass per policySettings.ts's own
+  history note, doubly wrong now) corrected to a generic, driftproof
+  description. Not user-facing, low priority, fixed while in the area.
+
+**Admin Settings screen**: the single "Service fee" field replaced with
+three (`Service fee threshold`, `Service fee, below threshold`, `Service
+fee, at or above threshold`), each reusing the screen's existing per-field
+edit → confirm-modal → save mechanism unchanged. Added a `positive`
+validation flag (existing validation only rejected negative, not zero;
+these three now require a whole number strictly greater than zero) and a
+live-computed summary banner under the group — "As one structure: below
+₦10,000, buyers pay ₦500. At ₦10,000 and above, they pay ₦1,000." —
+matching the same computed-banner pattern this file already uses twice
+(the dispute-window clash warning, the no-payment-method warning). Not
+live-verified (no admin credentials in this environment, the standing
+limitation for every admin screen); code-reviewed against the existing
+pattern only.
+
+**Recommendation on `marketplace_service_fee_naira`**: safe to remove.
+Confirmed by direct grep that nothing in the frontend reads it anymore
+after this pass, and the task's own verification already confirmed the
+backend order-creation path reads the three new keys, not this one. Not
+deleted here — that's a database change and explicitly out of this
+pass's scope — but there is no remaining reason to keep it once this is
+reviewed.
+
+`npm run build` clean.

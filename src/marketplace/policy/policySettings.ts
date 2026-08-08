@@ -14,7 +14,14 @@ import { mdb } from "../data/mdb";
  * guessed number.
  */
 export interface MarketplacePolicySettings {
-  serviceFeeNaira: number;
+  /** Tiered, not flat: below serviceFeeThresholdNaira the buyer pays
+   * serviceFeeBelowNaira, at or above it they pay serviceFeeAtOrAboveNaira.
+   * The old flat marketplace_service_fee_naira setting still exists in the
+   * database (deliberately, for exactly this kind of audit) but nothing
+   * reads it anymore — create-marketplace-order charges from these three. */
+  serviceFeeThresholdNaira: number;
+  serviceFeeBelowNaira: number;
+  serviceFeeAtOrAboveNaira: number;
   markupPercent: number;
   /** null when the setting has not resolved, so the caller can word around
    * the missing number rather than show a stale guess (see maxDiscountPercent
@@ -33,7 +40,9 @@ export interface MarketplacePolicySettings {
 }
 
 const KEYS = [
-  "marketplace_service_fee_naira",
+  "marketplace_service_fee_threshold_naira",
+  "marketplace_service_fee_below_naira",
+  "marketplace_service_fee_at_or_above_naira",
   "marketplace_markup_percent",
   "marketplace_max_discount_percent",
   "marketplace_dispute_window_days",
@@ -72,7 +81,9 @@ export function useMarketplacePolicySettings() {
         return typeof v === "string" && v.trim() ? v.trim() : null;
       };
       return {
-        serviceFeeNaira: num("marketplace_service_fee_naira", 1000),
+        serviceFeeThresholdNaira: num("marketplace_service_fee_threshold_naira", 10000),
+        serviceFeeBelowNaira: num("marketplace_service_fee_below_naira", 500),
+        serviceFeeAtOrAboveNaira: num("marketplace_service_fee_at_or_above_naira", 1000),
         markupPercent: num("marketplace_markup_percent", 10),
         maxDiscountPercent: numOrNull("marketplace_max_discount_percent"),
         disputeWindowDays: num("marketplace_dispute_window_days", 3),

@@ -112,7 +112,7 @@ export default function CheckoutPage() {
     queryKey: ["mkt-checkout-settings"],
     queryFn: async () => {
       const { data } = await cdb.from("site_settings").select("key, value")
-        .in("key", ["marketplace_service_fee_naira", "marketplace_payment_paystack_enabled", "marketplace_payment_transfer_enabled", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
+        .in("key", ["marketplace_service_fee_threshold_naira", "marketplace_service_fee_below_naira", "marketplace_service_fee_at_or_above_naira", "marketplace_payment_paystack_enabled", "marketplace_payment_transfer_enabled", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
       const m: Record<string, unknown> = {};
       for (const r of (data ?? []) as Array<{ key: string; value: unknown }>) m[r.key] = r.value;
       return m;
@@ -122,7 +122,9 @@ export default function CheckoutPage() {
   const settingsLoaded = settings !== undefined;
   const paystackEnabled = settings?.marketplace_payment_paystack_enabled === true;
   const transferEnabled = settings?.marketplace_payment_transfer_enabled === true;
-  const serviceFee = Number(settings?.marketplace_service_fee_naira) || 0;
+  const feeThreshold = Number(settings?.marketplace_service_fee_threshold_naira) || 0;
+  const feeBelow = Number(settings?.marketplace_service_fee_below_naira) || 0;
+  const feeAtOrAbove = Number(settings?.marketplace_service_fee_at_or_above_naira) || 0;
   const bankName = String(settings?.marketplace_bank_name ?? "").trim();
   const acctName = String(settings?.marketplace_bank_account_name ?? "").trim();
   const acctNumber = String(settings?.marketplace_bank_account_number ?? "").trim();
@@ -181,6 +183,10 @@ export default function CheckoutPage() {
   // Prefer the actual order's price once it exists (authoritative); before
   // that, show the negotiated price if we have one, otherwise the listing's.
   const itemPrice = order ? Number(order.item_price_naira ?? 0) : negotiatedPrice ?? Number(listing?.final_price_naira ?? 0);
+  // Tiered, not flat: the same threshold logic create-marketplace-order already
+  // charges from, applied here to the same itemPrice, so the line shown here
+  // never disagrees with what the server actually charged.
+  const serviceFee = itemPrice >= feeThreshold ? feeAtOrAbove : feeBelow;
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
   // Whether Paystack's own fee is passed to the buyer (dashboard fee-passing

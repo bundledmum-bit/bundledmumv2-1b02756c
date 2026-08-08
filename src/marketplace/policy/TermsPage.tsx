@@ -61,7 +61,7 @@ export default function TermsPage() {
 
           <div className="mkt-policy-section" id={SECTIONS[3].id}>
             <h2>4. Prices, markup and fees</h2>
-            <p>A seller sets their own asking price. BundledMum adds a markup, currently {s.markupPercent}%, and that marked up price is what buyers see and pay. Buyers also pay a {naira(s.serviceFeeNaira)} service fee per order, which is non refundable, plus Paystack's own processing fee. Sellers pay nothing to list and receive their full asking price.</p>
+            <p>A seller sets their own asking price. BundledMum adds a markup, currently {s.markupPercent}%, and that marked up price is what buyers see and pay. Buyers also pay a service fee per order, which is non refundable, plus Paystack's own processing fee: {naira(s.serviceFeeBelowNaira)} for items under {naira(s.serviceFeeThresholdNaira)}, {naira(s.serviceFeeAtOrAboveNaira)} for items {naira(s.serviceFeeThresholdNaira)} and above. Sellers pay nothing to list and receive their full asking price.</p>
           </div>
 
           <div className="mkt-policy-section" id={SECTIONS[4].id}>
