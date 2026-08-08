@@ -14,6 +14,12 @@ interface SellerRow {
   bank_name: string | null;
   bank_account_name: string | null;
   bank_account_number: string | null;
+  legal_first_name: string | null;
+  legal_last_name: string | null;
+  phone: string | null;
+  whatsapp_number: string | null;
+  phone_is_whatsapp: boolean | null;
+  customerEmail: string | null;
   liveListings: number;
 }
 
@@ -30,14 +36,15 @@ export default function MarketplaceSellers() {
     staleTime: 10000,
     queryFn: async (): Promise<SellerRow[]> => {
       const { data } = await adb.from("marketplace_sellers")
-        .select("id, display_name, verification_tier, strike_count, outstanding_debit_naira, status, bank_name, bank_account_name, bank_account_number")
+        .select("id, display_name, verification_tier, strike_count, outstanding_debit_naira, status, bank_name, bank_account_name, bank_account_number, legal_first_name, legal_last_name, phone, whatsapp_number, phone_is_whatsapp, customer:customers!marketplace_sellers_customer_id_fkey(email)")
         .order("strike_count", { ascending: false });
-      const rows = (data ?? []) as Array<Omit<SellerRow, "liveListings">>;
+      type Raw = Omit<SellerRow, "liveListings" | "customerEmail"> & { customer: { email: string | null } | null };
+      const rows = (data ?? []) as unknown as Raw[];
       // Live listing counts, tallied client-side from a light select.
       const { data: live } = await adb.from("marketplace_listings").select("seller_id").eq("status", "live");
       const counts = new Map<string, number>();
       for (const l of (live ?? []) as Array<{ seller_id: string }>) counts.set(l.seller_id, (counts.get(l.seller_id) || 0) + 1);
-      return rows.map((r) => ({ ...r, liveListings: counts.get(r.id) || 0 }));
+      return rows.map(({ customer, ...r }) => ({ ...r, customerEmail: customer?.email ?? null, liveListings: counts.get(r.id) || 0 }));
     },
   });
 
@@ -165,6 +172,21 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
           <Stat label="Owed to platform" value={formatNaira(s.outstanding_debit_naira)} danger={s.outstanding_debit_naira > 0} />
         </div>
         {risk && !suspended && <div className="text-xs mt-3" style={{ color: "#C0392B" }}>One more strike suspends this account. Review recent disputes before acting.</div>}
+      </OpsCard>
+
+      {/* Display-only. Legal name specifically is locked by a database trigger
+          once both parts are set, correcting it is a separate future piece —
+          nothing here is editable. WhatsApp collapses to "Same as phone"
+          when phone_is_whatsapp is true rather than comparing the raw
+          strings, since phone is stored local-format and whatsapp_number
+          international-format for the same number. */}
+      <OpsCard label="Contact and identity">
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label="Legal name" value={s.legal_first_name && s.legal_last_name ? `${s.legal_first_name} ${s.legal_last_name}` : "Not on file yet"} />
+          <Stat label="Phone" value={s.phone || "Not on file"} />
+          <Stat label="WhatsApp" value={!s.whatsapp_number ? "Not on file" : s.phone_is_whatsapp ? "Same as phone" : s.whatsapp_number} />
+          <Stat label="Email" value={s.customerEmail || "Not on file"} />
+        </div>
       </OpsCard>
 
       {/* Zero matches is this seller's actual situation, not a broken query —

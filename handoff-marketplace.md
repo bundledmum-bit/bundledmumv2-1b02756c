@@ -5441,3 +5441,46 @@ already used elsewhere in this file's siblings
 `MarketplaceSettings.tsx`).
 
 `npm run build` clean.
+
+## 30. Admin seller detail: full contact and legal identity, read only (2026-08-08)
+
+**`MarketplaceSellers.tsx`**'s seller detail panel now shows a
+"Contact and identity" card (right after the stat card, before
+Suggested outreach and Bank details): **Legal name**
+(`legal_first_name` + `legal_last_name` together, "Not on file yet" if
+either is missing — locked by a database trigger once both are set,
+correcting it is a separate future piece, not this pass; label kept
+distinct from the public `display_name` shown in the header above it),
+**Phone**, **WhatsApp**, and **Email** (via a `customer_id` embed to
+`customers`, not previously joined anywhere in this file). Entirely
+display-only — no new mutation, no new editable field.
+
+**WhatsApp shown against `phone_is_whatsapp`, not a raw string
+compare**: `phone` is stored local-format (`"08160040499"`),
+`whatsapp_number` international-format (`"2348160040499"`) for the same
+number — comparing the two strings directly would call every current
+seller's numbers "different" when they're not. Every seller today has
+`phone_is_whatsapp = true`; when true, WhatsApp shows "Same as phone,"
+otherwise the distinct `whatsapp_number` value.
+
+**A real RLS caveat found and reported, not fixed** (no migrations this
+pass): `customers`' own SELECT policy requires
+`has_admin_permission('orders', 'view')`, a **different** permission
+than the `marketplace`/`manage` this whole screen is gated on. Checked
+`has_admin_permission()`'s actual definition — only `super_admin`
+bypasses automatically, every other role falls through to per-user
+overrides then `admin_role_defaults`. Today this is harmless (the
+`admin` role's own defaults grant both permissions together), but a
+custom-role admin individually granted `marketplace:manage` without
+also being granted `orders:view` would see the email silently come back
+empty via RLS, not an error — worth knowing if a future custom role hits
+this.
+
+Not live-verified — no admin login credentials exist in this
+environment, the same standing limitation as every other admin screen.
+Code-reviewed against the real deployed schema (`legal_first_name`,
+`legal_last_name`, `phone`, `whatsapp_number`, `phone_is_whatsapp`,
+`customer_id` all confirmed directly, plus the
+`marketplace_sellers_customer_id_fkey` embed name) rather than assumed.
+
+`npm run build` clean.
