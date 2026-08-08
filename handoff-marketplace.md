@@ -5402,3 +5402,42 @@ described above is what still needs a real hosting-layer fix before a
 server-rendered listing preview is possible.
 
 No `npm run build` needed — no source files changed, docs only.
+
+## 29. Admin seller detail: "Suggested outreach" nudges (2026-08-08)
+
+**`MarketplaceSellers.tsx`** (`SellerDetail`) now calls the deployed
+`get_seller_nudge_suggestions(p_seller_id)` RPC and shows a "Suggested
+outreach" card listing every lifecycle stage the seller currently
+matches — zero, one, or several at once — sorted by `urgency` ascending
+so the most time-sensitive nudge (a sale awaiting dispatch, a return
+awaiting confirmation, both urgency 0) surfaces first. Confirmed by
+reading the function's own definition that its seven stages are checked
+and returned in a **fixed order that does not already match ascending
+urgency** (e.g. stage 1 is urgency 1, stage 5 is urgency 0), so the
+client-side sort is load-bearing, not redundant. Also confirmed the
+function is gated by `has_admin_permission('marketplace', 'manage')` —
+the same permission this whole screen already requires.
+
+The seven stages: never listed anything, a rejected listing not yet
+resubmitted, bank details or legal name incomplete, a live listing with
+no sale after a few days, a sale awaiting dispatch, a buyer's price
+request awaiting reply, a return sent back awaiting the seller's
+confirmation.
+
+Each row shows the `label` plainly plus a WhatsApp button reusing the
+exact styling already established for buyer contact
+(`MarketplaceBuyers.tsx`, `#25D366` background, white text) — `href` is
+`whatsapp_link` exactly as the function returns it, no client-side
+reconstruction or re-encoding. Zero matches renders nothing — no
+placeholder card — since that's a real, correct state for a seller with
+nothing currently needing outreach, not a broken query.
+
+Not live-verified — no admin login credentials exist in this
+environment, the same standing limitation as every other admin screen.
+Code-reviewed against the function's actual deployed definition (read
+directly, not assumed) and the established `adb.rpc()` call pattern
+already used elsewhere in this file's siblings
+(`MarketplaceListings.tsx`, `MarketplaceBuyers.tsx`,
+`MarketplaceSettings.tsx`).
+
+`npm run build` clean.

@@ -94,6 +94,8 @@ export default function MarketplaceSellers() {
 
 type Action = "suspend" | "reinstate" | "verify";
 
+interface NudgeSuggestion { stage_key: string; label: string; urgency: number; whatsapp_link: string; }
+
 function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => void; onChanged: () => void }) {
   const [action, setAction] = useState<Action | null>(null);
   const [busy, setBusy] = useState(false);
@@ -101,6 +103,20 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
   const suspended = (s.status || "") === "suspended";
   const verified = (s.verification_tier || "") === "verified";
   const risk = s.strike_count >= STRIKE_THRESHOLD - 1;
+
+  // Suggested outreach: every lifecycle stage this seller currently matches
+  // (zero, one, or several at once), most time-sensitive first. The function
+  // returns stages in a fixed check order, not sorted by urgency, so that
+  // sort has to happen here.
+  const { data: nudges = [] } = useQuery({
+    queryKey: ["mkt-seller-nudges", s.id],
+    staleTime: 15000,
+    queryFn: async (): Promise<NudgeSuggestion[]> => {
+      const { data, error: err } = await adb.rpc("get_seller_nudge_suggestions", { p_seller_id: s.id });
+      if (err) throw err;
+      return ((data ?? []) as NudgeSuggestion[]).slice().sort((a, b) => a.urgency - b.urgency);
+    },
+  });
 
   async function commit() {
     if (!action) return;
@@ -150,6 +166,29 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
         </div>
         {risk && !suspended && <div className="text-xs mt-3" style={{ color: "#C0392B" }}>One more strike suspends this account. Review recent disputes before acting.</div>}
       </OpsCard>
+
+      {/* Zero matches is this seller's actual situation, not a broken query —
+          no placeholder, the section simply doesn't render. */}
+      {nudges.length > 0 && (
+        <OpsCard label="Suggested outreach">
+          <div className="flex flex-col gap-2.5">
+            {nudges.map((n) => (
+              <div key={n.stage_key} className="flex items-center justify-between gap-3">
+                <span className="text-[12.5px] font-bold text-foreground">{n.label}</span>
+                <a
+                  href={n.whatsapp_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-none flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 font-heading font-extrabold text-[12.5px]"
+                  style={{ background: "#25D366", color: "#FFFFFF" }}
+                >
+                  WhatsApp
+                </a>
+              </div>
+            ))}
+          </div>
+        </OpsCard>
+      )}
 
       <OpsCard label="Bank details on file, for payouts">
         <div className="flex items-center gap-2 flex-wrap">
