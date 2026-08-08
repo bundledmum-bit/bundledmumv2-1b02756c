@@ -5128,3 +5128,82 @@ green topbar and the results bar measures 0px, no leftover spacing. At
 plus "See more categories 33 ▾" render exactly as in §23.
 
 `npm run build` clean.
+
+## 25. Bug hunt: seller's magic link left them signed out on marketplace login (2026-08-07)
+
+**Reported**: a seller tapped their real magic link from their inbox
+(preview-bot consumption ruled out for this incident) and landed on
+`/marketplace/login` still signed out, instead of being carried through
+to `/sell`.
+
+**The hypothesis this task asked me to check for — a mount-time-vs-event-only
+session-detection race — does NOT apply here.** `useCustomerAuth.ts` already
+does a mount-time `supabase.auth.getSession()` check (not event-only), and
+I verified at the library level (`@supabase/auth-js@2.111.0`,
+`GoTrueClient.js:2401`) that `getSession()` itself awaits
+`this.initializePromise` — the exact promise that runs `detectSessionInUrl`,
+auto-started in the client constructor — so it cannot resolve before a
+redirect-detected session has finished establishing, regardless of when the
+component mounts. `returnTo` decoding was also confirmed correct: the real
+link's `%252Fsell` resolves to `/sell` after Supabase's own redirect decode
+plus one `useSearchParams()` decode.
+
+**Actual root cause, confirmed by reading the library source and then
+reproducing live**: when Supabase rejects a magic-link token (expired, or
+already used — an ordinary occurrence, not only the ruled-out preview-bot
+case) it redirects to `redirect_to` with
+`#error=access_denied&error_code=otp_expired&error_description=...`
+instead of a session. `GoTrueClient.js`'s `_initialize()`
+(lines ~392-407) explicitly does not establish a session or notify any
+subscriber in this case ("*don't remove existing session on URL login
+failure*"), and `getSession()` doesn't surface that error either — it just
+falls through to reading storage, finds nothing (a first-time sign-in),
+and returns `{session: null}`. `MarketplaceLoginPage.tsx` had **zero**
+code reading `error`/`error_code`/`error_description` from the URL, so the
+result was the plain sign-in form rendering again with no explanation at
+all — indistinguishable from never having clicked anything.
+
+**Live-reproduced against the unmodified code** by navigating the preview
+browser to
+`/marketplace/login?returnTo=%2Fsell&reason=sell#error=access_denied&error_code=otp_expired&error_description=...`
+(the exact shape Supabase produces for an expired/reused token): the plain
+"To start selling, we need your email" form rendered, no error, no
+console warning — the reported symptom exactly.
+
+**Fix** (`MarketplaceLoginPage.tsx` only): a one-time mount effect parses
+`window.location.hash` for `error`/`error_code`/`error_description`; if
+present, shows "That link has expired or was already used. Please send
+yourself a new one below." (reusing the existing `.mkt-login-senderr`
+style) and strips the hash via `history.replaceState` so a reload doesn't
+re-trigger it. Cleared again on a successful resend. Verified live
+post-fix: the same synthetic error URL now shows the message, with the
+hash cleaned from the address bar (`returnTo`/`reason` query params
+preserved); a plain, error-free load of the same URL still renders
+exactly as before, no new banner.
+
+**Storefront's `AccountLoginPage.tsx` has the identical gap** (same
+`useCustomerAuth()` pattern, zero `error`-hash handling) — independently
+duplicated UI, not shared code, so this fix doesn't touch or resolve it.
+Flagging as a real, worth-fixing-separately finding, left untouched per
+this task's scope.
+
+**Still worth guarding against generally** (not chased further per
+instruction, since ruled out for this specific incident): any automated
+link-visiting system reachable from an inbox — corporate email security
+scanners (Safe Links, Proofpoint, Mimecast-style), not just chat-app link
+previews — would consume a one-time magic-link token before the real
+click, producing this exact same `otp_expired`-shaped failure. The fix
+above at least makes that failure visible and recoverable instead of
+silent, but doesn't prevent the token from being consumed early.
+
+**Manual test for a human to confirm in production** (the same
+reload-and-recheck test used to narrow this down, now with the fix
+live): tap a magic link a second time after already using it once (or
+wait past its expiry, then tap it) — the login page should now show the
+"link has expired or was already used" message with a ready email field,
+not a silent blank form. Separately, to confirm the original mount-time
+session-detection path (never actually broken) still works: sign in
+normally once, then directly load `/marketplace/sell` in a fresh tab —
+it should show as signed in immediately, no reload needed.
+
+`npm run build` clean.

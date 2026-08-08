@@ -75,6 +75,27 @@ export default function MarketplaceLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  const [linkFailed, setLinkFailed] = useState(false);
+
+  // A tapped magic link that Supabase rejects (expired, or already used —
+  // an ordinary occurrence, not just a preview-bot scenario) redirects back
+  // here with #error=...&error_code=...&error_description=... instead of a
+  // session. Supabase's own client deliberately does NOT surface that as an
+  // auth event or a getSession() error (it does not want a failed URL login
+  // to look like a session was lost), so without this the page just quietly
+  // shows the plain sign-in form again with no explanation at all — this is
+  // what a "clicked the link, landed back here signed out" report turns out
+  // to be. Read once on mount, then strip the hash so a refresh or share of
+  // this URL doesn't re-trigger the message.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || hash.length < 2) return;
+    const hashParams = new URLSearchParams(hash.slice(1));
+    if (hashParams.get("error") || hashParams.get("error_code") || hashParams.get("error_description")) {
+      setLinkFailed(true);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, []);
 
   const emailLooksValid = EMAIL_RE.test(email.trim());
   // A failed submit is a format problem (still on this screen, input itself
@@ -128,6 +149,7 @@ export default function MarketplaceLoginPage() {
       if (error) throw error;
       setStage("sent");
       setCooldown(30);
+      setLinkFailed(false);
     } catch (e) {
       setErrorMessage((e as { message?: string })?.message || "We could not send your link. Please try again.");
       setStage("error");
@@ -195,6 +217,10 @@ export default function MarketplaceLoginPage() {
               <h1 className="mkt-login-headline">{heading}</h1>
               <p className="mkt-login-subline">{subline}</p>
             </div>
+
+            {linkFailed && (
+              <div className="mkt-login-senderr"><span className="m">!</span><span>That link has expired or was already used. Please send yourself a new one below.</span></div>
+            )}
 
             <div className="mkt-login-fieldgroup">
               <span className="mkt-login-uplabel">Email address</span>
