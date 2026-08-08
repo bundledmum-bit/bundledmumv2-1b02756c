@@ -5207,3 +5207,41 @@ normally once, then directly load `/marketplace/sell` in a fresh tab —
 it should show as signed in immediately, no reload needed.
 
 `npm run build` clean.
+
+## 26. Marketplace description updated: "baby and toddler" → "baby and children's" (2026-08-07)
+
+The marketplace genuinely expanded beyond baby/toddler items (new School
+age category group — school bags, uniforms, children's bicycles and
+scooters, sports gear, children's furniture — plus two new older-children
+categories under Clothing and shoes, plus Board games and puzzles).
+General descriptive copy across the marketplace updated to say so.
+
+**Full sweep** (`grep -rniE "baby|babies|toddler|toddlers" src/marketplace/`)
+found 9 hits. 4 already read "baby and children's"/"baby & children's"
+from earlier passes this session, unchanged. 5 genuinely said "baby and
+toddler" or bare "baby" and were rewritten, not blind-replaced:
+- `MarketplaceLoginPage.tsx` — "a safer way to buy and sell used baby
+  things" → "...used baby and children's things"
+- `TermsPage.tsx` §1 — "...selling their own used baby and toddler
+  things" → "...baby and children's things"
+- `BrowsePage.tsx` — page title, `.mkt-hl-long` (mobile hero) and
+  `.mkt-hl-short` (desktop compact topbar) all updated from "baby and
+  toddler items" / bare "baby items" to "baby and children's items"; the
+  short version specifically re-verified live at 1024px (the tightest
+  breakpoint) to confirm the longer string still fits on one line with no
+  wrap or overflow — it does.
+
+**No category name was touched or was ever at risk** — every category
+name is read live from the database, none are hardcoded as literal
+strings anywhere in the marketplace frontend, so there was no ambiguity
+between "keep this" and "change this" to resolve.
+
+**"Kids" was used once by mistake mid-edit** (the desktop short tagline)
+and caught and corrected to "children's" before verifying live, per the
+explicit brand rule against that word.
+
+**Email templates**: confirmed already (all 37 checked directly against
+the database contain zero mentions of baby/toddler/children) — no
+template needed changing for this pass.
+
+`npm run build` clean.

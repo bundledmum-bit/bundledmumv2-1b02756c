@@ -119,7 +119,7 @@ export default function BrowsePage() {
 
   return (
     <>
-      <MarketplaceTitle title="Buy and sell used baby and toddler items" />
+      <MarketplaceTitle title="Buy and sell used baby and children's items" />
       {/* Desktop (>=1024px) renders this as one consolidated green bar, design B4:
           logo + tagline + search + location + nav. Mobile keeps the shared header
           above and stacks the tagline, search and location rows. */}
@@ -135,8 +135,8 @@ export default function BrowsePage() {
 
           <div className="mkt-home-line" style={{ padding: 0, maxWidth: "none" }}>
             <h1>
-              <span className="mkt-hl-long">Buy or sell used baby and toddler items</span>
-              <span className="mkt-hl-short">Buy or sell used baby items</span>
+              <span className="mkt-hl-long">Buy or sell used baby and children's items</span>
+              <span className="mkt-hl-short">Buy or sell used baby &amp; children's items</span>
             </h1>
             <Link to="/sell" className="mkt-home-sell">Sell</Link>
           </div>

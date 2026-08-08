@@ -183,7 +183,7 @@ export default function MarketplaceLoginPage() {
         ) : (
           <>
             <div className="mkt-login-rail-brand">BundledMum <small>Marketplace</small></div>
-            <h2>A safer way to buy and sell used baby things</h2>
+            <h2>A safer way to buy and sell used baby and children's things</h2>
             <ul>
               <li><span className="ic">✓</span>Money held until you confirm the item arrived</li>
               <li><span className="ic">✓</span>Every seller verified, every listing checked first</li>

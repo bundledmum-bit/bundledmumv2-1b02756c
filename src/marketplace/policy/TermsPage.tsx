@@ -43,7 +43,7 @@ export default function TermsPage() {
         <div className="mkt-policy-col">
           <div className="mkt-policy-section" id={SECTIONS[0].id}>
             <h2>1. Who we are</h2>
-            <p>BundledMum Marketplace is operated by BundledMum Ltd. We run the platform, hold payments, and arbitrate disputes. We are not the seller of any item listed here, sellers are individuals selling their own used baby and toddler things.</p>
+            <p>BundledMum Marketplace is operated by BundledMum Ltd. We run the platform, hold payments, and arbitrate disputes. We are not the seller of any item listed here, sellers are individuals selling their own used baby and children's things.</p>
           </div>
 
           <div className="mkt-policy-section" id={SECTIONS[1].id}>
