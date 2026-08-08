@@ -5331,3 +5331,74 @@ one (mirroring the articles pattern) plus a `netlify.toml` path addition
 piece to actually land, on top of everything shipped in this pass.
 
 `npm run build` clean.
+
+## 28. Investigation: neither prerendering mechanism (§27's follow-up) is actually live — resolved with evidence, no code changed (2026-08-08)
+
+**The question going in**: earlier project notes described a Supabase
+edge function handling social-preview prerendering, live, with a
+separate Cloudflare Worker version paused pending a DNS migration from
+Namecheap to Cloudflare. §27 separately found
+`netlify/edge-functions/og-prerender.ts` in the repo, handling
+`/articles/*`. Before extending anything to marketplace listings, which
+one is actually real?
+
+**Answer, with direct evidence: neither is receiving live traffic
+today.** Confirmed multiple independent ways, not by reading code alone:
+
+1. **Direct crawler-simulated requests to the live domain**, same real
+   article URL, four different user agents (WhatsApp's real UA,
+   Googlebot's, `facebookexternalhit/1.1`, and plain `curl`) — **all four
+   returned byte-identical generic HTML**, the static site-wide
+   `index.html` tags, not the article's real title/image. If the Netlify
+   function were intercepting WhatsApp's UA as its own code claims, that
+   specific request would have differed from the others. It didn't.
+2. **Response headers show no Netlify anywhere** — `server: cloudflare`,
+   a `cf-ray` header, a custom `x-deployment-id` header consistent with
+   Lovable's own hosting, no Netlify signature of any kind.
+3. **DNS**: `bundledmum.com`'s nameservers are still
+   `dns1/dns2.namecheaphosting.com` — the Namecheap→Cloudflare DNS
+   migration mentioned in the earlier notes has not happened. The site is
+   already served through Cloudflare's network regardless (consistent
+   with Lovable's own hosting sitting behind Cloudflare), independent of
+   that migration.
+4. **Supabase edge function invocation logs**, scanned across the full
+   recent window for every function in the project: dozens of other
+   functions fire routinely in that same window (cron sweeps,
+   marketplace emails, `meta-catalog-feed`, etc.) — `og-prerender` has
+   **zero** invocations anywhere in it.
+5. **Called the Supabase `og-prerender` function directly** (not through
+   the site) — it works correctly in isolation, returning genuinely
+   correct per-article tags pulled from the real `articles` row. The
+   renderer logic is sound. Nothing in production calls it.
+6. **`git log`**: `netlify.toml` and `og-prerender.ts` were added in
+   exactly one commit (`b5cf881`, 2026-06-09, by an earlier session),
+   whose own commit message claims *"Fixes WhatsApp and Facebook link
+   previews."* No commit since has touched, verified, or referenced it
+   again. Nothing in this repo suggests it was ever actually verified
+   against live production traffic before being declared fixed — the
+   evidence above shows it was not.
+
+**Not chased further, out of reach from this environment**: whether a
+Cloudflare Worker equivalent exists anywhere is unverifiable from here —
+`grep` for "cloudflare" across the entire codebase returns nothing, so
+if it exists it lives outside this repo. Confirming or fixing any of
+this needs access this session doesn't have: Lovable's own
+hosting/domain configuration, a Netlify account (to check whether a site
+is even connected to this repo, and if so to which domain), and the
+Namecheap DNS dashboard.
+
+**Decision, given this finding**: presented live to the user before any
+code was written for the marketplace-listing extension this was
+supposed to be paired with (see the task that opened this
+investigation). Chosen path: **stop here, resolve `/articles/*`
+prerendering in production first**, before extending anything to
+`/marketplace/listing/:id` — extending a mechanism that isn't in the
+live request path would not make WhatsApp previews work for listings
+either, so building on it now would just repeat the same unverified
+claim this investigation found. No code changed this pass. The
+marketplace's own `MarketplaceSeo` work from §27 is complete and correct
+for any consumer that executes JavaScript; the crawler-specific gap
+described above is what still needs a real hosting-layer fix before a
+server-rendered listing preview is possible.
+
+No `npm run build` needed — no source files changed, docs only.
