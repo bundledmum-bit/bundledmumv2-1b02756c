@@ -30,6 +30,7 @@ interface Listing {
   category_id: string; location_state: string | null; location_city: string | null; price_naira: number;
   final_price_naira: number; quantity: number; quantity_sold: number; status: string; rejection_reason: string | null;
   image_url: string | null; gallery_urls: string[] | null; seller_id: string; delisted_by: string | null;
+  split_from_listing_id: string | null;
 }
 
 export default function MarketplaceListingEdit() {
@@ -41,7 +42,7 @@ export default function MarketplaceListingEdit() {
     enabled: !!id,
     queryFn: async (): Promise<Listing | null> => {
       const { data } = await adb.from("marketplace_listings")
-        .select("id, title, description, condition_notes, condition, category_id, location_state, location_city, price_naira, final_price_naira, quantity, quantity_sold, status, rejection_reason, image_url, gallery_urls, seller_id, delisted_by")
+        .select("id, title, description, condition_notes, condition, category_id, location_state, location_city, price_naira, final_price_naira, quantity, quantity_sold, status, rejection_reason, image_url, gallery_urls, seller_id, delisted_by, split_from_listing_id")
         .eq("id", id as string).maybeSingle();
       return (data ?? null) as Listing | null;
     },
@@ -90,6 +91,17 @@ export default function MarketplaceListingEdit() {
     queryKey: ["admin-listing-seller", form?.seller_id],
     enabled: !!form?.seller_id,
     queryFn: async () => { const { data } = await adb.from("marketplace_sellers_public").select("display_name").eq("id", form!.seller_id).maybeSingle(); return (data as { display_name: string | null } | null)?.display_name ?? null; },
+  });
+
+  // Only set when this listing was created by admin_split_listing_by_image
+  // splitting a multi-photo listing into one listing per photo.
+  const splitSourceQ = useQuery({
+    queryKey: ["admin-listing-split-source", form?.split_from_listing_id],
+    enabled: !!form?.split_from_listing_id,
+    queryFn: async () => {
+      const { data } = await adb.from("marketplace_listings").select("id, title").eq("id", form!.split_from_listing_id as string).maybeSingle();
+      return (data ?? null) as { id: string; title: string } | null;
+    },
   });
 
   // Non-cancelled orders attached to this listing, for the edit warning.
@@ -197,6 +209,19 @@ export default function MarketplaceListingEdit() {
             {isSold ? "This listing has sold. " : "This listing has a paid order attached. "}
             The buyer sees this listing on their order, so editing the title, photos or notes rewrites what they were shown when they paid. Only correct genuine errors.
             {paidOrders[0]?.paystack_transaction_reference && <> Order {paidOrders[0].paystack_transaction_reference}. <button className="underline font-bold" onClick={() => navigate("/admin/marketplace/orders")}>Open orders</button></>}
+          </div>
+        </div>
+      )}
+
+      {form.split_from_listing_id && (
+        <div className="mt-4 rounded-xl p-3.5 flex gap-2.5 items-start" style={{ background: "#EDE6E1", color: "#6B5B54" }}>
+          <span className="flex-none w-5 h-5 rounded-full flex items-center justify-center font-heading font-black text-xs" style={{ background: "#6B5B54", color: "#fff" }}>i</span>
+          <div className="text-[13px] leading-snug">
+            This listing was created by splitting a combined listing into one per photo.
+            {" "}
+            <button className="underline font-bold" onClick={() => navigate(`/admin/marketplace/listings/${form.split_from_listing_id}/edit`)}>
+              {splitSourceQ.data?.title ? `View source listing "${splitSourceQ.data.title}"` : "View source listing"}
+            </button>
           </div>
         </div>
       )}

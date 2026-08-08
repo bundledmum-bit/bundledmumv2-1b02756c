@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet-async";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, REVIEW_SELECT, formatNaira, hasContactLeak, type ReviewListing } from "./data";
+import { ConfirmDialog } from "./opsUi";
 
 /**
  * Listing review queue. Lists status='pending_review' listings and lets an
@@ -24,6 +25,10 @@ export default function MarketplaceReview() {
   const [rejectReason, setRejectReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [splitting, setSplitting] = useState(false);
+  const [splitBusy, setSplitBusy] = useState(false);
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [splitSuccess, setSplitSuccess] = useState<string | null>(null);
 
   // Markup percent for the "buyer sees" label, from site_settings.
   useQuery({
@@ -64,12 +69,26 @@ export default function MarketplaceReview() {
 
   const total = listings?.length ?? 0;
   const current = useMemo(() => (listings && listings[index]) || null, [listings, index]);
+  const photoCount = current ? (current.image_url ? 1 : 0) + (current.gallery_urls?.length ?? 0) : 0;
 
   async function afterAction() {
     setRejecting(false);
     setRejectReason("");
+    setSplitSuccess(null);
     await refetch();
     setIndex(0);
+  }
+
+  async function confirmSplit() {
+    if (!current) return;
+    setSplitBusy(true); setSplitError(null);
+    const { data, error } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: current.id });
+    setSplitBusy(false);
+    if (error) { setSplitError(error.message); return; }
+    const count = (data as Array<{ new_listing_id: string; image_used: string }> | null)?.length ?? 0;
+    setSplitting(false);
+    setSplitSuccess(`Split into ${count} separate ${count === 1 ? "listing" : "listings"}, one per photo. The combined listing is now retired.`);
+    await afterAction();
   }
 
   async function approve() {
@@ -189,6 +208,14 @@ export default function MarketplaceReview() {
             </div>
 
             {error && <div className="text-xs" style={{ color: "#D4613C" }}>{error}</div>}
+            {splitSuccess && <div className="rounded-xl p-3 text-[13px]" style={{ background: "#D8EFE5", color: "#1A4A33" }}>{splitSuccess}</div>}
+
+            {photoCount > 1 && !rejecting && (
+              <button onClick={() => { setSplitError(null); setSplitting(true); }} disabled={busy}
+                className="self-start font-heading font-extrabold text-xs underline" style={{ color: "#6B5B54" }}>
+                Split into separate listings, one per photo
+              </button>
+            )}
 
             {rejecting ? (
               <div className="rounded-2xl border p-4 bg-white flex flex-col gap-3" style={{ borderColor: "#D4613C" }}>
@@ -226,6 +253,15 @@ export default function MarketplaceReview() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={splitting}
+        title="Split into separate listings?"
+        body={`This will create ${photoCount} separate listings, one per photo, and retire this combined listing. Continue?`}
+        kv={current ? [{ label: "Item", value: current.title }, { label: "Photos", value: String(photoCount) }] : []}
+        confirmLabel="Split now" busy={splitBusy} error={splitError}
+        onConfirm={confirmSplit} onCancel={() => !splitBusy && setSplitting(false)}
+      />
     </div>
   );
 }

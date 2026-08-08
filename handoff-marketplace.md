@@ -5549,3 +5549,49 @@ pass's scope — but there is no remaining reason to keep it once this is
 reviewed.
 
 `npm run build` clean.
+
+## 32. Listing split into one-per-photo, both the review queue and the general listings screen (2026-08-08)
+
+**Backend already deployed and proven, not built here**:
+`admin_split_listing_by_image(p_listing_id uuid)` returns one row per new
+listing (`new_listing_id`, `image_used`). It takes every image on the source
+listing (`image_url` plus every `gallery_urls` entry), creates one new listing
+per image copying title, description, price, category, condition, condition
+answers, category attributes, negotiability and location verbatim, duplicates
+that one photo to four to satisfy the photo minimum, sets quantity to 1, and
+goes straight to `live`. The source listing is set to `delisted` (not
+deleted), with `split_from_listing_id` on each child pointing back to it.
+Already run for real against "Children First Grade Clothes" (8 photos, 8
+separate clothing pieces sold as one unit) — 8 real listings created, original
+correctly retired. Confirmed both the RPC signature and the
+`split_from_listing_id` column directly against the live schema before
+building against them.
+
+**Where it's reachable**:
+- **Review queue** ([`MarketplaceReview.tsx`](src/pages/admin/marketplace/MarketplaceReview.tsx)) — a "Split into separate listings, one per photo" link appears next to Approve/Reject whenever the pending listing has more than one photo (`image_url` plus `gallery_urls` count). This queue previously had no shared confirm dialog at all (Approve fired immediately, Reject used its own bespoke inline reason panel) — the split action introduces the app's real shared `ConfirmDialog` (from `opsUi.tsx`, already used on the general listings and edit screens) into this file for the first time, since the task called for the confirm pattern already used elsewhere in the admin, not a third bespoke variant.
+- **General listings screen** ([`MarketplaceListings.tsx`](src/pages/admin/marketplace/MarketplaceListings.tsx)) — a "Split" row action appears for any `live` listing with more than one photo, alongside the existing Edit/Delist/Relist actions, using the same `ConfirmDialog` already wired up for Delist and Relist on this screen. This covers the retroactive case (an existing multi-photo listing split after the fact).
+
+Both confirm dialogs are plain text, no photo preview (explicitly decided
+against), stating the exact resulting count, e.g. "This will create 8 separate
+listings, one per photo, and retire this combined listing. Continue?"
+Confirming calls the RPC immediately.
+
+**Success signal**: on both screens, a green confirmation banner reports the
+real count returned by the RPC ("Split into 8 separate listings, one per
+photo. The combined listing is now retired.") before the list refetches. On
+the general listings screen the banner is dismissible and stays until the
+next action; on the review queue it shows above the next pending listing
+until another action replaces it.
+
+**Audit trail made visible**: [`MarketplaceListingEdit.tsx`](src/pages/admin/marketplace/MarketplaceListingEdit.tsx) now selects `split_from_listing_id` and, when set, shows a note above the edit form ("This listing was created by splitting a combined listing into one per photo") with a link back to the source listing's own edit page, resolving the source's title for the link text.
+
+**Preserved untouched**: Approve, Reject-with-reason, Edit, Delist, Relist —
+none of their logic changed, the split action is purely additive on both
+screens. Sections 7 through 29 unaffected.
+
+Not live-verified — no admin login credentials exist in this environment, the
+standing limitation for every admin screen. Code-reviewed against the real
+deployed RPC signature and column, and against this file's own established
+`ConfirmDialog` pattern, rather than assumed.
+
+`npm run build` clean.

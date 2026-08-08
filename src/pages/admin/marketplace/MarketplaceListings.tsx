@@ -17,6 +17,8 @@ interface ListingRow {
   quantity: number;
   quantity_sold: number;
   delisted_by: string | null;
+  image_url: string | null;
+  gallery_urls: string[] | null;
   category: { name: string | null } | null;
   seller_name?: string | null;
 }
@@ -38,15 +40,17 @@ export default function MarketplaceListings() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [delistTarget, setDelistTarget] = useState<ListingRow | null>(null);
   const [relistTarget, setRelistTarget] = useState<ListingRow | null>(null);
+  const [splitTarget, setSplitTarget] = useState<ListingRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [splitSuccess, setSplitSuccess] = useState<string | null>(null);
 
   const { data: listings, isLoading, refetch } = useQuery({
     queryKey: ["mkt-all-listings"],
     staleTime: 10000,
     queryFn: async (): Promise<ListingRow[]> => {
       const { data } = await adb.from("marketplace_listings")
-        .select("id, title, status, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
+        .select("id, title, status, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, image_url, gallery_urls, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
         .order("created_at", { ascending: false });
       const rows = (data ?? []) as unknown as ListingRow[];
       const ids = Array.from(new Set(rows.map((r) => r.seller_id).filter(Boolean)));
@@ -102,11 +106,33 @@ export default function MarketplaceListings() {
     setRelistTarget(null); await refetch();
   }
 
+  function photoCount(l: ListingRow) {
+    return (l.image_url ? 1 : 0) + (l.gallery_urls?.length ?? 0);
+  }
+
+  async function confirmSplit() {
+    if (!splitTarget) return;
+    setBusy(true); setError(null);
+    const { data, error: err } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: splitTarget.id });
+    setBusy(false);
+    if (err) { setError(err.message); return; }
+    const count = (data as Array<{ new_listing_id: string; image_used: string }> | null)?.length ?? 0;
+    setSplitSuccess(`"${splitTarget.title}" was split into ${count} separate ${count === 1 ? "listing" : "listings"}, one per photo. The combined listing is now retired.`);
+    setSplitTarget(null); await refetch();
+  }
+
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
   return (
     <div>
       <OpsHeader title="Listings" subtitle="All sellers, all statuses. Delist anything live, behind a confirm step." />
+
+      {splitSuccess && (
+        <div className="mt-3 rounded-xl p-3 text-[13px] flex items-start justify-between gap-3" style={{ background: "#D8EFE5", color: "#1A4A33" }}>
+          <span>{splitSuccess}</span>
+          <button onClick={() => setSplitSuccess(null)} className="font-heading font-extrabold text-xs flex-none">Dismiss</button>
+        </div>
+      )}
 
       {/* status tabs */}
       <div className="mt-4 flex gap-1.5 flex-wrap">
@@ -152,6 +178,7 @@ export default function MarketplaceListings() {
                         <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
                         {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
                         {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
+                        {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
                       </div>
                     </Td>
                   </tr>
@@ -182,6 +209,15 @@ export default function MarketplaceListings() {
         ] : []}
         confirmLabel="Relist" busy={busy} error={error}
         onConfirm={confirmRelist} onCancel={() => !busy && setRelistTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={splitTarget !== null}
+        title="Split into separate listings?"
+        body={splitTarget ? `This will create ${photoCount(splitTarget)} separate listings, one per photo, and retire this combined listing. Continue?` : ""}
+        kv={splitTarget ? [{ label: "Item", value: splitTarget.title }, { label: "Photos", value: String(photoCount(splitTarget)) }] : []}
+        confirmLabel="Split now" busy={busy} error={error}
+        onConfirm={confirmSplit} onCancel={() => !busy && setSplitTarget(null)}
       />
     </div>
   );
