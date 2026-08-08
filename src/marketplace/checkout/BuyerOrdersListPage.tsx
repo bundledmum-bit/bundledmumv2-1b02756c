@@ -6,7 +6,7 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { formatNaira } from "./orders";
 import { fetchBuyerOrders, groupBuyerOrders, type BuyerOrder } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 /**
  * My orders (design H2 menu link + the buyer order flow). Grouped by what the
@@ -45,7 +45,7 @@ export default function BuyerOrdersListPage() {
 
   return (
     <div className="mkt-myorders-page">
-      <MarketplaceTitle title="My orders" />
+      <MarketplaceSeo noindex title="My orders" />
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><h1 style={{ flex: 1 }}>My orders</h1></div></div>
       </div>

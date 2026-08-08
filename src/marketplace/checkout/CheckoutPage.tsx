@@ -9,7 +9,7 @@ import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -238,7 +238,7 @@ export default function CheckoutPage() {
   if (listingGone) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="This item has gone" />
+        <MarketplaceSeo noindex title="This item has gone" />
         <div className="mkt-empty-title">This one has just gone</div>
         <div className="mkt-empty-sub">Someone paid for it while you were here. Nothing has left your account. There is plenty more to see.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
@@ -250,7 +250,7 @@ export default function CheckoutPage() {
   if (ownListing) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="Checkout" />
+        <MarketplaceSeo noindex title="Checkout" />
         <div className="mkt-empty-title">This is your own listing</div>
         <div className="mkt-empty-sub">You cannot buy an item you are selling. Nothing has been charged.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Back to browsing</button>
@@ -262,7 +262,7 @@ export default function CheckoutPage() {
   if (paymentsDown || paymentNotConfigured) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="Payments unavailable" />
+        <MarketplaceSeo noindex title="Payments unavailable" />
         <div className="mkt-empty-title">We cannot take payments right now</div>
         <div className="mkt-empty-sub">Our payment partner is having a moment. This is on our side, not yours, and nothing has been charged.</div>
         <a className="mkt-wa" style={{ maxWidth: 260 }} href={waContextHref(waNumber, "payment_problem")} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
@@ -278,7 +278,7 @@ export default function CheckoutPage() {
   if (offerPriceMismatch) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="Checkout" />
+        <MarketplaceSeo noindex title="Checkout" />
         <div className="mkt-empty-title">We need to sort this out first</div>
         <div className="mkt-empty-sub">The price you agreed with the seller could not be applied to this order. Nothing has been charged. Please message us and we will get this fixed for you.</div>
         <a className="mkt-wa" style={{ maxWidth: 260 }} href={waContextHref(waNumber, "order_help", { reference: order?.paystack_transaction_reference })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
@@ -289,7 +289,7 @@ export default function CheckoutPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Checkout" />
+      <MarketplaceSeo noindex title="Checkout" />
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listing.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Checkout</h1></div>

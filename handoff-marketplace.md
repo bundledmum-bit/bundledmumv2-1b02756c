@@ -5245,3 +5245,89 @@ the database contain zero mentions of baby/toddler/children) — no
 template needed changing for this pass.
 
 `npm run build` clean.
+
+## 27. Per-route meta descriptions and Open Graph tags for the marketplace, extending Seo.tsx (2026-08-07)
+
+**New**: `src/marketplace/components/MarketplaceSeo.tsx`, a thin wrapper
+around the storefront's existing `src/components/Seo.tsx` — same
+mechanism (react-helmet-async), not a second system. It exists only to
+correct two things `<Seo>` can't handle unmodified inside this router:
+the marketplace mounts with `basename="/marketplace"`, so
+`useLocation()` here already has that prefix stripped (`<Seo>`'s own
+canonical/`og:url` default would be wrong, and would collide with the
+storefront's own page at the same bare path, e.g. `/terms`); and every
+marketplace page needs a real, non-blank description/image even when the
+caller has nothing specific to say, so both default to an accurate
+generic marketplace summary and BundledMum's existing default share
+image (`https://bundledmum.com/images/og-default.jpg` — no
+marketplace-specific image asset exists, and generating one was out of
+scope) rather than being silently omitted.
+
+**Listing detail** (`ListingDetailPage.tsx`), genuinely dynamic, only on
+a live listing (the same render branch that was already gated past every
+gone/sold/removed/404 check): real title, `display_description` truncated
+to ~155 characters at a word boundary (never mid-word), `og:type=product`,
+real `image_url` with the same default fallback image when a listing has
+none (e.g. a sold listing whose photos were purged after 30 days), and a
+correct per-listing canonical `og:url`. Live-verified against a real
+listing — `og:image` resolved to the listing's actual Supabase Storage
+photo, `og:url` to
+`https://bundledmum.com/marketplace/listing/<id>`, description a real
+truncated sentence.
+
+**Gone/sold/removed/404** (`NotFoundOrGoneScreen.tsx`, also covers the
+site-wide `MarketplaceNotFoundPage.tsx` catch-all): generic tags, not the
+listing's own — the case-specific title it already computed (e.g. "X has
+sold"), the default description/image, plus `noindex,nofollow` (a gone
+URL is never the canonical page for that item and shouldn't be indexed —
+not explicitly asked for, but clearly correct here; NOT applied to the
+five policy pages, since noindexing legitimate public content wasn't
+requested and is a real SEO call this pass didn't make unilaterally).
+Live-verified.
+
+**Browse home, the sell pitch page (both its new-visitor and
+existing-seller hero states), and all five policy pages** each get a
+distinct, accurate title and description — reusing the exact "baby and
+children's" wording corrected in §26, not a third variant. Live-verified
+on Browse and Buyer protection.
+
+**Checkout and order pages** (8 files under `checkout/`, ~20 call sites):
+mechanically swapped to `MarketplaceSeo` with `noindex` added — private,
+per-user pages, a plain default description is enough, and they have no
+reason to be indexed at all.
+
+**Safety, confirmed with evidence, not assumed**: read `Seo.tsx` and the
+installed `react-helmet-async@3.0.0` source directly.
+`dangerouslySetInnerHTML` exists in that library ONLY for the
+`<script>`/`<style>`/`<noscript>` `innerHTML`/`cssText` path (used solely
+by `Seo.tsx`'s JSON-LD `jsonLd` prop, which `MarketplaceSeo` never passes
+— it always sets `breadcrumbs={[]}`). Every `<meta>`/`<title>`/`<link>`
+tag — everything a listing's seller-supplied title and
+`display_description` actually flow through — is built via
+`React.createElement(type, props)` with the value as a plain prop, or (on
+direct DOM update) the browser's native `element.setAttribute()`, exactly
+like ordinary JSX. No raw string concatenation anywhere in this path.
+
+**A real limitation found, not fixed here, worth surfacing plainly**: the
+site is a client-rendered SPA. `og-prerender.ts`
+(`netlify/edge-functions/`) already documents and solves this exact
+class of problem for `/articles/*` — its own comment: *"Social crawlers
+don't run JS, so the client-side react-helmet OG tags never reach them —
+they'd see the generic index.html."* It intercepts known bot user agents
+(WhatsApp explicitly among them) and serves a server-rendered HTML stub
+built by a dedicated Supabase edge function, falling through to the
+normal SPA for everyone else. **That prerendering is scoped only to
+`/articles/*`** (`netlify.toml`) — `/marketplace/listing/*` is not
+covered. Confirmed live: `MarketplaceSeo`'s tags render correctly and
+dynamically in a real browser (any JS-executing consumer — Googlebot,
+in-app browsers that unfurl after opening — sees them correctly), but a
+non-JS crawler hitting a listing URL directly still only ever receives
+`index.html`'s static site-wide tags, unchanged, exactly as before this
+pass. **This pass's own non-goals explicitly excluded Supabase edge
+function changes**, and extending `og-prerender` to listings would need
+one (mirroring the articles pattern) plus a `netlify.toml` path addition
+— genuinely out of scope here, not overlooked, but the literal
+"WhatsApp preview" outcome the task opened with needs that follow-up
+piece to actually land, on top of everything shipped in this pass.
+
+`npm run build` clean.

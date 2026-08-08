@@ -1,7 +1,7 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings } from "./policySettings";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 /** Cookies (design 24a, screen 5), short and honest, no jump links, it is
  * short enough not to need any. */
@@ -11,7 +11,10 @@ export default function CookiesPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Cookies" />
+      <MarketplaceSeo
+        title="Cookies"
+        description="A short, honest explanation of the cookies BundledMum Marketplace uses."
+      />
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Cookies</h1>

@@ -9,7 +9,7 @@ import {
   type SimilarListing,
 } from "../lib/goneListing";
 import { waHref } from "../lib/whatsapp";
-import MarketplaceTitle from "./MarketplaceTitle";
+import MarketplaceSeo from "./MarketplaceSeo";
 
 /**
  * The four "not live" situations, one shared shell. Case-specific copy,
@@ -122,7 +122,11 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
 
   return (
     <div className={single ? "mkt-notfound-wrap single" : "mkt-notfound-wrap"}>
-      <MarketplaceTitle title={pageTitle} />
+      {/* Generic tags, not the listing's own — a gone/sold/removed/404 URL is
+          never the canonical page for that item, so it gets sensible
+          defaults (never blank) and stays out of search, not a stale
+          preview of a listing that no longer exists as shown. */}
+      <MarketplaceSeo title={pageTitle} noindex />
       <div className="mkt-notfound-message">
         <div className="mkt-notfound-icon" style={{ background: icon.bg, color: icon.fg }}>{icon.glyph}</div>
         <div className="mkt-notfound-headtext">

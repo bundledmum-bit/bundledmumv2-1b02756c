@@ -1,7 +1,7 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings, naira } from "./policySettings";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 const SECTIONS = [
   { id: "who-we-are", label: "Who we are" },
@@ -32,7 +32,10 @@ export default function TermsPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Terms and conditions" />
+      <MarketplaceSeo
+        title="Terms and conditions"
+        description="The terms and conditions for buying and selling used baby and children's items on BundledMum Marketplace."
+      />
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Terms and conditions</h1>

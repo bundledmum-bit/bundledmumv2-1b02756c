@@ -18,7 +18,7 @@ import {
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 import AreaCombobox from "../sell/AreaCombobox";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 import CategoryNoStockYet from "../components/CategoryNoStockYet";
 
 /**
@@ -119,7 +119,10 @@ export default function BrowsePage() {
 
   return (
     <>
-      <MarketplaceTitle title="Buy and sell used baby and children's items" />
+      <MarketplaceSeo
+        title="Buy and sell used baby and children's items"
+        description="Buy or sell used baby and children's items in Nigeria. Every seller checked, every listing reviewed, and your money held until you confirm it arrived."
+      />
       {/* Desktop (>=1024px) renders this as one consolidated green bar, design B4:
           logo + tagline + search + location + nav. Mobile keeps the shared header
           above and stacks the tagline, search and location rows. */}

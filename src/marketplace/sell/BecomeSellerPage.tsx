@@ -4,7 +4,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { useAllowedCategories, useCategoryGroups, useFeaturedCategories } from "../data/useListings";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 const CATEGORY_FALLBACK_ICON = "🏷️";
 
@@ -90,7 +90,10 @@ export default function BecomeSellerPage() {
   if (seller) {
     return (
       <>
-        <MarketplaceTitle title="Sell on BundledMum Marketplace" />
+        <MarketplaceSeo
+          title="Sell on BundledMum Marketplace"
+          description="List another baby or children's item for free on BundledMum Marketplace. You get exactly the price you ask, and your money is protected until the buyer confirms."
+        />
         <div className="mkt-sell-landing mkt-sell-landing--seller">
           <div className="mkt-sl-hero mkt-sl-hero--seller">
             <div className="mkt-sl-headline">Got something else to sell?</div>
@@ -107,7 +110,10 @@ export default function BecomeSellerPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Sell your baby and children's items" />
+      <MarketplaceSeo
+        title="Sell your baby and children's items"
+        description="Sell the baby and children's items you don't need anymore. Free to list, you get exactly the price you ask, and your money is protected until the buyer confirms."
+      />
       <div className="mkt-sell-landing">
         <div className="mkt-sl-hero">
           <div className="mkt-sl-hero-copy">

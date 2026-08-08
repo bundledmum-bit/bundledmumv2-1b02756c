@@ -1,7 +1,7 @@
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings } from "./policySettings";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 const SECTIONS = [
   { id: "what-we-collect", label: "What we collect and why" },
@@ -21,7 +21,10 @@ export default function PrivacyPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Privacy policy" />
+      <MarketplaceSeo
+        title="Privacy policy"
+        description="How BundledMum Marketplace collects, uses and protects your data as a buyer or seller of used baby and children's items."
+      />
       <PolicyNav />
       <div className="mkt-policy-head">
         <h1>Privacy policy</h1>

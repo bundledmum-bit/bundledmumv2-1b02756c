@@ -6,7 +6,7 @@ import { useListing } from "../data/useListings";
 import { formatNaira } from "./orders";
 import { fetchBuyerOfferForListing, buyerRespondToCounter, isLapsed } from "../offers";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 /**
  * The buyer's own offer on a listing (design 23a O2 waiting, O3 seller
@@ -44,7 +44,7 @@ export default function BuyerOfferPage() {
   if (!offer) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="Your request" />
+        <MarketplaceSeo noindex title="Your request" />
         <div className="mkt-empty-title">Nothing here yet</div>
         <div className="mkt-empty-sub">You have not asked for a lower price on this listing.</div>
         <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate(listingId ? `/listing/${listingId}` : "/")}>Back to the listing</button>
@@ -68,7 +68,7 @@ export default function BuyerOfferPage() {
   if (!listing || listing.status !== "live") {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title={`${title} has sold`} />
+        <MarketplaceSeo noindex title={`${title} has sold`} />
         <span className="mkt-st sold" style={{ marginBottom: 4 }}>···</span>
         <div className="mkt-empty-title">This one's gone</div>
         <div className="mkt-empty-sub">Someone else bought it before the seller replied to your request. Nothing was charged to you, and your request closes here.</div>
@@ -83,7 +83,7 @@ export default function BuyerOfferPage() {
   if (offer.status === "pending" && !lapsed) {
     return (
       <div className="mkt-offer-page">
-        <MarketplaceTitle title="Your request" />
+        <MarketplaceSeo noindex title="Your request" />
         <div className="mkt-sell-head"><div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listingId}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Your request</h1></div></div></div>
         <div className="mkt-sell-body">
           <div className="mkt-co-summary">
@@ -106,7 +106,7 @@ export default function BuyerOfferPage() {
     const counterDiscount = listedPrice - offer.counter_buyer_price_naira;
     return (
       <div className="mkt-offer-page">
-        <MarketplaceTitle title="Their counter" />
+        <MarketplaceSeo noindex title="Their counter" />
         <div className="mkt-sell-head"><div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listingId}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>They came back with</h1></div></div></div>
         <div className="mkt-sell-body">
           <div className="mkt-co-summary">
@@ -130,7 +130,7 @@ export default function BuyerOfferPage() {
   const wasDeclined = offer.status === "declined" || offer.status === "counter_declined";
   return (
     <div className="mkt-center">
-      <MarketplaceTitle title="Your request" />
+      <MarketplaceSeo noindex title="Your request" />
       <span className="mkt-st sold" style={{ marginBottom: 4 }}>{wasDeclined ? "✕" : "···"}</span>
       <div className="mkt-empty-title">{wasDeclined ? "They said no this time" : "No word back"}</div>
       <div className="mkt-empty-sub">

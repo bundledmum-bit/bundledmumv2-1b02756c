@@ -6,7 +6,7 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { sdb, LISTING_BUCKET, compressImage, describeUploadError } from "../sell/sellData";
 import { fetchBuyerOrder, raiseDispute } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 const CATEGORIES = [
   "It never arrived",
@@ -103,7 +103,7 @@ export default function BuyerDisputePage() {
 
   return (
     <div className="mkt-dispute-page">
-      <MarketplaceTitle title="Report a problem" />
+      <MarketplaceSeo noindex title="Report a problem" />
       <div className="mkt-sell-head">
         <div className="inner"><div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/orders/${order.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Tell us what happened</h1></div></div>
       </div>

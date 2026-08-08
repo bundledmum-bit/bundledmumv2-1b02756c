@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import PolicyNav from "./PolicyNav";
 import { useMarketplacePolicySettings } from "./policySettings";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
 
 /** Seller protection (design 24a, screen 2). Same warm, visual treatment as
  * Buyer protection, mirrored content. */
@@ -12,7 +12,10 @@ export default function SellerProtectionPage() {
 
   return (
     <>
-      <MarketplaceTitle title="Seller protection" />
+      <MarketplaceSeo
+        title="Seller protection"
+        description="You get exactly the price you ask for, and your money is safe until the sale completes. What BundledMum Marketplace guarantees sellers."
+      />
       <PolicyNav />
       <div className="mkt-policy-hero">
         <div className="inner">

@@ -25,7 +25,19 @@ import { useSeller } from "../sell/useSeller";
 import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
 import { fetchGoneListingContext, fetchOwnListingIfMine } from "../lib/goneListing";
 import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundOrGoneScreen";
-import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceSeo from "../components/MarketplaceSeo";
+
+const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
+
+/** Meta description length, cut at a word boundary rather than mid-word,
+ * roughly the ~155 characters a search snippet or link preview shows. */
+function truncateForMeta(text: string, max = 155): string {
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
 
 type FieldType = "select" | "text" | "number" | "boolean";
 interface CategoryField {
@@ -258,7 +270,12 @@ export default function ListingDetailPage() {
 
   return (
     <div className="mkt-detail">
-      <MarketplaceTitle title={listing.title} />
+      <MarketplaceSeo
+        title={listing.title}
+        description={truncateForMeta(listing.display_description || listing.title)}
+        image={listing.image_url || OG_FALLBACK_IMAGE}
+        type="product"
+      />
       {/* Gallery + panel are grouped so the desktop layout (>=1024px) can place them
           as two columns. On mobile both wrappers are display:contents, so the hero,
           thumbs, body and buy bar lay out exactly as before, single column. */}
