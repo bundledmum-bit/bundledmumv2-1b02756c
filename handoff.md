@@ -1,3 +1,51 @@
+# Handoff
+
+## Storefront order emails — gateway auth FIXED + DEPLOYED (this turn)
+- **Symptom**: storefront/order emails failed with `gateway_status 401,
+  "Credential not found"`, while marketplace emails sent fine (`sent:true`).
+- **Root cause**: the two storefront email edge functions
+  (`send-transactional-email`, `send-internal-order-notification`) sent through
+  the **Lovable connector gateway** (`https://connector-gateway.lovable.dev/resend/emails`,
+  `Authorization: Bearer ${LOVABLE_API_KEY}` + `X-Connection-Api-Key: ${RESEND_API_KEY}`).
+  That gateway's stored Resend connector credential is stale/missing → 401. The
+  working marketplace functions (`send-marketplace-email` etc.) **never use the
+  gateway** — they POST **directly to Resend** (`https://api.resend.com/emails`,
+  `Authorization: Bearer ${RESEND_API_KEY}`). (NB: the original task framing said
+  the storefront functions "authenticate to the gateway differently" than
+  marketplace — actually marketplace doesn't touch the gateway at all, so the fix
+  is to move storefront OFF the gateway to direct Resend, matching marketplace.)
+- **Fix (auth/credential only — templates, payloads, recipients UNCHANGED)**:
+  both functions now `fetch("https://api.resend.com/emails", { headers: {
+  "Content-Type": "application/json", "Authorization": \`Bearer ${RESEND_API_KEY}\` }})`;
+  removed the `LOVABLE_API_KEY` bearer, the `X-Connection-Api-Key` header, and the
+  `GATEWAY_URL`; the startup guard now requires only `RESEND_API_KEY`. Request body
+  (from/to/reply_to/subject/html) is byte-identical to before.
+- **DEPLOYED via Supabase MCP** (project `rbtyprmkolqfylcbmgrk`, `verify_jwt:false`):
+  `send-transactional-email` → **v50**, `send-internal-order-notification` → **v30**.
+  Re-fetched both to verify: new Resend URL present; no `connector-gateway` /
+  `X-Connection-Api-Key` / `LOVABLE_API_KEY` in the send path; and all pre-existing
+  deployed features intact on `send-transactional-email` — `check_email_rate_limit`,
+  the "Test sends require an admin session." admin guard, `buildFreeItemsPromoRow`,
+  `computeDeliveryWindow`, `buildTrackingBlock`, `buildPaymentInstructions`,
+  `email_send_log` writes, all template vars.
+- **Repo vs deployed drift (IMPORTANT for next time)**: these functions are
+  **Lovable-managed** — Lovable deploys newer versions directly, so the repo copies
+  lag. The repo's `supabase/functions/send-transactional-email/index.ts` was STALE
+  vs deployed v49 (missing rate-limit / admin-test guard / promo row), and
+  `send-internal-order-notification` was **not tracked in the repo at all**. So the
+  deploy was built from the **deployed** source (fetched via `get_edge_function`) +
+  the surgical auth edit — NOT from the stale repo file (which would have reverted
+  live features). This commit adds a clean, fix-applied
+  `send-internal-order-notification/index.ts` to the repo. The large
+  `send-transactional-email/index.ts` repo copy was left as-is to avoid a risky
+  500-line hand-retranscription; **treat the DEPLOYED function as source of truth**
+  and pull it via `get_edge_function` before any future edit.
+- **NEXT (user action)**: run a live **admin-only** test send from the DB to
+  confirm the gateway now returns `sent:true` (test sends require the service-role
+  key or a signed-in active admin, per the security guard).
+
+---
+
 # Free Items Promo — Handoff
 
 ## Goal
