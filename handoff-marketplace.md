@@ -5928,3 +5928,27 @@ Preserved: the content filter on answers (untouched, `detectBypassAttempt` uncha
 Not live-verified beyond the logged-out path above — the non-owner and already-answered branches need a real authenticated seller session, the standing limitation for every seller screen in this environment. Code-reviewed against the real RLS policy name already documented in `questions.ts`'s own comments.
 
 `npm run build` clean.
+
+## 47. Admin follow-up outreach queue, a new top-level section (2026-08-09)
+
+**New screen**: [`MarketplaceOutreach.tsx`](src/pages/admin/marketplace/MarketplaceOutreach.tsx), route `/admin/marketplace/outreach`, nav entry "Follow up" (Megaphone icon) added to `MARKETPLACE_NAV` in `AdminLayout.tsx` right after Review queue — no existing entry moved or removed.
+
+**Backend confirmed deployed, not rebuilt**: `get_outreach_queue()` returns `TABLE(person_type, person_id, person_name, stage_key, label, urgency, context, whatsapp_link)`, admin-gated (`has_admin_permission('marketplace','manage')`, confirmed directly against its source — it genuinely rejects a service-role call with no real `auth.uid()`, so it could not be exercised via SQL, only code-reviewed). **Its own source confirms this is literally the same system as the existing per-seller "Suggested outreach" panel**, not a new one: it loops every non-suspended seller through `get_seller_nudge_suggestions()` and every customer with an answered question through `get_buyer_nudge_suggestions()` — the exact two functions `MarketplaceSellers.tsx`'s panel already calls, unchanged.
+
+**The nine types, real labels pulled from the deployed functions' own source** (not the design mockup's paraphrased chip wording, which differs): seller — `unanswered_question` "A buyer is waiting on an answer" (-1), `sale_awaiting_dispatch` "Sale awaiting dispatch" (0), `return_awaiting_confirmation` "A return is waiting on confirmation" (0), `offer_awaiting_response` "A buyer is waiting on a price reply" (1), `no_listings` "Never listed anything" (1), `rejected_not_resubmitted` "Has a rejected listing" (2), `incomplete_setup` "Bank details incomplete" (2), `listed_no_sales` "Live but not selling yet" (3); buyer — `answered_question_no_purchase` "Question answered, has not bought yet" (2). Suspended sellers excluded server side, confirmed in the function body. All nine are hardcoded as the canonical filter-chip set in `opsData.ts` (`SELLER_OUTREACH_STAGES`, `BUYER_OUTREACH_STAGES`) specifically so every chip shows even at zero rows, greyed rather than hidden — five of nine currently return nothing, this was designed for, not worked around.
+
+**Design source**: imported `BundledMum Marketplace.dc.html` from the linked claude.ai/design project via the design MCP, frame `32a`. Contained every required element (populated seller side, empty buyer side, a multi-match person, the full all-clear) — nothing missing, no invented frames.
+
+**Grouping, the design's own chosen treatment**: the RPC returns one row per person per matching type — a person matching several types gets grouped client-side into a single row (`groupByPerson()`), primary = lowest-urgency match as the lead pill, the rest listed as "+N more" (mobile: tap-to-expand; desktop: every match shown in the sticky detail panel, each with its own message and Send button). Sort is urgency ascending, then person name alphabetically as a stable secondary order (the design didn't specify one beyond urgency).
+
+**Layout**: reuses the exact `grid gap-5 lg:grid-cols-[list_detail]` / `lg:sticky lg:top-6 lg:self-start` pattern already shared by Sellers, Buyers and Disputes for desktop. Mobile diverges from that shared pattern on purpose, matching the design's own mobile treatment: every row is a full inline card (message preview + working Send button already on the card), no separate detail step needed since nothing is hidden behind a click.
+
+**WhatsApp links opened verbatim**: every `href` is `whatsapp_link` unchanged, `target="_blank" rel="noreferrer"`, the same pattern as the existing per-seller panel. For the message *preview* shown on cards and in the detail panel (not present in the RPC's own columns — `context` is just the listing title), a new `previewWhatsAppMessage()` reads the `text` param back out of the real link purely for display. Caught a real bug fixing this myself: `URLSearchParams.get()` already fully decodes the value, so an extra `decodeURIComponent()` call would double-decode and could throw on a literal `%` in a message — removed before shipping. This never touches or rebuilds the actual link opened.
+
+**No "sent" state**: the design's own note says plainly — "No 'contacted' state is designed since nothing currently records a send, that would need a new sent_at column and a fresh design pass, flagged rather than invented here." No such column exists. Not built.
+
+Preserved: the per-seller "Suggested outreach" panel (untouched, still calls `get_seller_nudge_suggestions` directly), every existing admin nav entry and route (added to, none moved), sections 7 through 30.
+
+Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen, and the RPC itself is real-session-gated so it can't be exercised via SQL either. Code-reviewed against the real deployed function sources (`get_outreach_queue`, `get_seller_nudge_suggestions`, `get_buyer_nudge_suggestions`, `wa_encode`) rather than assumed, and against the imported design file directly.
+
+`npm run build` clean.

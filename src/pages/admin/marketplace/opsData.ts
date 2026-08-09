@@ -253,3 +253,63 @@ export function shortTime(iso: string | null): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
 }
+
+// ─── Outreach queue ─────────────────────────────────────────────────────────
+
+/** One row per person per outreach reason they currently match — the same
+ * get_seller_nudge_suggestions / get_buyer_nudge_suggestions the per-seller
+ * "Suggested outreach" panel already calls, just run across everyone rather
+ * than scoped to one seller. Suspended sellers are excluded server side. */
+export interface OutreachRow {
+  person_type: "seller" | "buyer";
+  person_id: string;
+  person_name: string | null;
+  stage_key: string;
+  label: string;
+  urgency: number;
+  context: string | null;
+  whatsapp_link: string;
+}
+
+export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
+  const { data, error } = await adb.rpc("get_outreach_queue");
+  if (error) throw error;
+  return (data ?? []) as unknown as OutreachRow[];
+}
+
+/** The full canonical set of outreach types, always shown as a filter chip
+ * even at zero rows (the queue is genuinely lopsided today, five of nine
+ * types currently return nothing) — chip label is the short, glanceable
+ * wording; each type's row/detail content uses the real label the RPC
+ * itself returns, not this one. */
+export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urgency: number }> = [
+  { key: "unanswered_question", chipLabel: "Waiting on answer", urgency: -1 },
+  { key: "sale_awaiting_dispatch", chipLabel: "Awaiting dispatch", urgency: 0 },
+  { key: "return_awaiting_confirmation", chipLabel: "Return unconfirmed", urgency: 0 },
+  { key: "offer_awaiting_response", chipLabel: "Offer unanswered", urgency: 1 },
+  { key: "no_listings", chipLabel: "Never listed", urgency: 1 },
+  { key: "rejected_not_resubmitted", chipLabel: "Rejected, unfixed", urgency: 2 },
+  { key: "incomplete_setup", chipLabel: "Bank incomplete", urgency: 2 },
+  { key: "listed_no_sales", chipLabel: "Live, no sale", urgency: 3 },
+];
+
+export const BUYER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urgency: number }> = [
+  { key: "answered_question_no_purchase", chipLabel: "Waiting to buy", urgency: 2 },
+];
+
+/** Pulls the human-readable text out of a wa.me link purely for a read-only
+ * preview — the href actually opened is always whatsapp_link itself,
+ * completely unchanged. This never builds or re-encodes a link, only reads
+ * back text already inside the real, authoritative one. */
+export function previewWhatsAppMessage(waLink: string): string | null {
+  try {
+    // URLSearchParams.get() already fully decodes the value (%0A -> a real
+    // newline, %20 -> a space, etc) — a second decodeURIComponent here would
+    // double-decode and can throw on a literal "%" the message happens to
+    // contain (a price, for instance).
+    const url = new URL(waLink);
+    return url.searchParams.get("text") || null;
+  } catch {
+    return null;
+  }
+}
