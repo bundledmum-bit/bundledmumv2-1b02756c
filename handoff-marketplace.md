@@ -5989,3 +5989,15 @@ Preserved: all ten type filter chips and their live counts, urgency ordering, `w
 Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen. Code-reviewed against the real deployed function signatures (`get_outreach_queue`, `log_outreach_contact`, `undo_outreach_contact`) rather than assumed.
 
 `npm run build` clean.
+
+## 50. New-seller grace period exposed in Settings (2026-08-09)
+
+**Parts 1-4 (contact history, mark-as-sent, undo, never-contacted filter) were fully built already in §49** — this task's own request duplicated that work; re-read the current `MarketplaceOutreach.tsx` and confirmed all four are already exactly as specified (relative-time contact status, coral "Never contacted", the two-button Send/Mark-as-sent pattern, the discoverable Undo link, the never-contacted toggle chip). Nothing rebuilt there, reported rather than redone.
+
+**Part 5, new**: `marketplace_seller_listing_grace_hours` (confirmed live in the database, value `6`) added to the admin Settings screen as a new **"Outreach"** group — none of the existing groups (Pricing and fees, Negotiation, Orders and disputes, Payments, Notifications, Policy pages) genuinely fit a seller-onboarding timing setting, so rather than shoehorn it into "Orders and disputes" (which is about post-sale disputes, not new-seller grace), gave it its own small group, positioned between Negotiation and Orders and disputes. Validated as a positive whole number (`integer: true, positive: true`, the same flags the tiered service fee fields already use), suffixed " hours", with help text that explains what the setting controls and why an operator would raise or lower it — "leave someone alone long enough that a seller who is still mid-listing right now isn't chased for something they're already in the middle of doing" — not just a bare number field. No query change needed: `settingsQ` already selects every `marketplace_%` key.
+
+Preserved: all ten outreach filter chips and their counts, urgency ordering, verbatim `whatsapp_link` opening, the all-clear/empty states, the per-seller "Suggested outreach" panel, every other Settings field and its own confirm step, sections 7 through 30.
+
+Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen. Confirmed the setting's real current value directly against the database before writing its help text.
+
+`npm run build` clean.

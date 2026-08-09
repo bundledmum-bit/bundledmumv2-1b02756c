@@ -89,6 +89,15 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
     ],
   },
   {
+    title: "Outreach",
+    fields: [
+      {
+        key: "marketplace_seller_listing_grace_hours", label: "New seller grace period", type: "number", integer: true, positive: true, suffix: " hours",
+        help: "How long a brand new seller is left alone before showing up in the follow-up queue for not having listed anything yet. This is how long to leave someone alone, not an arbitrary number — set it high enough that a seller who is still mid-listing right now isn't chased for something they're already in the middle of doing.",
+      },
+    ],
+  },
+  {
     title: "Orders and disputes",
     fields: [
       { key: "marketplace_confirm_prompt_day", label: "Confirm-receipt prompt", type: "number", integer: true, suffix: " day(s) after payment", help: "Days after payment confirmation when the automated buyer confirm-receipt prompt is sent." },
