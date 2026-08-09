@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
+import { isValidNigerianPhone } from "../lib/phone";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
@@ -26,7 +27,7 @@ function friendlyCreateError(code: string): string {
   switch (code) {
     case "A valid email address is required": return "Please enter a valid email address.";
     case "Please give your name so the seller knows who to send to": return "Please enter your name so the seller knows who to send to.";
-    case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian phone number so the seller can reach you.";
+    case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian WhatsApp number so the seller can reach you.";
     default: return "We could not start your order just now. Please check your details and try again.";
   }
 }
@@ -64,7 +65,14 @@ export default function CheckoutPage() {
   // before creating the order so a logged-out (or not-yet-loaded) page view never
   // creates an ownerless order.
   const [nameInput, setNameInput] = useState("");
+  // phoneInput is asked for as the buyer's WhatsApp number (the primary
+  // framing, since that's what every downstream WhatsApp link assumes is
+  // genuinely reachable). differentWhatsapp defaults to false (assume the
+  // same), and only then does altPhoneInput (their actual phone, if it
+  // genuinely differs) appear and get collected.
   const [phoneInput, setPhoneInput] = useState("");
+  const [differentWhatsapp, setDifferentWhatsapp] = useState(false);
+  const [altPhoneInput, setAltPhoneInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [committed, setCommitted] = useState(false);
   const [touched, setTouched] = useState(false);
@@ -95,10 +103,10 @@ export default function CheckoutPage() {
   const needAnyDetail = needName || needPhone || needEmail;
 
   const nameValid = nameInput.trim().length >= 2;
-  const phoneDigits = phoneInput.replace(/\D/g, "");
-  const phoneValid = /^(0\d{10}|234\d{10}|\d{10})$/.test(phoneDigits);
+  const phoneValid = isValidNigerianPhone(phoneInput);
+  const altPhoneValid = isValidNigerianPhone(altPhoneInput);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim().toLowerCase());
-  const detailsValid = (!needName || nameValid) && (!needPhone || phoneValid) && (!needEmail || emailValid);
+  const detailsValid = (!needName || nameValid) && (!needPhone || (phoneValid && (!differentWhatsapp || altPhoneValid))) && (!needEmail || emailValid);
 
   const showDetailsForm = !authLoading && profileLoaded && needAnyDetail && !committed;
   const canCreateOrder = isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed;
@@ -143,7 +151,15 @@ export default function CheckoutPage() {
       listingId: listingId as string,
       email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
       full_name: needName ? nameInput.trim() : undefined,
-      phone: needPhone ? phoneInput.trim() : undefined,
+      // phoneInput is what we asked for as "your WhatsApp number": when it
+      // genuinely is also their phone (the default), it's sent as phone and
+      // phone_is_whatsapp stays true. When they said it differs, phoneInput
+      // becomes whatsapp_number and altPhoneInput (their real phone) is
+      // sent as phone instead — matching exactly how create-marketplace-order
+      // already reads these three fields.
+      phone: needPhone ? (differentWhatsapp ? altPhoneInput.trim() : phoneInput.trim()) : undefined,
+      whatsappNumber: needPhone && differentWhatsapp ? phoneInput.trim() : undefined,
+      phoneIsWhatsapp: needPhone ? !differentWhatsapp : undefined,
       offerId,
     }),
   });
@@ -378,14 +394,33 @@ export default function CheckoutPage() {
 
                 {needPhone && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    <span className="mkt-uplabel">Phone number</span>
+                    <span className="mkt-uplabel">Your WhatsApp number</span>
                     <input
                       className={touched && !phoneValid ? "mkt-input error" : "mkt-input"}
-                      type="tel" inputMode="tel" autoComplete="tel"
+                      type="tel" inputMode="numeric" autoComplete="tel"
                       value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)}
                       placeholder="e.g. 0803 123 4567"
                     />
-                    {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian phone number, for example 0803 123 4567.</span>}
+                    <span style={{ font: "400 11.5px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>This is how the seller reaches you, so please make sure it's really on WhatsApp.</span>
+                    {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian WhatsApp number, for example 0803 123 4567.</span>}
+
+                    <label className="mkt-chk">
+                      <input type="checkbox" checked={differentWhatsapp} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
+                      <span>My phone number is different from my WhatsApp</span>
+                    </label>
+
+                    {differentWhatsapp && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 2 }}>
+                        <span className="mkt-uplabel">Your phone number</span>
+                        <input
+                          className={touched && !altPhoneValid ? "mkt-input error" : "mkt-input"}
+                          type="tel" inputMode="numeric" autoComplete="tel"
+                          value={altPhoneInput} onChange={(e) => setAltPhoneInput(e.target.value)}
+                          placeholder="e.g. 0803 123 4567"
+                        />
+                        {touched && !altPhoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian phone number, for example 0803 123 4567.</span>}
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -67,11 +67,16 @@ async function invokeErrorCode(error: unknown): Promise<string> {
  * { reused: true }. Other errors: 'This item is no longer available',
  * 'You cannot buy your own listing'.
  */
-export async function createMarketplaceOrder(input: { listingId: string; email?: string; full_name?: string; phone?: string; offerId?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
-  const body: { listing_id: string; email?: string; full_name?: string; phone?: string; offer_id?: string } = { listing_id: input.listingId };
+export async function createMarketplaceOrder(input: { listingId: string; email?: string; full_name?: string; phone?: string; whatsappNumber?: string; phoneIsWhatsapp?: boolean; offerId?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
+  const body: { listing_id: string; email?: string; full_name?: string; phone?: string; whatsapp_number?: string; phone_is_whatsapp?: boolean; offer_id?: string } = { listing_id: input.listingId };
   if (input.email) body.email = input.email;
   if (input.full_name) body.full_name = input.full_name;
   if (input.phone) body.phone = input.phone;
+  // Both already read by create-marketplace-order: when phone_is_whatsapp is
+  // false, whatsapp_number is the number that actually gets saved as the
+  // buyer's WhatsApp contact; otherwise phone is used for both.
+  if (input.whatsappNumber) body.whatsapp_number = input.whatsappNumber;
+  if (typeof input.phoneIsWhatsapp === "boolean") body.phone_is_whatsapp = input.phoneIsWhatsapp;
   // Forward-compatible only: create-marketplace-order (v5) does not yet read
   // offer_id at all, it always prices from the listing row. See
   // handoff-marketplace.md for exactly what the function still needs before

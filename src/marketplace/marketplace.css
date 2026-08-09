@@ -1058,6 +1058,10 @@
 .mkt-identical p { margin: 0; font: 400 12px/1.5 'Lato', sans-serif; color: #3D3936; }
 .mkt-identical .chk { display: flex; align-items: center; gap: 9px; font: 700 13px/1.3 'Lato', sans-serif; color: var(--mkt-green-dark); cursor: pointer; }
 .mkt-identical .chk input { width: 18px; height: 18px; accent-color: var(--mkt-green); }
+
+/* Generic checkbox toggle, e.g. "my phone is different from my WhatsApp". */
+.mkt-chk { display: flex; align-items: center; gap: 9px; font: 400 12.5px/1.3 'Lato', sans-serif; color: var(--mkt-muted); cursor: pointer; margin-top: 2px; }
+.mkt-chk input { width: 17px; height: 17px; flex: 0 0 17px; accent-color: var(--mkt-green); }
 .mkt-identical .tot { font: 700 12px/1.4 'Lato', sans-serif; color: var(--mkt-green-dark); }
 
 /* ── Browse redesign: category tiles, filter bar, panel + sheet (design 13a) ── */

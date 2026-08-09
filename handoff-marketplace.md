@@ -5751,3 +5751,26 @@ Not live-verified — no admin login credentials exist in this environment, the 
 Preserved: every existing seller and buyer flow, the offer entry point untouched, all 7 existing seller nudge stages, sections 7 through 30.
 
 `npm run build` clean.
+
+## 38. Phone fields now ask specifically for WhatsApp, honest before-state recorded (2026-08-09)
+
+**The true prior state, confirmed by grep of the whole marketplace tree before touching anything** — exactly three genuine phone-collection form fields exist (not the four locations the task assumed): Seller Setup, guest/incomplete-profile Checkout, and nowhere else. Nothing in this codebase previously claimed WhatsApp collection was complete; there simply was no WhatsApp framing anywhere:
+- **Seller Setup** ([`SellerSetupPage.tsx`](src/marketplace/sell/SellerSetupPage.tsx)) — labelled plain "Phone number", no format validation at all (only a non-empty check), no WhatsApp mention anywhere in the file, inserted only `phone` into `marketplace_sellers`.
+- **Guest checkout** ([`CheckoutPage.tsx`](src/marketplace/checkout/CheckoutPage.tsx)) — labelled plain "Phone number", validated with a Nigerian-format regex, but again no WhatsApp framing, and only `phone` was ever sent to `create-marketplace-order`.
+- **Seller profile edit** — the task assumed this exists as its own location; it does not. It's the inline `EditProfile` component inside `SellerDashboardPage.tsx`, and **it has no phone field at all**, editable or otherwise (only legal name, bank name, account name, account number). There is currently no in-app way for an onboarded seller to change their phone/WhatsApp number after setup — flagged here, not built, since this task is about relabelling and validating existing collection points, not adding a brand-new editable field.
+- Everything else checked (dispute form, return form, listing creation, listing Q&A) either has no phone field or is itself the anti-contact-info filter blocking a phone/WhatsApp mention in free text — the opposite of a collection point.
+
+**Backend confirmed already correct, nothing rebuilt**: `phone_is_whatsapp` defaults to `true` on both `customers` and `marketplace_sellers`. `marketplace_sellers` has a real `BEFORE INSERT/UPDATE` trigger (`sync_seller_whatsapp_number`) that already derives and normalises `whatsapp_number` from `phone` whenever `phone_is_whatsapp` is true — confirmed live against real seller rows, every one already has a correctly normalised `whatsapp_number` despite the frontend never explicitly sending it. `customers` has **no equivalent trigger**, and confirmed live that `customers.whatsapp_number` is null for almost every real checkout row — because `create-marketplace-order` (fetched and read directly, not guessed) already fully supports `phone`, `whatsapp_number`, and `phone_is_whatsapp` in its payload, but the frontend was never sending the latter two.
+
+**The fix, same shape on both forms**: a new shared [`lib/phone.ts`](src/marketplace/lib/phone.ts) (`isValidNigerianPhone`) validates the three common formats, mirroring `create-marketplace-order`'s own `normalisePhone` exactly. Both forms now lead with **"Your WhatsApp number"** as the primary label, a line explaining why ("This is how the seller reaches you, so please make sure it's really on WhatsApp."), and a new checkbox, unchecked by default (assume same): **"My phone number is different from my WhatsApp"**, which reveals a second "Your phone number" field only when checked, using a new generic `.mkt-chk` class.
+
+- **Checkout**: `createMarketplaceOrder()` (`checkout/orders.ts`) gained `whatsappNumber`/`phoneIsWhatsapp` params, forwarded as `whatsapp_number`/`phone_is_whatsapp` — fields `create-marketplace-order` already reads. When the toggle is off, the WhatsApp field's value is sent as `phone` with `phone_is_whatsapp: true`; when on, the WhatsApp field becomes `whatsapp_number` and the second field becomes `phone`, with `phone_is_whatsapp: false` — exactly the mapping the edge function expects.
+- **Seller setup**: the insert now explicitly sends `phone_is_whatsapp` and, when the toggle is on, `whatsapp_number`, so a seller whose WhatsApp genuinely differs from their phone is no longer silently assumed to be the same by the trigger.
+
+**Validation**: both fields use `isValidNigerianPhone` (accepts `08012345678`, `2348012345678`, `+2348012345678`), with a friendly inline message, and `inputMode="numeric"` for a numeric keypad on mobile (checkout's WhatsApp field also keeps `type="tel"` for autofill).
+
+**Live-verified**: guest checkout at a real listing — the field renders as "YOUR WHATSAPP NUMBER" with the explanatory line, the "My phone number is different from my WhatsApp" checkbox is present, and clicking it correctly reveals a second "YOUR PHONE NUMBER" field. Seller setup requires a logged-in session (no seller credentials in this environment) — code-reviewed only, applying the identical pattern already verified live on checkout.
+
+Preserved: every other field on both forms, phone remaining required everywhere it already was, guest checkout still requiring no login, the bank name match validation and legal name lock on seller setup (untouched), sections 7 through 30.
+
+`npm run build` clean.
