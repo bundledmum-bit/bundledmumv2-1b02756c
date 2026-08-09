@@ -5774,3 +5774,40 @@ Preserved: every existing seller and buyer flow, the offer entry point untouched
 Preserved: every other field on both forms, phone remaining required everywhere it already was, guest checkout still requiring no login, the bank name match validation and legal name lock on seller setup (untouched), sections 7 through 30.
 
 `npm run build` clean.
+
+## 39. Client-side bypass filter re-synced with the hardened server function (2026-08-09)
+
+**Before**: the client copy lived in `detectBypassAttempt()` in
+[`questions.ts`](src/marketplace/questions.ts), a byte-for-byte port of
+`marketplace_detect_bypass_attempt` as it existed when §37 built the Q&A
+feature — 5 rules (phone digits, spelled-out digits at a 5-word threshold,
+WhatsApp/call/phone, social platforms, links), no normalisation step at
+all. The server had since been hardened twice and the two had drifted: a
+person typing a newly-blocked phrase would see it accepted client side and
+only rejected on actual submit (the server always enforced it correctly
+regardless, so this was the safe direction of failure, just a poor
+experience).
+
+**Re-synced from the deployed function's actual source**
+(`pg_get_functiondef`), not guessed: added the normalisation step that is
+the real structural change (`dot`/`(dot)`/`d0t` → `.`, `at`/`(at)` → `@`,
+spaces around dots collapsed, plus a separate de-lettered copy that
+collapses spacing between consecutive single-letter tokens so
+`w h a t s a p p` reads as `whatsapp`), lowered the spelled-digit threshold
+from 5 to 3, and added the two brand new rules: address/meet-up intent, and
+price-negotiation intent — 8 rules total now, same order, same exact
+messages as the server.
+
+**Verified against the live server function directly**, not just
+self-consistently: ran all 27 test phrases (the required "must still pass"
+list — including the three price ones the task called out specifically:
+"how much did it cost originally", "I paid 15000 for mine", "does the
+price include the extra parts" — plus 15 phrases that should now be
+blocked, one per rule including the normalisation/de-letter/negotiation
+edge cases) through both `marketplace_detect_bypass_attempt()` live via SQL
+and the new client function side by side. **Every single result matched
+exactly**, same verdict, same message text, both directions.
+
+Preserved: the ask-a-question and answer flows themselves, `AskQuestionSheet.tsx` and `SellerQuestionDetailPage.tsx` untouched, only the shared filter function changed. Sections 7 through 30 unaffected. Not made stricter than the server anywhere — every new rule is a direct port, no invented patterns.
+
+`npm run build` clean.
