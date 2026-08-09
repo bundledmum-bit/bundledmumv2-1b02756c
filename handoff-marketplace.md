@@ -5896,3 +5896,19 @@ Not live-verified beyond what's noted above — both price screens (seller-authe
 Preserved: card grid layout and image aspect ratio, the qty badge, the detail gallery's desktop two-column layout (live-verified at 1280px, unaffected) and mobile stack, condition capture on create-listing (untouched), sections 7 through 30.
 
 `npm run build` clean.
+
+## 45. Meta conversion tracking passes fbp/fbc, and a real synchronous-throw gap closed (2026-08-09)
+
+**Backend already fixed and deployed, not rebuilt**: `send-meta-conversion-event` now never returns an error under any circumstance — an anonymous event with no matching signal returns a clean `HTTP 200` skip instead of the `502` it used to raise (the actual original bug: Meta rejects any event with no way to match it to a person, and the old function surfaced that rejection as its own error).
+
+**Audit finding, reported plainly per the task's own instruction**: both call sites — `ViewContent` in `ListingDetailPage.tsx`, `InitiateCheckout` in `CheckoutPage.tsx` — were already correctly fire-and-forget. Neither awaits `sendMarketplaceConversionEvent()` (called as a plain statement inside a `useEffect`, `void` return), and `git log` on `lib/metaConversion.ts` confirms the `.catch(() => {})` around the `mdb.functions.invoke(...)` call has been there since the file's original commit (`dff0f63`), never missing. So the historical 502 was always being swallowed at that specific point — the described blank screens were not caused by a missing `.catch()` there.
+
+**A real, narrower gap found and closed anyway**: the old code only wrapped the *promise* `invoke()` returns — nothing caught a *synchronous* throw before that promise existed (cookie access, argument setup). Since neither caller wraps this call in its own try/catch, a synchronous throw here would have propagated straight out of the `useEffect` uncaught. `sendMarketplaceConversionEvent()` now wraps its entire body in `try/catch`, not just the invoke chain, closing that gap regardless of whether it was the actual historical cause.
+
+**fbp/fbc now passed**: a new `readCookie()` reads `_fbp`/`_fbc` (set by the Meta Pixel already running on the marketplace, not by this code) from `document.cookie`, itself wrapped so a read failure returns `undefined` rather than throwing. Both are attached to the request body only when present — an absent cookie (Pixel hasn't set one yet) sends without them exactly as before, letting the function's own clean-skip handle it. **Live-verified end to end, not just code-reviewed**: loaded a real listing page anonymously (no login) in the browser preview, confirmed a genuine `_fbp` cookie was present (`fb.0.1786013466302...`, the real Pixel having actually fired), then replicated the exact same cookie-read-and-send logic directly against the real deployed edge function from that browser session — response came back `{"sent":true,"event_name":"ViewContent","meta_response":{"events_received":1,...}}`, meaning Meta itself genuinely accepted the anonymous event. Confirmed the listing page rendered fully throughout, no blank screen, no console error tied to this call.
+
+**Other callers**: grepped the entire `src/` tree for `send-meta-conversion-event` / `sendMarketplaceConversionEvent` — exactly 3 files reference it: the two call sites above and `metaConversion.ts` itself. No admin, storefront, or other caller exists.
+
+Preserved: the backend Purchase event (untouched, a separate server-side flow), the Meta Pixel's own browser-side `track()` calls (`@/lib/metaPixel`, already independently guarded, untouched), sections 7 through 30.
+
+`npm run build` clean.
