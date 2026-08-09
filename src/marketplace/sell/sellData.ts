@@ -368,6 +368,14 @@ export function parseListingEditError(message: string): string | null {
   if (/only bundledmum can put a listing live/i.test(raw)) {
     return "Only BundledMum can put a listing live. Submit it for review instead.";
   }
+  // Already written for a person to read — passed through verbatim rather
+  // than reworded, per the original-price feature's own instruction. Client
+  // validation on both price screens already mirrors this check, so this is
+  // the rare-recovery path for a stale preview (e.g. markup changed between
+  // page load and submit).
+  if (/original price should be higher than what you are selling it for/i.test(raw)) {
+    return raw;
+  }
   return null;
 }
 

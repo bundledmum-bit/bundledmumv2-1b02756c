@@ -77,14 +77,19 @@ export async function createMarketplaceOrder(input: { listingId: string; email?:
   // buyer's WhatsApp contact; otherwise phone is used for both.
   if (input.whatsappNumber) body.whatsapp_number = input.whatsappNumber;
   if (typeof input.phoneIsWhatsapp === "boolean") body.phone_is_whatsapp = input.phoneIsWhatsapp;
-  // Forward-compatible only: create-marketplace-order (v5) does not yet read
-  // offer_id at all, it always prices from the listing row. See
-  // handoff-marketplace.md for exactly what the function still needs before
-  // this actually charges the negotiated price rather than the listing's.
+  // The function (v9) never actually reads this field back — it looks up the
+  // buyer's own accepted/counter_accepted offer on this listing itself, by
+  // listing_id + buyer_id, so it can never be tricked by whatever offer_id a
+  // client happens to send. Sent anyway for forward compatibility. It also
+  // enforces the accepted price's own 24-hour deadline at this exact point
+  // (accepted_price_expires_at): past it, itemPrice silently falls back to
+  // the listing's normal price and the response's offer_expired is true —
+  // see offerExpired handling in CheckoutPage.tsx, which is what surfaces
+  // that to the buyer rather than leaving it silent.
   if (input.offerId) body.offer_id = input.offerId;
   const { data, error } = await cdb.functions.invoke("create-marketplace-order", { body });
   if (error) throw new CheckoutError((await invokeErrorCode(error)) || "unknown");
-  return data as { order: OrderRow; email?: string; reused?: boolean };
+  return data as { order: OrderRow; email?: string; reused?: boolean; offer_expired?: boolean };
 }
 
 /**

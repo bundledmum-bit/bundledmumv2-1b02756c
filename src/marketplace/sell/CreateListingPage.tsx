@@ -62,6 +62,7 @@ interface ExistingListing {
   location_city: string | null;
   attributes: Record<string, AnswerValue> | null;
   price_naira: number;
+  original_price_naira: number | null;
   quantity: number;
   is_negotiable: boolean;
   image_url: string | null;
@@ -124,6 +125,7 @@ export default function CreateListingPage() {
   const [conditionInvalidKeys, setConditionInvalidKeys] = useState<Set<string>>(new Set());
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [originalPrice, setOriginalPrice] = useState("");
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [identicalOk, setIdenticalOk] = useState(false);
@@ -138,7 +140,7 @@ export default function CreateListingPage() {
     enabled: isEditMode && !!seller,
     queryFn: async (): Promise<ExistingListing | null> => {
       const { data } = await sdb.from("marketplace_listings")
-        .select("id, status, title, description, condition, condition_notes, condition_answers, category_id, location_state, location_city, attributes, price_naira, quantity, is_negotiable, image_url, gallery_urls, rejection_reason")
+        .select("id, status, title, description, condition, condition_notes, condition_answers, category_id, location_state, location_city, attributes, price_naira, original_price_naira, quantity, is_negotiable, image_url, gallery_urls, rejection_reason")
         .eq("id", editId as string)
         .eq("seller_id", seller!.id)
         .maybeSingle();
@@ -250,6 +252,7 @@ export default function CreateListingPage() {
     setConditionAnswers(existingListing.condition_answers || {});
     setDescription(existingListing.description || "");
     setPrice(existingListing.price_naira ? String(Math.round(existingListing.price_naira)) : "");
+    setOriginalPrice(existingListing.original_price_naira ? String(Math.round(existingListing.original_price_naira)) : "");
     setIsNegotiable(!!existingListing.is_negotiable);
     setQuantity(Math.max(1, existingListing.quantity || 1));
     setIdenticalOk((existingListing.quantity || 1) > 1);
@@ -369,6 +372,13 @@ export default function CreateListingPage() {
 
   const priceNum = Number(price);
   const preview = useMemo(() => (markupPct != null ? buyerPrice(priceNum, markupPct) : null), [priceNum, markupPct]);
+  // Optional, what it cost new. The database trigger compares this against
+  // final_price_naira (the buyer-facing price, markup included), not the
+  // seller's raw asking price, so the client check mirrors that exactly
+  // rather than comparing against price_naira, which would let through a
+  // number the server then rejects.
+  const originalPriceNum = Number(originalPrice);
+  const originalPriceTooLow = originalPrice.trim() !== "" && isFinite(originalPriceNum) && preview != null && originalPriceNum <= preview;
   const filled = [photos.length >= MIN_PHOTOS, !!title.trim(), !!categoryId, !!condition, missingConditionAnswers().length === 0, !!description.trim(), priceNum > 0];
   const progress = Math.round((filled.filter(Boolean).length / filled.length) * 100);
 
@@ -462,6 +472,7 @@ export default function CreateListingPage() {
 
     if (!description.trim()) { setError("Add a description."); return; }
     if (!isFinite(priceNum) || priceNum <= 0) { setError("Enter your asking price."); return; }
+    if (originalPriceTooLow) { setError("The original price should be higher than what you are selling it for, otherwise there is no saving to show."); return; }
     if (quantity > 1 && !identicalOk) { setError(`Please confirm all ${quantity} items are identical, or set the quantity back to 1.`); return; }
     const conditionDetailTexts = conditionQuestions.map((q) => conditionAnswers[`${q.question_key}_detail`]);
     if (hasContactLeak(description, ...conditionDetailTexts)) { setContactBlocked(true); return; }
@@ -500,6 +511,7 @@ export default function CreateListingPage() {
         condition_answers: buildConditionAnswers(),
         condition: CONDITION_VALUE[condition] ?? null,
         price_naira: Math.round(priceNum),
+        original_price_naira: originalPrice.trim() !== "" && originalPriceNum > 0 ? Math.round(originalPriceNum) : null,
         is_negotiable: isNegotiable,
         quantity: Math.max(1, Math.round(quantity)),
         location_state: stateName,
@@ -815,6 +827,25 @@ export default function CreateListingPage() {
             </div>
           </div>
           <div className="note">You keep {formatNaira(priceNum > 0 ? Math.round(priceNum) : 0)} per item. BundledMum adds {markupPct != null ? `a ${markupPct}% markup` : "its markup"} on top, shown to the buyer, and buyers pay a service fee at checkout.</div>
+        </div>
+
+        <div className="mkt-field">
+          <div className="mkt-field-head">
+            <span className="lbl">What did it cost new?</span>
+            <span className="mkt-help">Optional</span>
+          </div>
+          <input
+            className={originalPriceTooLow ? "mkt-input error" : "mkt-input"}
+            value={originalPrice}
+            onChange={(e) => setOriginalPrice(e.target.value.replace(/[^0-9]/g, ""))}
+            placeholder="e.g. 65,000"
+            inputMode="numeric"
+          />
+          {originalPriceTooLow ? (
+            <div className="mkt-errbox"><span className="m">!</span><span>The original price should be higher than what you are selling it for, otherwise there is no saving to show.</span></div>
+          ) : (
+            <div className="mkt-help">Buyers see exactly how much they are saving, which helps it sell. Leave it blank if you would rather not say.</div>
+          )}
         </div>
 
         <div className="mkt-field">

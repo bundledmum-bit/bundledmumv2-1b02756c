@@ -178,13 +178,18 @@ export default function CheckoutPage() {
     }),
   });
   const order = orderQ.data?.order;
-  // The one place this is verified rather than trusted: if we arrived from
-  // a negotiated offer, the order the server actually created must charge
-  // that price. It will not, until create-marketplace-order is updated to
-  // read offer_id (see orders.ts and handoff-marketplace.md) — surfacing
-  // that plainly here rather than silently letting checkout continue on a
-  // number that does not match what was promised.
-  const offerPriceMismatch = negotiatedPrice != null && order != null && Number(order.item_price_naira) !== negotiatedPrice;
+  // True when the server found this buyer's accepted price had passed its
+  // 24-hour deadline by the time the order was actually created — a real,
+  // expected outcome (the listing page's own countdown can reach the buyer
+  // slightly stale), not a bug. Charged at the normal price either way; this
+  // is what tells the buyer clearly why, instead of leaving it silent.
+  const offerExpired = !!orderQ.data?.offer_expired;
+  // Verified rather than trusted: if we arrived from a negotiated offer, the
+  // order the server actually created should charge that price. A genuine
+  // disagreement (not the expected, already-explained offerExpired case)
+  // means something is wrong — stop here rather than let the buyer pay a
+  // number that does not match what they were promised.
+  const offerPriceMismatch = !offerExpired && negotiatedPrice != null && order != null && Number(order.item_price_naira) !== negotiatedPrice;
 
   // Initialise the Paystack transaction to get the authoritative fee, total and
   // hosted page URL. Only when paystack is the active method.
@@ -340,6 +345,18 @@ export default function CheckoutPage() {
             <div className="s">Sold by {listing.seller?.display_name || "BundledMum seller"}</div>
           </div>
         </div>
+
+        {/* The agreed price's own 24-hour deadline passed between the buyer
+            seeing it on the listing and the order actually being created
+            here — a real, expected outcome, so it's explained plainly
+            rather than the total just quietly coming out higher than what
+            they last saw (see offerExpired in orders.ts/CheckoutPage.tsx). */}
+        {order && offerExpired && (
+          <div className="mkt-errbox">
+            <span className="m">!</span>
+            <span>The lower price you agreed with the seller has run out, so this order is at the normal price of {formatNaira(itemPrice)}. Nothing has been charged yet.</span>
+          </div>
+        )}
 
         {paystackEnabled ? (
           <>

@@ -7,7 +7,7 @@ import { sdb, buyerPrice, formatNaira, genericErrorMessage, parseListingEditErro
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 
-interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; status: string; is_negotiable: boolean }
+interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; original_price_naira: number | null; status: string; is_negotiable: boolean }
 
 /**
  * Price-only edit for a LIVE listing (design 21a E2/E3). A live listing may
@@ -24,6 +24,7 @@ export default function SellerPriceEditPage() {
   const { loading, isLoggedIn, seller } = useSeller();
 
   const [newPrice, setNewPrice] = useState("");
+  const [originalPrice, setOriginalPrice] = useState("");
   const [negotiable, setNegotiable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export default function SellerPriceEditPage() {
     enabled: !!id && !!seller,
     queryFn: async (): Promise<LiveListing | null> => {
       const { data } = await sdb.from("marketplace_listings")
-        .select("id, title, image_url, price_naira, status, is_negotiable")
+        .select("id, title, image_url, price_naira, original_price_naira, status, is_negotiable")
         .eq("id", id as string)
         .eq("seller_id", seller!.id)
         .maybeSingle();
@@ -57,6 +58,7 @@ export default function SellerPriceEditPage() {
     if (hydratedRef.current || !listing) return;
     hydratedRef.current = true;
     setNewPrice(String(Math.round(listing.price_naira)));
+    setOriginalPrice(listing.original_price_naira ? String(Math.round(listing.original_price_naira)) : "");
     setNegotiable(listing.is_negotiable);
   }, [listing]);
 
@@ -77,18 +79,29 @@ export default function SellerPriceEditPage() {
   const preview = useMemo(() => (markupPct != null ? buyerPrice(priceNum, markupPct) : null), [priceNum, markupPct]);
   const isRaise = !!listing && newPrice.trim() !== "" && isFinite(priceNum) && priceNum > listing.price_naira;
   const isValid = newPrice.trim() !== "" && isFinite(priceNum) && priceNum > 0;
+  // Optional, what it cost new. Mirrors the database trigger, which compares
+  // this against final_price_naira (the buyer-facing price), not the raw
+  // asking price, so the check here uses the same live "buyers will now
+  // see" preview rather than newPrice directly.
+  const originalPriceNum = Number(originalPrice);
+  const originalPriceTooLow = originalPrice.trim() !== "" && isFinite(originalPriceNum) && preview != null && originalPriceNum <= preview;
 
   async function save() {
     if (!listing) return;
     setError(null);
     if (!isValid) { setError("Enter a price."); return; }
     if (isRaise) { setError("You can lower the price of a live listing, but not raise it. Delist it first if you need to change the price upward."); return; }
+    if (originalPriceTooLow) { setError("The original price should be higher than what you are selling it for, otherwise there is no saving to show."); return; }
     setBusy(true);
     // is_negotiable is exempt from the live-listing content-change guard (it
     // changes nothing about the item itself), so it saves in the same update
     // as the price, no separate write needed.
     const { error: updErr } = await sdb.from("marketplace_listings")
-      .update({ price_naira: Math.round(priceNum), is_negotiable: negotiable ?? listing.is_negotiable })
+      .update({
+        price_naira: Math.round(priceNum),
+        original_price_naira: originalPrice.trim() !== "" && originalPriceNum > 0 ? Math.round(originalPriceNum) : null,
+        is_negotiable: negotiable ?? listing.is_negotiable,
+      })
       .eq("id", listing.id);
     setBusy(false);
     if (updErr) {
@@ -168,6 +181,28 @@ export default function SellerPriceEditPage() {
           </div>
         )}
 
+        {/* Optional, can be added to a listing that's already posted, not
+            just at create time. Unlike price, this doesn't affect what a
+            buyer already saw, so it isn't subject to the live-listing guard. */}
+        <div className="mkt-field">
+          <span className="mkt-uplabel">What did it cost new? (optional)</span>
+          <input
+            className={originalPriceTooLow ? "mkt-input error" : "mkt-input"}
+            value={originalPrice}
+            onChange={(e) => { setOriginalPrice(e.target.value.replace(/[^0-9]/g, "")); if (error) setError(null); }}
+            placeholder="e.g. 65,000"
+            inputMode="numeric"
+          />
+          {originalPriceTooLow ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ color: "var(--mkt-error)", font: "800 11px/1 Lato, sans-serif" }}>!</span>
+              <span style={{ font: "400 12px/1.4 Lato, sans-serif", color: "var(--mkt-error)" }}>The original price should be higher than what you are selling it for, otherwise there is no saving to show</span>
+            </div>
+          ) : (
+            <div className="mkt-help">Buyers see exactly how much they are saving, which helps it sell. Leave it blank if you would rather not say.</div>
+          )}
+        </div>
+
         {/* Unlike everything else on a live listing, this IS allowed to change
             here, it does not touch the item's content. */}
         <div className="mkt-field">
@@ -205,7 +240,7 @@ export default function SellerPriceEditPage() {
       </div>
 
       <div className="mkt-sell-foot">
-        <button className="mkt-primary" onClick={save} disabled={busy || isRaise || !isValid}>{busy ? "Saving..." : "Save new price"}</button>
+        <button className="mkt-primary" onClick={save} disabled={busy || isRaise || !isValid || originalPriceTooLow}>{busy ? "Saving..." : "Save new price"}</button>
       </div>
 
       {delistOpen && (

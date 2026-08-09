@@ -80,6 +80,27 @@ export async function fetchBuyerOffer(offerId: string): Promise<BuyerOffer | nul
   return (data as unknown as BuyerOffer) ?? null;
 }
 
+export interface AcceptedPriceCountdown {
+  offer_id: string;
+  buyer_price_naira: number;
+  discount_naira: number;
+  accepted_price_expires_at: string;
+  seconds_remaining: number;
+  has_expired: boolean;
+}
+
+/** An agreed price now expires (marketplace_accepted_price_hours after
+ * acceptance) — this is the live countdown source, not expires_at on the
+ * offer itself, which is the unrelated window for responding to the offer
+ * in the first place. Only meaningful when the buyer has an accepted or
+ * counter_accepted offer here; returns null otherwise. */
+export async function fetchBuyerAcceptedOffer(listingId: string): Promise<AcceptedPriceCountdown | null> {
+  const { data, error } = await cdb.rpc("get_buyer_accepted_offer", { p_listing_id: listingId });
+  if (error) return null;
+  const rows = (data ?? []) as AcceptedPriceCountdown[];
+  return rows[0] ?? null;
+}
+
 /**
  * Makes an offer. Returns the new offer id on success. The five specific
  * rejections the database can raise are mapped to human copy; anything else

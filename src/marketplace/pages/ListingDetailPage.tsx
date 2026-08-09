@@ -20,7 +20,7 @@ import VerifiedBadge from "../components/VerifiedBadge";
 import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
 import AskQuestionSheet from "../checkout/AskQuestionSheet";
-import { fetchBuyerOfferForListing, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
+import { fetchBuyerOfferForListing, fetchBuyerAcceptedOffer, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
 import { fetchBuyerQuestionForListing, fetchAnsweredQuestionsForListing } from "../questions";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { useSeller } from "../sell/useSeller";
@@ -53,6 +53,18 @@ interface CategoryField {
  * lighter weight, it is trust context ("why they're selling this"), not a
  * decisive spec like size or brand. */
 const REASON_KEY = "reason_for_selling";
+
+/** Live countdown text, e.g. "23h 59m", "4m 12s", "38s" — always at least
+ * one unit down to the second, matching how a person would say it. */
+function formatCountdown(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
 
 /** True when this field actually has something to show: an empty string or a
  * missing key never renders a row, and an explicit boolean false still counts
@@ -118,6 +130,30 @@ export default function ListingDetailPage() {
     enabled: !!id && isLoggedIn && offersEnabled,
     queryFn: () => fetchBuyerOfferForListing(id as string),
   });
+
+  // The accepted price's own 24-hour deadline (accepted_price_expires_at),
+  // a different clock from expires_at above (that one is the window to
+  // respond to the offer in the first place, already spent by the time an
+  // offer reaches accepted/counter_accepted). Only fetched once there is an
+  // accepted price to count down at all.
+  const acceptedCountdownEnabled = !!id && isLoggedIn && !!myOffer && (myOffer.status === "accepted" || myOffer.status === "counter_accepted");
+  const { data: acceptedCountdown } = useQuery({
+    queryKey: ["mkt-accepted-countdown", id, myOffer?.id],
+    enabled: acceptedCountdownEnabled,
+    queryFn: () => fetchBuyerAcceptedOffer(id as string),
+  });
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  useEffect(() => {
+    setSecondsLeft(acceptedCountdown ? acceptedCountdown.seconds_remaining : null);
+  }, [acceptedCountdown]);
+  // Same ticking-cooldown pattern already used for the login/resend timers
+  // elsewhere in the marketplace: a plain local integer, decremented every
+  // second, no Date arithmetic inside the interval itself.
+  useEffect(() => {
+    if (secondsLeft == null || secondsLeft <= 0) return;
+    const t = setInterval(() => setSecondsLeft((s) => (s == null ? null : Math.max(0, s - 1))), 1000);
+    return () => clearInterval(t);
+  }, [secondsLeft]);
 
   // Ask a question: this buyer's own question on this listing, if they have
   // asked one (at most one ever exists, enforced server side), and every
@@ -274,6 +310,13 @@ export default function ListingDetailPage() {
   const offerAccepted = myOffer && (myOffer.status === "accepted" || myOffer.status === "counter_accepted");
   const myPrice = offerAccepted ? (myOffer.status === "counter_accepted" ? myOffer.counter_buyer_price_naira! : myOffer.buyer_price_naira) : null;
   const myDiscount = offerAccepted && myPrice != null ? listing.final_price_naira - myPrice : 0;
+  // The agreed price's own 24-hour window, separate from offerAccepted
+  // (which stays true forever regardless of the clock — the offer's status
+  // column never flips on expiry, same reasoning as isLapsed() above).
+  // has_expired from the server is trusted first; the local tick reaching
+  // zero also flips this immediately rather than waiting on a refetch.
+  const priceExpired = !!offerAccepted && (!!acceptedCountdown?.has_expired || secondsLeft === 0);
+  const showAcceptedPrice = !!offerAccepted && myPrice != null && !priceExpired;
   // Anything else already spent this buyer's one offer here (declined, lapsed,
   // still pending, or awaiting their own reply to a counter) — Buy now stays
   // open at the listed price regardless, per design O10.
@@ -328,15 +371,20 @@ export default function ListingDetailPage() {
       <div className="mkt-detail-panel">
       <div className="mkt-detail-body">
         <div className="mkt-detail-priceblock">
-          {offerAccepted && myPrice != null ? (
+          {showAcceptedPrice ? (
             <div className="mkt-offer-accepted" style={{ marginBottom: 8 }}>
               <span className="tick">✓</span>
               <span>The seller said yes to a lower price</span>
             </div>
+          ) : priceExpired ? (
+            <div className="mkt-errbox" style={{ marginBottom: 8 }}>
+              <span className="m">!</span>
+              <span>Your agreed price has run out, so this is back to the normal price now.</span>
+            </div>
           ) : null}
           <div className="mkt-detail-price" style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-            <span>{formatNaira(offerAccepted && myPrice != null ? myPrice : listing.final_price_naira)}{multi ? " each" : ""}</span>
-            {offerAccepted && myPrice != null && (
+            <span>{formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}{multi ? " each" : ""}</span>
+            {showAcceptedPrice && (
               <>
                 <span style={{ font: "400 15px/1 'Lato', sans-serif", color: "var(--mkt-muted-2)", textDecoration: "line-through" }}>{formatNaira(listing.final_price_naira)}</span>
                 <span className="mkt-offer-discount-tag">{formatNaira(myDiscount)} off, just for you</span>
@@ -344,7 +392,22 @@ export default function ListingDetailPage() {
             )}
           </div>
           <h1 className="mkt-detail-title">{listing.title}</h1>
-          {offerAccepted && <div className="mkt-help">This price is yours alone, everyone else still sees {formatNaira(listing.final_price_naira)}.</div>}
+          {/* What it cost new, seller-optional. Understated on purpose, plain
+              text below the title, never a competing colour or size against
+              the actual price above it. Nothing renders when absent. */}
+          {listing.original_price_naira != null && listing.original_price_naira > listing.final_price_naira && (
+            <div className="mkt-help">Bought brand new at {formatNaira(listing.original_price_naira)}, save {formatNaira(listing.original_price_naira - listing.final_price_naira)}</div>
+          )}
+          {showAcceptedPrice && (
+            <>
+              <div className="mkt-help">This price is yours alone, everyone else still sees {formatNaira(listing.final_price_naira)}.</div>
+              {secondsLeft != null && secondsLeft > 0 && (
+                <div className="mkt-help" style={{ color: "var(--mkt-coral-dark)", fontWeight: 700 }}>
+                  This price holds for {formatCountdown(secondsLeft)} more. The item is not reserved though, someone else can still buy it at the normal price while you decide.
+                </div>
+              )}
+            </>
+          )}
           {multi && (
             <span className={available === 1 ? "mkt-avail low" : "mkt-avail"}>{available === 1 ? "Last one" : `${available} available`}</span>
           )}
@@ -467,10 +530,10 @@ export default function ListingDetailPage() {
       <div className="mkt-buybar">
         <div className="mkt-buybar-price">
           <small>{multi ? "Price each" : "Price"}</small>
-          <b>{formatNaira(offerAccepted && myPrice != null ? myPrice : listing.final_price_naira)}</b>
+          <b>{formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}</b>
         </div>
-        <button className="mkt-buy" onClick={() => navigate(offerAccepted && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`)}>
-          {offerAccepted && myPrice != null ? `Buy now at ${formatNaira(myPrice)}` : multi ? "Buy one now" : "Buy now"}
+        <button className="mkt-buy" onClick={() => navigate(showAcceptedPrice && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`)}>
+          {showAcceptedPrice ? `Buy now at ${formatNaira(myPrice!)}` : multi ? "Buy one now" : "Buy now"}
         </button>
       </div>
       </div>

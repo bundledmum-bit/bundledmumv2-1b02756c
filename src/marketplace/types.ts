@@ -39,6 +39,10 @@ export interface MarketplaceListing {
    * the seller's old free text did not map cleanly. */
   condition: "almost_new" | "good" | "fair" | null;
   final_price_naira: number;
+  /** What it cost new, seller-entered and optional. Shown to buyers as
+   * "Bought brand new at ₦X" plus the saving when present; nothing renders
+   * when absent, no empty state. */
+  original_price_naira: number | null;
   location_state: string | null;
   location_city: string | null;
   status: string;
