@@ -122,37 +122,38 @@ export default function MarketplaceOutreach() {
         }
       />
 
-      {/* Filter chips, sellers only per the design — one buyer type is a
-          chip that would always just read "0" or the full count, never
-          earning its own space. Every seller type shows even at zero,
-          greyed rather than hidden, so the shape of the whole system is
-          visible even when most of it is quiet. */}
-      {side === "seller" && (
-        <div className="mt-4 flex gap-1.5 flex-wrap">
-          <button onClick={() => { setFilter("all"); setSelectedKey(null); }}
-            className="font-heading font-extrabold text-[11px] px-2.5 py-1.5 rounded-lg whitespace-nowrap"
-            style={filter === "all" ? { background: "#1A1A1A", color: "#FFF8F4" } : { background: "#fff", border: "1px solid #F0DDD2", color: "#3D3936" }}>
-            All {sellerRows.length}
-          </button>
-          {stages.map((s) => {
-            const count = countsByStage[s.key] || 0;
-            const isUrgent = s.key === "unanswered_question" && count > 0;
-            const active = filter === s.key;
-            return (
-              <button key={s.key} onClick={() => { setFilter(s.key); setSelectedKey(null); }}
-                className="font-heading font-extrabold text-[11px] px-2.5 py-1.5 rounded-lg whitespace-nowrap"
-                style={
-                  active ? { background: "#1A1A1A", color: "#FFF8F4" }
-                    : isUrgent ? { background: "#FCEBE9", color: "#C0392B" }
-                    : count === 0 ? { background: "#fff", border: "1px solid #F0DDD2", color: "#C9B7AD" }
-                    : { background: "#fff", border: "1px solid #F0DDD2", color: "#6B5B54" }
-                }>
-                {s.chipLabel} · {count}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* Filter chips, both sides. The source design only put these on the
+          seller side (its own note: "buyers is currently a single empty
+          type", a chip that would always just read the same count as the
+          toggle isn't worth its own space) — no longer true now that
+          buyers has two types, so the same reasoning that earned the
+          seller side its chips now applies to buyers too. Every type shows
+          even at zero, greyed rather than hidden, so the shape of the
+          whole system is visible even when most of it is quiet. */}
+      <div className="mt-4 flex gap-1.5 flex-wrap">
+        <button onClick={() => { setFilter("all"); setSelectedKey(null); }}
+          className="font-heading font-extrabold text-[11px] px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+          style={filter === "all" ? { background: "#1A1A1A", color: "#FFF8F4" } : { background: "#fff", border: "1px solid #F0DDD2", color: "#3D3936" }}>
+          All {sideRows.length}
+        </button>
+        {stages.map((s) => {
+          const count = countsByStage[s.key] || 0;
+          const isUrgent = s.urgency < 0 && count > 0;
+          const active = filter === s.key;
+          return (
+            <button key={s.key} onClick={() => { setFilter(s.key); setSelectedKey(null); }}
+              className="font-heading font-extrabold text-[11px] px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+              style={
+                active ? { background: "#1A1A1A", color: "#FFF8F4" }
+                  : isUrgent ? { background: "#FCEBE9", color: "#C0392B" }
+                  : count === 0 ? { background: "#fff", border: "1px solid #F0DDD2", color: "#C9B7AD" }
+                  : { background: "#fff", border: "1px solid #F0DDD2", color: "#6B5B54" }
+              }>
+              {s.chipLabel} · {count}
+            </button>
+          );
+        })}
+      </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         {/* list */}
@@ -162,8 +163,7 @@ export default function MarketplaceOutreach() {
               <div className="mt-2 flex flex-col items-center gap-3 text-center py-14">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center font-heading font-bold text-lg" style={{ background: "#D8EFE5", color: "#1A4A33" }}>✓</div>
                 <div className="font-heading font-black text-lg text-foreground">No buyers need chasing</div>
-                <p className="text-sm text-text-med max-w-xs">Everyone who got an answer either bought or is still deciding within the window. Nothing sits stale right now, that's the good outcome.</p>
-                <p className="text-xs text-text-light max-w-xs">Only one outreach type exists for buyers today: answered 2+ days ago, still hasn't bought.</p>
+                <p className="text-sm text-text-med max-w-xs">Nobody's waiting on a delivery, and everyone who got an answer either bought or is still deciding within the window. Nothing sits stale right now, that's the good outcome.</p>
               </div>
             ) : (
               <OpsEmpty title="Nothing here" body="Nobody currently matches this filter. That's a calm, correct result, not a broken one." />

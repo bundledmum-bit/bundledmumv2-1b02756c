@@ -278,7 +278,7 @@ export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
 }
 
 /** The full canonical set of outreach types, always shown as a filter chip
- * even at zero rows (the queue is genuinely lopsided today, five of nine
+ * even at zero rows (the queue is genuinely lopsided today, six of ten
  * types currently return nothing) — chip label is the short, glanceable
  * wording; each type's row/detail content uses the real label the RPC
  * itself returns, not this one. */
@@ -293,7 +293,13 @@ export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urg
   { key: "listed_no_sales", chipLabel: "Live, no sale", urgency: 3 },
 ];
 
+/** Two types now, not the one the source design was built against (its own
+ * note reads "buyers is currently a single empty type" — no longer true).
+ * Given a chip filter, not a chip-less toggle, once there's more than one
+ * type to distinguish, the same reasoning that put chips on the seller
+ * side. */
 export const BUYER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urgency: number }> = [
+  { key: "order_awaiting_delivery", chipLabel: "Awaiting delivery", urgency: 0 },
   { key: "answered_question_no_purchase", chipLabel: "Waiting to buy", urgency: 2 },
 ];
 
