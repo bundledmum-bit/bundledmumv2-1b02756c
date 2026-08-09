@@ -155,7 +155,9 @@ export interface OrderContact {
   listing_title: string;
   amount_naira: number;
   seller_display_name: string | null;
+  seller_whatsapp: string | null;
   seller_phone: string | null;
+  can_call: boolean;
 }
 
 /**

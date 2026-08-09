@@ -86,7 +86,9 @@ export default function SellerOrderDetailPage() {
   const refundedNoReturn = refunded && dispute != null && !returnRequired;
 
   const buyerName = contact?.buyer_name || "your buyer";
+  const buyerWhatsapp = contact?.buyer_whatsapp || "";
   const buyerPhone = contact?.buyer_phone || "";
+  const canCall = !!contact?.can_call;
   const waMsg = `Hello ${buyerName}, this is about your BundledMum order ${ref} for ${item}. Let us sort out delivery.`;
 
   const statusPill = awaitingDispatch ? <span className="mkt-st pending">To send</span>
@@ -182,10 +184,10 @@ export default function SellerOrderDetailPage() {
                 <div><div className="nm">{buyerName}</div><div className="sub">Buyer</div></div>
               </div>
               <div className="mkt-buyer-note">Message them to agree collection or a send, and who covers the cost if you're sending, then mark it dispatched.</div>
-              {buyerPhone ? (
+              {buyerWhatsapp ? (
                 <div className="mkt-buyer-actions">
-                  <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(buyerPhone, waMsg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
-                  <a className="mkt-call" href={sellerCallLink(buyerPhone)}>Call</a>
+                  <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(buyerWhatsapp, waMsg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
+                  {canCall && <a className="mkt-call" href={sellerCallLink(buyerPhone)}>Call</a>}
                 </div>
               ) : (
                 <a className="mkt-wa" href={waContextHref(waNumber, "cannot_reach_buyer", { reference: ref })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Reach the buyer via BundledMum</a>

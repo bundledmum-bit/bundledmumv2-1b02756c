@@ -64,7 +64,9 @@ export interface SellerOrderContact {
   order_reference: string;
   seller_share_naira: number;
   buyer_name: string | null;
+  buyer_whatsapp: string | null;
   buyer_phone: string | null;
+  can_call: boolean;
 }
 
 /**

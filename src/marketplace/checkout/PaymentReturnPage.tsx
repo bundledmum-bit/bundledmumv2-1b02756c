@@ -196,7 +196,9 @@ function GuestPaid({ orderId, reference }: { orderId?: string; reference: string
 function SellerContact({ contact, loading, reference }: { contact: OrderContact | null | undefined; loading: boolean; reference: string }) {
   const name = contact?.seller_display_name || "your seller";
   const item = contact?.listing_title || "your item";
+  const whatsapp = contact?.seller_whatsapp || "";
   const phone = contact?.seller_phone || "";
+  const canCall = !!contact?.can_call;
   const msg = `Hello ${name}, I just paid for ${item} on BundledMum (order ${reference}). Please let me know about delivery.`;
   const waNumber = useMarketplaceWhatsAppNumber();
 
@@ -208,12 +210,12 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
           <div className="mkt-talk-name">{loading ? "Loading..." : name}</div>
           {item && !loading ? <div className="mkt-talk-item">{item}</div> : null}
         </div>
-        {phone ? (
+        {whatsapp ? (
           <>
             <div className="mkt-talk-prefill">Message them to agree whether you'll collect it in person or have it sent, who covers the cost if sent, and roughly when. Opens ready to send, with your item and order number.</div>
             <div className="mkt-talk-actions">
-              <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(phone, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
-              <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>
+              <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(whatsapp, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
+              {canCall && <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>}
             </div>
           </>
         ) : !loading ? (

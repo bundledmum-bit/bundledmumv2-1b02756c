@@ -106,14 +106,19 @@ export default function CheckoutPage() {
 
   const nameValid = nameInput.trim().length >= 2;
   const phoneValid = isValidWhatsappNumber(waDialCode, phoneInput);
-  const altPhoneValid = isValidNigerianPhone(altPhoneInput);
+  // The Nigerian phone field is genuinely optional: an empty value is fine
+  // (someone with only an international WhatsApp number must still be able
+  // to check out), a filled-in one still has to be a real Nigerian number.
+  const altPhoneValid = altPhoneInput.trim() === "" || isValidNigerianPhone(altPhoneInput);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim().toLowerCase());
-  // A non-Nigerian WhatsApp number cannot also be the required Nigerian
-  // delivery phone, so picking one implies "different from phone" on top
-  // of the buyer explicitly checking the box.
+  // A non-Nigerian WhatsApp country still surfaces the Nigerian phone field
+  // as a helpful option (a local number genuinely helps with delivery), but
+  // it no longer forces it open in a way the buyer can't dismiss by simply
+  // leaving it blank, and it never blocks submission.
   const impliedDifferent = waDialCode !== "234";
-  const effectiveDifferent = differentWhatsapp || impliedDifferent;
-  const detailsValid = (!needName || nameValid) && (!needPhone || (phoneValid && (!effectiveDifferent || altPhoneValid))) && (!needEmail || emailValid);
+  const showAltPhone = differentWhatsapp || impliedDifferent;
+  const hasAltPhone = showAltPhone && altPhoneInput.trim() !== "";
+  const detailsValid = (!needName || nameValid) && (!needPhone || (phoneValid && altPhoneValid)) && (!needEmail || emailValid);
 
   const showDetailsForm = !authLoading && profileLoaded && needAnyDetail && !committed;
   const canCreateOrder = isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed;
@@ -158,17 +163,17 @@ export default function CheckoutPage() {
       listingId: listingId as string,
       email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
       full_name: needName ? nameInput.trim() : undefined,
-      // phoneInput is what we asked for as "your WhatsApp number": when it
-      // genuinely is also their Nigerian phone (the default, picker on
-      // Nigeria), it's sent as phone and phone_is_whatsapp stays true. When
-      // it differs (their own checkbox, or a non-Nigerian country picked),
-      // phoneInput becomes whatsapp_number as full international digits and
-      // altPhoneInput (their real Nigerian phone) is sent as phone instead —
-      // matching exactly how create-marketplace-order already reads these
-      // three fields.
-      phone: needPhone ? (effectiveDifferent ? altPhoneInput.trim() : phoneInput.trim()) : undefined,
-      whatsappNumber: needPhone && effectiveDifferent ? toInternationalDigits(waDialCode, phoneInput) : undefined,
-      phoneIsWhatsapp: needPhone ? !effectiveDifferent : undefined,
+      // phoneInput is what we asked for as "your WhatsApp number": when the
+      // picker is on Nigeria and they never said otherwise, it genuinely is
+      // also their phone, sent as phone with phone_is_whatsapp true. The
+      // separate Nigerian phone field is optional — filled in, it's sent as
+      // phone and phoneInput becomes whatsapp_number instead; left blank
+      // (including for a buyer with only an international number and no
+      // Nigerian line at all), no phone is sent, matching exactly how
+      // create-marketplace-order already reads these three fields.
+      phone: needPhone ? (hasAltPhone ? altPhoneInput.trim() : (waDialCode === "234" && !differentWhatsapp ? phoneInput.trim() : undefined)) : undefined,
+      whatsappNumber: needPhone && !(waDialCode === "234" && !differentWhatsapp) ? toInternationalDigits(waDialCode, phoneInput) : undefined,
+      phoneIsWhatsapp: needPhone ? (waDialCode === "234" && !differentWhatsapp) : undefined,
       offerId,
     }),
   });
@@ -416,14 +421,20 @@ export default function CheckoutPage() {
                     <span style={{ font: "400 11.5px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>This is how the seller reaches you, so please make sure it's really on WhatsApp. Any country is fine.</span>
                     {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid WhatsApp number, any country is fine, for example 0803 123 4567 or +44 7911 123456.</span>}
 
-                    <label className="mkt-chk">
-                      <input type="checkbox" checked={effectiveDifferent} disabled={impliedDifferent} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
-                      <span>My phone number is different from my WhatsApp</span>
-                    </label>
+                    {/* Only relevant when the WhatsApp field is itself Nigerian:
+                        for any other country the phone field below is already
+                        offered unconditionally, so this checkbox would just be
+                        a redundant, confusing control sitting beside it. */}
+                    {waDialCode === "234" && (
+                      <label className="mkt-chk">
+                        <input type="checkbox" checked={differentWhatsapp} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
+                        <span>My phone number is different from my WhatsApp</span>
+                      </label>
+                    )}
 
-                    {effectiveDifferent && (
+                    {showAltPhone && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 2 }}>
-                        <span className="mkt-uplabel">Your phone number</span>
+                        <span className="mkt-uplabel">Your Nigerian phone number, optional</span>
                         <input
                           className={touched && !altPhoneValid ? "mkt-input error" : "mkt-input"}
                           type="tel" inputMode="numeric" autoComplete="tel"
@@ -431,7 +442,7 @@ export default function CheckoutPage() {
                           placeholder="e.g. 0803 123 4567"
                         />
                         {touched && !altPhoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian phone number, for example 0803 123 4567.</span>}
-                        {impliedDifferent && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>Since your WhatsApp isn't a Nigerian number, we also need your Nigerian number here for delivery.</span>}
+                        <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>Not required, but a Nigerian number genuinely helps with delivery.</span>
                       </div>
                     )}
                   </div>
