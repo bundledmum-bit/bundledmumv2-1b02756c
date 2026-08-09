@@ -5680,3 +5680,40 @@ types, and the date/time format spot-checked against a real timestamp in
 Node before use.
 
 `npm run build` clean.
+
+## 35. Sticky detail panel on Sellers and Buyers, desktop only (2026-08-08)
+
+**Problem**: on both screens, selecting someone near the bottom of a long
+list opened their detail panel off the bottom of the viewport, with no way
+to keep it in view while scrolling the list.
+
+**Reused, not reinvented**: the app's one established sticky pattern is
+`position: sticky; top: 24px; align-self: start;`, scoped inside
+`@media (min-width: 1024px)`, used identically on the listing detail
+purchase panel (`.mkt-detail-panel`,
+[`marketplace.css:451`](src/marketplace/marketplace.css:451)) and repeated
+verbatim on both order-detail right rails. Neither `MarketplaceSellers.tsx`
+nor `MarketplaceBuyers.tsx` had any sticky behaviour before this pass
+(confirmed by grep). Applied the same three properties via Tailwind
+(`lg:sticky lg:top-6 lg:self-start`, `top-6` = 24px, `lg:` = the same
+1024px breakpoint) directly on each screen's detail column div, the same
+element the CSS pattern styles on the reference page (not a wrapper).
+
+**Same underlying problem found, not fixed**: `MarketplaceDisputes.tsx`
+uses the identical `grid gap-5 lg:grid-cols-[list_detail]` list+detail shape
+and has the same missing-sticky gap. Left untouched per this pass's scope,
+flagged here for whoever picks it up next.
+
+**Mobile unaffected**: `lg:` prefixes only apply at 1024px and above; below
+that the existing `hidden lg:block` (Sellers) / `hidden lg:block` (Buyers)
+single-view-at-a-time mobile behaviour is untouched, and sticky positioning
+never applies at those widths either way.
+
+Preserved: everything on both detail panels including §33 and §34's work,
+the §33 list sort order, mobile layout, sections 7 through 30.
+
+Not live-verified — no admin login credentials exist in this environment,
+the standing limitation for every admin screen. Code-reviewed against the
+real deployed sticky pattern's exact values.
+
+`npm run build` clean.

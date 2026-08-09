@@ -101,7 +101,7 @@ export default function MarketplaceSellers() {
         </div>
 
         {/* detail */}
-        <div className={selected ? "" : "hidden lg:block"}>
+        <div className={selected ? "lg:sticky lg:top-6 lg:self-start" : "hidden lg:block lg:sticky lg:top-6 lg:self-start"}>
           {selected ? <SellerDetail s={selected} onBack={() => setSelectedId(null)} onChanged={refetch} />
             : <OpsEmpty title="Pick a seller" body="Select a seller to see bank details and act on the account." />}
         </div>

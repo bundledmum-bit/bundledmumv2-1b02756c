@@ -202,7 +202,7 @@ export default function MarketplaceBuyers() {
         </div>
 
         {/* detail */}
-        <div className={selected ? "min-w-0" : "hidden lg:block min-w-0"}>
+        <div className={selected ? "min-w-0 lg:sticky lg:top-6 lg:self-start" : "hidden lg:block min-w-0 lg:sticky lg:top-6 lg:self-start"}>
           {selected ? <BuyerDetail b={selected} onBack={() => setSelectedId(null)} />
             : <OpsEmpty title="Pick a buyer" body="Select a buyer to see contact details, totals and purchase history." />}
         </div>
