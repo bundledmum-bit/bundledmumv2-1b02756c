@@ -29,7 +29,7 @@ export default function SellerQuestionDetailPage() {
 
   useEffect(() => {
     if (sellerLoading) return;
-    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/questions/${id}`, "seller");
+    if (!isLoggedIn) sendToMarketplaceLogin(`/sell/questions/${id}`, "answer_question");
   }, [sellerLoading, isLoggedIn, id]);
 
   const { data: question, isLoading } = useQuery({
@@ -58,12 +58,22 @@ export default function SellerQuestionDetailPage() {
 
   if (sellerLoading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
+  // A signed-in visitor reaches here in two indistinguishable-by-design
+  // cases: this question genuinely doesn't exist, or it does but belongs to
+  // someone else's listing — RLS ("seller reads questions on own listings")
+  // filters both to the same empty result, on purpose, never leaking
+  // whether a question with this id exists at all to someone who isn't its
+  // owner. The copy below is written to be honest and calm either way,
+  // rather than a flat "not found" that reads as broken to a genuine owner
+  // hitting a transient hiccup, or a technical permission error to a buyer
+  // who followed someone else's link.
   if (!question) {
     return (
       <div className="mkt-center">
-        <MarketplaceTitle title="Question not found" />
-        <div className="mkt-empty-title">Question not found</div>
-        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
+        <MarketplaceTitle title="Not available to you" />
+        <div className="mkt-empty-title">Only the seller can see this</div>
+        <div className="mkt-empty-sub">This question belongs to someone else's listing, or the link is no longer valid. If you're a seller, check you're signed in to the right account.</div>
+        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/sell/dashboard")}>Go to your dashboard</button>
       </div>
     );
   }

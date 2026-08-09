@@ -5912,3 +5912,19 @@ Preserved: card grid layout and image aspect ratio, the qty badge, the detail ga
 Preserved: the backend Purchase event (untouched, a separate server-side flow), the Meta Pixel's own browser-side `track()` calls (`@/lib/metaPixel`, already independently guarded, untouched), sections 7 through 30.
 
 `npm run build` clean.
+
+## 46. Seller answer-a-question page: right login reason, calm non-owner message (2026-08-09)
+
+**Database enforcement untouched, confirmed by design, not by choice**: `seller_answer_listing_question` is `SECURITY DEFINER` and only updates a question the caller's own authenticated identity genuinely owns — this task is entirely about the experience around that, no RPC or RLS change.
+
+**Logged out**: `SellerQuestionDetailPage.tsx` was sending people through the `"seller"` login reason ("To open your seller dashboard...") — generic dashboard framing, wrong for "a buyer is waiting on your answer to this specific question." Added a new `LoginReason`, `answer_question` ("To answer their question, we need your email" / "This confirms it's really you, the seller, so your answer goes out under your name."), deliberately separate from the existing `question` reason (which is worded for the *buyer asking*, "we'll send you their answer" — wrong direction for a seller here). **Live-verified**: visited a real question's cold link logged out, confirmed the exact new copy renders, and confirmed the URL carries `returnTo=/sell/questions/<id>&reason=answer_question` — the existing redirect-then-load pattern was already returning to the exact question, not the dashboard, unchanged.
+
+**Logged in, not the owner**: `fetchSellerQuestion` reads through the authenticated `sdb` client, RLS-scoped to "seller reads questions on own listings" — a non-owner's read returns `null`, indistinguishable client-side from the question genuinely not existing (RLS filters both to the same empty result, on purpose, never leaking whether a question with that id exists at all to someone who isn't its owner). The old fallback read flatly "Question not found." Reworded to be honest and calm either way — "Only the seller can see this" / "This question belongs to someone else's listing, or the link is no longer valid. If you're a seller, check you're signed in to the right account." — not a raw error, not a technical permission message, not blank.
+
+**Already answered**: confirmed this already worked correctly before this pass — `question.answer ? <shows it> : <shows the form>` — no change needed, reported rather than rebuilt.
+
+Preserved: the content filter on answers (untouched, `detectBypassAttempt` unchanged), the contextual login system and every other gate's return destination, sections 7 through 30.
+
+Not live-verified beyond the logged-out path above — the non-owner and already-answered branches need a real authenticated seller session, the standing limitation for every seller screen in this environment. Code-reviewed against the real RLS policy name already documented in `questions.ts`'s own comments.
+
+`npm run build` clean.

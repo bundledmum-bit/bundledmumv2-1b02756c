@@ -27,9 +27,11 @@ export function safeReturnTo(returnTo: string | null | undefined): string {
  * list an item), seller (dashboard, orders, payouts, dispatch, price edit),
  * orders (my orders, order detail), dispute (report a problem), return
  * (send an item back), payment (bank-transfer confirmation), question (ask
- * a listing a question).
+ * a listing a question), answer_question (the SELLER answering a buyer's
+ * question — deliberately separate from "question" above, which is worded
+ * for the buyer asking, wrong direction for a seller arriving to answer).
  */
-export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question";
+export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question" | "answer_question";
 
 /**
  * The copy for each reason, always leading with what the person was doing,
@@ -70,12 +72,17 @@ export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string 
     lead: "To ask a question, we need your email",
     sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a link, no password to set.",
   },
+  answer_question: {
+    lead: "To answer their question, we need your email",
+    sub: "This confirms it's really you, the seller, so your answer goes out under your name. We'll email you a link, no password to set.",
+  },
 };
 
 /**
  * The small context icon shown above the headline, one per reason group:
  * money-related (offer/payment), delivery-related (orders/return), and
- * question (also a trust-building buyer ask, like offer) all read as green,
+ * question/answer_question (a trust-building ask-and-answer pair, like
+ * offer, whichever side of it a person is on) all read as green,
  * selling-related (sell/seller) reads as coral, matching
  * their meaning elsewhere in the product. Dispute has no precedent in the
  * design file this was built from — it borrows the same error-tinted pair
@@ -92,6 +99,7 @@ export const LOGIN_REASON_ICON: Record<LoginReason | "generic", { glyph: string;
   return: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   dispute: { glyph: "🚩", bg: "var(--mkt-error-bg)", fg: "var(--mkt-error)" },
   question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  answer_question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   generic: { glyph: "→", bg: "var(--mkt-grey-chip)", fg: "var(--mkt-muted)" },
 };
 
