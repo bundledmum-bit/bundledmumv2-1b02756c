@@ -80,10 +80,12 @@ export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): 
  *  - normalises to a 1:1 square, cropped to fill and centre-weighted, so tall and
  *    wide phone photos sit consistently in the grid and on detail. The backdrop is
  *    cream #FFF8F4 (the design's pad colour), never white or black.
- *  - burns in the "Uploaded on BundledMum" watermark: a lozenge bottom-left, inset
- *    5% of width, height ~8%, Nunito 800 text in cream, with an adaptive scrim
- *    (black 30% on light corners, cream 22% on dark) chosen from the measured
- *    corner luminance, so it stays legible on a white cot sheet and a navy pram.
+ *  - burns in the "Buy Used Baby/Children Items on BundledMum" watermark: a
+ *    lozenge bottom-centre, inset 5% of width, wrapping to two lines if it
+ *    would otherwise overflow, Nunito 800 text in cream, with an adaptive
+ *    scrim (black 30% on light backgrounds, cream 22% on dark) chosen from
+ *    the measured luminance under the lozenge itself, so it stays legible
+ *    on a white cot sheet and a navy pram alike.
  *  - exports a moderate-quality JPEG.
  * Baked into the stored file permanently, and only ever called for NEW listing
  * uploads. Dispatch and dispute photos keep the plain compressImage. Falls back
@@ -175,37 +177,82 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
-/** The "Uploaded on BundledMum" lozenge, bottom-left, with a luminance-adaptive
- * scrim so cream text reads on both light and dark photos. */
+/** Picks the two-line split of `text` that minimises the widest resulting
+ * line, at the ctx's current font — a balanced wrap for any wording, not a
+ * hardcoded split point, so this keeps working if the text ever changes
+ * again. Assumes at least two words; falls back to the whole text as a
+ * single "line" if there is only one. */
+function wrapToTwoLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): [string] | [string, string] {
+  const words = text.split(" ");
+  if (words.length < 2) return [text];
+  let best: { line1: string; line2: string; worst: number } | null = null;
+  for (let i = 1; i < words.length; i++) {
+    const line1 = words.slice(0, i).join(" ");
+    const line2 = words.slice(i).join(" ");
+    const worst = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
+    if (!best || worst < best.worst) best = { line1, line2, worst };
+  }
+  return [best!.line1, best!.line2];
+}
+
+/** The BundledMum watermark lozenge, bottom-centre, with a luminance-adaptive
+ * scrim so cream text reads on both light and dark photos. The text is
+ * roughly double the length of the mark's previous wording, so this never
+ * assumes it fits on one line: it measures the real glyph width at the
+ * canvas's actual font, wraps to two lines if needed, and only then shrinks
+ * the font (down to a hard floor) if even two lines would still overflow —
+ * so it can never run off the edges or clip, regardless of the exact
+ * wording or image size. */
 function drawWatermark(ctx: CanvasRenderingContext2D, size: number) {
-  const text = "Uploaded on BundledMum";
+  const text = "Buy Used Baby/Children Items on BundledMum";
   const inset = Math.round(size * 0.05);
-  const fontSize = Math.max(7, Math.round(size * 0.045));
-  ctx.font = `800 ${fontSize}px Nunito, "Helvetica Neue", Arial, sans-serif`;
+  const maxLineWidth = size - inset * 2;
+  const minFontSize = Math.max(6, Math.round(size * 0.018));
+
+  let fontSize = Math.max(7, Math.round(size * 0.038));
+  let lines: string[] = [text];
+  for (;;) {
+    ctx.font = `800 ${fontSize}px Nunito, "Helvetica Neue", Arial, sans-serif`;
+    if (ctx.measureText(text).width <= maxLineWidth) { lines = [text]; break; }
+    lines = wrapToTwoLines(ctx, text, maxLineWidth);
+    const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
+    if (widest <= maxLineWidth || fontSize <= minFontSize) break;
+    fontSize -= 1;
+  }
   ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+
   const padX = Math.round(fontSize * 0.9);
-  const textW = Math.ceil(ctx.measureText(text).width);
-  const lozH = Math.max(Math.round(size * 0.08), fontSize + Math.round(fontSize * 0.9));
-  const lozW = textW + padX * 2;
-  const x = inset;
+  const padY = Math.round(fontSize * 0.5);
+  const lineHeight = Math.round(fontSize * 1.25);
+  const textW = Math.max(...lines.map((l) => Math.ceil(ctx.measureText(l).width)));
+  const lozW = Math.min(size - 2, textW + padX * 2);
+  const lozH = padY * 2 + lines.length * lineHeight;
+  const x = Math.round((size - lozW) / 2);
   const y = size - inset - lozH;
 
-  // Measure average luminance of the corner the lozenge covers, to pick the scrim.
+  // Measure average luminance of the region the lozenge now covers (bottom
+  // centre, not the old bottom-left corner) to pick the scrim — the same
+  // adaptive mechanism as before, just re-sampled at the new position.
   let dark = false;
   try {
-    const rw = Math.max(1, Math.min(lozW, size - x));
-    const region = ctx.getImageData(x, y, rw, lozH).data;
+    const region = ctx.getImageData(x, y, lozW, lozH).data;
     let sum = 0;
     for (let i = 0; i < region.length; i += 4) sum += 0.2126 * region[i] + 0.7152 * region[i + 1] + 0.0722 * region[i + 2];
     dark = sum / (region.length / 4) / 255 < 0.5;
   } catch { /* if the canvas is ever tainted, fall back to the light-photo scrim */ }
 
   ctx.fillStyle = dark ? "rgba(255,248,244,0.22)" : "rgba(0,0,0,0.30)";
-  roundRectPath(ctx, x, y, lozW, lozH, Math.round(lozH * 0.3));
+  roundRectPath(ctx, x, y, lozW, lozH, Math.round(lozH * 0.25));
   ctx.fill();
 
-  ctx.fillStyle = "#FFF8F4"; // cream text and mark, always
-  ctx.fillText(text, x + padX, y + lozH / 2 + Math.round(fontSize * 0.06));
+  ctx.fillStyle = "#FFF8F4"; // cream text, always
+  const cx = x + lozW / 2;
+  lines.forEach((line, i) => {
+    const cy = y + padY + lineHeight * i + lineHeight / 2;
+    ctx.fillText(line, cx, cy);
+  });
+  ctx.textAlign = "left"; // restore the canvas default for any caller after this
 }
 
 /**
