@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
-import { isValidNigerianPhone } from "../lib/phone";
+import { isValidNigerianPhone, isValidWhatsappNumber, toInternationalDigits } from "../lib/phone";
+import CountryCodePicker from "../components/CountryCodePicker";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
@@ -27,7 +28,7 @@ function friendlyCreateError(code: string): string {
   switch (code) {
     case "A valid email address is required": return "Please enter a valid email address.";
     case "Please give your name so the seller knows who to send to": return "Please enter your name so the seller knows who to send to.";
-    case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian WhatsApp number so the seller can reach you.";
+    case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian phone number so the seller can reach you.";
     default: return "We could not start your order just now. Please check your details and try again.";
   }
 }
@@ -71,6 +72,7 @@ export default function CheckoutPage() {
   // same), and only then does altPhoneInput (their actual phone, if it
   // genuinely differs) appear and get collected.
   const [phoneInput, setPhoneInput] = useState("");
+  const [waDialCode, setWaDialCode] = useState("234");
   const [differentWhatsapp, setDifferentWhatsapp] = useState(false);
   const [altPhoneInput, setAltPhoneInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
@@ -103,10 +105,15 @@ export default function CheckoutPage() {
   const needAnyDetail = needName || needPhone || needEmail;
 
   const nameValid = nameInput.trim().length >= 2;
-  const phoneValid = isValidNigerianPhone(phoneInput);
+  const phoneValid = isValidWhatsappNumber(waDialCode, phoneInput);
   const altPhoneValid = isValidNigerianPhone(altPhoneInput);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.trim().toLowerCase());
-  const detailsValid = (!needName || nameValid) && (!needPhone || (phoneValid && (!differentWhatsapp || altPhoneValid))) && (!needEmail || emailValid);
+  // A non-Nigerian WhatsApp number cannot also be the required Nigerian
+  // delivery phone, so picking one implies "different from phone" on top
+  // of the buyer explicitly checking the box.
+  const impliedDifferent = waDialCode !== "234";
+  const effectiveDifferent = differentWhatsapp || impliedDifferent;
+  const detailsValid = (!needName || nameValid) && (!needPhone || (phoneValid && (!effectiveDifferent || altPhoneValid))) && (!needEmail || emailValid);
 
   const showDetailsForm = !authLoading && profileLoaded && needAnyDetail && !committed;
   const canCreateOrder = isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed;
@@ -152,14 +159,16 @@ export default function CheckoutPage() {
       email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
       full_name: needName ? nameInput.trim() : undefined,
       // phoneInput is what we asked for as "your WhatsApp number": when it
-      // genuinely is also their phone (the default), it's sent as phone and
-      // phone_is_whatsapp stays true. When they said it differs, phoneInput
-      // becomes whatsapp_number and altPhoneInput (their real phone) is
-      // sent as phone instead — matching exactly how create-marketplace-order
-      // already reads these three fields.
-      phone: needPhone ? (differentWhatsapp ? altPhoneInput.trim() : phoneInput.trim()) : undefined,
-      whatsappNumber: needPhone && differentWhatsapp ? phoneInput.trim() : undefined,
-      phoneIsWhatsapp: needPhone ? !differentWhatsapp : undefined,
+      // genuinely is also their Nigerian phone (the default, picker on
+      // Nigeria), it's sent as phone and phone_is_whatsapp stays true. When
+      // it differs (their own checkbox, or a non-Nigerian country picked),
+      // phoneInput becomes whatsapp_number as full international digits and
+      // altPhoneInput (their real Nigerian phone) is sent as phone instead —
+      // matching exactly how create-marketplace-order already reads these
+      // three fields.
+      phone: needPhone ? (effectiveDifferent ? altPhoneInput.trim() : phoneInput.trim()) : undefined,
+      whatsappNumber: needPhone && effectiveDifferent ? toInternationalDigits(waDialCode, phoneInput) : undefined,
+      phoneIsWhatsapp: needPhone ? !effectiveDifferent : undefined,
       offerId,
     }),
   });
@@ -395,21 +404,24 @@ export default function CheckoutPage() {
                 {needPhone && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     <span className="mkt-uplabel">Your WhatsApp number</span>
-                    <input
-                      className={touched && !phoneValid ? "mkt-input error" : "mkt-input"}
-                      type="tel" inputMode="numeric" autoComplete="tel"
-                      value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)}
-                      placeholder="e.g. 0803 123 4567"
-                    />
-                    <span style={{ font: "400 11.5px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>This is how the seller reaches you, so please make sure it's really on WhatsApp.</span>
-                    {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian WhatsApp number, for example 0803 123 4567.</span>}
+                    <div className="mkt-cc-row">
+                      <CountryCodePicker dialCode={waDialCode} onChange={setWaDialCode} />
+                      <input
+                        className={touched && !phoneValid ? "mkt-input error" : "mkt-input"}
+                        type="tel" inputMode="numeric" autoComplete="tel"
+                        value={phoneInput} onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="e.g. 0803 123 4567"
+                      />
+                    </div>
+                    <span style={{ font: "400 11.5px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>This is how the seller reaches you, so please make sure it's really on WhatsApp. Any country is fine.</span>
+                    {touched && !phoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid WhatsApp number, any country is fine, for example 0803 123 4567 or +44 7911 123456.</span>}
 
                     <label className="mkt-chk">
-                      <input type="checkbox" checked={differentWhatsapp} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
+                      <input type="checkbox" checked={effectiveDifferent} disabled={impliedDifferent} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
                       <span>My phone number is different from my WhatsApp</span>
                     </label>
 
-                    {differentWhatsapp && (
+                    {effectiveDifferent && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 2 }}>
                         <span className="mkt-uplabel">Your phone number</span>
                         <input
@@ -419,6 +431,7 @@ export default function CheckoutPage() {
                           placeholder="e.g. 0803 123 4567"
                         />
                         {touched && !altPhoneValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Enter a valid Nigerian phone number, for example 0803 123 4567.</span>}
+                        {impliedDifferent && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-muted)" }}>Since your WhatsApp isn't a Nigerian number, we also need your Nigerian number here for delivery.</span>}
                       </div>
                     )}
                   </div>

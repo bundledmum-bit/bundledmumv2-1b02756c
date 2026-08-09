@@ -5811,3 +5811,23 @@ exactly**, same verdict, same message text, both directions.
 Preserved: the ask-a-question and answer flows themselves, `AskQuestionSheet.tsx` and `SellerQuestionDetailPage.tsx` untouched, only the shared filter function changed. Sections 7 through 30 unaffected. Not made stricter than the server anywhere — every new rule is a direct port, no invented patterns.
 
 `npm run build` clean.
+
+## 40. WhatsApp number field accepts any country, phone stays Nigerian (2026-08-09)
+
+**The bug**: both the WhatsApp field AND its "different from phone" secondary field required `isValidNigerianPhone` on Seller Setup and Checkout, locking out a Nigerian mum living abroad or anyone whose WhatsApp runs on a non-Nigerian line entirely.
+
+**The fix**: a country code picker ([`CountryCodePicker.tsx`](src/marketplace/components/CountryCodePicker.tsx), a native `<select>` over a new [`countries.ts`](src/marketplace/lib/countries.ts) full dial-code list, Nigeria first/default) sits beside the WhatsApp field on both Seller Setup and Checkout. The Nigerian-only phone field (used when it genuinely differs) has no picker and is unchanged. New functions in [`lib/phone.ts`](src/marketplace/lib/phone.ts): `isValidWhatsappNumber(dialCode, raw)` routes to `isValidNigerianPhone` when Nigeria is selected, or the new permissive `isValidInternationalPhone` (7-15 digits after the trunk zero is stripped) otherwise; `toInternationalDigits(dialCode, raw)` produces the stored format.
+
+**The leading-zero problem, solved**: `stripLeadingTrunkZero()` drops exactly one leading `0` from the typed digits before the dial code is prefixed, applied universally (not Nigeria-special-cased) since dropping the trunk prefix before adding a country code is the standard convention almost everywhere. Tested directly: `toInternationalDigits("234", "0803 123 4567")` and `toInternationalDigits("234", "803 123 4567")` both produce the identical, correct `"2348031234567"` (verified in a Node script alongside UK and US examples, all correct).
+
+**A genuine edge case surfaced and resolved, not left implicit**: a non-Nigerian WhatsApp number cannot also serve as the required Nigerian delivery phone, so picking a non-Nigerian country now implies "different from phone" on its own (`impliedDifferent = waDialCode !== "234"`), on top of the existing checkbox (`effectiveDifferent = differentWhatsapp || impliedDifferent`). The checkbox itself still defaults unchecked exactly as before; it's shown checked and disabled only when the picker forces it, with a short explanatory line ("Since your WhatsApp isn't a Nigerian number, we also need your Nigerian number here for delivery.").
+
+**Messages** (exact wording): phone field unchanged — `"Enter a valid Nigerian phone number, for example 0803 123 4567."`; WhatsApp field — `"Enter a valid WhatsApp number, any country is fine, for example 0803 123 4567 or +44 7911 123456."`, with a matching help line under the field itself. Also fixed a latent mislabel from §38: `CheckoutPage.tsx`'s server-error mapping for the required-phone rejection had been changed to say "WhatsApp" in that pass; reverted to "Please enter a valid Nigerian phone number so the seller can reach you." since that error is specifically about the `phone` column, which is still always Nigerian.
+
+**Storage**: `whatsapp_number` is now always sent as full international digits, no plus sign, via `toInternationalDigits` — the same `2348012345678` shape already used for Nigerian numbers, so a `wa.me` link built from it works directly for any country. Confirmed compatible with `marketplace_sellers`' `sync_seller_whatsapp_number` trigger: its own normalisation block only recognises three Nigerian-shaped digit patterns and leaves anything else (any non-Nigerian number) exactly as sent, so a pre-normalised international value passes through untouched.
+
+**Live-verified** at 390px on guest checkout: the picker (fixed 84px) sits beside the WhatsApp input with room to spare (placeholder "e.g. 0803 123 4567" fully visible, not crowded); selecting "+44 United Kingdom" correctly auto-checked and disabled the "different from phone" checkbox and revealed the required Nigerian phone field with its explanatory note, with no console errors from the change. Seller Setup applies the identical pattern, code-reviewed only (no seller credentials in this environment).
+
+Preserved: the toggle defaulting to same-as-phone, the WhatsApp-first framing, both fields still required, guest checkout requiring no login, sections 7 through 30.
+
+`npm run build` clean.

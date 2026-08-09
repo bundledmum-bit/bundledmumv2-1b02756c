@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, missingNameParts, parseBankNameMismatch, previewDisplayName, genericErrorMessage } from "./sellData";
-import { isValidNigerianPhone } from "../lib/phone";
+import { isValidNigerianPhone, isValidWhatsappNumber, toInternationalDigits } from "../lib/phone";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import CountryCodePicker from "../components/CountryCodePicker";
 
 /**
  * Seller setup, reskinned to the design. Creates the marketplace_sellers row
@@ -26,6 +27,7 @@ export default function SellerSetupPage() {
   // reachable). differentWhatsapp defaults to false (assume the same); only
   // then does altPhone (their actual phone, if it genuinely differs) appear.
   const [phone, setPhone] = useState("");
+  const [waDialCode, setWaDialCode] = useState("234");
   const [differentWhatsapp, setDifferentWhatsapp] = useState(false);
   const [altPhone, setAltPhone] = useState("");
   const [bankName, setBankName] = useState("");
@@ -44,6 +46,14 @@ export default function SellerSetupPage() {
   // the moment both legal names are saved (see previewDisplayName's own doc).
   const namePreview = previewDisplayName(legalFirstName, legalLastName);
 
+  // A non-Nigerian WhatsApp number cannot also BE the Nigerian delivery
+  // phone, so picking one implies "different from phone" on its own, on
+  // top of the seller explicitly checking the box. The checkbox itself
+  // still defaults to unchecked and stays togglable whenever the picker is
+  // on Nigeria.
+  const impliedDifferent = waDialCode !== "234";
+  const effectiveDifferent = differentWhatsapp || impliedDifferent;
+
   useEffect(() => {
     if (loading) return;
     if (!isLoggedIn) { sendToMarketplaceLogin("/sell", "sell"); return; }
@@ -56,11 +66,11 @@ export default function SellerSetupPage() {
       setError("Please fill in your WhatsApp number and full bank details.");
       return;
     }
-    if (!isValidNigerianPhone(phone)) {
-      setError("Enter a valid Nigerian WhatsApp number, for example 0803 123 4567.");
+    if (!isValidWhatsappNumber(waDialCode, phone)) {
+      setError("Enter a valid WhatsApp number, any country is fine, for example 0803 123 4567 or +44 7911 123456.");
       return;
     }
-    if (differentWhatsapp && (!altPhone.trim() || !isValidNigerianPhone(altPhone))) {
+    if (effectiveDifferent && (!altPhone.trim() || !isValidNigerianPhone(altPhone))) {
       setError("Enter a valid Nigerian phone number, for example 0803 123 4567.");
       return;
     }
@@ -90,16 +100,19 @@ export default function SellerSetupPage() {
     // No display_name here: a database trigger derives it from the legal
     // names the moment both are present, and overwrites anything sent.
     // phone_is_whatsapp true (the default) lets the DB trigger derive
-    // whatsapp_number from phone itself; when the seller says their phone
-    // genuinely differs, phone carries their real number and whatsapp_number
-    // is sent explicitly instead, exactly what that trigger reads.
+    // whatsapp_number from phone itself; when the seller's WhatsApp
+    // genuinely differs (their own checkbox, or a non-Nigerian country
+    // picked), phone carries their real Nigerian number and whatsapp_number
+    // is sent explicitly as full international digits, no plus sign, which
+    // the trigger's own normalisation step passes through unchanged for any
+    // non-Nigerian shape.
     const { error: sErr } = await sdb.from("marketplace_sellers").insert({
       customer_id: cid,
       legal_first_name: legalFirstName.trim(),
       legal_last_name: legalLastName.trim(),
-      phone: differentWhatsapp ? altPhone.trim() : phone.trim(),
-      whatsapp_number: differentWhatsapp ? phone.trim() : undefined,
-      phone_is_whatsapp: !differentWhatsapp,
+      phone: effectiveDifferent ? altPhone.trim() : phone.trim(),
+      whatsapp_number: effectiveDifferent ? toInternationalDigits(waDialCode, phone) : undefined,
+      phone_is_whatsapp: !effectiveDifferent,
       bank_name: bankName.trim(),
       bank_account_name: bankAcctName.trim(),
       bank_account_number: bankAcctNumber.trim(),
@@ -157,18 +170,22 @@ export default function SellerSetupPage() {
 
         <div className="mkt-field">
           <div className="mkt-field-head"><span className="lbl">Your WhatsApp number</span><span className="mkt-tag public">Shared after a sale</span></div>
-          <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803..." type="tel" inputMode="numeric" />
-          <div className="mkt-help">After a buyer pays, we share this number with them so the two of you can agree delivery, in person or by post, and who covers the cost if you're posting it. You get their number too. It is never shown on a public listing. This is how buyers reach you, so please make sure it's really on WhatsApp.</div>
+          <div className="mkt-cc-row">
+            <CountryCodePicker dialCode={waDialCode} onChange={setWaDialCode} />
+            <input className="mkt-input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803..." type="tel" inputMode="numeric" />
+          </div>
+          <div className="mkt-help">After a buyer pays, we share this number with them so the two of you can agree delivery, in person or by post, and who covers the cost if you're posting it. You get their number too. It is never shown on a public listing. This is how buyers reach you, so please make sure it's really on WhatsApp. Any country is fine.</div>
 
           <label className="mkt-chk">
-            <input type="checkbox" checked={differentWhatsapp} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
+            <input type="checkbox" checked={effectiveDifferent} disabled={impliedDifferent} onChange={(e) => setDifferentWhatsapp(e.target.checked)} />
             <span>My phone number is different from my WhatsApp</span>
           </label>
 
-          {differentWhatsapp && (
+          {effectiveDifferent && (
             <div style={{ marginTop: 10 }}>
               <span className="mkt-uplabel">Your phone number</span>
               <input className="mkt-input" style={{ marginTop: 5 }} value={altPhone} onChange={(e) => setAltPhone(e.target.value)} placeholder="0803..." type="tel" inputMode="numeric" />
+              {impliedDifferent && <div className="mkt-help">Since your WhatsApp isn't a Nigerian number, we also need your Nigerian number here for delivery.</div>}
             </div>
           )}
         </div>
