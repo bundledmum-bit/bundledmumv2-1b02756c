@@ -372,6 +372,12 @@
 .mkt-spec-note .ic { width: 15px; height: 15px; flex: 0 0 15px; border-radius: 50%; background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 700 9px/15px 'Lato', sans-serif; text-align: center; }
 .mkt-spec-note span:last-child { font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-muted-2); font-style: italic; }
 
+/* Questions and answers, reuses the .mkt-spec card shell above it. */
+.mkt-qa-row { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-bottom: 1px solid var(--mkt-border); }
+.mkt-qa-row:last-child { border-bottom: none; }
+.mkt-qa-q { font: 700 13.5px/1.4 'Lato', sans-serif; color: var(--mkt-black); }
+.mkt-qa-a { font: 400 13.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
+
 .mkt-reassure {
   background: var(--mkt-green-light);
   border-radius: 14px;

@@ -211,11 +211,25 @@ export default function MarketplaceBuyers() {
   );
 }
 
+interface NudgeSuggestion { stage_key: string; label: string; urgency: number; whatsapp_link: string; }
+
 function BuyerDetail({ b, onBack }: { b: BuyerRow; onBack: () => void }) {
   const navigate = useNavigate();
   const open = b.disputes_open > 0;
   const contactNumber = b.whatsapp_number || b.phone;
   const intlPhone = toIntlPhone(contactNumber);
+
+  // Suggested outreach, the buyer-side mirror of the seller screen's own
+  // section (same shape, same generic render, just a different RPC).
+  const { data: nudges = [] } = useQuery({
+    queryKey: ["mkt-buyer-nudges", b.customer_id],
+    staleTime: 15000,
+    queryFn: async (): Promise<NudgeSuggestion[]> => {
+      const { data, error: err } = await adb.rpc("get_buyer_nudge_suggestions", { p_customer_id: b.customer_id });
+      if (err) throw err;
+      return ((data ?? []) as NudgeSuggestion[]).slice().sort((a, b2) => a.urgency - b2.urgency);
+    },
+  });
 
   const { data: purchases, isLoading: purchasesLoading } = useQuery({
     queryKey: ["mkt-buyer-purchases", b.customer_id],
@@ -290,6 +304,29 @@ function BuyerDetail({ b, onBack }: { b: BuyerRow; onBack: () => void }) {
         </div>
         {!contactNumber && <div className="text-[11px] mt-2" style={{ color: "#8A7A72" }}>No phone or WhatsApp number on file for this buyer.</div>}
       </OpsCard>
+
+      {/* Zero matches is this buyer's actual situation, not a broken query —
+          no placeholder, the section simply doesn't render. */}
+      {nudges.length > 0 && (
+        <OpsCard label="Suggested outreach">
+          <div className="flex flex-col gap-2.5">
+            {nudges.map((n) => (
+              <div key={n.stage_key} className="flex items-center justify-between gap-3">
+                <span className="text-[12.5px] font-bold text-foreground">{n.label}</span>
+                <a
+                  href={n.whatsapp_link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-none flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 font-heading font-extrabold text-[12.5px]"
+                  style={{ background: "#25D366", color: "#FFFFFF" }}
+                >
+                  WhatsApp
+                </a>
+              </div>
+            ))}
+          </div>
+        </OpsCard>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Orders" value={String(b.orders_total)} />

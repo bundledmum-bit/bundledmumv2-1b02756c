@@ -26,9 +26,10 @@ export function safeReturnTo(returnTo: string | null | undefined): string {
  * offer (negotiate/view an offer), sell (become a seller, seller setup,
  * list an item), seller (dashboard, orders, payouts, dispatch, price edit),
  * orders (my orders, order detail), dispute (report a problem), return
- * (send an item back), payment (bank-transfer confirmation).
+ * (send an item back), payment (bank-transfer confirmation), question (ask
+ * a listing a question).
  */
-export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment";
+export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question";
 
 /**
  * The copy for each reason, always leading with what the person was doing,
@@ -65,12 +66,17 @@ export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string 
     lead: "To check on your transfer, we need your email",
     sub: "This is how we match your payment to your order. We'll email you a link, no password needed.",
   },
+  question: {
+    lead: "To ask a question, we need your email",
+    sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a link, no password to set.",
+  },
 };
 
 /**
  * The small context icon shown above the headline, one per reason group:
- * money-related (offer/payment) and delivery-related (orders/return) both
- * read as green, selling-related (sell/seller) reads as coral, matching
+ * money-related (offer/payment), delivery-related (orders/return), and
+ * question (also a trust-building buyer ask, like offer) all read as green,
+ * selling-related (sell/seller) reads as coral, matching
  * their meaning elsewhere in the product. Dispute has no precedent in the
  * design file this was built from — it borrows the same error-tinted pair
  * already used for every other "something needs attention" moment in the
@@ -85,6 +91,7 @@ export const LOGIN_REASON_ICON: Record<LoginReason | "generic", { glyph: string;
   orders: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   return: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   dispute: { glyph: "🚩", bg: "var(--mkt-error-bg)", fg: "var(--mkt-error)" },
+  question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   generic: { glyph: "→", bg: "var(--mkt-grey-chip)", fg: "var(--mkt-muted)" },
 };
 

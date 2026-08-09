@@ -19,7 +19,9 @@ import {
 import VerifiedBadge from "../components/VerifiedBadge";
 import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
+import AskQuestionSheet from "../checkout/AskQuestionSheet";
 import { fetchBuyerOfferForListing, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
+import { fetchBuyerQuestionForListing, fetchAnsweredQuestionsForListing } from "../questions";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { useSeller } from "../sell/useSeller";
 import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
@@ -79,6 +81,7 @@ export default function ListingDetailPage() {
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [offerSheetOpen, setOfferSheetOpen] = useState(false);
+  const [askSheetOpen, setAskSheetOpen] = useState(false);
 
   // Not live: figure out which of the four situations this is. Ownership is
   // decided by the database (RLS on marketplace_listings), not client-side —
@@ -114,6 +117,20 @@ export default function ListingDetailPage() {
     queryKey: ["buyer-offer", id],
     enabled: !!id && isLoggedIn && offersEnabled,
     queryFn: () => fetchBuyerOfferForListing(id as string),
+  });
+
+  // Ask a question: this buyer's own question on this listing, if they have
+  // asked one (at most one ever exists, enforced server side), and every
+  // answered question on the listing, public to everyone browsing it.
+  const { data: myQuestion, refetch: refetchMyQuestion } = useQuery({
+    queryKey: ["buyer-question", id],
+    enabled: !!id && isLoggedIn,
+    queryFn: () => fetchBuyerQuestionForListing(id as string),
+  });
+  const { data: answeredQuestions = [] } = useQuery({
+    queryKey: ["mkt-answered-questions", id],
+    enabled: !!id,
+    queryFn: () => fetchAnsweredQuestionsForListing(id as string),
   });
 
   // This category's question definitions, so the seller's raw attributes jsonb
@@ -268,6 +285,11 @@ export default function ListingDetailPage() {
     setOfferSheetOpen(true);
   }
 
+  function openAskSheet() {
+    if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "question"); return; }
+    setAskSheetOpen(true);
+  }
+
   return (
     <div className="mkt-detail">
       <MarketplaceSeo
@@ -396,6 +418,21 @@ export default function ListingDetailPage() {
           <p className="mkt-detail-text">{listing.display_description}</p>
         </div>
 
+        {/* Answered questions (Q&A), public to anyone viewing the listing,
+            not just the buyer who asked. Zero matches simply doesn't render,
+            same as the spec block above it. */}
+        {answeredQuestions.length > 0 && (
+          <div className="mkt-spec">
+            <div className="mkt-spec-h">Questions and answers</div>
+            {answeredQuestions.map((q) => (
+              <div className="mkt-qa-row" key={q.id}>
+                <div className="mkt-qa-q">Q: {q.question}</div>
+                <div className="mkt-qa-a">A: {q.answer}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
 
         {/* Ask for a lower price (design 23a, buyer-facing copy per the
@@ -413,6 +450,17 @@ export default function ListingDetailPage() {
           ) : (
             <button type="button" className="mkt-offer-entry" onClick={openOfferSheet}>Ask for a lower price</button>
           )
+        )}
+
+        {/* Ask a question. Hidden (replaced by a status line) once this buyer
+            has already asked one on this listing, the same one-ask pattern
+            as the offer entry above. */}
+        {!myQuestion ? (
+          <button type="button" className="mkt-offer-entry" onClick={openAskSheet}>Ask a question</button>
+        ) : myQuestion.answer ? (
+          <div className="mkt-offer-used">You asked a question, see the seller's answer above</div>
+        ) : (
+          <div className="mkt-offer-used">You asked a question, waiting for the seller to answer</div>
         )}
       </div>
 
@@ -436,6 +484,15 @@ export default function ListingDetailPage() {
           maxDiscountNaira={maxDiscountNaira}
           onClose={() => setOfferSheetOpen(false)}
           onSent={() => { setOfferSheetOpen(false); navigate(`/listing/${listing.id}/offer`); }}
+        />
+      )}
+
+      {askSheetOpen && (
+        <AskQuestionSheet
+          listingId={listing.id}
+          listingTitle={listing.title}
+          onClose={() => setAskSheetOpen(false)}
+          onSent={() => { setAskSheetOpen(false); refetchMyQuestion(); }}
         />
       )}
     </div>
