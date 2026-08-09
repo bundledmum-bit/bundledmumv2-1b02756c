@@ -259,7 +259,11 @@ export function shortTime(iso: string | null): string {
 /** One row per person per outreach reason they currently match — the same
  * get_seller_nudge_suggestions / get_buyer_nudge_suggestions the per-seller
  * "Suggested outreach" panel already calls, just run across everyone rather
- * than scoped to one seller. Suspended sellers are excluded server side. */
+ * than scoped to one seller. Suspended sellers are excluded server side.
+ * last_contacted_at / times_contacted are tracked PER (person, stage_key),
+ * not per person — someone contacted about bank details may never have
+ * been contacted about an unanswered question, and the two must never be
+ * collapsed into one status. */
 export interface OutreachRow {
   person_type: "seller" | "buyer";
   person_id: string;
@@ -269,12 +273,51 @@ export interface OutreachRow {
   urgency: number;
   context: string | null;
   whatsapp_link: string;
+  last_contacted_at: string | null;
+  times_contacted: number;
 }
 
 export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
   const { data, error } = await adb.rpc("get_outreach_queue");
   if (error) throw error;
   return (data ?? []) as unknown as OutreachRow[];
+}
+
+/** Records that this exact (person, outreach type) was messaged — a
+ * deliberate, explicit admin action, never fired just because the
+ * WhatsApp link was tapped (tapping a link is not proof a message was
+ * actually sent, and auto-logging on tap would quietly create false
+ * records). Returns whether the write succeeded. */
+export async function logOutreachContact(personType: "seller" | "buyer", personId: string, stageKey: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("log_outreach_contact", { p_person_type: personType, p_person_id: personId, p_stage_key: stageKey });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Reverses a mis-tap of "mark as sent": removes the most recent contact
+ * record for this exact (person, outreach type). */
+export async function undoOutreachContact(personId: string, stageKey: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("undo_outreach_contact", { p_person_id: personId, p_stage_key: stageKey });
+  if (error) throw error;
+  return data === true;
+}
+
+/** "2 days ago" / "Just now" — the operator-facing relative form for
+ * last_contacted_at, since a raw timestamp is harder to scan at a glance
+ * than "how long ago". */
+export function relativeTimeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} ${mins === 1 ? "minute" : "minutes"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} ${days === 1 ? "day" : "days"} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} ${months === 1 ? "month" : "months"} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} ${years === 1 ? "year" : "years"} ago`;
 }
 
 /** The full canonical set of outreach types, always shown as a filter chip

@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import {
-  fetchOutreachQueue, previewWhatsAppMessage,
+  fetchOutreachQueue, previewWhatsAppMessage, logOutreachContact, undoOutreachContact, relativeTimeAgo,
   SELLER_OUTREACH_STAGES, BUYER_OUTREACH_STAGES,
   type OutreachRow,
 } from "./opsData";
 import { OpsHeader, OpsEmpty } from "./opsUi";
 
 type Side = "seller" | "buyer";
+const QUEUE_KEY = ["mkt-outreach-queue"];
 
 interface GroupedPerson {
   personType: Side;
@@ -50,20 +51,28 @@ function groupByPerson(rows: OutreachRow[]): GroupedPerson[] {
  * Admin follow-up outreach queue, one place to see and message everyone the
  * system has flagged as needing a nudge, across both sides. Built on the
  * exact same source the per-seller "Suggested outreach" panel already uses
- * (get_seller_nudge_suggestions / get_buyer_nudge_suggestions, via the new
+ * (get_seller_nudge_suggestions / get_buyer_nudge_suggestions, via the
  * get_outreach_queue wrapper) — this is that same system seen queue-wide,
  * not a separate feature with its own idea of what "needs outreach" means.
  * whatsapp_link is always opened verbatim, never rebuilt client side.
+ *
+ * Contact history (last_contacted_at / times_contacted) is tracked per
+ * (person, stage_key), never collapsed to "contacted or not" per person —
+ * someone messaged about a rejected listing may never have been messaged
+ * about a separate unanswered question. "Mark as sent" is a deliberate,
+ * separate action from opening WhatsApp: tapping the link is not proof a
+ * message actually went out, so nothing here auto-logs on tap.
  */
 export default function MarketplaceOutreach() {
   const { data: rows, isLoading } = useQuery({
-    queryKey: ["mkt-outreach-queue"],
+    queryKey: QUEUE_KEY,
     staleTime: 15000,
     queryFn: fetchOutreachQueue,
   });
 
   const [side, setSide] = useState<Side>("seller");
   const [filter, setFilter] = useState<string>("all");
+  const [neverContactedOnly, setNeverContactedOnly] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const sellerRows = useMemo(() => (rows ?? []).filter((r) => r.person_type === "seller"), [rows]);
@@ -77,8 +86,10 @@ export default function MarketplaceOutreach() {
     return c;
   }, [sideRows]);
 
-  const filteredRows = filter === "all" ? sideRows : sideRows.filter((r) => r.stage_key === filter);
-  const people = useMemo(() => groupByPerson(filteredRows), [filteredRows]);
+  const typeFilteredRows = filter === "all" ? sideRows : sideRows.filter((r) => r.stage_key === filter);
+  const neverContactedCount = useMemo(() => typeFilteredRows.filter((r) => !r.last_contacted_at).length, [typeFilteredRows]);
+  const finalRows = neverContactedOnly ? typeFilteredRows.filter((r) => !r.last_contacted_at) : typeFilteredRows;
+  const people = useMemo(() => groupByPerson(finalRows), [finalRows]);
   const selected = people.find((p) => `${p.personType}:${p.personId}` === selectedKey) || null;
 
   const totalCount = (rows ?? []).length;
@@ -155,16 +166,35 @@ export default function MarketplaceOutreach() {
         })}
       </div>
 
+      {/* Contact-state filter, a separate axis from outreach type (never
+          contacted vs. type is an AND, not a third value in the type
+          group) — same chip look and toggle interaction as the row above,
+          rather than a new control style, just its own row so it doesn't
+          read as an eleventh type. An operator's most common question is
+          "who have I not reached yet", this answers it directly. */}
+      <div className="mt-2 flex gap-1.5 flex-wrap">
+        <button onClick={() => { setNeverContactedOnly((v) => !v); setSelectedKey(null); }}
+          className="font-heading font-extrabold text-[11px] px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+          style={neverContactedOnly ? { background: "#1A1A1A", color: "#FFF8F4" } : { background: "#fff", border: "1px solid #F0DDD2", color: "#6B5B54" }}>
+          {neverContactedOnly ? "✓ " : ""}Never contacted · {neverContactedCount}
+        </button>
+      </div>
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         {/* list */}
         <div className={`flex flex-col gap-2.5 ${selected ? "hidden lg:flex" : ""}`}>
           {people.length === 0 ? (
-            side === "buyer" && filter === "all" ? (
+            side === "buyer" && sideRows.length === 0 ? (
+              // Genuinely nobody on this side at all, independent of the
+              // type or contact filters — the definitive statement wins
+              // over "nobody left un-contacted", checked first.
               <div className="mt-2 flex flex-col items-center gap-3 text-center py-14">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center font-heading font-bold text-lg" style={{ background: "#D8EFE5", color: "#1A4A33" }}>✓</div>
                 <div className="font-heading font-black text-lg text-foreground">No buyers need chasing</div>
                 <p className="text-sm text-text-med max-w-xs">Nobody's waiting on a delivery, and everyone who got an answer either bought or is still deciding within the window. Nothing sits stale right now, that's the good outcome.</p>
               </div>
+            ) : neverContactedOnly ? (
+              <OpsEmpty title="Nobody left to contact for the first time" body="Everyone matching this filter has been messaged at least once already. Turn the filter off to see everyone." />
             ) : (
               <OpsEmpty title="Nothing here" body="Nobody currently matches this filter. That's a calm, correct result, not a broken one." />
             )
@@ -185,10 +215,87 @@ export default function MarketplaceOutreach() {
   );
 }
 
-/** Compact row on desktop (name, primary pill, brief line, small Send),
- * expands to the full inline card with the message preview on mobile —
- * mobile has no separate detail step, everything actionable is already on
- * the card, matching the design's own mobile treatment. */
+/** Never contacted reads as more urgent (coral) than a contacted one (plain
+ * muted text) — the more pressing case gets the visual weight, matching
+ * how urgency already reads elsewhere on this screen. */
+function ContactStatusLine({ row }: { row: OutreachRow }) {
+  if (!row.last_contacted_at) {
+    return <span className="font-heading font-extrabold text-[11px]" style={{ color: "#D4613C" }}>Never contacted</span>;
+  }
+  return (
+    <span className="text-[11px] text-text-med">
+      Contacted {relativeTimeAgo(row.last_contacted_at)}{row.times_contacted > 1 ? ` · ${row.times_contacted} times` : ""}
+    </span>
+  );
+}
+
+/** Mark as sent sits right beside Send on WhatsApp as the natural two-step
+ * (open the chat, then confirm it actually went) rather than one combined
+ * action — tapping the WhatsApp link is not proof a message was sent, so
+ * only this explicit button ever calls log_outreach_contact. Undo is a
+ * small text link, not hidden but not prominent either, shown whenever
+ * this exact (person, type) has at least one contact recorded. */
+function ContactActions({ row }: { row: OutreachRow }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function markSent() {
+    setBusy(true); setError(null);
+    try {
+      const ok = await logOutreachContact(row.person_type, row.person_id, row.stage_key);
+      if (!ok) throw new Error("not saved");
+      await qc.invalidateQueries({ queryKey: QUEUE_KEY });
+    } catch {
+      setError("Could not save, try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undo() {
+    setBusy(true); setError(null);
+    try {
+      const ok = await undoOutreachContact(row.person_id, row.stage_key);
+      if (!ok) throw new Error("not saved");
+      await qc.invalidateQueries({ queryKey: QUEUE_KEY });
+    } catch {
+      setError("Could not undo, try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <ContactStatusLine row={row} />
+        {row.times_contacted > 0 && (
+          <button onClick={undo} disabled={busy} className="text-[11px] underline" style={{ color: "#8A7A72" }}>Undo</button>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <a href={row.whatsapp_link} target="_blank" rel="noreferrer"
+          className="flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#25D366", color: "#fff" }}>
+          <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: "#fff", color: "#25D366" }}>✆</span>
+          Send on WhatsApp
+        </a>
+        <button onClick={markSent} disabled={busy}
+          className="flex-1 flex items-center justify-center rounded-lg py-2.5 font-heading font-extrabold text-[12.5px] border"
+          style={{ borderColor: "#2D6A4F", color: "#2D6A4F", background: "#fff" }}>
+          {busy ? "Saving..." : "Mark as sent"}
+        </button>
+      </div>
+      {error && <span className="text-[11px]" style={{ color: "#C0392B" }}>{error}</span>}
+    </div>
+  );
+}
+
+/** Compact row on desktop (name, primary pill, brief line, contact status),
+ * expands to the full inline card with the message preview and contact
+ * actions on mobile — mobile has no separate detail step, everything
+ * actionable is already on the card, matching the design's own mobile
+ * treatment. */
 function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; selected: boolean; onSelect: () => void }) {
   const urgent = person.primary.urgency < 0;
   const preview = previewWhatsAppMessage(person.primary.whatsapp_link);
@@ -205,6 +312,7 @@ function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; sele
             {person.extra.length > 0 && <span className="font-bold text-[11px]" style={{ color: "#2D6A4F" }}>+{person.extra.length} more</span>}
           </div>
           <div className="text-xs text-text-med mt-0.5 truncate">{person.primary.label}{person.primary.context ? ` · ${person.primary.context}` : ""}</div>
+          <div className="mt-0.5"><ContactStatusLine row={person.primary} /></div>
         </div>
         <span className="flex-none flex items-center gap-1.5 font-heading font-extrabold text-xs px-3 py-2 rounded-lg" style={{ background: "#25D366", color: "#fff" }}>
           <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: "#fff", color: "#25D366" }}>✆</span>
@@ -223,11 +331,7 @@ function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; sele
           <button onClick={onSelect} className="text-left font-bold text-[11px]" style={{ color: "#2D6A4F" }}>Also matches {person.extra.length} more, tap to see all</button>
         )}
         {preview && <div className="rounded-lg border p-2.5 text-[11.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#fff", color: "#3D3936" }}>{preview}</div>}
-        <a href={person.primary.whatsapp_link} target="_blank" rel="noreferrer"
-          className="flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#25D366", color: "#fff" }}>
-          <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: "#fff", color: "#25D366" }}>✆</span>
-          Send on WhatsApp
-        </a>
+        <ContactActions row={person.primary} />
       </div>
     </div>
   );
@@ -246,17 +350,15 @@ function PersonDetail({ person, onBack }: { person: GroupedPerson; onBack: () =>
             return <span key={r.stage_key} className="font-heading font-extrabold text-[10.5px] px-2 py-1 rounded-md" style={r.urgency < 0 ? { background: "#C0392B", color: "#FFF8F4" } : { background: "#EDE6E1", color: "#6B5B54" }}>{stageLabel}</span>;
           })}
         </div>
+        {/* Each matching type gets its own message, preview and contact
+            history — never one shared status, per (person, stage_key). */}
         {all.map((r) => {
           const preview = previewWhatsAppMessage(r.whatsapp_link);
           return (
             <div key={r.stage_key} className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: "#F0DDD2" }}>
               <div className="text-xs text-text-med">{r.label}{r.context ? ` · ${r.context}` : ""}</div>
               {preview && <div className="rounded-lg border p-3 text-[12.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#FFF8F4", color: "#3D3936" }}>{preview}</div>}
-              <a href={r.whatsapp_link} target="_blank" rel="noreferrer"
-                className="flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#25D366", color: "#fff" }}>
-                <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px]" style={{ background: "#fff", color: "#25D366" }}>✆</span>
-                Send on WhatsApp
-              </a>
+              <ContactActions row={r} />
             </div>
           );
         })}

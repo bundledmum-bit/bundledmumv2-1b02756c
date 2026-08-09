@@ -5969,3 +5969,23 @@ Not live-verified — no admin login credentials exist in this environment, the 
 Preserved: the per-seller "Suggested outreach" panel, every existing nav position, sections 7 through 30. Outreach message text itself untouched, per this task's explicit instruction — the three route findings above are reported for a future pass to apply, not applied here.
 
 `npm run build` clean.
+
+## 49. Outreach queue remembers what's already been sent (2026-08-09)
+
+**Backend confirmed deployed, not rebuilt**: `get_outreach_queue()` now returns two more columns, `last_contacted_at` (timestamptz, null if never) and `times_contacted` (integer), both **tracked per (person, stage_key)**, confirmed directly against the real function signature. `log_outreach_contact(p_person_type, p_person_id, p_stage_key)` and `undo_outreach_contact(p_person_id, p_stage_key)` — new wrappers `logOutreachContact()` / `undoOutreachContact()` in `opsData.ts`, both admin-gated same as the rest.
+
+**Contact history shown per row and per matching type**: a new `ContactStatusLine` reads "Never contacted" (coral, the more urgent case, matching how urgency already reads elsewhere on this screen) or "Contacted 2 days ago" (`relativeTimeAgo()`, new in `opsData.ts`) plus "· 3 times" once `times_contacted > 1`. Shown on the desktop compact row (status only, no actions — actions stay behind the existing click-through, same reasoning as the row itself), the full mobile card, and — critically — **once per matching type in the desktop detail panel**, never once per person: a seller contacted about incomplete bank details but never about an unanswered question shows two independent statuses, not one merged one, exactly per this task's own requirement.
+
+**Mark as sent, deliberately separate from opening WhatsApp**: `ContactActions` renders "Send on WhatsApp" and "Mark as sent" as two adjacent buttons, a natural two-step (open the chat, then confirm it actually went) rather than one combined action or an auto-log on tap — tapping a link is not proof a message was sent, so only the explicit button ever calls `log_outreach_contact`. Chose two side-by-side buttons over a single flow because the two facts genuinely are separate and independently useful (an operator might open WhatsApp, get interrupted, and mark as sent later, or vice versa) — collapsing them would have hidden that.
+
+**Undo, discoverable without being prominent**: a small underlined "Undo" text link sits next to the status line whenever `times_contacted > 0` — not just in a toast right after marking sent, so a mis-tap from an earlier session is just as reversible as one from a minute ago.
+
+**Never-contacted filter, following the existing chip pattern rather than inventing a new one**: a second single-toggle chip row beneath the type chips, same visual language, its own live count scoped to whatever type filter is currently active ("Never contacted · 12" changes as the type chip changes). Deliberately its own row, not folded into the type-chip group, since contact state and outreach type are independent axes (AND, not a mutually-exclusive eleventh choice) — folding them together would have implied a type called "never contacted."
+
+**A real empty-state ordering bug caught and fixed before shipping**: the buyer side's "No buyers need chasing" all-clear message was initially checked *after* the never-contacted-filter's own empty message, so toggling "never contacted only" while genuinely zero buyers existed at all would have shown the narrower, less accurate message. Reordered so the side's genuine all-clear (`sideRows.length === 0`, independent of any filter) always wins.
+
+Preserved: all ten type filter chips and their live counts, urgency ordering, `whatsapp_link` opened verbatim everywhere (never rebuilt — the new contact controls sit beside it, never inside it), the all-clear and per-filter empty states, the per-seller "Suggested outreach" panel (untouched, doesn't need contact history), sections 7 through 30.
+
+Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen. Code-reviewed against the real deployed function signatures (`get_outreach_queue`, `log_outreach_contact`, `undo_outreach_contact`) rather than assumed.
+
+`npm run build` clean.
