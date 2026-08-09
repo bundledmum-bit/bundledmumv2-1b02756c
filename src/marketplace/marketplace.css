@@ -764,6 +764,12 @@
 .mkt-tl span.todo { color: #9DBFAF; }
 .mkt-success .listing { background: var(--mkt-cream); border-radius: 14px; padding: 12px; display: flex; gap: 11px; align-items: center; }
 
+/* Refund reassurance sticker, top of the paid page. A slight rotation and a
+   dashed border read as a stamp rather than another plain pill, distinct
+   from .mkt-pill-held right below it. */
+.mkt-sticker { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; background: var(--mkt-cream); color: var(--mkt-green-dark); border: 2px dashed var(--mkt-coral); border-radius: 999px; padding: 8px 13px; font: 800 11.5px/1.25 'Nunito', sans-serif; transform: rotate(-4deg); box-shadow: 0 6px 16px rgba(26,26,26,0.16); max-width: 150px; text-align: center; }
+.mkt-sticker .ic { font-size: 15px; line-height: 1; }
+
 /* Dashboard */
 .mkt-payout { background: var(--mkt-green-dark); border-radius: 12px; padding: 13px; display: flex; align-items: center; gap: 12px; }
 .mkt-payout .lbl { font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }

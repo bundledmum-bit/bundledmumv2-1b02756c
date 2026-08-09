@@ -124,7 +124,10 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
     <div className="mkt-success">
       <MarketplaceSeo noindex title="Payment received" />
       <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
-        <div className="check">✓</div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div className="check">✓</div>
+          <div className="mkt-sticker"><span className="ic">🛡</span>We refund you if it's not as described</div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
           <h1>Paid, and your money is safe with us</h1>
@@ -199,7 +202,10 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
   const whatsapp = contact?.seller_whatsapp || "";
   const phone = contact?.seller_phone || "";
   const canCall = !!contact?.can_call;
-  const msg = `Hello ${name}, I just paid for ${item} on BundledMum (order ${reference}). Please let me know about delivery.`;
+  // Blank line after the greeting is a real \n\n, not literal text — wa.me
+  // encodes it via encodeURIComponent inside sellerWhatsAppLink, so it
+  // survives as %0A%0A and renders as two paragraphs in WhatsApp.
+  const msg = `Hello ${name},\n\nI placed an order for the ${item} you listed on BundledMum Marketplace. My order ${reference}.`;
   const waNumber = useMarketplaceWhatsAppNumber();
 
   return (
@@ -212,7 +218,7 @@ function SellerContact({ contact, loading, reference }: { contact: OrderContact 
         </div>
         {whatsapp ? (
           <>
-            <div className="mkt-talk-prefill">Message them to agree whether you'll collect it in person or have it sent, who covers the cost if sent, and roughly when. Opens ready to send, with your item and order number.</div>
+            <div className="mkt-talk-prefill">Message them to agree whether you'll collect it in person or have it sent, who covers the cost if sent, and roughly when. You can also ask them for more pictures, videos and details about the item.</div>
             <div className="mkt-talk-actions">
               <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(whatsapp, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
               {canCall && <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>}

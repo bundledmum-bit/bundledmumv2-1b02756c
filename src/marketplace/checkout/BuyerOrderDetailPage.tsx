@@ -98,7 +98,10 @@ export default function BuyerOrderDetailPage() {
   const left = daysLeft(deadline);
   const deadlineText = deadline ? deadline.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }) : "";
 
-  const waMsg = `Hello ${sellerName}, this is about my BundledMum order ${ref} for ${item}. Let us sort out delivery.`;
+  // Blank line after the greeting is a real \n\n, not literal text — wa.me
+  // encodes it via encodeURIComponent inside sellerWhatsAppLink, so it
+  // survives as %0A%0A and renders as two paragraphs in WhatsApp.
+  const waMsg = `Hello ${sellerName},\n\nI placed an order for the ${item} you listed on BundledMum Marketplace. My order ${ref}.`;
 
   const statusPill = awaitingConfirm ? <span className="mkt-st pending">Confirm receipt</span>
     : awaitingDispatch ? <span className="mkt-st live">Being sent</span>

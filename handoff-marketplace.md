@@ -5851,3 +5851,16 @@ Preserved: the toggle defaulting to same-as-phone, the WhatsApp-first framing, b
 Preserved: the country picker defaulting to +234 and the silent leading-zero stripping (§40, unaffected), the WhatsApp-first framing, guest checkout requiring no login (still true, just now blocked by phone specifically rather than the form itself), sections 7 through 30.
 
 `npm run build` clean.
+
+## 42. Paid page: refund sticker, and exact WhatsApp prefill wording everywhere it's built (2026-08-09)
+
+**Paid page (`PaymentReturnPage.tsx`)**: `SellerContact`'s prefill hint line now says "You can also ask them for more pictures, videos and details about the item" instead of "Opens ready to send, with your item and order number". Added a rotated "We refund you if it's not as described" sticker (new `.mkt-sticker` class, dashed coral border on cream, `transform: rotate(-4deg)`) beside the checkmark on the paid page, distinct from the `.mkt-pill-held` pill directly below it.
+
+**Exact WhatsApp prefill wording, every place a buyer/seller contact link is built** (3 locations, confirmed exhaustive by grepping every `sellerWhatsAppLink(` call site — a 4th, `AwaitingPaymentPage.tsx`, messages BundledMum's own support number, not a buyer/seller contact, left untouched):
+- `BuyerOrderDetailPage.tsx` (buyer → seller): `` `Hello ${sellerName},\n\nI placed an order for the ${item} you listed on BundledMum Marketplace. My order ${ref}.` ``
+- `PaymentReturnPage.tsx`'s `SellerContact` (buyer → seller, post-payment variant): same template.
+- `SellerOrderDetailPage.tsx` (seller → buyer): `` `Hello ${buyerName},\n\nThis is about the ${item} you bought on BundledMum Marketplace. My order ${ref}.` ``
+
+**The blank line, verified not just assumed**: each template uses a real `\n\n` in the JS string, not literal `%0A%0A` text — `sellerWhatsAppLink()` (`checkout/orders.ts`) already runs the message through `encodeURIComponent()`, which is what actually produces `%0A%0A` in the final `wa.me` URL. Confirmed with a real Node reproduction of `sellerWhatsAppLink`'s exact logic on both message shapes: the generated href genuinely contains `%0A%0A` (not any other encoding), and decoding it back reproduces a true blank line between two paragraphs, exactly as WhatsApp renders it — not literal characters.
+
+`npm run build` clean.

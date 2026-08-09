@@ -89,7 +89,10 @@ export default function SellerOrderDetailPage() {
   const buyerWhatsapp = contact?.buyer_whatsapp || "";
   const buyerPhone = contact?.buyer_phone || "";
   const canCall = !!contact?.can_call;
-  const waMsg = `Hello ${buyerName}, this is about your BundledMum order ${ref} for ${item}. Let us sort out delivery.`;
+  // Blank line after the greeting is a real \n\n, not literal text — wa.me
+  // encodes it via encodeURIComponent inside sellerWhatsAppLink, so it
+  // survives as %0A%0A and renders as two paragraphs in WhatsApp.
+  const waMsg = `Hello ${buyerName},\n\nThis is about the ${item} you bought on BundledMum Marketplace. My order ${ref}.`;
 
   const statusPill = awaitingDispatch ? <span className="mkt-st pending">To send</span>
     : awaitingConfirm ? <span className="mkt-st live">Sent</span>
