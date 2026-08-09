@@ -10,6 +10,7 @@ import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import {
   formatNaira,
   locationLabel,
+  stateBadgeLabel,
   conditionLabel,
   isVerifiedSeller,
   sellerDisplayName,
@@ -301,6 +302,7 @@ export default function ListingDetailPage() {
   const hero = activeImage ?? listing.image_url ?? images[0] ?? null;
   const verified = isVerifiedSeller(listing);
   const tenure = sellerTenure(listing);
+  const heroState = stateBadgeLabel(listing);
 
   // Make-an-offer state (design 23a). An accepted/counter_accepted offer is
   // PRIVATE to this buyer — the listing's public final_price_naira is
@@ -350,6 +352,7 @@ export default function ListingDetailPage() {
           <button className="mkt-back" onClick={() => navigate("/")} aria-label="Back to marketplace">
             ‹
           </button>
+          {heroState && <span className="mkt-hero-state">{heroState}</span>}
         </div>
 
         {images.length > 1 ? (

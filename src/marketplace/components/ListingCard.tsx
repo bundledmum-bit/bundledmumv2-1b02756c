@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { MarketplaceListing } from "../types";
-import { formatNaira, locationLabel, conditionLabel, isVerifiedSeller } from "../lib/format";
+import { formatNaira, locationLabel, stateBadgeLabel, conditionLabel, isVerifiedSeller } from "../lib/format";
 import VerifiedBadge from "./VerifiedBadge";
 
 /**
@@ -15,6 +15,7 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
   const available = Number(listing.quantity ?? 1) - Number(listing.quantity_sold ?? 0);
   const showQty = Number(listing.quantity ?? 1) > 1 && available > 0;
   const qtyLabel = available === 1 ? "Last one" : `${available} available`;
+  const state = stateBadgeLabel(listing);
   return (
     <Link className="mkt-card" to={`/listing/${listing.id}`}>
       <div className="mkt-card-imgwrap">
@@ -27,6 +28,7 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
           />
         ) : null}
         {showQty && <span className={available === 1 ? "mkt-card-qty low" : "mkt-card-qty"}>{qtyLabel}</span>}
+        {state && <span className="mkt-card-state">{state}</span>}
       </div>
       <div className="mkt-card-body">
         <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>

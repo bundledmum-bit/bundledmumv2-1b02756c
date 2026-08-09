@@ -7,9 +7,24 @@ export function formatNaira(value: number | null | undefined): string {
   return `₦${Math.round(n).toLocaleString("en-NG")}`;
 }
 
-/** Location shown on cards: city if present, else state, else a gentle fallback. */
+/** Full location text shown below the price on cards and detail: "Ikorodu,
+ * Lagos" when both city and state are on file (every live listing, now the
+ * marketplace covers all 37 states). Falls back to whichever one is
+ * present alone (state only, or city only) rather than a stray leading or
+ * trailing comma, then a final gentle fallback if neither is set. */
 export function locationLabel(listing: MarketplaceListing): string {
-  return listing.location_city || listing.location_state || "Nigeria";
+  const city = listing.location_city?.trim();
+  const state = listing.location_state?.trim();
+  if (city && state) return `${city}, ${state}`;
+  return city || state || "Nigeria";
+}
+
+/** State only, for the small badge on the photo itself — a different job
+ * from locationLabel's full "City, State" text: glanceable while scanning a
+ * grid of photos, rather than read. Null (never a badge at all) when no
+ * state is on file. */
+export function stateBadgeLabel(listing: MarketplaceListing): string | null {
+  return listing.location_state?.trim() || null;
 }
 
 /**
