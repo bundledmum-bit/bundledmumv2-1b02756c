@@ -12,6 +12,18 @@ export { adb, formatNaira };
 /** A seller is suspended at three strikes; two is the "approaching" warning. */
 export const STRIKE_THRESHOLD = 3;
 
+/** Full date and time in Africa/Lagos, e.g. "12 August 2026, 3:41 PM" — the
+ * operator-facing format for anything where a relative label or date-only
+ * would hide exactly when something happened. Shared so the seller and
+ * buyer detail panels read identically. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const datePart = d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Lagos" });
+  const timePart = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Africa/Lagos" });
+  return `${datePart}, ${timePart}`;
+}
+
 // ─── Payout queue view row ───────────────────────────────────────────────────
 export interface PayoutRow {
   order_id: string;

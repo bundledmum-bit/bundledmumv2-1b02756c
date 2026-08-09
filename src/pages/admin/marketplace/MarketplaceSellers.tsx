@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira, STRIKE_THRESHOLD } from "./opsData";
+import { adb, formatNaira, formatDateTime, STRIKE_THRESHOLD } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, StatusPill, CopyField, ConfirmDialog } from "./opsUi";
 
 interface SellerRow {
@@ -181,6 +181,7 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
           <Stat label="Live listings" value={String(s.liveListings)} />
           <Stat label="Strikes" value={`${s.strike_count} of ${STRIKE_THRESHOLD}`} danger={risk} />
           <Stat label="Owed to platform" value={formatNaira(s.outstanding_debit_naira)} danger={s.outstanding_debit_naira > 0} />
+          <Stat label="Seller since" value={formatDateTime(s.created_at)} />
         </div>
         {risk && !suspended && <div className="text-xs mt-3" style={{ color: "#C0392B" }}>One more strike suspends this account. Review recent disputes before acting.</div>}
       </OpsCard>

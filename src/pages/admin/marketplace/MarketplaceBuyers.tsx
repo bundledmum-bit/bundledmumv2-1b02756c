@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira, orderMoneyState, DISPUTE_OUTCOMES } from "./opsData";
+import { adb, formatNaira, formatDateTime, orderMoneyState, DISPUTE_OUTCOMES } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, StatusPill } from "./opsUi";
 
 /**
@@ -260,7 +260,7 @@ function BuyerDetail({ b, onBack }: { b: BuyerRow; onBack: () => void }) {
         <button onClick={onBack} className="lg:hidden font-bold text-lg leading-none pt-0.5" style={{ color: "#6B5B54" }}>‹</button>
         <div className="flex-1 min-w-0">
           <div className="font-heading font-black text-xl text-foreground truncate">{b.full_name || "Buyer"}</div>
-          <div className="text-xs text-text-med">Joined {fmtDate(b.joined_at)}</div>
+          <div className="text-xs text-text-med">Joined {formatDateTime(b.joined_at)}</div>
         </div>
         {open && <StatusPill tone="negative" label={b.disputes_open === 1 ? "Open dispute" : `${b.disputes_open} open disputes`} />}
       </div>
@@ -294,7 +294,7 @@ function BuyerDetail({ b, onBack }: { b: BuyerRow; onBack: () => void }) {
       <div className="grid grid-cols-2 gap-2">
         <Stat label="Orders" value={String(b.orders_total)} />
         <Stat label="Total spent" value={formatNaira(b.total_spent_naira)} />
-        <Stat label="Last order" value={fmtDate(b.last_order_at)} small />
+        <Stat label="Last purchase" value={b.last_order_at ? formatDateTime(b.last_order_at) : "No purchases yet"} small />
         <Stat label="Offers asked" value={String(b.price_requests_made)} />
       </div>
 

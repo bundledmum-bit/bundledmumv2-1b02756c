@@ -5638,3 +5638,45 @@ real deployed `status` values (queried directly: only `active` and
 `suspended` exist today) and against each screen's own existing sort logic.
 
 `npm run build` clean.
+
+## 34. Full date and time added to seller and buyer detail panels (2026-08-08)
+
+**New shared helper** — `formatDateTime()` in
+[`opsData.ts`](src/pages/admin/marketplace/opsData.ts), full date and time in
+`Africa/Lagos`, e.g. `"12 August 2026, 3:41 PM"` (verified against a real UTC
+timestamp). Both screens already import from `opsData.ts`, so this is the one
+place a shared format lives rather than duplicating it.
+
+**Sellers** ([`MarketplaceSellers.tsx`](src/pages/admin/marketplace/MarketplaceSellers.tsx)):
+`created_at` was already fetched (added in §33 purely to drive the sort) but
+never rendered. Added a "Seller since" stat to the existing top `OpsCard`
+account-summary grid (Verification / Live listings / Strikes / Owed to
+platform), not a new card.
+
+**Buyers** ([`MarketplaceBuyers.tsx`](src/pages/admin/marketplace/MarketplaceBuyers.tsx)):
+both `joined_at` and `last_order_at` were already fetched *and* already
+rendered before this pass — the gap was format, not visibility. `joined_at`
+(header, "Joined ...") and `last_order_at` (the Orders/Total spent/Offers
+asked stat grid) both switched from the existing date-only `fmtDate` helper
+(no explicit timezone) to `formatDateTime`, in their existing locations, no
+new section added. Confirmed directly against the live `marketplace_buyers`
+view definition that `last_order_at` is genuinely
+`max(created_at) FILTER (WHERE payment_status = 'paid')` — the last
+*successful* purchase, not the last order attempted, matching the label
+change from "Last order" to **"Last purchase"**. Null case (a buyer with no
+paid orders, true for most buyers today) now reads **"No purchases yet"**
+instead of the generic "Not yet" `fmtDate` fallback. `fmtDate` itself is
+untouched and still used for the dispute list and purchase history rows,
+which this pass wasn't asked to change.
+
+Preserved: the sort order built in §33 on both screens (unrelated to
+display formatting), every other field on both panels, sections 7 through
+30.
+
+Not live-verified — no admin login credentials exist in this environment,
+the standing limitation for every admin screen. Code-reviewed against the
+real deployed `marketplace_buyers` view definition and the real column
+types, and the date/time format spot-checked against a real timestamp in
+Node before use.
+
+`npm run build` clean.
