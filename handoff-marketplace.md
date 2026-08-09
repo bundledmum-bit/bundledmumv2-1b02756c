@@ -5717,3 +5717,15 @@ the standing limitation for every admin screen. Code-reviewed against the
 real deployed sticky pattern's exact values.
 
 `npm run build` clean.
+
+## 36. Sticky detail panel extended to Disputes, now all three list-plus-detail admin screens covered (2026-08-08)
+
+**Same fix, third screen**: [`MarketplaceDisputes.tsx`](src/pages/admin/marketplace/MarketplaceDisputes.tsx) has the identical `grid gap-5 lg:grid-cols-[minmax(0,320px)_1fr]` shape flagged (not fixed) in §35 — `hidden lg:flex` list column, `hidden lg:block` detail column, no sticky class anywhere. Applied the exact same values as §35, no new pattern: `lg:sticky lg:top-6 lg:self-start` on the detail column div itself, matching `.mkt-detail-panel`'s `position: sticky; top: 24px; align-self: start;`.
+
+**All three list-plus-detail admin screens now covered**: Sellers, Buyers (§35), and Disputes (this pass) all keep their detail panel in view while the list scrolls beside it at desktop width. Mobile untouched on all three — `lg:` only applies at 1024px+, the existing single-view-at-a-time toggle is unaffected.
+
+Preserved: every field and action on the dispute detail panel (outcome selection, notes, return/shipping-payer fields, confirm dialog), the §35 fix on Sellers/Buyers, mobile layout, sections 7 through 30.
+
+Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen. Code-reviewed against the same real deployed sticky pattern already verified in §35.
+
+`npm run build` clean.

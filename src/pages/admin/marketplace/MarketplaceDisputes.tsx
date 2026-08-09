@@ -134,7 +134,7 @@ export default function MarketplaceDisputes() {
         </div>
 
         {/* detail */}
-        <div className={selected ? "" : "hidden lg:block"}>
+        <div className={selected ? "lg:sticky lg:top-6 lg:self-start" : "hidden lg:block lg:sticky lg:top-6 lg:self-start"}>
           {selected ? <DisputeDetailView d={selected} onBack={() => setSelectedId(null)} onResolved={async () => { setSelectedId(null); await refetch(); }} />
             : <OpsEmpty title="Pick a dispute" body="Select a dispute on the left to review the evidence and rule on it." />}
         </div>
