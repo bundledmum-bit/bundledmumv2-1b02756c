@@ -11,6 +11,7 @@ interface SellerRow {
   strike_count: number;
   outstanding_debit_naira: number;
   status: string | null;
+  created_at: string;
   bank_name: string | null;
   bank_account_name: string | null;
   bank_account_number: string | null;
@@ -36,15 +37,25 @@ export default function MarketplaceSellers() {
     staleTime: 10000,
     queryFn: async (): Promise<SellerRow[]> => {
       const { data } = await adb.from("marketplace_sellers")
-        .select("id, display_name, verification_tier, strike_count, outstanding_debit_naira, status, bank_name, bank_account_name, bank_account_number, legal_first_name, legal_last_name, phone, whatsapp_number, phone_is_whatsapp, customer:customers!marketplace_sellers_customer_id_fkey(email)")
-        .order("strike_count", { ascending: false });
+        .select("id, display_name, verification_tier, strike_count, outstanding_debit_naira, status, created_at, bank_name, bank_account_name, bank_account_number, legal_first_name, legal_last_name, phone, whatsapp_number, phone_is_whatsapp, customer:customers!marketplace_sellers_customer_id_fkey(email)");
       type Raw = Omit<SellerRow, "liveListings" | "customerEmail"> & { customer: { email: string | null } | null };
       const rows = (data ?? []) as unknown as Raw[];
       // Live listing counts, tallied client-side from a light select.
       const { data: live } = await adb.from("marketplace_listings").select("seller_id").eq("status", "live");
       const counts = new Map<string, number>();
       for (const l of (live ?? []) as Array<{ seller_id: string }>) counts.set(l.seller_id, (counts.get(l.seller_id) || 0) + 1);
-      return rows.map(({ customer, ...r }) => ({ ...r, customerEmail: customer?.email ?? null, liveListings: counts.get(r.id) || 0 }));
+      const withCounts = rows.map(({ customer, ...r }) => ({ ...r, customerEmail: customer?.email ?? null, liveListings: counts.get(r.id) || 0 }));
+      // Two groups stacked: everyone not suspended (newest first), then
+      // everyone suspended (newest first) sinking to the bottom regardless
+      // of how recently they joined. Sorted client-side, mirroring the same
+      // (status || "") === "suspended" check the detail/list rendering
+      // already uses, rather than trusting status to sort correctly as text.
+      return withCounts.sort((a, b) => {
+        const aSuspended = (a.status || "") === "suspended";
+        const bSuspended = (b.status || "") === "suspended";
+        if (aSuspended !== bSuspended) return aSuspended ? 1 : -1;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
     },
   });
 

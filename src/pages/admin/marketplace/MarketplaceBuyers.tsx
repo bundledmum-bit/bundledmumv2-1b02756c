@@ -114,6 +114,14 @@ export default function MarketplaceBuyers() {
       if (sort === "spent") return b.total_spent_naira - a.total_spent_naira;
       if (sort === "orders") return b.orders_total - a.orders_total;
       if (sort === "disputes") return b.disputes_open - a.disputes_open || b.disputes_raised - a.disputes_raised;
+      // "Newest": the mirror of the seller list's suspended-sinks-down rule,
+      // pulled the other direction — a buyer with an open dispute is pulled
+      // to the top instead of pushed to the bottom, newest first within
+      // each group. Uses disputes_open, the same flag driving the red
+      // "Open dispute" pill, no second definition of "open" introduced.
+      const aOpen = a.disputes_open > 0;
+      const bOpen = b.disputes_open > 0;
+      if (aOpen !== bOpen) return aOpen ? -1 : 1;
       return new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime();
     });
   }, [buyers, search, sort]);

@@ -5595,3 +5595,46 @@ deployed RPC signature and column, and against this file's own established
 `ConfirmDialog` pattern, rather than assumed.
 
 `npm run build` clean.
+
+## 33. Sellers and buyers lists reordered, risk sinks on one screen, pulls up on the other (2026-08-08)
+
+**Sellers** ([`MarketplaceSellers.tsx`](src/pages/admin/marketplace/MarketplaceSellers.tsx)):
+previously ordered by `strike_count` descending only, with `created_at` not
+even selected. Now two groups stacked: everyone with `status !== 'suspended'`,
+newest first, then everyone `status === 'suspended'`, newest first,
+regardless of how recently either group joined. Sorted client-side after
+fetch (added `created_at` to the select), deliberately reusing the exact
+`(status || "") === "suspended"` check the detail/list rendering already
+uses, rather than trusting `status` to sort correctly as plain text — today
+only `active`/`suspended` exist (16/3 rows, confirmed directly against the
+table), but a future third status value added to the column wouldn't
+silently break this the way a DB-level `.order("status")` could.
+
+**Buyers** ([`MarketplaceBuyers.tsx`](src/pages/admin/marketplace/MarketplaceBuyers.tsx)):
+the mirror direction, not the same rule copied over — buyers have no
+suspended state, so a buyer with `disputes_open > 0` (the same flag already
+driving the red "Open dispute" pill and the existing "Open disputes" sort
+option, no second definition of "open" introduced) is pulled to the top
+instead of sunk to the bottom, newest first within both the open-dispute and
+no-dispute groups. This screen already sorts client-side today via its
+`filtered` useMemo behind a "Newest / Most spent / Most orders / Open
+disputes" selector the seller screen has no equivalent of — the new pin-to-
+top rule was applied specifically inside the **"Newest"** branch only, since
+that is the direct equivalent of the seller screen's now-only ordering. The
+other three explicit sort choices (`spent`, `orders`, `disputes`) are
+untouched, left exactly as a user picking them today would expect.
+
+**Search and filters preserved on both**: sellers has no search control to
+begin with (untouched either way); buyers' name/email search box (`search`
+state) still filters the list first, the new ordering only decides how the
+already-filtered result is arranged, same as the pre-existing sort selector
+did. Nothing about the seller detail panel (Suggested outreach, contact and
+identity card) or the buyer detail view changed, no seller status or dispute
+state was written anywhere. Sections 7 through 30 unaffected.
+
+Not live-verified — no admin login credentials exist in this environment,
+the standing limitation for every admin screen. Code-reviewed against the
+real deployed `status` values (queried directly: only `active` and
+`suspended` exist today) and against each screen's own existing sort logic.
+
+`npm run build` clean.
