@@ -392,11 +392,11 @@ export default function ListingDetailPage() {
             )}
           </div>
           <h1 className="mkt-detail-title">{listing.title}</h1>
-          {/* What it cost new, seller-optional. Understated on purpose, plain
-              text below the title, never a competing colour or size against
-              the actual price above it. Nothing renders when absent. */}
+          {/* What it cost new, seller-optional. Understated on purpose, small
+              text below the title, never competing in size against the
+              actual price above it. Nothing renders when absent. */}
           {listing.original_price_naira != null && listing.original_price_naira > listing.final_price_naira && (
-            <div className="mkt-help">Bought brand new at {formatNaira(listing.original_price_naira)}, save {formatNaira(listing.original_price_naira - listing.final_price_naira)}</div>
+            <div className="mkt-help" style={{ color: "var(--mkt-green)" }}>Bought brand new at <b>{formatNaira(listing.original_price_naira)}</b></div>
           )}
           {showAcceptedPrice && (
             <>
