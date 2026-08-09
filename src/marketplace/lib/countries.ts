@@ -4,6 +4,14 @@ export interface Country {
   dialCode: string;
 }
 
+/** ISO 3166-1 alpha-2 -> flag emoji, built from the regional indicator
+ * symbols rather than hardcoded per country, e.g. "NG" -> "🇳🇬". */
+export function flagEmoji(iso2: string): string {
+  return iso2
+    .toUpperCase()
+    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
+}
+
 /**
  * Full country list with dial codes for the WhatsApp number country picker.
  * Nigeria is first (the default). A few dial codes are shared by more than
