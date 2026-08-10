@@ -362,3 +362,28 @@ export function previewWhatsAppMessage(waLink: string): string | null {
     return null;
   }
 }
+
+// ─── Split-draft merge (§53) ─────────────────────────────────────────────────
+
+export interface MergeTarget { listing_id: string; title: string; image_url: string | null; status: string }
+
+/** Valid merge targets for a given draft — always scoped to the same split
+ * family (sibling drafts, plus the source itself when p_includeSource),
+ * never an arbitrary unrelated listing; enforced server side, this just
+ * reads whatever the RPC actually returns. */
+export async function fetchMergeTargets(draftId: string, includeSource: boolean): Promise<MergeTarget[]> {
+  const { data, error } = await adb.rpc("get_merge_targets", { p_draft_id: draftId, p_include_source: includeSource });
+  if (error) return [];
+  return (data ?? []) as MergeTarget[];
+}
+
+/** Moves the draft's photo into the target's gallery (as the first gallery
+ * entry, directly after the target's own main photo) and deletes the draft.
+ * Returns the raised message directly on failure, already written for a
+ * person to read. */
+export async function mergeSplitDraft(draftId: string, targetListingId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { data, error } = await adb.rpc("admin_merge_split_draft", { p_draft_id: draftId, p_target_listing_id: targetListingId });
+  if (error) return { ok: false, message: error.message };
+  if (data !== true) return { ok: false, message: "This could not be merged. Refresh and try again." };
+  return { ok: true };
+}

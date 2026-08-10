@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira } from "./opsData";
+import { adb, formatNaira, fetchMergeTargets, mergeSplitDraft, type MergeTarget } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill, ConfirmDialog } from "./opsUi";
 import type { PillTone } from "./opsData";
 
@@ -10,6 +10,7 @@ interface ListingRow {
   id: string;
   title: string;
   status: string;
+  description: string | null;
   final_price_naira: number;
   location_state: string | null;
   location_city: string | null;
@@ -46,6 +47,21 @@ export default function MarketplaceListings() {
   const [error, setError] = useState<string | null>(null);
   const [splitSuccess, setSplitSuccess] = useState<string | null>(null);
 
+  // A draft shown here is one child of a split still awaiting review — an
+  // operator who cancelled the review tab or closed it should be able to
+  // finish the work from wherever the draft happens to appear, not only
+  // from the split-review screen itself. Title and description edit here
+  // exactly the way the review screen's own draft cards do; the photo
+  // stays fixed either way.
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [draftEdits, setDraftEdits] = useState<Record<string, { title: string; description: string }>>({});
+  const [draftSaving, setDraftSaving] = useState<string | null>(null);
+  const [draftSaveError, setDraftSaveError] = useState<Record<string, string>>({});
+  const [mergeDraftId, setMergeDraftId] = useState<string | null>(null);
+  const [mergeConfirm, setMergeConfirm] = useState<{ draftId: string; draftTitle: string; target: MergeTarget } | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+
   // Landed here from the split-review screen after a publish (see
   // MarketplaceSplitReview.tsx's confirmPublish, which navigates here with
   // this exact state shape). Shown once, then cleared from history so a
@@ -63,7 +79,7 @@ export default function MarketplaceListings() {
     staleTime: 10000,
     queryFn: async (): Promise<ListingRow[]> => {
       const { data } = await adb.from("marketplace_listings")
-        .select("id, title, status, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, image_url, gallery_urls, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
+        .select("id, title, status, description, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, image_url, gallery_urls, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
         .order("created_at", { ascending: false });
       const rows = (data ?? []) as unknown as ListingRow[];
       const ids = Array.from(new Set(rows.map((r) => r.seller_id).filter(Boolean)));
@@ -97,6 +113,55 @@ export default function MarketplaceListings() {
     (tab === "all" || l.status === tab) &&
     (sellerFilter === "all" || l.seller_id === sellerFilter) &&
     (categoryFilter === "all" || l.category?.name === categoryFilter));
+
+  // p_include_source TRUE here (unlike the split-review screen): a split may
+  // have been abandoned or the source relisted since, and merging a
+  // stranded draft back into the original listing is a legitimate outcome
+  // from this general screen, not just merging between sibling drafts.
+  const mergeTargetsQ = useQuery({
+    queryKey: ["mkt-listings-merge-targets", mergeDraftId],
+    enabled: !!mergeDraftId,
+    queryFn: () => fetchMergeTargets(mergeDraftId as string, true),
+  });
+
+  function startEditDraft(l: ListingRow) {
+    setDraftEdits((e) => ({ ...e, [l.id]: { title: l.title, description: l.description ?? "" } }));
+    setEditingDraftId(l.id);
+    setMergeDraftId(null);
+  }
+
+  function setDraftField(id: string, patch: Partial<{ title: string; description: string }>) {
+    setDraftEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
+    setDraftSaveError((s) => { if (!s[id]) return s; const n = { ...s }; delete n[id]; return n; });
+  }
+
+  async function saveDraftEdit(id: string) {
+    const edit = draftEdits[id];
+    if (!edit) return;
+    setDraftSaving(id);
+    setDraftSaveError((s) => { const n = { ...s }; delete n[id]; return n; });
+    const { data, error: err } = await adb.rpc("admin_update_split_draft", {
+      p_listing_id: id,
+      p_title: edit.title.trim(),
+      p_description: edit.description.trim(),
+    });
+    setDraftSaving(null);
+    if (err) { setDraftSaveError((s) => ({ ...s, [id]: err.message })); return; }
+    if (data !== true) { setDraftSaveError((s) => ({ ...s, [id]: "This could not be saved. Refresh and try again." })); return; }
+    await refetch();
+  }
+
+  async function confirmMerge() {
+    if (!mergeConfirm) return;
+    setMergeBusy(true); setMergeError(null);
+    const res = await mergeSplitDraft(mergeConfirm.draftId, mergeConfirm.target.listing_id);
+    setMergeBusy(false);
+    if (!res.ok) { setMergeError(res.message); return; }
+    setMergeConfirm(null);
+    setMergeDraftId(null);
+    setEditingDraftId(null);
+    await refetch();
+  }
 
   async function confirmDelist() {
     if (!delistTarget) return;
@@ -182,31 +247,122 @@ export default function MarketplaceListings() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((l) => (
-                  <tr key={l.id} className="border-t" style={{ borderColor: "#F0DDD2" }}>
-                    <Td><span className="font-heading font-bold text-foreground">{l.title}</span></Td>
-                    <Td>{l.seller_name || "Seller"}</Td>
-                    <Td>{l.category?.name || "-"}</Td>
-                    <Td><span className="tabular-nums">{Number(l.quantity_sold ?? 0)}/{Number(l.quantity ?? 1)}</span></Td>
-                    <Td><span className="tabular-nums font-heading font-bold">{formatNaira(l.final_price_naira)}</span></Td>
-                    <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
-                    <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
-                    <Td>
-                      {l.status === "splitting" ? (
-                        <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/split-review`)} className="font-heading font-extrabold text-xs" style={{ color: "#D4613C" }}>Resume review</button>
-                      ) : l.status === "draft" ? (
-                        <span className="text-xs text-text-med">Part of a split, still under review</span>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
-                          {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
-                          {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
-                          {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
-                        </div>
+                {filtered.map((l) => {
+                  const draftEdit = draftEdits[l.id];
+                  const draftDirty = !!draftEdit && (draftEdit.title !== l.title || draftEdit.description !== (l.description ?? ""));
+                  return (
+                    <Fragment key={l.id}>
+                      <tr className="border-t" style={{ borderColor: "#F0DDD2" }}>
+                        <Td><span className="font-heading font-bold text-foreground">{l.title}</span></Td>
+                        <Td>{l.seller_name || "Seller"}</Td>
+                        <Td>{l.category?.name || "-"}</Td>
+                        <Td><span className="tabular-nums">{Number(l.quantity_sold ?? 0)}/{Number(l.quantity ?? 1)}</span></Td>
+                        <Td><span className="tabular-nums font-heading font-bold">{formatNaira(l.final_price_naira)}</span></Td>
+                        <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
+                        <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
+                        <Td>
+                          {l.status === "splitting" ? (
+                            <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/split-review`)} className="font-heading font-extrabold text-xs" style={{ color: "#D4613C" }}>Resume review</button>
+                          ) : l.status === "draft" ? (
+                            <button onClick={() => (editingDraftId === l.id ? setEditingDraftId(null) : startEditDraft(l))} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>
+                              {editingDraftId === l.id ? "Close" : "Edit draft"}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
+                              {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
+                              {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
+                              {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+
+                      {/* Editable in place, exactly like the split-review screen's own
+                          draft cards — a draft may end up needing attention here, from
+                          a cancelled tab or a review closed mid-way, and the photo stays
+                          fixed either way, it defines the split. */}
+                      {l.status === "draft" && editingDraftId === l.id && draftEdit && (
+                        <tr className="border-t" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+                          <td colSpan={8} className="px-3 py-3.5">
+                            <div className="flex gap-3 max-w-2xl">
+                              <div className="flex-none w-16 h-16 rounded-lg overflow-hidden border bg-white" style={{ borderColor: "#F0DDD2" }}>
+                                {l.image_url ? <img src={l.image_url} alt="" className="w-full h-full object-cover" /> : null}
+                              </div>
+                              <div className="flex-1 min-w-0 flex flex-col gap-2">
+                                <label className="block">
+                                  <span className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Title</span>
+                                  <input
+                                    className="mt-0.5 w-full rounded-lg border px-2.5 py-1.5 text-sm font-heading font-bold"
+                                    style={{ borderColor: "#F0DDD2" }}
+                                    value={draftEdit.title}
+                                    onChange={(e) => setDraftField(l.id, { title: e.target.value })}
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Description</span>
+                                  <textarea
+                                    className="mt-0.5 w-full rounded-lg border px-2.5 py-2 text-sm min-h-[64px] resize-y"
+                                    style={{ borderColor: "#F0DDD2" }}
+                                    value={draftEdit.description}
+                                    onChange={(e) => setDraftField(l.id, { description: e.target.value })}
+                                  />
+                                </label>
+                                {draftSaveError[l.id] && <div className="text-xs" style={{ color: "#C0392B" }}>{draftSaveError[l.id]}</div>}
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <button
+                                    onClick={() => saveDraftEdit(l.id)}
+                                    disabled={!draftDirty || draftSaving === l.id}
+                                    className="font-heading font-extrabold text-xs rounded-lg px-3 py-2 disabled:opacity-40"
+                                    style={{ background: "#2D6A4F", color: "#FFF8F4" }}
+                                  >
+                                    {draftSaving === l.id ? "Saving..." : "Save"}
+                                  </button>
+                                  <button
+                                    onClick={() => { setMergeError(null); setMergeDraftId(mergeDraftId === l.id ? null : l.id); }}
+                                    className="font-heading font-extrabold text-xs"
+                                    style={{ color: "#6B5B54" }}
+                                  >
+                                    {mergeDraftId === l.id ? "Close merge" : "Merge into another"}
+                                  </button>
+                                </div>
+
+                                {mergeDraftId === l.id && (
+                                  <div className="mt-1 rounded-xl border p-2.5 bg-white" style={{ borderColor: "#F0DDD2" }}>
+                                    <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med mb-2">Merge this photo into</div>
+                                    {mergeTargetsQ.isLoading ? (
+                                      <div className="text-xs text-text-med">Loading...</div>
+                                    ) : (mergeTargetsQ.data ?? []).length === 0 ? (
+                                      <div className="text-xs text-text-med">Nothing to merge into right now.</div>
+                                    ) : (
+                                      <div className="flex flex-col gap-1.5">
+                                        {(mergeTargetsQ.data ?? []).map((t) => (
+                                          <button
+                                            key={t.listing_id}
+                                            onClick={() => { setMergeError(null); setMergeConfirm({ draftId: l.id, draftTitle: draftEdit.title, target: t }); }}
+                                            className="flex items-center gap-2.5 rounded-lg border p-2 text-left"
+                                            style={{ borderColor: "#F0DDD2" }}
+                                          >
+                                            <div className="flex-none w-9 h-9 rounded-md overflow-hidden border bg-white" style={{ borderColor: "#F0DDD2" }}>
+                                              {t.image_url ? <img src={t.image_url} alt="" className="w-full h-full object-cover" /> : null}
+                                            </div>
+                                            <span className="text-xs font-heading font-bold text-foreground truncate">{t.title || "Untitled"}</span>
+                                            <StatusPill tone={STATUS_TONE[t.status] || "neutral"} label={STATUS_LABEL[t.status] || t.status} />
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {mergeError && <div className="text-xs mt-1.5" style={{ color: "#C0392B" }}>{mergeError}</div>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </Td>
-                  </tr>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -242,6 +398,15 @@ export default function MarketplaceListings() {
         kv={splitTarget ? [{ label: "Item", value: splitTarget.title }, { label: "Photos", value: String(photoCount(splitTarget)) }] : []}
         confirmLabel="Split now" busy={busy} error={error}
         onConfirm={confirmSplit} onCancel={() => !busy && setSplitTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={mergeConfirm !== null}
+        title="Merge these photos?"
+        body="This photo joins the other listing's gallery, right after its main photo. This draft is then deleted, it cannot be undone."
+        kv={mergeConfirm ? [{ label: "Merging", value: mergeConfirm.draftTitle || "Untitled draft" }, { label: "Into", value: mergeConfirm.target.title || "Untitled" }] : []}
+        confirmLabel="Merge now" danger busy={mergeBusy} error={mergeError}
+        onConfirm={confirmMerge} onCancel={() => !mergeBusy && setMergeConfirm(null)}
       />
     </div>
   );

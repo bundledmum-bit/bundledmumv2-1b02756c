@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb } from "./opsData";
+import { adb, fetchMergeTargets, mergeSplitDraft, type MergeTarget } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, ConfirmDialog } from "./opsUi";
 
 interface SourceListing { id: string; title: string; status: string }
@@ -44,6 +44,10 @@ export default function MarketplaceSplitReview() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [mergeDraftId, setMergeDraftId] = useState<string | null>(null);
+  const [mergeConfirm, setMergeConfirm] = useState<{ draftId: string; draftTitle: string; target: MergeTarget } | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
 
   const sourceQ = useQuery({
     queryKey: ["mkt-split-source", id],
@@ -68,6 +72,14 @@ export default function MarketplaceSplitReview() {
   });
 
   const drafts = draftsQ.data ?? [];
+
+  // p_include_source FALSE here: the source is being replaced by this split,
+  // merging back into it while inside its own review would be meaningless.
+  const mergeTargetsQ = useQuery({
+    queryKey: ["mkt-merge-targets", mergeDraftId],
+    enabled: !!mergeDraftId,
+    queryFn: () => fetchMergeTargets(mergeDraftId as string, false),
+  });
 
   // Hydrate each draft's edit state once from what actually loaded, never
   // overwriting anything the operator has since typed if the list refetches.
@@ -108,6 +120,17 @@ export default function MarketplaceSplitReview() {
     if (error) { setDeleteError(error.message); return; }
     if (data !== true) { setDeleteError("This could not be deleted. Refresh and try again."); return; }
     setDeleteTarget(null);
+    draftsQ.refetch();
+  }
+
+  async function confirmMerge() {
+    if (!mergeConfirm) return;
+    setMergeBusy(true); setMergeError(null);
+    const res = await mergeSplitDraft(mergeConfirm.draftId, mergeConfirm.target.listing_id);
+    setMergeBusy(false);
+    if (!res.ok) { setMergeError(res.message); return; }
+    setMergeConfirm(null);
+    setMergeDraftId(null);
     draftsQ.refetch();
   }
 
@@ -189,7 +212,7 @@ export default function MarketplaceSplitReview() {
                   />
                 </label>
                 {saveError[d.id] && <div className="text-xs mt-1.5" style={{ color: "#C0392B" }}>{saveError[d.id]}</div>}
-                <div className="flex items-center gap-2.5 mt-2.5">
+                <div className="flex items-center gap-2.5 mt-2.5 flex-wrap">
                   <button
                     onClick={() => saveDraft(d.id)}
                     disabled={!dirty || savingId === d.id}
@@ -199,6 +222,13 @@ export default function MarketplaceSplitReview() {
                     {savingId === d.id ? "Saving..." : "Save"}
                   </button>
                   <button
+                    onClick={() => { setMergeError(null); setMergeDraftId(mergeDraftId === d.id ? null : d.id); }}
+                    className="font-heading font-extrabold text-xs"
+                    style={{ color: "#6B5B54" }}
+                  >
+                    {mergeDraftId === d.id ? "Close merge" : "Merge into another"}
+                  </button>
+                  <button
                     onClick={() => { setDeleteError(null); setDeleteTarget(d); }}
                     className="font-heading font-extrabold text-xs"
                     style={{ color: "#C0392B" }}
@@ -206,6 +236,45 @@ export default function MarketplaceSplitReview() {
                     Delete this one
                   </button>
                 </div>
+
+                {/* Merge picker: same photo, different angle of the same
+                    item — "these two are the same walker" is exactly the
+                    call this screen exists to let an operator make while
+                    looking at every split side by side. Shows the title
+                    each sibling draft has just been typed as, not the
+                    stale DB value, since several may still share the
+                    seller's original combined title at this point. */}
+                {mergeDraftId === d.id && (
+                  <div className="mt-2.5 rounded-xl border p-2.5" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+                    <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med mb-2">Merge this photo into</div>
+                    {mergeTargetsQ.isLoading ? (
+                      <div className="text-xs text-text-med">Loading...</div>
+                    ) : (mergeTargetsQ.data ?? []).length === 0 ? (
+                      <div className="text-xs text-text-med">No other draft to merge into right now.</div>
+                    ) : (
+                      <div className="flex flex-col gap-1.5">
+                        {(mergeTargetsQ.data ?? []).map((t) => {
+                          const liveEdit = edits[t.listing_id];
+                          const displayTitle = liveEdit ? liveEdit.title : t.title;
+                          return (
+                            <button
+                              key={t.listing_id}
+                              onClick={() => { setMergeError(null); setMergeConfirm({ draftId: d.id, draftTitle: edit.title, target: t }); }}
+                              className="flex items-center gap-2.5 rounded-lg border p-2 text-left bg-white"
+                              style={{ borderColor: "#F0DDD2" }}
+                            >
+                              <div className="flex-none w-10 h-10 rounded-md overflow-hidden border bg-white" style={{ borderColor: "#F0DDD2" }}>
+                                {t.image_url ? <img src={t.image_url} alt="" className="w-full h-full object-cover" /> : null}
+                              </div>
+                              <span className="text-xs font-heading font-bold text-foreground truncate">{displayTitle || "Untitled draft"}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {mergeError && <div className="text-xs mt-1.5" style={{ color: "#C0392B" }}>{mergeError}</div>}
+                  </div>
+                )}
               </OpsCard>
             );
           })}
@@ -237,6 +306,15 @@ export default function MarketplaceSplitReview() {
         kv={deleteTarget ? [{ label: "Draft", value: deleteTarget.title }] : []}
         confirmLabel="Delete it" danger busy={deleteBusy} error={deleteError}
         onConfirm={confirmDelete} onCancel={() => !deleteBusy && setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={mergeConfirm !== null}
+        title="Merge these photos?"
+        body="This photo joins the other listing's gallery, right after its main photo. This draft is then deleted, it cannot be undone."
+        kv={mergeConfirm ? [{ label: "Merging", value: mergeConfirm.draftTitle || "Untitled draft" }, { label: "Into", value: mergeConfirm.target.title || "Untitled draft" }] : []}
+        confirmLabel="Merge now" danger busy={mergeBusy} error={mergeError}
+        onConfirm={confirmMerge} onCancel={() => !mergeBusy && setMergeConfirm(null)}
       />
 
       <ConfirmDialog
