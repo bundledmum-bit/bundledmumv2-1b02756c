@@ -425,11 +425,41 @@ export default function ListingDetailPage() {
           </div>
         )}
 
+        {/* Each chip is genuine secondary navigation into browse, filtered by
+            that one value — someone looking at a stroller in Ogudu is a
+            real candidate for seeing everything else nearby. Kept as plain
+            buttons styled exactly like the old inert spans (no new visual
+            weight next to Buy now / Ask for a lower price below), just
+            with a real tap target and destination now. Location links by
+            STATE, not city: about half of this marketplace's cities carry
+            exactly one live listing today, so a city-precise link would
+            routinely land someone back on the very listing they just left;
+            state is both meaningfully populated and still genuinely what
+            the chip is about. Condition and category both use ?condition=
+            and ?category=<slug> exactly as browse already reads them. */}
         <div className="mkt-tags">
-          <span className="mkt-tag cond">{conditionLabel(listing.condition)}</span>
-          <span className="mkt-tag loc">{locationLabel(listing)}</span>
+          {listing.condition ? (
+            <button type="button" className="mkt-tag cond" onClick={() => navigate(`/?condition=${listing.condition}`)}>
+              {conditionLabel(listing.condition)}
+            </button>
+          ) : (
+            <span className="mkt-tag cond">{conditionLabel(listing.condition)}</span>
+          )}
+          {listing.location_state ? (
+            <button type="button" className="mkt-tag loc" onClick={() => navigate(`/?state=${encodeURIComponent(listing.location_state as string)}`)}>
+              {locationLabel(listing)}
+            </button>
+          ) : (
+            <span className="mkt-tag loc">{locationLabel(listing)}</span>
+          )}
           {listing.category?.name ? (
-            <span className="mkt-tag cat">{listing.category.name}</span>
+            listing.category.slug ? (
+              <button type="button" className="mkt-tag cat" onClick={() => navigate(`/?category=${listing.category!.slug}`)}>
+                {listing.category.name}
+              </button>
+            ) : (
+              <span className="mkt-tag cat">{listing.category.name}</span>
+            )
           ) : null}
         </div>
 

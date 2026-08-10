@@ -6107,3 +6107,21 @@ Direct follow-up to §54's own report, which flagged this redundancy without tou
 Preserved: the existing category filter, accordion, search, sort, and location filters (all untouched — only category/group state and its URL sync changed), breadcrumbs (none existed to break), the featured category tiles, sections 7 through 30.
 
 `npm run build` clean.
+
+## 57. Listing detail's three chips now navigate into browse (2026-08-09)
+
+**Before**: `conditionLabel`/`locationLabel`/category name rendered as three plain, inert `<span>` elements. Browse read only `?category=` and `?group=` from the URL (§56) — `state`, `city`, and `condition` all work as real server-side filters already (`buildBrowseQuery` applies each with a plain `.eq()`/`.in()`), but none was wired to the URL at all before this pass, not just city as the task's own framing assumed.
+
+**City vs. state, decided from real data, not just the task's hint**: queried the actual live per-city breakdown — **8 of 16 cities carry exactly one live listing** (Ago Palace, Alimosho, Ketu, Ogudu GRA, Ayobo, Ikorodu, and others). A city-precise location link would routinely land someone back on the exact listing they just left. Chose **state** as the location chip's target — state filtering is real, already works, and every state has a meaningfully larger cohort (Lagos 37, confirmed live). City support was not added at all, kept out of scope since nothing uses it.
+
+**Wired, mirroring the exact §56 pattern**: `?state=` and `?condition=` now read on load and stay synced via a small sibling effect (kept separate from the category/group one so each stays easy to reason about), the same `setSearchParams(..., {replace:true})` approach, no new browse capability invented — both were already real, working filters, just not URL-linkable yet.
+
+**Category chip uses the slug**: `LISTING_SELECT`'s category embed gained `slug` (a plain additive column read, no migration), and the chip links `?category=<slug>` — falls back to a plain, non-clickable span in the one theoretical case a category predates slugs and was never re-saved (confirmed zero such rows exist today, defended anyway).
+
+**All three live-verified against real listings, not just code-reviewed**: clicked the condition chip on a real "Good" listing → 16 matching items, `?condition=good`, chip clearable; clicked the location chip → 37 Lagos items, `?state=Lagos`, "Where" control itself updated to "Lagos"; clicked the category chip → 4 breast pump accessories items, `?category=breast-pump-accessories` (the real slug, not the UUID). Confirmed all three render as genuine `<button>` elements measuring exactly **44px tall** via a direct DOM measurement, same visual chip styling as before (colour, padding, font untouched) — only a button reset, the 44px min-height, and a subtle opacity tap-feedback were added, deliberately no new visual weight next to Buy now.
+
+**The current-listing edge case, chosen deliberately not to build**: did not exclude the current listing from any of the three destinations. Excluding it would need a new browse capability (filtering out one specific id) that doesn't exist today — explicitly against this task's own non-goal of using only what already works. Chose instead to let it appear naturally among real results: category and condition filters return meaningfully large sets where this is a complete non-issue, and the state-not-city decision above is what actually protects the location chip from ever landing on "just the one you came from."
+
+Preserved: Buy now, Ask for a lower price, the sticky purchase panel, the how-it-works explainer, the category spec block, the state badge (§54, unrelated, untouched), every existing browse filter and back navigation, sections 7 through 30. No breadcrumbs existed to preserve (confirmed in §56's own audit).
+
+`npm run build` clean.

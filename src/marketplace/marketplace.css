@@ -323,11 +323,18 @@
   letter-spacing: -0.02em;
   margin: 4px 0 0;
 }
-.mkt-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.mkt-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .mkt-tag { font: 700 11px/1 'Lato', sans-serif; padding: 6px 9px; border-radius: 6px; }
 .mkt-tag.cond { background: var(--mkt-green-light); color: var(--mkt-green-dark); }
 .mkt-tag.loc { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); }
 .mkt-tag.cat { background: var(--mkt-grey-chip); color: var(--mkt-muted); }
+/* The three chips that link into browse (condition, location, category):
+   real buttons now, but still reading as the same small secondary chip,
+   not a competing call to action next to Buy now below — only the tap
+   target grows to a real 44px, never the visible weight of the chip. */
+button.mkt-tag { border: none; cursor: pointer; font-family: inherit; min-height: 44px; display: inline-flex; align-items: center; transition: opacity 0.15s ease; }
+button.mkt-tag:hover, button.mkt-tag:active { opacity: 0.72; }
+button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline-offset: 2px; }
 
 .mkt-seller {
   background: #fff;

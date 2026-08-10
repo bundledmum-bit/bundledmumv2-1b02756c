@@ -22,6 +22,10 @@ export interface MarketplaceSellerPublic {
 
 export interface MarketplaceCategoryEmbed {
   name: string | null;
+  /** The readable ?category= link value (see handoff §56) — null only for a
+   * category created before slugs existed and never re-saved since; the
+   * trigger backfills/keeps this in sync otherwise. */
+  slug: string | null;
 }
 
 export interface MarketplaceListing {

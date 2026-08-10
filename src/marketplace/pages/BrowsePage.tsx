@@ -35,6 +35,7 @@ const CONDITION_OPTS: Array<{ value: string; label: string }> = [
   { value: "good", label: "Good" },
   { value: "fair", label: "Fair" },
 ];
+const CONDITION_VALUES = CONDITION_OPTS.map((o) => o.value);
 
 const EMPTY: BrowseFilters = { search: "", categoryId: "", groupId: "", categoryIds: null, state: "", city: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
 
@@ -78,9 +79,17 @@ export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialCategoryParam = searchParams.get("category") || "";
   const initialGroupParam = searchParams.get("group") || "";
+  // ?state= and ?condition= (from the listing detail chips, see handoff §57)
+  // need no async lookup like a category/group slug does — a state name and
+  // a condition value are matched directly, so they resolve synchronously
+  // here, the same way the UUID form of ?category= always has.
+  const initialStateParam = searchParams.get("state") || "";
+  const initialConditionParam = searchParams.get("condition") || "";
   const [filters, setFilters] = useState<BrowseFilters>({
     ...EMPTY,
     categoryId: isUuid(initialCategoryParam) ? initialCategoryParam : "",
+    state: initialStateParam,
+    conditions: CONDITION_VALUES.includes(initialConditionParam) ? [initialConditionParam] : [],
   });
   const [pendingCategorySlug, setPendingCategorySlug] = useState<string | null>(
     initialCategoryParam && !isUuid(initialCategoryParam) ? initialCategoryParam : null,
@@ -142,8 +151,8 @@ export default function BrowsePage() {
   // its readable slug form, from wherever it was set (a home tile, the
   // accordion, a chip clear) — so the current view is always the shareable
   // link, without every one of those click handlers needing to know about
-  // the URL at all. Never touches search/price/condition/location, only
-  // category and group, per this task's own scope.
+  // the URL at all. Only category and group here (see the sibling effect
+  // below for state/condition); never search/price, out of scope for both.
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
     let changed = false;
@@ -158,6 +167,23 @@ export default function BrowsePage() {
     }
     if (changed) setSearchParams(next, { replace: true });
   }, [filters.categoryId, filters.groupId, categories, groups]);
+
+  // Same idea, a sibling effect rather than folding into the one above so
+  // each stays easy to reason about on its own: keeps ?state= and
+  // ?condition= in sync with the location and condition filters, for the
+  // listing detail chips (handoff §57) and anything else that sets them.
+  // A single condition maps to one plain value; zero or several (the sheet
+  // allows multiple checkboxes) has no one clean URL form, so the param is
+  // simply absent then, same as before this existed.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+    if (filters.state) { if (next.get("state") !== filters.state) { next.set("state", filters.state); changed = true; } }
+    else if (next.has("state")) { next.delete("state"); changed = true; }
+    if (filters.conditions.length === 1) { if (next.get("condition") !== filters.conditions[0]) { next.set("condition", filters.conditions[0]); changed = true; } }
+    else if (next.has("condition")) { next.delete("condition"); changed = true; }
+    if (changed) setSearchParams(next, { replace: true });
+  }, [filters.state, filters.conditions]);
 
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
