@@ -1428,7 +1428,6 @@
 .mkt-condition-count { font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green-dark); background: var(--mkt-green-light); padding: 5px 9px; border-radius: 999px; white-space: nowrap; flex: 0 0 auto; }
 .mkt-condition-bar { height: 4px; border-radius: 2px; background: var(--mkt-grey-chip); overflow: hidden; }
 .mkt-condition-bar i { display: block; height: 100%; background: var(--mkt-green); border-radius: 2px; transition: width 0.25s ease; }
-.mkt-condition-sub { display: none; }
 
 .mkt-condition-grid { display: flex; flex-direction: column; gap: 12px; }
 .mkt-condition-col { display: contents; }
@@ -1455,7 +1454,6 @@
 @media (min-width: 1024px) {
   .mkt-condition-head-top h3 { font-size: 26px; }
   .mkt-condition-count::after { content: " answered"; }
-  .mkt-condition-sub { display: block; font: 400 13.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; }
   .mkt-condition-bar { display: none; }
 
   .mkt-condition-grid { display: grid; grid-template-columns: 1fr 1fr 280px; gap: 24px; align-items: start; }

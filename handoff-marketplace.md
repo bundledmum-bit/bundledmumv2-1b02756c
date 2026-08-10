@@ -6073,3 +6073,15 @@ Preserved: the 4-photo minimum, camera-or-gallery capture, the square crop/compr
 Not live-verified — `CreateListingPage.tsx` requires a signed-in seller account, the standing limitation for every seller-authenticated screen in this environment. Code-reviewed against the real existing form structure and the real `.mkt-honesty` styling it was deliberately built to sit apart from.
 
 `npm run build` clean.
+
+## 55. Removed the Condition step's line that duplicated the honesty box (2026-08-09)
+
+Direct follow-up to §54's own report, which flagged this redundancy without touching it.
+
+**Removed**: `.mkt-condition-sub`, *"Buyers cannot ask you anything before they pay, so say it now or they find out when the parcel opens."* — desktop-only text (mobile had it `display: none` and showed the progress bar instead) sitting directly under the Condition step's heading, restating the honesty box's own first line almost word for word, with none of that box's actual teeth (the consequence, the strike, the reassurance).
+
+**Kept**: `.mkt-honesty` in full, unchanged — the fuller, better version: it makes the same "buyers can't ask first" point, then goes further with the real stakes (lose the sale, the payout, a strike) and a positive close ("Be upfront and you will still sell it"), immediately above the Condition block the removed line sat inside.
+
+**Confirmed nothing else on the Condition step changed**: the progress count ("X of Y answered", unconditional, both breakpoints) and the mobile progress bar are both untouched — the sub-line's own desktop-only visibility toggle was removed alongside it (dead CSS, since nothing renders it now), but the *bar's* separate `display: none` on desktop (a pre-existing, unrelated toggle) was left exactly as it was; desktop already relied on the count badge for progress, not the bar, before this change. Condition questions, the follow-up detail fields, and the live-answers recap are all unaffected.
+
+`npm run build` clean.

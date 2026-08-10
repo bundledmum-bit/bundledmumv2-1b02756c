@@ -732,7 +732,6 @@ export default function CreateListingPage() {
                 <span className="mkt-condition-count">{conditionAnsweredCount} of {conditionQuestions.length}</span>
               </div>
               <div className="mkt-condition-bar"><i style={{ width: `${conditionQuestions.length ? (conditionAnsweredCount / conditionQuestions.length) * 100 : 0}%` }} /></div>
-              <p className="mkt-condition-sub">Buyers cannot ask you anything before they pay, so say it now or they find out when the parcel opens.</p>
             </div>
 
             <div className="mkt-condition-grid">
