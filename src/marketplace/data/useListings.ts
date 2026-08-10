@@ -63,7 +63,13 @@ export type BrowseSort = "newest" | "price_asc" | "price_desc";
 
 export interface BrowseFilters {
   search: string;
-  categoryId: string;      // "" for all
+  categoryId: string;      // "" for all — a single category
+  groupId: string;         // "" for all — a whole category GROUP, e.g. from ?group=slug.
+                            // Mutually exclusive with categoryId; categoryId always wins
+                            // if both are somehow set, since it's the finer filter.
+  categoryIds: string[] | null; // resolved list of category ids belonging to groupId,
+                                 // computed client side (categories are already loaded
+                                 // for the tiles/accordion) — null when groupId is "".
   state: string;           // location_state, "" for All Nigeria
   city: string;            // location_city, "" for all areas (needs a state first)
   minPrice: number | null; // filters final_price_naira, never price_naira
@@ -81,7 +87,11 @@ function buildBrowseQuery(f: BrowseFilters, head: boolean) {
     .eq("status", "live");
   const search = f.search.trim();
   if (search) q = q.ilike("title", `%${search}%`);
+  // categoryId (a single category) always takes priority over categoryIds (a whole
+  // group) if both are ever set at once — the finer filter wins, and this also
+  // guards against a stale group selection lingering after a category is picked.
   if (f.categoryId) q = q.eq("category_id", f.categoryId);
+  else if (f.categoryIds && f.categoryIds.length) q = q.in("category_id", f.categoryIds);
   if (f.state) q = q.eq("location_state", f.state);
   if (f.city) q = q.eq("location_city", f.city);
   if (f.minPrice != null) q = q.gte("final_price_naira", f.minPrice);
@@ -123,18 +133,20 @@ export function useBrowseCount(filters: BrowseFilters, enabled: boolean) {
   });
 }
 
-export interface CategoryOption { id: string; name: string; icon: string | null; group_id: string | null; sort_order: number; }
-export interface CategoryGroup { id: string; name: string; sort_order: number; }
+export interface CategoryOption { id: string; name: string; slug: string; icon: string | null; group_id: string | null; sort_order: number; }
+export interface CategoryGroup { id: string; name: string; slug: string; sort_order: number; }
 
 /** Allowed categories for the tiles and grouped filter. Ordered by the category's
  * own sort_order then name; grouping/ordering into the 7 groups is done client side
  * against useCategoryGroups (see BrowsePage). icon and group_id are read live so a
- * category added or regrouped by an admin renders with no deploy, no hardcoded map. */
+ * category added or regrouped by an admin renders with no deploy, no hardcoded map.
+ * slug is unique, auto-generated from the name and kept in sync server side by a
+ * trigger — the readable form every category link now uses instead of a raw id. */
 export function useAllowedCategories() {
   return useQuery({
     queryKey: ["marketplace", "allowed-categories"],
     queryFn: async (): Promise<CategoryOption[]> => {
-      const { data } = await mdb.from("marketplace_categories").select("id, name, icon, group_id, sort_order").eq("is_allowed", true).order("sort_order").order("name");
+      const { data } = await mdb.from("marketplace_categories").select("id, name, slug, icon, group_id, sort_order").eq("is_allowed", true).order("sort_order").order("name");
       return (data ?? []) as CategoryOption[];
     },
     staleTime: 5 * 60 * 1000,
@@ -142,12 +154,13 @@ export function useAllowedCategories() {
 }
 
 /** The 7 category groups (Clothing and shoes, Feeding, ...), ordered for display.
- * Public-readable; a category's group_id points here. */
+ * Public-readable; a category's group_id points here. slug is the readable ?group=
+ * link value, same auto-generated/trigger-synced column as a category's own. */
 export function useCategoryGroups() {
   return useQuery({
     queryKey: ["marketplace", "category-groups"],
     queryFn: async (): Promise<CategoryGroup[]> => {
-      const { data } = await mdb.from("marketplace_category_groups").select("id, name, sort_order").order("sort_order");
+      const { data } = await mdb.from("marketplace_category_groups").select("id, name, slug, sort_order").order("sort_order");
       return (data ?? []) as CategoryGroup[];
     },
     staleTime: 5 * 60 * 1000,

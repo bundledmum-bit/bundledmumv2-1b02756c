@@ -1147,6 +1147,13 @@
 .mkt-fchip { border: 1px solid var(--mkt-green); background: var(--mkt-green-light); color: var(--mkt-green-dark); border-radius: 999px; padding: 6px 11px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
 .mkt-fchip.clear { border-color: var(--mkt-border); background: transparent; color: var(--mkt-muted); }
 
+/* An unrecognised ?category=/?group= link value: calm and informational,
+   not an error — same cream/border language as the rest of the page
+   chrome, never error red, since a mistyped ad link is not the visitor's
+   fault and the page still works, just unfiltered. */
+.mkt-unrecognised-filter { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 16px 0; padding: 10px 13px; border-radius: 12px; background: var(--mkt-cream); border: 1px solid var(--mkt-border); font: 400 12.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-unrecognised-filter button { flex: 0 0 auto; border: none; background: none; color: var(--mkt-muted-2); font-size: 13px; line-height: 1; cursor: pointer; padding: 2px; }
+
 .mkt-browse { padding: 0 16px; }
 .mkt-fpanel { display: none; }
 .mkt-browse-main { min-width: 0; }

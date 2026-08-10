@@ -5,6 +5,7 @@ import { formatNaira } from "../lib/format";
 import {
   fetchSimilarLiveListings,
   fetchCategoryLiveCount,
+  fetchCategorySlug,
   browseCategoryLabel,
   type SimilarListing,
 } from "../lib/goneListing";
@@ -54,12 +55,23 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
     enabled: showsSimilar && !!(c as { categoryId: string | null }).categoryId,
     queryFn: () => fetchCategoryLiveCount((c as { categoryId: string }).categoryId),
   });
+  // Readable link, resolved separately since get_gone_listing_context (the
+  // RPC this category id comes from) has no slug column to give back — see
+  // fetchCategorySlug's own note. Falls back to the raw id below if this
+  // hasn't resolved yet or fails, so the link never breaks either way.
+  const { data: categorySlug } = useQuery({
+    queryKey: ["mkt-category-slug", showsSimilar ? (c as { categoryId: string | null }).categoryId : null],
+    enabled: showsSimilar && !!(c as { categoryId: string | null }).categoryId,
+    queryFn: () => fetchCategorySlug((c as { categoryId: string }).categoryId),
+  });
 
   const hasSimilar = showsSimilar && (similar?.length ?? 0) > 0;
   const anySameCategory = showsSimilar && (similar ?? []).some((s) => s.from_same_category);
   const categoryName = showsSimilar ? (c as { categoryName: string | null }).categoryName : null;
   const categoryId = showsSimilar ? (c as { categoryId: string | null }).categoryId : null;
   const categoryLabel = browseCategoryLabel(categoryName);
+  // Slug once resolved, the still-working raw id otherwise — never a broken link.
+  const categoryUrlValue = categorySlug || categoryId;
 
   // The "message column alone, centred" desktop treatment the design
   // specifies for every case with no similar-items grid to sit beside.
@@ -82,7 +94,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
       ? `The ${c.title} you were looking at sold for ${formatNaira(c.price)}.${anySameCategory ? ` Good news for the marketplace, bad timing for you, here's what else is around.` : " Nothing else left in that exact category, but here's what's close."}`
       : `The ${c.title} you were looking at sold for ${formatNaira(c.price)}.${categoryName ? ` Nothing else in ${categoryLabel} just at the moment, but new things get listed daily.` : ""}`;
     primaryLabel = anySameCategory && categoryName ? `Browse ${categoryLabel}` : "Browse everything";
-    primaryTo = anySameCategory && categoryId ? `/?category=${categoryId}` : "/";
+    primaryTo = anySameCategory && categoryId ? `/?category=${categoryUrlValue}` : "/";
     waLabel = "Ask if more are coming";
     waMessage = `Hi, I was looking at the ${c.title} and it's sold. Do you know if similar ones come up often?`;
   } else if (c.kind === "removed") {
@@ -92,7 +104,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
       ? `The ${c.title} you were looking at has been taken down. It may come back later${anySameCategory ? `, in the meantime here's more in ${categoryLabel}.` : ", in the meantime here's what's close."}`
       : `The ${c.title} you were looking at has been taken down. It may come back later.${categoryName ? ` Nothing else in ${categoryLabel} just at the moment, but new things get listed daily.` : ""}`;
     primaryLabel = anySameCategory && categoryName ? `Browse ${categoryLabel}` : "Browse everything";
-    primaryTo = anySameCategory && categoryId ? `/?category=${categoryId}` : "/";
+    primaryTo = anySameCategory && categoryId ? `/?category=${categoryUrlValue}` : "/";
     waLabel = "Ask about this item";
     waMessage = `Hi, I was looking at ${c.title} and it's no longer available. Is it likely to come back, or is there something similar you'd recommend?`;
   } else if (c.kind === "wrongUrl") {
@@ -166,7 +178,7 @@ export default function NotFoundOrGoneScreen({ c, waNumber }: { c: NotFoundCase;
             {(similar ?? []).map((s) => <SimilarCard key={s.id} item={s} />)}
           </div>
           {categoryId && (categoryCount ?? 0) > 0 && (
-            <button className="mkt-notfound-seeall" onClick={() => navigate(`/?category=${categoryId}`)}>
+            <button className="mkt-notfound-seeall" onClick={() => navigate(`/?category=${categoryUrlValue}`)}>
               See all {categoryCount} in {categoryLabel}
             </button>
           )}

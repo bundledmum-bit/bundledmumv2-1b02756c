@@ -36,7 +36,12 @@ const CONDITION_OPTS: Array<{ value: string; label: string }> = [
   { value: "fair", label: "Fair" },
 ];
 
-const EMPTY: BrowseFilters = { search: "", categoryId: "", state: "", city: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
+const EMPTY: BrowseFilters = { search: "", categoryId: "", groupId: "", categoryIds: null, state: "", city: "", minPrice: null, maxPrice: null, conditions: [], sort: "newest" };
+
+// A category or group id/link value is a UUID today (the existing, still-working
+// format) or, from now on, a readable slug — told apart by shape, never guessed.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v: string): boolean { return UUID_RE.test(v); }
 
 // Sensible fallback when a category has no icon set (e.g. a newly added one before
 // an admin sets its emoji). "All categories" uses its own fixed shopping icon.
@@ -58,11 +63,30 @@ function groupCategories(categories: CategoryOption[], groups: CategoryGroup[]) 
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
 
 export default function BrowsePage() {
-  // Optional deep link, e.g. from a gone listing's "Browse {category}" CTA:
-  // ?category=<id> preselects that category filter. Additive only — a plain
-  // /marketplace visit is unaffected, EMPTY still governs the default.
-  const [searchParams] = useSearchParams();
-  const [filters, setFilters] = useState<BrowseFilters>({ ...EMPTY, categoryId: searchParams.get("category") || "" });
+  // Optional deep link, e.g. from a gone listing's "Browse {category}" CTA or
+  // an ad campaign: ?category=<slug-or-uuid> preselects a single category,
+  // ?group=<slug> preselects a whole category group (e.g. every clothing and
+  // shoes category at once). Additive only — a plain /marketplace visit is
+  // unaffected, EMPTY still governs the default.
+  //
+  // A UUID resolves immediately (the original, still-working format, matched
+  // directly against category_id — no lookup needed). A slug cannot resolve
+  // until categories/groups have loaded, so it's held as "pending" and
+  // consumed by the effect below the moment that data is in. An unrecognised
+  // slug (a typo in an ad, or a group renamed since the link was made) falls
+  // through to unfilteredNote rather than an error or a silent empty result.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialCategoryParam = searchParams.get("category") || "";
+  const initialGroupParam = searchParams.get("group") || "";
+  const [filters, setFilters] = useState<BrowseFilters>({
+    ...EMPTY,
+    categoryId: isUuid(initialCategoryParam) ? initialCategoryParam : "",
+  });
+  const [pendingCategorySlug, setPendingCategorySlug] = useState<string | null>(
+    initialCategoryParam && !isUuid(initialCategoryParam) ? initialCategoryParam : null,
+  );
+  const [pendingGroupSlug, setPendingGroupSlug] = useState<string | null>(initialGroupParam || null);
+  const [unrecognisedFilterNote, setUnrecognisedFilterNote] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const { isLoggedIn } = useCustomerAuth();
@@ -74,15 +98,71 @@ export default function BrowsePage() {
   }, [searchInput]);
 
   const { data, isLoading, isError, refetch } = useBrowseListings(filters);
-  const { data: categories = [] } = useAllowedCategories();
-  const { data: groups = [] } = useCategoryGroups();
+  const { data: categories = [], isLoading: categoriesLoading } = useAllowedCategories();
+  const { data: groups = [], isLoading: groupsLoading } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
   const { data: featured = [] } = useFeaturedCategories("browse_home");
+
+  // Resolves a pending ?category=slug or ?group=slug once categories/groups
+  // have actually loaded (can't resolve against data that isn't there yet).
+  // A group resolves to the live list of category ids it currently holds,
+  // computed here client side since categories are already loaded for the
+  // tiles/accordion anyway — no new query needed. An unrecognised slug (a
+  // typo, or a group renamed since a link went out) leaves browse fully
+  // unfiltered with a plain, calm note, never an error or an empty result
+  // that reads as "nothing for sale here."
+  useEffect(() => {
+    if (pendingCategorySlug == null && pendingGroupSlug == null) return;
+    // Wait for BOTH queries to genuinely settle, not just whichever happens to
+    // resolve first — a length-based proxy race-conditions here: if groups
+    // loads before categories, "categories.length === 0" alone would wrongly
+    // look like "no such category" instead of "not loaded yet", and the
+    // pending slug gets discarded (never retried) before it had a real
+    // chance to resolve.
+    if (categoriesLoading || groupsLoading) return;
+    if (pendingCategorySlug != null) {
+      const match = categories.find((c) => c.slug === pendingCategorySlug);
+      if (match) setFilters((f) => ({ ...f, categoryId: match.id, groupId: "", categoryIds: null }));
+      else setUnrecognisedFilterNote(`We didn't recognise "${pendingCategorySlug}" as a category, so here's everything instead.`);
+      setPendingCategorySlug(null);
+    }
+    if (pendingGroupSlug != null) {
+      const match = groups.find((g) => g.slug === pendingGroupSlug);
+      if (match) {
+        const ids = categories.filter((c) => c.group_id === match.id).map((c) => c.id);
+        setFilters((f) => ({ ...f, groupId: match.id, categoryIds: ids, categoryId: "" }));
+      } else {
+        setUnrecognisedFilterNote(`We didn't recognise "${pendingGroupSlug}" as a category group, so here's everything instead.`);
+      }
+      setPendingGroupSlug(null);
+    }
+  }, [categories, groups, categoriesLoading, groupsLoading, pendingCategorySlug, pendingGroupSlug]);
+
+  // Keeps the URL in sync with whichever category/group filter is active, in
+  // its readable slug form, from wherever it was set (a home tile, the
+  // accordion, a chip clear) — so the current view is always the shareable
+  // link, without every one of those click handlers needing to know about
+  // the URL at all. Never touches search/price/condition/location, only
+  // category and group, per this task's own scope.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+    if (filters.categoryId) {
+      const slug = categories.find((c) => c.id === filters.categoryId)?.slug;
+      if (slug && (next.get("category") !== slug || next.has("group"))) { next.set("category", slug); next.delete("group"); changed = true; }
+    } else if (filters.groupId) {
+      const slug = groups.find((g) => g.id === filters.groupId)?.slug;
+      if (slug && (next.get("group") !== slug || next.has("category"))) { next.set("group", slug); next.delete("category"); changed = true; }
+    } else if (next.has("category") || next.has("group")) {
+      next.delete("category"); next.delete("group"); changed = true;
+    }
+    if (changed) setSearchParams(next, { replace: true });
+  }, [filters.categoryId, filters.groupId, categories, groups]);
 
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
 
-  const anyFilter = !!(filters.categoryId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
+  const anyFilter = !!(filters.categoryId || filters.groupId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 
   // Home tiles: an admin's curated pick for browse_home (marketplace_featured_categories),
   // in sort_order. Falls back to the previous default — group display order, first 6 —
@@ -110,6 +190,10 @@ export default function BrowsePage() {
 
   const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
   const catIcon = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.icon ?? null, [categories, filters.categoryId]);
+  // The active group's own name, for the applied chip below — the same
+  // "show what's active, let them clear it" treatment the category filter
+  // already gets, just one level coarser.
+  const groupName = useMemo(() => groups.find((g) => g.id === filters.groupId)?.name ?? "", [groups, filters.groupId]);
   // Genuinely one category and nothing else, e.g. a home tile tap or the browse
   // category filter alone, distinct from a combined filter that also happens to
   // return zero results (that stays the existing generic empty state).
@@ -174,13 +258,24 @@ export default function BrowsePage() {
         </div>
       </div>
 
+      {/* An unrecognised ?category= or ?group= slug (a typo in an ad, or a
+          group renamed since the link went out): shown unfiltered, honestly
+          told why, never an error and never a silent empty result that
+          would read as "nothing for sale here." Dismissible, not sticky. */}
+      {unrecognisedFilterNote && (
+        <div className="mkt-unrecognised-filter">
+          <span>{unrecognisedFilterNote}</span>
+          <button onClick={() => setUnrecognisedFilterNote(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
       {/* Category tiles, home only (they scroll away once a filter is on). The
           emoji is read live from marketplace_categories.icon; the chip colour is a
           fixed brand-palette rotation by index, not a per-category value. */}
       {!anyFilter && categories.length > 0 && (
         <div className="mkt-cats">
           {tileCats.slice(0, 6).map((c, i) => (
-            <button key={c.id} className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
+            <button key={c.id} className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id, groupId: "", categoryIds: null }))}>
               <span className="ic" aria-hidden style={{ background: i % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
               <span className="nm">{c.name}</span>
             </button>
@@ -201,7 +296,7 @@ export default function BrowsePage() {
             return (
               <div key={c.id} style={{ display: "contents" }}>
                 {showHeader && group && <div className="mkt-cat-group-h">{group.name} group</div>}
-                <button className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id }))}>
+                <button className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id, groupId: "", categoryIds: null }))}>
                   <span className="ic" aria-hidden style={{ background: (tileCats.length + i) % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
                   <span className="nm">{c.name}</span>
                 </button>
@@ -240,6 +335,7 @@ export default function BrowsePage() {
         <div className="mkt-chips-applied">
           {filters.search && <button className="mkt-fchip" onClick={() => { setSearchInput(""); setFilters((f) => ({ ...f, search: "" })); }}>{filters.search} ✕</button>}
           {filters.categoryId && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, categoryId: "" }))}>{catName} ✕</button>}
+          {filters.groupId && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, groupId: "", categoryIds: null }))}>{groupName} group ✕</button>}
           {(filters.minPrice != null || filters.maxPrice != null) && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, minPrice: null, maxPrice: null }))}>{filters.minPrice != null ? naira(filters.minPrice) : "₦0"} to {filters.maxPrice != null ? naira(filters.maxPrice) : "any"} ✕</button>}
           {filters.conditions.map((c) => <button key={c} className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, conditions: f.conditions.filter((x) => x !== c) }))}>{CONDITION_OPTS.find((o) => o.value === c)?.label} ✕</button>)}
           {filters.state && <button className="mkt-fchip" onClick={() => setFilters((f) => ({ ...f, state: "", city: "" }))}>{filters.city ? `${filters.city}, ${filters.state}` : filters.state} ✕</button>}
@@ -377,7 +473,7 @@ function CategoryFilter({ value, onChange, categories, groups }: {
     setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   const catBtn = (c: CategoryOption) => (
-    <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id })}>
+    <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id, groupId: "", categoryIds: null })}>
       <span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>{c.name}
     </button>
   );
@@ -385,7 +481,7 @@ function CategoryFilter({ value, onChange, categories, groups }: {
   return (
     <div className="mkt-fgroup">
       <div className="mkt-fgroup-h">Category</div>
-      <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "" })}>
+      <button className={value.categoryId === "" ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: "", groupId: "", categoryIds: null })}>
         <span className="fopt-ic" aria-hidden>{ALL_CATEGORIES_ICON}</span>All categories
       </button>
 

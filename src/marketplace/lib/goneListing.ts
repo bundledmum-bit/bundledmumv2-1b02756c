@@ -48,6 +48,17 @@ export async function fetchSimilarLiveListings(listingId: string, limit = 4): Pr
   return (data ?? []) as SimilarListing[];
 }
 
+/** get_gone_listing_context (an RPC) only returns category_id, never a slug —
+ * not something this pass can change (no edge function/migration scope), so
+ * the readable slug for this screen's own "Browse {category}" links is
+ * resolved with one small, plain, non-RPC read against the same already-
+ * deployed slug column instead. Null on any failure, so a caller can fall
+ * back to the still-working raw-id link rather than break it. */
+export async function fetchCategorySlug(categoryId: string): Promise<string | null> {
+  const { data } = await mdb.from("marketplace_categories").select("slug").eq("id", categoryId).maybeSingle();
+  return (data as { slug: string } | null)?.slug ?? null;
+}
+
 /** Live count for "See all N in {category}", read the same way BrowsePage's
  * own count already works — a plain head-count select, not a new RPC. */
 export async function fetchCategoryLiveCount(categoryId: string): Promise<number> {
