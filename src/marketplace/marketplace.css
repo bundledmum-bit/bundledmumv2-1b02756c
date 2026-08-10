@@ -274,6 +274,11 @@
   overflow: hidden;
 }
 .mkt-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* The hero's own tap target for the fullscreen viewer — a plain button
+   reset so it behaves exactly like the bare <img> it replaces, same size,
+   same crop, no visible button chrome. */
+.mkt-hero-tap { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: none; background: none; cursor: zoom-in; }
+.mkt-hero-tap img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mkt-back {
   position: absolute;
   top: 12px;
@@ -1654,4 +1659,29 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-notfound-cta:not(.mkt-notfound-cta--primary) { min-height: 48px; padding: 12px 16px; font-size: 13px; border-radius: 11px; }
   .mkt-notfound-wa-ic { width: 20px; height: 20px; flex: 0 0 20px; }
   .mkt-notfound-grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+}
+
+/* ==================== FULLSCREEN PHOTO VIEWER ==================== */
+/* Dark backdrop deliberately, even though the rest of the site is light —
+   makes the photo itself the focus, the one place on the site this is the
+   right call. z-index above everything else in the marketplace tree
+   (highest existing is .mkt-menu at 80), so the sticky desktop panel and
+   the fixed mobile buy bar are never reachable while this is open. */
+.mkt-pv { position: fixed; inset: 0; z-index: 100; background: #0A0A0A; display: flex; flex-direction: column; touch-action: none; overscroll-behavior: contain; }
+.mkt-pv-top { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; padding: 14px; }
+.mkt-pv-close { width: 44px; height: 44px; border: none; border-radius: 50%; background: rgba(255,255,255,0.14); color: var(--mkt-cream); font: 700 16px/1 'Lato', sans-serif; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.mkt-pv-count { font: 700 12.5px/1 'Lato', sans-serif; color: rgba(255,248,244,0.85); background: rgba(255,255,255,0.14); padding: 7px 12px; border-radius: 999px; }
+.mkt-pv-stage { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.mkt-pv-img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-drag: none; will-change: transform; }
+.mkt-pv-nav { display: none; }
+.mkt-pv-dots { position: absolute; bottom: 16px; left: 0; right: 0; display: flex; justify-content: center; gap: 6px; z-index: 2; }
+.mkt-pv-dot { width: 6px; height: 6px; border-radius: 50%; border: none; padding: 0; background: rgba(255,255,255,0.35); }
+.mkt-pv-dot.on { background: var(--mkt-coral); width: 16px; border-radius: 3px; }
+
+@media (min-width: 768px) {
+  /* Desktop gets on-screen prev/next (mobile relies on the swipe gesture
+     instead, matching the mobile-first priority elsewhere in this file). */
+  .mkt-pv-nav { display: flex; align-items: center; justify-content: center; position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; border-radius: 50%; border: none; background: rgba(255,255,255,0.14); color: var(--mkt-cream); font: 700 22px/1 'Lato', sans-serif; cursor: pointer; z-index: 2; }
+  .mkt-pv-nav.prev { left: 18px; }
+  .mkt-pv-nav.next { right: 18px; }
 }

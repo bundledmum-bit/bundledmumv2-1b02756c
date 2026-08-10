@@ -29,6 +29,7 @@ import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
 import { fetchGoneListingContext, fetchOwnListingIfMine } from "../lib/goneListing";
 import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundOrGoneScreen";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import PhotoViewer from "../components/PhotoViewer";
 
 const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
 
@@ -95,6 +96,7 @@ export default function ListingDetailPage() {
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [offerSheetOpen, setOfferSheetOpen] = useState(false);
   const [askSheetOpen, setAskSheetOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   // Not live: figure out which of the four situations this is. Ownership is
   // decided by the database (RLS on marketplace_listings), not client-side —
@@ -348,7 +350,11 @@ export default function ListingDetailPage() {
           thumbs, body and buy bar lay out exactly as before, single column. */}
       <div className="mkt-detail-gallery">
         <div className="mkt-hero">
-          {hero ? <img src={hero} alt={listing.title} /> : null}
+          {hero ? (
+            <button type="button" className="mkt-hero-tap" onClick={() => setViewerIndex(Math.max(0, images.indexOf(hero)))} aria-label="View full screen">
+              <img src={hero} alt={listing.title} />
+            </button>
+          ) : null}
           <button className="mkt-back" onClick={() => navigate("/")} aria-label="Back to marketplace">
             ‹
           </button>
@@ -370,6 +376,19 @@ export default function ListingDetailPage() {
           </div>
         ) : null}
       </div>
+
+      {/* Fullscreen only, zoom never touches the inline gallery above — the
+          state badge and back button on the hero are deliberately NOT
+          passed in here, the viewer is just the photos and its own
+          controls. */}
+      {viewerIndex !== null && (
+        <PhotoViewer
+          images={images}
+          initialIndex={viewerIndex}
+          title={listing.title}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
 
       <div className="mkt-detail-panel">
       <div className="mkt-detail-body">
