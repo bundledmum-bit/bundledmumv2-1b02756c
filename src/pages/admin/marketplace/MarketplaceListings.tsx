@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill, ConfirmDialog } from "./opsUi";
@@ -23,9 +23,9 @@ interface ListingRow {
   seller_name?: string | null;
 }
 
-const STATUSES = ["pending_review", "live", "sold", "rejected", "delisted"] as const;
-const STATUS_LABEL: Record<string, string> = { pending_review: "Pending review", live: "Live", sold: "Sold", rejected: "Rejected", delisted: "Delisted" };
-const STATUS_TONE: Record<string, PillTone> = { pending_review: "work", live: "good", sold: "neutral", rejected: "negative", delisted: "neutral" };
+const STATUSES = ["pending_review", "live", "sold", "rejected", "delisted", "splitting"] as const;
+const STATUS_LABEL: Record<string, string> = { pending_review: "Pending review", live: "Live", sold: "Sold", rejected: "Rejected", delisted: "Delisted", splitting: "Splitting", draft: "Split draft" };
+const STATUS_TONE: Record<string, PillTone> = { pending_review: "work", live: "good", sold: "neutral", rejected: "negative", delisted: "neutral", splitting: "work", draft: "neutral" };
 
 /**
  * Listings management, every listing across every seller and status, not only
@@ -35,6 +35,7 @@ const STATUS_TONE: Record<string, PillTone> = { pending_review: "work", live: "g
  */
 export default function MarketplaceListings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState<string>("all");
   const [sellerFilter, setSellerFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -44,6 +45,18 @@ export default function MarketplaceListings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [splitSuccess, setSplitSuccess] = useState<string | null>(null);
+
+  // Landed here from the split-review screen after a publish (see
+  // MarketplaceSplitReview.tsx's confirmPublish, which navigates here with
+  // this exact state shape). Shown once, then cleared from history so a
+  // refresh or back-navigation never re-shows a stale success banner.
+  useEffect(() => {
+    const published = (location.state as { splitPublished?: number } | null)?.splitPublished;
+    if (typeof published === "number") {
+      setSplitSuccess(`${published} ${published === 1 ? "listing went" : "listings went"} live from that split.`);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, []);
 
   const { data: listings, isLoading, refetch } = useQuery({
     queryKey: ["mkt-all-listings"],
@@ -110,15 +123,20 @@ export default function MarketplaceListings() {
     return (l.image_url ? 1 : 0) + (l.gallery_urls?.length ?? 0);
   }
 
+  // Splitting no longer publishes anything, it creates drafts held for
+  // review (every child previously inherited the combined title/description
+  // verbatim). Navigate straight into that review rather than a "done"
+  // banner here, since nothing is actually done until the operator
+  // publishes or cancels on that screen.
   async function confirmSplit() {
     if (!splitTarget) return;
     setBusy(true); setError(null);
-    const { data, error: err } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: splitTarget.id });
+    const { error: err } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: splitTarget.id });
     setBusy(false);
     if (err) { setError(err.message); return; }
-    const count = (data as Array<{ new_listing_id: string; image_used: string }> | null)?.length ?? 0;
-    setSplitSuccess(`"${splitTarget.title}" was split into ${count} separate ${count === 1 ? "listing" : "listings"}, one per photo. The combined listing is now retired.`);
-    setSplitTarget(null); await refetch();
+    const targetId = splitTarget.id;
+    setSplitTarget(null);
+    navigate(`/admin/marketplace/listings/${targetId}/split-review`);
   }
 
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
@@ -174,12 +192,18 @@ export default function MarketplaceListings() {
                     <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
                     <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
                     <Td>
-                      <div className="flex items-center gap-3">
-                        <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
-                        {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
-                        {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
-                        {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
-                      </div>
+                      {l.status === "splitting" ? (
+                        <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/split-review`)} className="font-heading font-extrabold text-xs" style={{ color: "#D4613C" }}>Resume review</button>
+                      ) : l.status === "draft" ? (
+                        <span className="text-xs text-text-med">Part of a split, still under review</span>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <button onClick={() => navigate(`/admin/marketplace/listings/${l.id}/edit`)} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Edit</button>
+                          {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
+                          {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
+                          {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
+                        </div>
+                      )}
                     </Td>
                   </tr>
                 ))}
@@ -214,7 +238,7 @@ export default function MarketplaceListings() {
       <ConfirmDialog
         open={splitTarget !== null}
         title="Split into separate listings?"
-        body={splitTarget ? `This will create ${photoCount(splitTarget)} separate listings, one per photo, and retire this combined listing. Continue?` : ""}
+        body={splitTarget ? `This will create ${photoCount(splitTarget)} draft listings, one per photo, for you to review, edit and publish, or cancel. Nothing goes live yet, and the original stays held until you decide.` : ""}
         kv={splitTarget ? [{ label: "Item", value: splitTarget.title }, { label: "Photos", value: String(photoCount(splitTarget)) }] : []}
         confirmLabel="Split now" busy={busy} error={error}
         onConfirm={confirmSplit} onCancel={() => !busy && setSplitTarget(null)}

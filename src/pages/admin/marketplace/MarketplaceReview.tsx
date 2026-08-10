@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
@@ -16,6 +17,7 @@ import { ConfirmDialog } from "./opsUi";
  */
 export default function MarketplaceReview() {
   const { adminUser } = usePermissions();
+  const navigate = useNavigate();
   // No fallback: a guessed markup would mislabel the price comparison this
   // screen exists to show, so the label reads "..." until the real value
   // loads rather than a possibly-stale number (same pattern as §8).
@@ -28,7 +30,6 @@ export default function MarketplaceReview() {
   const [splitting, setSplitting] = useState(false);
   const [splitBusy, setSplitBusy] = useState(false);
   const [splitError, setSplitError] = useState<string | null>(null);
-  const [splitSuccess, setSplitSuccess] = useState<string | null>(null);
 
   // Markup percent for the "buyer sees" label, from site_settings.
   useQuery({
@@ -74,21 +75,22 @@ export default function MarketplaceReview() {
   async function afterAction() {
     setRejecting(false);
     setRejectReason("");
-    setSplitSuccess(null);
     await refetch();
     setIndex(0);
   }
 
+  // Splitting no longer publishes anything, it creates drafts held for
+  // review (every child previously inherited the combined title/description
+  // verbatim, worse than the original). Navigate straight into that review
+  // rather than showing a "done" banner here, since nothing is actually done
+  // until the operator publishes or cancels on that screen.
   async function confirmSplit() {
     if (!current) return;
     setSplitBusy(true); setSplitError(null);
-    const { data, error } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: current.id });
+    const { error } = await adb.rpc("admin_split_listing_by_image", { p_listing_id: current.id });
     setSplitBusy(false);
     if (error) { setSplitError(error.message); return; }
-    const count = (data as Array<{ new_listing_id: string; image_used: string }> | null)?.length ?? 0;
-    setSplitting(false);
-    setSplitSuccess(`Split into ${count} separate ${count === 1 ? "listing" : "listings"}, one per photo. The combined listing is now retired.`);
-    await afterAction();
+    navigate(`/admin/marketplace/listings/${current.id}/split-review`);
   }
 
   async function approve() {
@@ -208,7 +210,6 @@ export default function MarketplaceReview() {
             </div>
 
             {error && <div className="text-xs" style={{ color: "#D4613C" }}>{error}</div>}
-            {splitSuccess && <div className="rounded-xl p-3 text-[13px]" style={{ background: "#D8EFE5", color: "#1A4A33" }}>{splitSuccess}</div>}
 
             {photoCount > 1 && !rejecting && (
               <button onClick={() => { setSplitError(null); setSplitting(true); }} disabled={busy}
@@ -257,7 +258,7 @@ export default function MarketplaceReview() {
       <ConfirmDialog
         open={splitting}
         title="Split into separate listings?"
-        body={`This will create ${photoCount} separate listings, one per photo, and retire this combined listing. Continue?`}
+        body={`This will create ${photoCount} draft listings, one per photo, for you to review, edit and publish, or cancel. Nothing goes live yet, and the original stays held until you decide.`}
         kv={current ? [{ label: "Item", value: current.title }, { label: "Photos", value: String(photoCount) }] : []}
         confirmLabel="Split now" busy={splitBusy} error={splitError}
         onConfirm={confirmSplit} onCancel={() => !splitBusy && setSplitting(false)}
