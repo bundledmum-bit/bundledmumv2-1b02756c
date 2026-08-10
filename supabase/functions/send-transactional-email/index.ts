@@ -5,10 +5,16 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const GATEWAY_URL = "https://connector-gateway.lovable.dev/resend";
 const FROM_EMAIL  = "BundledMum <hello@bundledmum.com>";
 const REPLY_TO    = "hello@bundledmum.ng";
 const SITE_URL    = "https://bundledmum.com";
+
+// Sends via Resend directly (api.resend.com), matching the working marketplace
+// email functions. Previously routed through the Lovable connector gateway with
+// LOVABLE_API_KEY, which returned 401 "Credential not found". Only the outbound
+// call + credential changed; the email payload (from/to/reply_to/subject/html),
+// templates, recipients, rate limiting and logging are unchanged.
+const RESEND_URL = "https://api.resend.com/emails";
 
 function fmt(amount: number): string {
   return "₦" + amount.toLocaleString("en-NG");
@@ -74,6 +80,13 @@ function buildGiftWrapRow(order: any, emailType: string): string {
   return "";
 }
 
+function buildFreeItemsPromoRow(order: any): string {
+  const discount = order?.free_items_promo_discount || 0;
+  if (!discount) return "";
+  const deliveryNote = order?.free_items_promo_delivery_granted ? " (includes free delivery)" : "";
+  return `<tr><td colspan="2" style="padding:10px 20px;font-size:14px;color:#DC2626;font-weight:700;">Free items promo${deliveryNote}</td><td style="padding:10px 20px;font-size:14px;color:#DC2626;font-weight:700;text-align:right;">-${fmt(discount)}</td></tr>`;
+}
+
 function buildReorderList(items: any[], slugMap: Record<string, string>): string {
   if (!items || !items.length) return "";
   const rows = items.map((item: any) => {
@@ -129,21 +142,30 @@ function buildCancellationNote(order: any, items: any[], slugMap: Record<string,
 
 function buildItemsTable(items: any[]): string {
   if (!items || !items.length) return "<p style=\"color:#7A7A7A;font-size:14px;\">(No items)</p>";
-  const rows = items.map((item: any) => `
+  const rows = items.map((item: any) => {
+    const isGift = !!item.is_promo_gift;
+    const priceCell = isGift
+      ? `<span style="text-decoration:line-through;color:#A0A0A0;">${fmt(item.line_total)}</span><br/><span style="color:#DC2626;font-weight:800;font-size:12px;">FREE</span>`
+      : fmt(item.line_total);
+    const badge = isGift
+      ? `<span style="display:inline-block;background:#FEE2E2;color:#DC2626;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:4px;">FREE GIFT</span><br/>`
+      : (item.bundle_name ? `<span style="display:inline-block;background:#FDE8DF;color:#F4845F;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:4px;">${esc(item.bundle_name)}</span><br/>` : "");
+    return `
     <tr>
       <td style="padding:12px 8px 12px 16px;border-bottom:1px solid #E8E0D8;width:48px;vertical-align:top;">
         ${itemImageCell(item._image_url, item.product_name || "")}
       </td>
       <td style="padding:12px 8px;border-bottom:1px solid #E8E0D8;font-size:14px;color:#1A1A1A;vertical-align:top;">
-        ${item.bundle_name ? `<span style="display:inline-block;background:#FDE8DF;color:#F4845F;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;margin-bottom:4px;">${esc(item.bundle_name)}</span><br/>` : ""}
+        ${badge}
         <strong>${esc(item.product_name || "")}</strong>
         ${item.brand_name ? `<br/><span style="color:#7A7A7A;font-size:12px;">Brand: ${esc(item.brand_name)}</span>` : ""}
         ${item.size ? `<br/><span style="color:#7A7A7A;font-size:12px;">Size: ${esc(item.size)}</span>` : ""}
       </td>
       <td style="padding:12px 8px;border-bottom:1px solid #E8E0D8;text-align:center;font-size:14px;color:#1A1A1A;vertical-align:top;">${item.quantity}</td>
-      <td style="padding:12px 16px 12px 8px;border-bottom:1px solid #E8E0D8;text-align:right;font-size:14px;font-weight:700;color:#1A1A1A;vertical-align:top;">${fmt(item.line_total)}</td>
+      <td style="padding:12px 16px 12px 8px;border-bottom:1px solid #E8E0D8;text-align:right;font-size:14px;font-weight:700;color:#1A1A1A;vertical-align:top;">${priceCell}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E8E0D8;border-radius:12px;overflow:hidden;margin-bottom:24px;">
       <tr style="background:#D8EFE5;">
@@ -157,6 +179,11 @@ function buildItemsTable(items: any[]): string {
 }
 
 function buildOrderSummaryBlock(order: any, items: any[]): string {
+  const discount = order?.free_items_promo_discount || 0;
+  const deliveryNote = order?.free_items_promo_delivery_granted ? " (includes free delivery)" : "";
+  const promoRow = discount
+    ? `<tr><td style="padding:6px 0;font-size:14px;color:#DC2626;font-weight:700;">Free items promo${deliveryNote}</td><td style="padding:6px 0;font-size:14px;color:#DC2626;font-weight:700;text-align:right;">-${fmt(discount)}</td></tr>`
+    : "";
   return `
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E8E0D8;border-radius:12px;overflow:hidden;margin-bottom:24px;">
       <tr><td style="background:#D8EFE5;padding:12px 20px;font-size:14px;font-weight:800;color:#2D6A4F;">Order Summary</td></tr>
@@ -165,6 +192,7 @@ function buildOrderSummaryBlock(order: any, items: any[]): string {
       </td></tr>
       <tr><td style="padding:0 20px 16px;">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          ${promoRow}
           <tr><td style="padding:6px 0;font-size:14px;color:#7A7A7A;">Order Total</td>
               <td style="padding:6px 0;font-size:16px;font-weight:800;color:#1A1A1A;text-align:right;">${fmt(order.total || 0)}</td></tr>
         </table>
@@ -302,9 +330,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY  = Deno.env.get("RESEND_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
     if (!RESEND_API_KEY)  throw new Error("RESEND_API_KEY is not configured");
 
     const body = await req.json();
@@ -317,6 +343,43 @@ Deno.serve(async (req) => {
     const isTestMode = !!test_email;
     const isInternal = email_type.startsWith("internal_");
     const isPickerNotification = email_type === "picker_ready_to_pick";
+
+    // SECURITY: test_email lets the caller choose ANY recipient. Without a
+    // check that is an open relay: anyone holding the public anon key could
+    // send mail from this domain to any address they liked, which is the
+    // fastest route to a blacklisted sending domain. Test sends now require
+    // either the service role key or a signed-in active admin.
+    if (isTestMode) {
+      const authHeader = req.headers.get("Authorization") || "";
+      const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+      let allowed = bearer.length > 0 && bearer === serviceKey;
+
+      if (!allowed && bearer.length > 0) {
+        try {
+          const { data: userRes } = await supabase.auth.getUser(bearer);
+          const uid = userRes?.user?.id;
+          if (uid) {
+            const { data: adminRow } = await supabase
+              .from("admin_users")
+              .select("id")
+              .eq("auth_user_id", uid)
+              .eq("is_active", true)
+              .maybeSingle();
+            allowed = !!adminRow;
+          }
+        } catch (_authErr) {
+          allowed = false;
+        }
+      }
+
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: "Test sends require an admin session." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     if (!order_id) {
       const { data: latestOrder } = await supabase.from("orders").select("id").eq("payment_status", "paid").order("created_at", { ascending: false }).limit(1).single();
@@ -437,6 +500,7 @@ Deno.serve(async (req) => {
       service_fee:           fmt(order.service_fee || 0),
       gift_wrap_fee:         fmt(order.gift_wrap_fee || 0),
       gift_wrap_row:         buildGiftWrapRow(order, email_type),
+      free_items_promo_row:  buildFreeItemsPromoRow(order),
       total:                 fmt(order.total || 0),
       order_total:           fmt(order.total || 0),
       payment_link:          esc(paymentLink),
@@ -494,11 +558,35 @@ Deno.serve(async (req) => {
     const results: any[] = [];
 
     for (const sendTo of recipients) {
+      // RATE LIMIT: customer sends only. Admin notifications and admin test
+      // sends are exempt, since one admin address legitimately receives every
+      // internal alert. This FAILS OPEN on any error: a bug in the limiter
+      // must never stop a real order confirmation reaching a customer.
+      if (sendToType === "customer") {
+        let blocked = false;
+        try {
+          const { data: rl } = await supabase.rpc("check_email_rate_limit", {
+            p_recipient: sendTo,
+            p_template: email_type,
+          });
+          if (rl && rl.allowed === false) blocked = true;
+        } catch (rlErr) {
+          console.error("rate limit check failed, allowing send:", rlErr);
+        }
+        if (blocked) {
+          try {
+            await supabase.from("email_send_log").insert({ template_slug: email_type, recipient_email: sendTo, subject: finalSubject, resend_email_id: null, send_to_type: sendToType, order_id: order.id, return_id: return_id || null, status: "blocked", error_message: "rate limited" });
+          } catch (logErr) { console.error("Failed to write email_send_log:", logErr); }
+          results.push({ to: sendTo, success: false, email_id: null, error: "rate_limited" });
+          continue;
+        }
+      }
+
       let response, data: any, success = false;
       try {
-        response = await fetch(`${GATEWAY_URL}/emails`, {
+        response = await fetch(RESEND_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}`, "X-Connection-Api-Key": RESEND_API_KEY },
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${RESEND_API_KEY}` },
           body: JSON.stringify({ from: FROM_EMAIL, to: [sendTo], reply_to: [REPLY_TO], subject: finalSubject, html: htmlBody }),
         });
         data = await response.json(); success = response.ok;

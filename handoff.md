@@ -20,29 +20,38 @@
   removed the `LOVABLE_API_KEY` bearer, the `X-Connection-Api-Key` header, and the
   `GATEWAY_URL`; the startup guard now requires only `RESEND_API_KEY`. Request body
   (from/to/reply_to/subject/html) is byte-identical to before.
-- **DEPLOYED via Supabase MCP** (project `rbtyprmkolqfylcbmgrk`, `verify_jwt:false`):
-  `send-transactional-email` → **v50**, `send-internal-order-notification` → **v30**.
-  Re-fetched both to verify: new Resend URL present; no `connector-gateway` /
-  `X-Connection-Api-Key` / `LOVABLE_API_KEY` in the send path; and all pre-existing
-  deployed features intact on `send-transactional-email` — `check_email_rate_limit`,
-  the "Test sends require an admin session." admin guard, `buildFreeItemsPromoRow`,
-  `computeDeliveryWindow`, `buildTrackingBlock`, `buildPaymentInstructions`,
-  `email_send_log` writes, all template vars.
-- **Repo vs deployed drift (IMPORTANT for next time)**: these functions are
-  **Lovable-managed** — Lovable deploys newer versions directly, so the repo copies
-  lag. The repo's `supabase/functions/send-transactional-email/index.ts` was STALE
-  vs deployed v49 (missing rate-limit / admin-test guard / promo row), and
-  `send-internal-order-notification` was **not tracked in the repo at all**. So the
-  deploy was built from the **deployed** source (fetched via `get_edge_function`) +
-  the surgical auth edit — NOT from the stale repo file (which would have reverted
-  live features). This commit adds a clean, fix-applied
-  `send-internal-order-notification/index.ts` to the repo. The large
-  `send-transactional-email/index.ts` repo copy was left as-is to avoid a risky
-  500-line hand-retranscription; **treat the DEPLOYED function as source of truth**
-  and pull it via `get_edge_function` before any future edit.
-- **NEXT (user action)**: run a live **admin-only** test send from the DB to
-  confirm the gateway now returns `sent:true` (test sends require the service-role
-  key or a signed-in active admin, per the security guard).
+- **First deploy (MCP)**: `send-transactional-email` → v50,
+  `send-internal-order-notification` → v30. Both verified direct-Resend at deploy time.
+- **THEN IT REVERTED (critical lesson)**: a live admin test send still returned the
+  `connectors_gateway` 401. Re-fetch showed `send-transactional-email` was back at
+  **v51 = the STALE gateway version**, and `send-internal` at **v31**, both with the
+  SAME `updated_at` and repo-style `entrypoint_path`
+  (`.../source/supabase/functions/<name>/index.ts`). Diagnosis: **pushing commit
+  `8a78927` to `main` triggered Lovable's git-sync, which redeployed the whole
+  `supabase/functions/*` tree FROM THE REPO.** `send-internal`'s repo copy was my
+  fixed one → its redeploy (v31) stayed correct. But I had left
+  `send-transactional-email`'s repo copy STALE (gateway-based) → its redeploy (v51)
+  clobbered my v50 fix. So **a git push re-reverts any MCP-only edge-function fix
+  whose repo copy is not also fixed.** The repo copy — not the MCP deploy — is the
+  durable source of truth.
+- **Durable fix (this turn)**: rewrote the REPO
+  `supabase/functions/send-transactional-email/index.ts` to the FULL correct version
+  (direct Resend + admin test-send guard + `check_email_rate_limit` + free-items
+  promo rendering — nothing regressed), then redeployed via MCP →
+  **send-transactional-email v52**. Re-fetched + grepped v52: `RESEND_URL =
+  https://api.resend.com/emails`, single send path on it, ZERO
+  `connector-gateway.lovable.dev` / `GATEWAY_URL` / `X-Connection-Api-Key` /
+  `LOVABLE_API_KEY`, all features intact. `send-internal` v31 already correct
+  (repo + deployed). Now **repo == deployed == correct for BOTH**, so a future
+  git-sync redeploys the correct code instead of reverting it.
+- **Rule for next time**: to fix a Lovable-managed edge function durably you must
+  (1) fix the REPO copy AND (2) deploy via MCP. Fixing only via MCP is undone by the
+  next push. Still pull the deployed source via `get_edge_function` before editing,
+  because the repo copy may lag what Lovable deployed.
+- **NEXT (user action)**: re-run the live **admin-only** test send (order_confirmation)
+  to confirm `sent:true` / `recipients_succeeded:1` (test sends require the
+  service-role key or a signed-in active admin, per the security guard). If Lovable
+  later auto-redeploys from the repo, it now deploys the correct version.
 
 ---
 
