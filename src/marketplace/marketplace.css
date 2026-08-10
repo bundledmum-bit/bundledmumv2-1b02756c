@@ -719,6 +719,14 @@
 .mkt-honesty p { margin: 0; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
 .mkt-honesty p + p { margin-top: 8px; }
 
+/* One-item-per-listing notice, at the photo step, coral (not the honesty
+   box's green) so the two read as distinct moments rather than one
+   repeated advice pattern. */
+.mkt-onelisting { margin-top: 10px; background: var(--mkt-coral-light); border-radius: 13px; padding: 12px; display: flex; gap: 9px; align-items: flex-start; }
+.mkt-onelisting .ic { flex: 0 0 auto; font-size: 15px; line-height: 1.4; }
+.mkt-onelisting p { margin: 0; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-coral-dark); }
+.mkt-onelisting p b { font-family: 'Nunito', sans-serif; font-weight: 800; }
+
 /* Short condition-notes nudge (design 20a, RT7). Coral, deliberately not the
    error red used for real validation failures on this form, since it never
    blocks submit, just a gentle prompt. */

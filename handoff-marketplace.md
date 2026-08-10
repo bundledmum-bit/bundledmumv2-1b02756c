@@ -6053,3 +6053,23 @@ Preserved: the split review flow, Publish all, Delete draft, and the `split_from
 Not live-verified — no admin login credentials exist in this environment, the standing limitation for every admin screen, compounded here by an explicit instruction not to touch the one real test case available (the 4 stranded drafts) with a destructive or state-changing action. Code-reviewed against the real deployed RPC source for all three functions involved (`admin_cancel_split`, `get_merge_targets`, `admin_merge_split_draft`), read in full rather than assumed from their signatures alone.
 
 `npm run build` clean.
+
+## 54. One-item-per-listing notice, at the photo step (2026-08-09)
+
+**Real evidence this addresses**: two listings already needed admin splitting, and the 4 drafts stranded since §53 (`"Baby Seater , Baby Walker"`) are exactly this — one seller-written title covering two different products across four photos.
+
+**Before**: the photo step had one plain caption (mechanics only — how many, how to take them), no mention of one-item-per-listing anywhere on the form. The only prominent advice box on the form is `.mkt-honesty` (green), at the Condition step, further down — a different moment, about disclosure not scope. The "short-notes nudge" some earlier framing worried about is a tiny inline hint under one condition follow-up field, not a competing advice block in the same visual class.
+
+**Placed exactly where the mistake happens**: a new `.mkt-onelisting` notice sits directly under the photo grid, at the photo step itself — not a banner at the top of the form a seller scrolls past before deciding what they're even listing. Deliberately styled coral (`--mkt-coral-light` background, `--mkt-coral-dark` text), not the honesty box's green, so the two read as distinct moments rather than one repeated pattern, even though both are now visually prominent boxes on the same form.
+
+**Exact wording**: *"**One item, one listing.** If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below."* Bundles are explicitly protected, by name, in the same breath as the rule itself — never discouraged.
+
+**Photo-count reminder, considered and deliberately not added**: the task invited a 5+-photos inline reminder, "only if it can be done without nagging someone legitimately photographing one item from many angles." The existing photo caption already recommends 4 distinct angles (front, back, flaw close-up, in-use/full view) for a single genuine item, and the max is 8 — a real single stroller or cot easily reaches 5 or 6 honest angles. There is no reliable signal in a raw photo count that distinguishes that case from someone photographing several different items, and the task's own non-goals explicitly warn against a false block stopping a legitimate bundle. Chose not to add a count-triggered reminder for the same reason validation was ruled out: it would nag the common legitimate case as often as it would catch the real one.
+
+**Whether the form now feels heavy, and what I'd tighten**: yes, honestly — the form now carries two visually prominent advice boxes (this new one, plus the existing honesty box) in addition to the Condition step's own sub-line ("Buyers cannot ask you anything before they pay, so say it now or they find out when the parcel opens"), which restates the honesty box's own point a second time in the same stretch of the form. That sub-line is the genuine tightening opportunity — it's redundant with `.mkt-honesty` directly above the condition questions it introduces, not this new notice. Flagging it here rather than editing it, since it's outside this task's explicit scope (the photo step) and non-goals didn't ask for it.
+
+Preserved: the 4-photo minimum, camera-or-gallery capture, the square crop/compression/watermark pipeline (untouched, this only adds copy beside the photo grid), the honesty guidance, the short-notes nudge, condition and category questions, sections 7 through 30. No validation or blocking added against multiple items, per the task's own non-goal — this is copy only.
+
+Not live-verified — `CreateListingPage.tsx` requires a signed-in seller account, the standing limitation for every seller-authenticated screen in this environment. Code-reviewed against the real existing form structure and the real `.mkt-honesty` styling it was deliberately built to sit apart from.
+
+`npm run build` clean.

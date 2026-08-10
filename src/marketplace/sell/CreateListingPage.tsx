@@ -662,6 +662,19 @@ export default function CreateListingPage() {
           ) : (
             <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
           )}
+
+          {/* Placed right where the mistake actually happens, mid photo
+              selection, not a banner at the top a seller scrolls past
+              before deciding what they're even listing. Distinct coral
+              styling from the honesty box further down (green) on purpose,
+              so the two read as different moments, not one repeated block
+              of advice. Framed as guidance, never a warning: a genuine
+              bundle is explicitly still fine, only listing several
+              unrelated things as one is the mistake this catches. */}
+          <div className="mkt-onelisting">
+            <span className="ic">🛍️</span>
+            <p><b>One item, one listing.</b> If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below.</p>
+          </div>
         </div>
 
         <div className="mkt-field">
