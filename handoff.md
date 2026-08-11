@@ -1,6 +1,37 @@
 # Handoff
 
-## Referral ?ref= capture — hardened the URL strip (this turn)
+## Referral gift — minimum order value gate at checkout (this turn)
+- **Why**: the DB trigger `stamp_order_referral_partner` reads `site_settings`
+  `referral_min_order_naira` (fallback 150000) and, when the order **`NEW.total`** is
+  below it, assigns NO partner and sets `selected_gift_product_id := NULL`. The
+  frontend didn't know, so a sub-₦150k cart could apply a code, pick a gift, and get
+  nothing — a broken promise. Fixed frontend-only (no DB/RPC/edge changes).
+- **Threshold source**: `asInt(settings?.referral_min_order_naira, 150000)` via the
+  existing `useSiteSettings()` (same pattern as `express_order_min_subtotal_naira`);
+  falls back to 150000 if missing/unreadable. Never hardcoded.
+- **Compared against**: `grand` (the displayed final Total, `grandWith(promoDiscount)`)
+  — the SAME basis the DB uses (`orders.total`), so UI and DB never disagree.
+  `belowReferralMin = grand < referralMinOrder`; `referralRemaining = max(0, min-grand)`.
+- **Behaviour** (partner path ONLY; discount + coupon untouched):
+  - Below threshold: code is ACCEPTED and HELD; message shows
+    "✓ Referred by {name} — add {fmt(remaining)} more to unlock your free gift 🎁
+    (minimum {fmt(min)})"; gift picker HIDDEN (`giftPickerEnabled =
+    partnerRefStatus==='valid' && !belowReferralMin`, which also gates the options query).
+  - Reaches threshold (add items): message auto-changes to
+    "✓ Referred by {name} — pick your free gift below 🎁" and the picker APPEARS,
+    reactively, with NO re-entry of the code.
+  - Drops back below: picker hides again and an effect clears `selectedGift` +
+    `clearSelectedGift()` so a stale gift can never be submitted.
+  - Payload: `selected_gift_product_id` = `(partnerRefStatus==='valid' && selectedGift
+    && !belowReferralMin) ? selectedGift : null` — always null below threshold.
+- **Verified live** (single ₦21,550 line, qty driven via a `bm-cart` storage event so
+  the code is never re-entered): qty 2 → ₦43,100 → "add ₦106,900 more … (minimum
+  ₦150,000)", 0 gift buttons; qty 8 → ₦172,400 → "pick your free gift below", 19 gift
+  buttons appear automatically; picked a gift (`bm_ref_gift` set); back to qty 2 →
+  picker gone, `bm_ref_gift` cleared to null, code still `TESTMUM`. Screenshots taken.
+  Only `src/pages/CheckoutPage.tsx` changed.
+
+## Referral ?ref= capture — hardened the URL strip (prior turn)
 - **Reported bugs**: (1) landing on `?ref=TESTMUM` then Add to Cart leaves the cart
   empty; (2) typing TESTMUM at checkout does nothing. Both claimed frontend.
 - **Root-cause finding — NEITHER reproduces in the current branch code, proven:**

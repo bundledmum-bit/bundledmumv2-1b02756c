@@ -928,6 +928,16 @@ export default function CheckoutPage() {
   const grandWith = (promo: number) => Math.max(0, subtotal + delivery + serviceFee + giftWrapFee - couponDiscount - referralDiscount - spendDiscount - promo - fipConvertedTotal);
   const grand = grandWith(promoDiscount);
 
+  // Partner-referral MINIMUM ORDER. The DB trigger stamp_order_referral_partner
+  // reads site_settings 'referral_min_order_naira' (fallback 150000) and drops the
+  // partner + gift when the order TOTAL is below it, nulling selected_gift_product_id.
+  // We mirror that exactly on the SAME basis (the final total `grand`) so the customer
+  // is never promised a gift the DB will silently withhold. Read admin-controlled,
+  // never hardcoded; fall back to 150000 if the setting is missing/unreadable.
+  const referralMinOrder = asInt(settings?.referral_min_order_naira, 150000);
+  const belowReferralMin = grand < referralMinOrder;
+  const referralRemaining = Math.max(0, referralMinOrder - grand);
+
   // ── Free-items promo display nodes (shared by both summary layouts) ──
   // Countdown while active/unexpired. The bonus block lists ONLY genuinely ADDED
   // gifts (added_for_promo) — converted items appear once, annotated on their own
@@ -1310,9 +1320,21 @@ export default function CheckoutPage() {
     persistSelectedGift(productId);
   };
 
-  // Gift options load only once a valid partner code is attributed.
-  const giftPickerEnabled = partnerRefStatus === "valid";
+  // Gift picker shows only when a valid partner code is attributed AND the cart
+  // meets the minimum order (below it, the DB grants no gift — so she must not pick
+  // one). This also gates the gift-options query.
+  const giftPickerEnabled = partnerRefStatus === "valid" && !belowReferralMin;
   const { data: giftOptions, isLoading: giftsLoading } = useReferralGiftOptions(giftPickerEnabled);
+
+  // If the cart drops back below the minimum, clear any gift already chosen so a
+  // stale selection can never be submitted (and re-appears fresh if she qualifies
+  // again). Only the partner path uses selectedGift.
+  useEffect(() => {
+    if (belowReferralMin && selectedGift) {
+      setSelectedGift(null);
+      clearSelectedGift();
+    }
+  }, [belowReferralMin, selectedGift]);
 
   const update = (key: keyof FormData, val: string) => {
     setForm(p => ({ ...p, [key]: val }));
@@ -1717,7 +1739,7 @@ export default function CheckoutPage() {
             // server-side and silently null an invalid value, so it can never
             // fail the order. localStorage bm_ref_gift stays as a convenience
             // copy, but this payload field is the source of truth.
-            selected_gift_product_id: (partnerRefStatus === "valid" && selectedGift) ? selectedGift : null,
+            selected_gift_product_id: (partnerRefStatus === "valid" && selectedGift && !belowReferralMin) ? selectedGift : null,
             spend_discount_amount: spendDiscount > 0 ? spendDiscount : 0,
             spend_discount_percent: spendPrompt?.currentDiscount?.discount_percent || null,
             payment_reference: orderData.paystackRef,
@@ -2769,7 +2791,11 @@ export default function CheckoutPage() {
                 </div>
               ) : partnerRefStatus === "valid" ? (
                 <div className="flex items-center justify-between bg-forest-light rounded-[10px] p-3">
-                  <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"} — pick your free gift below 🎁</span>
+                  {belowReferralMin ? (
+                    <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"} — add {fmt(referralRemaining)} more to unlock your free gift 🎁 (minimum {fmt(referralMinOrder)})</span>
+                  ) : (
+                    <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"} — pick your free gift below 🎁</span>
+                  )}
                   <button type="button" onClick={clearReferral} className="text-destructive text-xs font-semibold hover:underline ml-3 shrink-0">Remove</button>
                 </div>
               ) : (
