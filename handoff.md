@@ -1,6 +1,51 @@
 # Handoff
 
-## Checkout referral — TWO inputs merged into ONE (this turn)
+## Referral programme emails — new send-referral-email function (this turn, DEPLOYED)
+- **New edge function `send-referral-email`** (v1, `verify_jwt:false`), repo copy at
+  `supabase/functions/send-referral-email/index.ts`. Built from the DEPLOYED
+  `send-internal-order-notification` v32 pattern (renderTemplate, direct-Resend send,
+  site_settings recipient resolution). Repo == deployed, so a git-sync won't revert it.
+- **Sends the four referral templates** by slug from `email_templates` (respects
+  `is_active`), substitutes `{{vars}}` in subject + html, sends DIRECTLY to Resend
+  (`https://api.resend.com/emails`, `Authorization: Bearer ${RESEND_API_KEY}` — NOT the
+  dead Lovable gateway). Body: `{ email_type, partner_id | commission_id }`.
+  1. `referral_partner_intro` (partner_id) → partner; stamps
+     `referral_partners.intro_email_sent_at`.
+  2. `referral_commission_earned` (commission_id) → partner; stamps
+     `referral_commissions.partner_email_sent_at`.
+  3. `internal_referral_costs_needed` (commission_id) → admin; stamps
+     `referral_commissions.admin_notified_at`.
+  4. `internal_referral_payday` (commission_id) → admin; stamps
+     `referral_commissions.payday_reminder_sent_at`.
+- **Variable building**: first_name/partner_name = `referral_partners.first_name`
+  (fallback email local part); amounts (`commission_amount`,`order_total`) formatted
+  with thousand separators and NO ₦ (templates already print it); `payment_date` =
+  `payable_on` as "Monday 25 August 2026" (en-GB, no comma); bank_* from
+  `marketplace_sellers` via `referral_partners.seller_id`.
+- **payout_line differs by partner type**: seller WITH a bank account →
+  "Paid into the account you registered with, ending {last4}."; buyer OR no bank on
+  file → "We will ask for your account details the first time you earn…". Buyers are
+  NEVER asked for bank details and never shown a partial account.
+- **whatsapp_share_url**: fixed 5-paragraph copy with real line breaks,
+  `{first_name}`/`{code}` filled, `encodeURIComponent`'d onto `https://wa.me/?text=`;
+  contains `https://bundledmum.com/quiz?ref={code}`.
+- **Auth**: service-role only — rejects any caller whose Authorization bearer ≠
+  `SUPABASE_SERVICE_ROLE_KEY` (401). Anon key is rejected. Triggers/cron call it with
+  the service-role key.
+- **Duplicate protection**: before sending, skips if the relevant stamp column is
+  already set OR a `marketing_email_log` row exists for this id + email_type. After a
+  successful send it stamps the column AND inserts `marketing_email_log`
+  (`customer_email, email_type, order_id, sent_at, metadata{partner_id/commission_id/
+  referral_code}`).
+- **Internal recipients**: reuses the existing resolution — `site_settings`
+  `order_manager_email` → `fulfilment_manager_email` → first active super_admin. No
+  hardcoded address (the prompt didn't name a bucket; order_manager fits referral
+  finance emails).
+- **NOT scheduled** (no cron, per instruction). NEXT: user runs a live admin-only test
+  invoke with the service-role key, e.g.
+  `{ "email_type": "referral_partner_intro", "partner_id": "<uuid of TESTMUM partner>" }`.
+
+## Checkout referral — TWO inputs merged into ONE (prior turn)
 - **Problem**: checkout had two separate referral inputs (discount vs partner);
   customers put a code in the wrong box, saw an error, and abandoned.
 - **Merged** both into ONE "🎁 Have a referral code?" block in
