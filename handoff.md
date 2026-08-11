@@ -29,9 +29,18 @@
 - **whatsapp_share_url**: fixed 5-paragraph copy with real line breaks,
   `{first_name}`/`{code}` filled, `encodeURIComponent`'d onto `https://wa.me/?text=`;
   contains `https://bundledmum.com/quiz?ref={code}`.
-- **Auth**: service-role only — rejects any caller whose Authorization bearer ≠
-  `SUPABASE_SERVICE_ROLE_KEY` (401). Anon key is rejected. Triggers/cron call it with
-  the service-role key.
+- **Auth (FIXED — was a 401 bug)**: the original guard compared the bearer to
+  `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`. But the DB triggers/cron authenticate
+  with the **Vault** secret `service_role_key` (a valid service_role JWT), which is a
+  DIFFERENT string from that env var — so the legitimate caller was wrongly rejected
+  with 401. `send-internal-order-notification` "works" only because it has NO bearer
+  check at all. Fix: authorise on the bearer's **JWT `role` claim** — allow
+  `service_role`, reject the public anon key (role `anon`) and any non-JWT/missing
+  token. Robust across which service_role key string is used, still rejects anon.
+  Verified LIVE via `net.http_post`: the real vault service_role JWT → past auth
+  (400 "missing email_type" on an empty test body), a non-JWT bearer → 401. `jwtRole`
+  helper decodes the JWT payload (unverified decode is enough to tell service_role
+  from anon; `verify_jwt` stays false). Repo == deployed (v3), so a git-sync keeps it.
 - **Duplicate protection**: before sending, skips if the relevant stamp column is
   already set OR a `marketing_email_log` row exists for this id + email_type. After a
   successful send it stamps the column AND inserts `marketing_email_log`

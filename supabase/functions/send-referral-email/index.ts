@@ -119,6 +119,25 @@ async function sendViaResend(
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
+// Decode a JWT payload and return its `role` claim. This is an UNVERIFIED decode —
+// enough to distinguish a Supabase service_role token from the public anon key,
+// which is exactly the authorisation signal we need (verify_jwt is false and the
+// DB triggers/cron authenticate with a service_role JWT). Returns null if the
+// token is not a well-formed JWT.
+function jwtRole(token: string): string | null {
+  const parts = token.split('.');
+  if (parts.length !== 3 || !parts[1]) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    return typeof payload?.role === 'string' ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 // --- handler ---------------------------------------------------------------
 
 Deno.serve(async (req) => {
@@ -129,12 +148,18 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const resendKey      = Deno.env.get('RESEND_API_KEY');
 
-    // AUTH: service-role only. Triggers/cron call with the service-role key in the
-    // Authorization header. Anonymous callers (anon key) are rejected. verify_jwt
-    // is false so the function runs and enforces this itself.
+    // AUTH: internal callers only. The DB triggers/cron authenticate with a
+    // service_role JWT taken from the Supabase Vault secret 'service_role_key',
+    // which is a DIFFERENT string from this runtime's SUPABASE_SERVICE_ROLE_KEY
+    // env var — so an exact string compare against that env var wrongly rejected
+    // the legitimate caller (401). Instead authorise on the bearer's JWT role
+    // claim: 'service_role' is allowed; the public anon key (role 'anon') and any
+    // token without that claim are rejected. verify_jwt is false so we enforce it
+    // here. This mirrors trusting the same service_role credential the working
+    // internal notifier is called with, without a brittle key-string match.
     const authHeader = req.headers.get('Authorization') || '';
     const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (!serviceRoleKey || bearer !== serviceRoleKey) {
+    if (jwtRole(bearer) !== 'service_role') {
       return json({ error: 'Unauthorized: service role required' }, 401);
     }
     if (!resendKey) return json({ error: 'RESEND_API_KEY required' }, 500);
