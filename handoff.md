@@ -1,5 +1,56 @@
 # Handoff
 
+## Marketplace partner referral — storefront FRONTEND (this turn, BUILT)
+- **Scope**: frontend only. All DB work (RPCs, tables) is deployed and untouched.
+- **RPCs used** (all anon-callable, via the `(supabase as any).rpc(...)` cast):
+  `record_referral_attribution(p_code, p_visitor_id, p_email, p_source)` and
+  `validate_referral_partner_code(p_code)` → rows of `{ is_valid, first_name }`.
+  Tables read for the gift picker: `referral_gift_options` (19 active) joined to
+  `products` (name) and `brands` (representative `stored_image_url`).
+- **A) `?ref=` capture (every storefront route)**: new `ReferralCaptureListener`
+  in `src/StorefrontApp.tsx` (null-render, mounted beside `PasswordRecoveryListener`
+  inside `<BrowserRouter>`). Reads `?ref=`, normalizes (upper/trim), stores a stable
+  `bm_visitor_id` uuid (reused if present) + `bm_ref_code` in localStorage, calls
+  `record_referral_attribution(source:'link')` best-effort, then strips `ref` from
+  the URL via `setSearchParams(replace:true)`. New helper `src/lib/referral.ts`
+  (mirrors `landingOrigin.ts`: safe wrappers + `makeUuid`; keys `bm_visitor_id`,
+  `bm_ref_code`, `bm_ref_gift`). Verified live: capture, uppercase, visitor-id
+  REUSE across navigations, URL strip, no console errors.
+- **B) Referral field at CHECKOUT ONLY** (user decision — there is NO customer
+  "quote request form" in the app; `QuotePage` is a read-only viewer with no email
+  field, so the quote side was dropped). New block in `src/pages/CheckoutPage.tsx`
+  ("🤝 Referred by a seller or friend?"), DISTINCT from the pre-existing "🎁 Referral
+  Code" DISCOUNT field (`validate_referral_code`) which is left untouched. Prefilled
+  from `bm_ref_code`; validates on mount + blur via `validate_referral_partner_code`;
+  shows "✓ Referred by <first_name>" on valid, a gentle non-blocking message on
+  invalid. When the email is known it also calls
+  `record_referral_attribution(p_email, source:'manual')` (order is matched by email
+  server-side) — fired on successful validation and on the email field's blur.
+  Verified live: field renders, prefill works, invalid path shows the gentle message
+  and does NOT block submit.
+- **C) Free-gift picker**: `src/components/checkout/ReferralGiftPicker.tsx` +
+  `src/hooks/useReferralGiftOptions.ts`. Appears ONLY when a partner code validates
+  (`enabled` gate). Card grid, single-select, product image from a representative
+  `brands.stored_image_url` (never `image_url`), no prices. The valid-path render
+  could not be exercised live because `referral_partners` is currently EMPTY (no
+  codes exist yet) — data state, not a defect; the options query is verified via SQL
+  (19 options, images resolvable).
+- **GAP REPORTED — gift not persisted to the order**: there is NO `orders` column
+  (or `referral_attributions` column, or RPC) to store the chosen gift. `place-order`
+  inserts `{...safeOrder}` directly, so adding an unknown `selected_gift_product_id`
+  would make the order insert FAIL and break checkout. Per instruction (do not invent
+  a column; DB out of scope), the choice is persisted CLIENT-SIDE ONLY in
+  `localStorage['bm_ref_gift']`. To record it against the order later, add a column/
+  RPC (DB task), then include the field in the checkout `order:` payload
+  (CheckoutPage ~line 1583) — it will flow through `place-order` untouched.
+- **Files**: `src/lib/referral.ts`, `src/hooks/useReferralGiftOptions.ts`,
+  `src/components/checkout/ReferralGiftPicker.tsx` (new);
+  `src/StorefrontApp.tsx`, `src/pages/CheckoutPage.tsx` (edited). Build passes; tsc
+  clean on these files (the only tsc error is pre-existing in
+  `src/marketplace/checkout/CheckoutPage.tsx`, unrelated).
+
+---
+
 ## Storefront order emails — gateway auth FIXED + DEPLOYED (this turn)
 - **Symptom**: storefront/order emails failed with `gateway_status 401,
   "Credential not found"`, while marketplace emails sent fine (`sent:true`).

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useCart, fmt, cartItemImage } from "@/lib/cart";
@@ -7,6 +7,9 @@ import { expandCartForDisplay } from "@/lib/bundleDisplay";
 import LineItemThumb from "@/components/LineItemThumb";
 import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeCode, getVisitorId, getRefCode, setRefCode, getSelectedGift, setSelectedGift as persistSelectedGift } from "@/lib/referral";
+import { useReferralGiftOptions } from "@/hooks/useReferralGiftOptions";
+import ReferralGiftPicker from "@/components/checkout/ReferralGiftPicker";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -321,10 +324,19 @@ export default function CheckoutPage() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ id: string; code: string; discount_type: string; discount_value: number; discount_amount: number } | null>(null);
 
-  // Referral state
+  // Referral state (storefront referral-DISCOUNT programme — validate_referral_code)
   const [referralCode, setReferralCode] = useState("");
   const [referralLoading, setReferralLoading] = useState(false);
   const [appliedReferral, setAppliedReferral] = useState<{ id: string; code: string; discount_amount: number } | null>(null);
+
+  // Marketplace PARTNER referral (separate programme — validate_referral_partner_code).
+  // Gives no discount; instead confirms "Referred by <name>" and unlocks a free
+  // mum-gift picker. Prefilled from the ?ref= capture (localStorage bm_ref_code).
+  // Never blocks submit. Independent of the discount referral / coupon above.
+  const [partnerRef, setPartnerRef] = useState<string>(() => getRefCode() || "");
+  const [partnerRefStatus, setPartnerRefStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [partnerRefName, setPartnerRefName] = useState<string | null>(null);
+  const [selectedGift, setSelectedGift] = useState<string | null>(() => getSelectedGift());
 
   // Dynamic settings from DB
   const { data: settings } = useSiteSettings();
@@ -1204,6 +1216,64 @@ export default function CheckoutPage() {
       setReferralLoading(false);
     }
   };
+
+  // Marketplace partner referral: validate the code, show "Referred by <name>",
+  // and (when the email is known) tie the attribution to the email as well as
+  // the visitor id. record_referral_attribution is idempotent server-side and
+  // best-effort here — it must never block checkout.
+  const attributeEmail = useCallback(async (code: string, email: string) => {
+    const c = normalizeCode(code);
+    const em = (email || "").trim();
+    if (!c || !em) return;
+    try {
+      await (supabase as any).rpc("record_referral_attribution", {
+        p_code: c,
+        p_visitor_id: getVisitorId(),
+        p_email: em,
+        p_source: "manual",
+      });
+    } catch { /* best-effort */ }
+  }, []);
+
+  const checkPartnerRef = useCallback(async (rawCode: string) => {
+    const code = normalizeCode(rawCode);
+    if (!code) { setPartnerRefStatus("idle"); setPartnerRefName(null); return; }
+    setPartnerRefStatus("checking");
+    try {
+      const { data } = await (supabase as any).rpc("validate_referral_partner_code", { p_code: code });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row?.is_valid) {
+        setPartnerRefStatus("valid");
+        setPartnerRefName(row.first_name || null);
+        setRefCode(code);
+        const em = (form.email || "").trim();
+        if (em) void attributeEmail(code, em);
+      } else {
+        setPartnerRefStatus("invalid");
+        setPartnerRefName(null);
+      }
+    } catch {
+      // Silent: a validation outage must not surface an error or block the order.
+      setPartnerRefStatus("idle");
+      setPartnerRefName(null);
+    }
+  }, [form.email, attributeEmail]);
+
+  // Validate a prefilled code once on mount so "Referred by <name>" shows without
+  // the customer having to touch the field.
+  useEffect(() => {
+    if (partnerRef) void checkPartnerRef(partnerRef);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const chooseGift = (productId: string) => {
+    setSelectedGift(productId);
+    persistSelectedGift(productId);
+  };
+
+  // Gift options load only once a valid partner code is attributed.
+  const giftPickerEnabled = partnerRefStatus === "valid";
+  const { data: giftOptions, isLoading: giftsLoading } = useReferralGiftOptions(giftPickerEnabled);
 
   const update = (key: keyof FormData, val: string) => {
     setForm(p => ({ ...p, [key]: val }));
@@ -2363,7 +2433,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex flex-col md:flex-row gap-3">
                   <InputField name="phone" label="Phone Number" value={form.phone} onChange={v => update("phone", v)} onBlur={() => handleBlur("phone")} error={errors.phone} type="tel" placeholder="08012345678" />
-                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); void saveLandingQuote(); }} error={errors.email} type="email" placeholder="you@example.com" />
+                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); void saveLandingQuote(); if (partnerRefStatus === "valid") void attributeEmail(partnerRef, form.email); }} error={errors.email} type="email" placeholder="you@example.com" />
                 </div>
                 <InputField name="address" label="Street Address" value={form.address} onChange={v => update("address", v)} onBlur={() => handleBlur("address")} error={errors.address} />
 
@@ -2664,6 +2734,42 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
+
+            {/* Marketplace partner referral (unlocks a free gift, not a discount) */}
+            <div className="bg-card rounded-card shadow-card p-4 md:p-8">
+              <h2 className="pf text-lg mb-1">🤝 Referred by a seller or friend?</h2>
+              <p className="text-text-light text-sm mb-4">Enter their BundledMum referral code to unlock a free mum gift with your first order.</p>
+              <div className="flex gap-2">
+                <input
+                  value={partnerRef}
+                  onChange={e => { setPartnerRef(e.target.value.toUpperCase()); setPartnerRefStatus("idle"); setPartnerRefName(null); }}
+                  onBlur={() => void checkPartnerRef(partnerRef)}
+                  placeholder="Enter referral code"
+                  className="flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-coral outline-none uppercase" />
+                <button type="button" onClick={() => void checkPartnerRef(partnerRef)} disabled={partnerRefStatus === "checking"}
+                  className="rounded-[10px] bg-coral px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-coral-dark disabled:opacity-50 font-body">
+                  {partnerRefStatus === "checking" ? "..." : "Apply"}
+                </button>
+              </div>
+              {partnerRefStatus === "valid" && (
+                <div className="mt-3 flex items-center gap-2 bg-forest-light rounded-[10px] p-3">
+                  <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"}</span>
+                </div>
+              )}
+              {partnerRefStatus === "invalid" && (
+                <div className="mt-3 text-text-light text-xs">We could not find that code, but you can still place your order.</div>
+              )}
+            </div>
+
+            {giftPickerEnabled && (
+              <ReferralGiftPicker
+                options={giftOptions || []}
+                loading={giftsLoading}
+                selected={selectedGift}
+                onSelect={chooseGift}
+                referrerName={partnerRefName}
+              />
+            )}
 
             {/* Payment Method */}
             <div className="bg-card rounded-card shadow-card p-4 md:p-8">

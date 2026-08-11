@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient, MutationCache } from "@tanstack/react-query";
 import { toast as sonnerToast } from "sonner";
-import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeCode, getVisitorId, setRefCode } from "@/lib/referral";
 import { useComingSoonFlags } from "@/hooks/useComingSoon";
 import { usePreviewToken } from "@/hooks/usePreviewToken";
 import { useAdmin } from "@/hooks/useAdmin";
@@ -239,6 +240,40 @@ function PasswordRecoveryListener() {
 }
 
 /**
+ * ReferralCaptureListener — captures a marketplace partner referral from a
+ * ?ref=CODE query param on ANY storefront route. It records the attribution
+ * against a stable per-browser visitor id (record_referral_attribution, source
+ * 'link'), persists the code to localStorage so checkout can prefill and
+ * re-validate it, then strips ref from the visible URL without breaking routing.
+ * Best-effort: a failed RPC never blocks the page. Null render. Runs only in the
+ * storefront tree (the marketplace tree is separate and does not mount this).
+ */
+function ReferralCaptureListener() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const code = normalizeCode(searchParams.get("ref"));
+    if (!code) return;
+    setRefCode(code);
+    const visitorId = getVisitorId();
+    void (async () => {
+      try {
+        await (supabase as any).rpc("record_referral_attribution", {
+          p_code: code,
+          p_visitor_id: visitorId,
+          p_email: null,
+          p_source: "link",
+        });
+      } catch { /* attribution is best-effort; never block the page */ }
+    })();
+    // Strip ref from the URL, preserving every other param and the current path.
+    const next = new URLSearchParams(searchParams);
+    next.delete("ref");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  return null;
+}
+
+/**
  * Redirects storefront traffic to /coming-soon when both flags are on.
  * Admin sessions (logged-in Supabase users) bypass the redirect so they
  * can still preview the live site. /admin/* routes are excluded by
@@ -419,6 +454,7 @@ const StorefrontApp = () => (
             <AuthAnalyticsListener />
             <WhatsAppClickListener />
             <PasswordRecoveryListener />
+            <ReferralCaptureListener />
             <Routes>
               {/* Admin routes */}
               <Route path="/admin/set-password" element={<AdminSetPassword />} />
