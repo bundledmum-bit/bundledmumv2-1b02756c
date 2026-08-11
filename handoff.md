@@ -1,6 +1,37 @@
 # Handoff
 
-## Referral programme emails — new send-referral-email function (this turn, DEPLOYED)
+## Referral ?ref= capture — hardened the URL strip (this turn)
+- **Reported bugs**: (1) landing on `?ref=TESTMUM` then Add to Cart leaves the cart
+  empty; (2) typing TESTMUM at checkout does nothing. Both claimed frontend.
+- **Root-cause finding — NEITHER reproduces in the current branch code, proven:**
+  - **Bug 1 is structurally impossible here.** `CartProvider` is mounted ABOVE
+    `<BrowserRouter>` (StorefrontApp.tsx ~447 vs 449), so a router `setSearchParams`
+    (inside the router) cannot remount CartProvider or reset the cart. `addToCart`
+    uses a functional `setCart(prev => …)`; only `clearCart`/cross-tab-storage call
+    `setCart([])`. Verified LIVE: land on `/shop?ref=TESTMUM`, add an item → cart
+    holds it, `bm_ref_code=TESTMUM`, URL stripped, no reload (`window` probe
+    survived, no `beforeunload`).
+  - The "empty cart on a real click" I saw was an **automation artifact**: the dev
+    preview's Supabase realtime WebSocket reconnect loop (`ERR_CONNECTION_CLOSED`)
+    keeps the network busy so the click harness times out before dispatching —
+    reproduces WITHOUT `?ref` too, so it is unrelated to the referral capture.
+  - **Bug 2 works**: checkout prefill from `bm_ref_code` auto-validates on mount, and
+    manual type+Apply of `TESTMUM` both show "Referred by Amara" + the 19-card gift
+    picker (verified live). No shared root cause; the two are independent.
+  - Likely the owner tested an older/stale production deployment.
+- **Fix applied anyway (prompt-recommended hardening, zero downside)**:
+  `ReferralCaptureListener` (StorefrontApp.tsx) now reads `?ref` straight off
+  `window.location.search` and strips it with **`window.history.replaceState`**
+  instead of the router's `setSearchParams` — so the URL rewrite triggers NO React
+  re-render at all, permanently closing the hypothesised "rewrite disturbs cart/page
+  state" class of bug. A `useRef` guard makes the capture + attribution RPC fire at
+  most once (survives StrictMode double-invoke). Removed `useSearchParams`.
+- **Ref IS still stripped** from the visible URL (via replaceState), preserving every
+  other query param, the path and the hash (verified: `/shop?ref=TESTMUM&tab=baby` →
+  `/shop?tab=baby`).
+- **Untouched**: CheckoutPage (discount + coupon paths unchanged). Build passes.
+
+## Referral programme emails — new send-referral-email function (prior turn, DEPLOYED)
 - **New edge function `send-referral-email`** (v1, `verify_jwt:false`), repo copy at
   `supabase/functions/send-referral-email/index.ts`. Built from the DEPLOYED
   `send-internal-order-notification` v32 pattern (renderTemplate, direct-Resend send,

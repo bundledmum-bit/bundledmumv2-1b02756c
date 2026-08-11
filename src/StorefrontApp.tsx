@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient, MutationCache } from "@tanstack/react-query";
 import { toast as sonnerToast } from "sonner";
-import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeCode, getVisitorId, setRefCode } from "@/lib/referral";
 import { useComingSoonFlags } from "@/hooks/useComingSoon";
@@ -249,10 +249,22 @@ function PasswordRecoveryListener() {
  * storefront tree (the marketplace tree is separate and does not mount this).
  */
 function ReferralCaptureListener() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Guard so the capture + URL rewrite runs at most once per mount, even if the
+  // effect is re-invoked (React StrictMode double-invoke in dev) — otherwise the
+  // attribution RPC could fire twice.
+  const captured = useRef(false);
   useEffect(() => {
-    const code = normalizeCode(searchParams.get("ref"));
+    if (captured.current) return;
+    // Read the ref straight off the URL rather than via useSearchParams: the
+    // strip below uses window.history.replaceState (NOT a router navigate), so it
+    // never triggers a React re-render and can never disturb cart or page state
+    // written moments earlier. (CartProvider sits above BrowserRouter, so a router
+    // navigate can't reset the cart either — but replaceState removes even the
+    // re-render, closing the whole class of "URL rewrite touched state" bugs.)
+    const params = new URLSearchParams(window.location.search);
+    const code = normalizeCode(params.get("ref"));
     if (!code) return;
+    captured.current = true;
     setRefCode(code);
     const visitorId = getVisitorId();
     void (async () => {
@@ -265,11 +277,15 @@ function ReferralCaptureListener() {
         });
       } catch { /* attribution is best-effort; never block the page */ }
     })();
-    // Strip ref from the URL, preserving every other param and the current path.
-    const next = new URLSearchParams(searchParams);
-    next.delete("ref");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+    // Strip ref from the visible URL, preserving every other param, the path and
+    // the hash — silently, with no router navigate and no re-render.
+    params.delete("ref");
+    const qs = params.toString();
+    const newUrl = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash;
+    try {
+      window.history.replaceState(window.history.state, "", newUrl);
+    } catch { /* replaceState can throw in rare sandboxed contexts; URL stays as-is */ }
+  }, []);
   return null;
 }
 
