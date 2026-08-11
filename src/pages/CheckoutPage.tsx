@@ -1336,6 +1336,33 @@ export default function CheckoutPage() {
     }
   }, [belowReferralMin, selectedGift]);
 
+  // The chosen referral free gift, shown in the order summary so she can see what
+  // she is getting before paying. DISPLAY ONLY — it is never in cart state, never
+  // affects any total, and is submitted separately via selected_gift_product_id
+  // (the DB turns it into a ₦0 order_items line after the order is placed). It
+  // appears only when a valid partner code is applied, the cart qualifies
+  // (>= threshold), and a gift is selected; it vanishes the moment any of those
+  // stop being true. Image comes from the same anon-safe brands_public source the
+  // gift picker uses (never an external image_url).
+  const selectedGiftOption =
+    (partnerRefStatus === "valid" && !belowReferralMin && selectedGift)
+      ? (giftOptions || []).find((g) => g.productId === selectedGift) || null
+      : null;
+  const referralGiftRowNode = selectedGiftOption ? (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-12 h-12 bg-warm-cream rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden border border-coral/40">
+          <img src={selectedGiftOption.imageUrl || "/placeholder.svg"} alt={selectedGiftOption.name} loading="lazy" className="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"; }} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold text-coral mb-0.5 truncate">🎁 Free gift</div>
+          <div className="text-xs font-semibold leading-tight truncate">{selectedGiftOption.name}</div>
+        </div>
+      </div>
+      <span className="text-red-600 uppercase text-[10px] font-bold flex-shrink-0">Free</span>
+    </div>
+  ) : null;
+
   const update = (key: keyof FormData, val: string) => {
     setForm(p => ({ ...p, [key]: val }));
     if (errors[key]) setErrors(p => ({ ...p, [key]: undefined }));
@@ -2362,6 +2389,7 @@ export default function CheckoutPage() {
                 );
               })}
               {fipGiftRowsNode}
+              {referralGiftRowNode}
               <div className="border-t border-border pt-2 space-y-1 text-xs">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal</span><span>{fmt(subtotal)}</span></div>
                 {isExpressOrder ? (
@@ -3005,6 +3033,7 @@ export default function CheckoutPage() {
                   </div>
                 ))}
                 {fipGiftRowsNode}
+                {referralGiftRowNode}
               </div>
               <div className="space-y-2 font-body text-[13px]">
                 <div className="flex justify-between"><span className="text-text-med">Subtotal ({totalItems} items)</span><span>{fmt(subtotal)}</span></div>

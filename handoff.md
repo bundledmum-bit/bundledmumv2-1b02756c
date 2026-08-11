@@ -1,6 +1,32 @@
 # Handoff
 
-## Referral gift — minimum order value gate at checkout (this turn)
+## Referral free gift — shown in the checkout order summary (this turn)
+- **Why**: the chosen free gift was only visible inside the gift picker; she couldn't
+  see it among her products before paying. (After the order, the DB trigger
+  `trg_add_referral_gift_line` already turns it into a ₦0 `order_items` row for admin/
+  fulfilment/email — this task is checkout-only.)
+- **What**: added a DISPLAY-ONLY `referralGiftRowNode` in `src/pages/CheckoutPage.tsx`,
+  rendered in BOTH order-summary layouts right after `{fipGiftRowsNode}` (mobile
+  collapsible summary ~line 2392, desktop sidebar ~line 3036). Shows the gift image +
+  "🎁 Free gift" label + product name + "FREE".
+- **Shown only when** `partnerRefStatus === "valid" && !belowReferralMin && selectedGift`
+  and the option resolves in `giftOptions`. It vanishes automatically when the gift is
+  deselected, the code is removed, or the cart drops below the threshold (all already
+  flip `selectedGift`/`belowReferralMin`).
+- **Image source**: `giftOptions.find(...).imageUrl` — the same anon-safe
+  `brands_public.stored_image_url` the gift picker uses (verified live: src is
+  `…/storage/v1/object/public/product-images/…`, never an external `image_url`).
+- **Totals unaffected — proven live**: grand total was **₦172,400** with the gift line
+  shown AND after removing it (cart unchanged). The node reads state only; it is NOT in
+  cart state (verified: `bm-cart` held only the product, never the gift) and NOT in the
+  order payload's items (those derive from `cart`); `selected_gift_product_id` remains
+  the separate, already-handled submission path. No remove/qty control on the line.
+- **Verified live** (mobile + desktop): select gift → "🎁 Free gift / Breast Pump /
+  FREE" line appears under the product, Subtotal/Total both ₦172,400; Remove → line
+  gone, Total still ₦172,400. Screenshots taken. Only `src/pages/CheckoutPage.tsx`
+  changed; no DB/RPC/edge/trigger changes.
+
+## Referral gift — minimum order value gate at checkout (prior turn)
 - **Why**: the DB trigger `stamp_order_referral_partner` reads `site_settings`
   `referral_min_order_naira` (fallback 150000) and, when the order **`NEW.total`** is
   below it, assigns NO partner and sets `selected_gift_product_id := NULL`. The
