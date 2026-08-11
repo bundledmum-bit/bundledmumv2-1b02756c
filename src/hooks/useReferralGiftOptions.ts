@@ -3,10 +3,13 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Free-gift choices offered to referred customers at checkout. Sourced from
 // referral_gift_options (anon SELECT allowed on active rows), joined to products
-// for the name and to brands for a stored image. In this data model a product
-// has many brand SKUs; the gift image is a representative brands.stored_image_url
-// for the product (Supabase-hosted). We deliberately NEVER use products.image_url
-// or brands.image_url — those may be external/hotlinked URLs.
+// for the name and to the PUBLIC view brands_public for a stored image. In this
+// data model a product has many brand SKUs; the gift image is a representative
+// brands_public.stored_image_url for the product (Supabase-hosted). We read
+// brands_public (not brands) because the base brands table is RLS-restricted to
+// admins — anon checkout users cannot read it, so a direct join returns no image.
+// The storefront catalog uses brands_public for the same reason. We deliberately
+// NEVER use products.image_url / image_url — those may be external/hotlinked URLs.
 
 export interface ReferralGiftOption {
   productId: string;
@@ -36,7 +39,7 @@ export function useReferralGiftOptions(enabled: boolean) {
       const [prodRes, brandRes] = await Promise.all([
         (supabase as any).from("products").select("id, name").in("id", ids),
         (supabase as any)
-          .from("brands")
+          .from("brands_public")
           .select("product_id, stored_image_url")
           .in("product_id", ids)
           .not("stored_image_url", "is", null),

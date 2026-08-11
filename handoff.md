@@ -1,6 +1,34 @@
 # Handoff
 
-## Marketplace partner referral — storefront FRONTEND (this turn, BUILT)
+## Marketplace partner referral — gift now PERSISTED + image source fixed (this turn)
+- **Gift persistence (the earlier GAP, now closed)**: `orders.selected_gift_product_id`
+  (uuid, nullable, FK products.id) now exists, guarded server-side by
+  `trg_guard_referral_gift` (nulls the value if the order has no `referral_partner_id`
+  or the product is not an ACTIVE `referral_gift_options` row; never fails the order).
+  Added `selected_gift_product_id` to the checkout `order:` payload in
+  `src/pages/CheckoutPage.tsx` (next to `referral_code_used`), set to
+  `(partnerRefStatus === "valid" && selectedGift) ? selectedGift : null` — the chosen
+  gift only when a valid partner code is attributed, else null (never send a stale
+  localStorage choice). It flows through `place-order`'s `{...safeOrder}` insert.
+  `localStorage['bm_ref_gift']` stays as a convenience copy; the payload is now the
+  source of truth.
+- **Gift image source CORRECTED (bug fix in `useReferralGiftOptions`)**: the prior
+  turn joined `brands.stored_image_url`, but the base `brands` table is RLS-restricted
+  to admins ("Admin read brands" policy) — anon checkout users read nothing, so every
+  gift showed the 🎁 placeholder. Fixed to read the anon-safe PUBLIC view
+  **`brands_public`** (`product_id, stored_image_url`), which the storefront catalog
+  already uses. Verified: all 19 active gift products resolve a Supabase-stored image
+  via `brands_public`.
+- **Verified live with QA code `TESTMUM` (validates as "Amara")**: "✓ Referred by
+  Amara" shows, the gift picker renders 19 cards WITH images (Supabase storage URLs,
+  not external), selection is single (clicking a second gift replaces the first,
+  `bm_ref_gift` updates), and both payload inputs (`partnerRefStatus === "valid"` +
+  `selectedGift`) are satisfied so the payload carries the chosen `product_id`. The
+  existing "🎁 Referral Code" discount block is unchanged. (Did not place a real test
+  order to avoid polluting production orders / firing internal emails; the payload
+  field is deterministic from the two verified state inputs.)
+
+## Marketplace partner referral — storefront FRONTEND (prior turn, BUILT)
 - **Scope**: frontend only. All DB work (RPCs, tables) is deployed and untouched.
 - **RPCs used** (all anon-callable, via the `(supabase as any).rpc(...)` cast):
   `record_referral_attribution(p_code, p_visitor_id, p_email, p_source)` and

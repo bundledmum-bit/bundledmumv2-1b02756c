@@ -1671,6 +1671,14 @@ export default function CheckoutPage() {
             discount_amount: (couponDiscount + (orderData.promoDiscount || 0)) > 0 ? (couponDiscount + (orderData.promoDiscount || 0)) : 0,
             coupon_id: appliedCoupon?.id || null,
             referral_code_used: appliedReferral?.code || null,
+            // Marketplace partner-referral free gift. Sent only when a valid
+            // partner code is attributed AND a gift was picked; null otherwise
+            // (never send a stale localStorage choice without a valid code). The
+            // orders column + trg_guard_referral_gift trigger validate this
+            // server-side and silently null an invalid value, so it can never
+            // fail the order. localStorage bm_ref_gift stays as a convenience
+            // copy, but this payload field is the source of truth.
+            selected_gift_product_id: (partnerRefStatus === "valid" && selectedGift) ? selectedGift : null,
             spend_discount_amount: spendDiscount > 0 ? spendDiscount : 0,
             spend_discount_percent: spendPrompt?.currentDiscount?.discount_percent || null,
             payment_reference: orderData.paystackRef,
