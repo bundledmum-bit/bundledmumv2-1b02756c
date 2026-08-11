@@ -7,7 +7,7 @@ import { expandCartForDisplay } from "@/lib/bundleDisplay";
 import LineItemThumb from "@/components/LineItemThumb";
 import { getCustomItemsRequest, clearCustomItemsRequest } from "@/lib/customItemsRequest";
 import { supabase } from "@/integrations/supabase/client";
-import { normalizeCode, getVisitorId, getRefCode, setRefCode, getSelectedGift, setSelectedGift as persistSelectedGift } from "@/lib/referral";
+import { normalizeCode, getVisitorId, getRefCode, setRefCode, clearRefCode, getSelectedGift, setSelectedGift as persistSelectedGift, clearSelectedGift } from "@/lib/referral";
 import { useReferralGiftOptions } from "@/hooks/useReferralGiftOptions";
 import ReferralGiftPicker from "@/components/checkout/ReferralGiftPicker";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
@@ -324,17 +324,20 @@ export default function CheckoutPage() {
   const [couponLoading, setCouponLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<{ id: string; code: string; discount_type: string; discount_value: number; discount_amount: number } | null>(null);
 
-  // Referral state (storefront referral-DISCOUNT programme — validate_referral_code)
-  const [referralCode, setReferralCode] = useState("");
+  // ONE referral field that resolves EITHER kind of code (partner or discount).
+  // - refInput: the single input value, prefilled from the ?ref= capture (bm_ref_code).
+  // - referralLoading: unified Apply spinner.
+  // - appliedReferral: DISCOUNT programme result (validate_referral_code) — drives
+  //   referralDiscount → totals + referral_code_used in the payload.
+  // - partnerRefStatus/partnerRefName/selectedGift: PARTNER programme
+  //   (validate_referral_partner_code) — no discount, reveals the gift picker and
+  //   drives selected_gift_product_id. A code is only ever ONE of these at a time.
+  // - refNotFound: gentle non-blocking "not found" message after a failed Apply.
+  const [refInput, setRefInput] = useState<string>(() => getRefCode() || "");
   const [referralLoading, setReferralLoading] = useState(false);
+  const [refNotFound, setRefNotFound] = useState(false);
   const [appliedReferral, setAppliedReferral] = useState<{ id: string; code: string; discount_amount: number } | null>(null);
-
-  // Marketplace PARTNER referral (separate programme — validate_referral_partner_code).
-  // Gives no discount; instead confirms "Referred by <name>" and unlocks a free
-  // mum-gift picker. Prefilled from the ?ref= capture (localStorage bm_ref_code).
-  // Never blocks submit. Independent of the discount referral / coupon above.
-  const [partnerRef, setPartnerRef] = useState<string>(() => getRefCode() || "");
-  const [partnerRefStatus, setPartnerRefStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [partnerRefStatus, setPartnerRefStatus] = useState<"idle" | "valid">("idle");
   const [partnerRefName, setPartnerRefName] = useState<string | null>(null);
   const [selectedGift, setSelectedGift] = useState<string | null>(() => getSelectedGift());
 
@@ -1170,57 +1173,8 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.email, appliedCoupon?.code]);
 
-  const applyReferral = async () => {
-    const code = referralCode.trim().toUpperCase();
-    if (!code) { toast.error("Enter a referral code"); return; }
-    if (!form.email) { toast.error("Enter your email first — we need it to validate the referral"); return; }
-    setReferralLoading(true);
-    try {
-      const { data, error } = await supabase.rpc("validate_referral_code", {
-        p_code: code,
-        p_order_amount: subtotal,
-        p_redeemer_email: form.email,
-        p_redeemer_phone: form.phone,
-      });
-      if (error) throw error;
-      const result = typeof data === "string" ? JSON.parse(data) : data;
-      if (!result?.valid) {
-        toast.error(result?.message || "Invalid referral code");
-        try {
-          analytics.push({
-            event: "coupon_failed",
-            coupon_code: code,
-            error_reason: result?.message || "invalid_referral",
-          });
-        } catch { /* ignore */ }
-        setReferralLoading(false);
-        return;
-      }
-      setAppliedReferral({
-        id: result.referral_code_id,
-        code,
-        discount_amount: result.discount_amount || 0,
-      });
-      toast.success(result.message || `Referral code "${code}" applied — saving ${fmt(result.discount_amount)}!`);
-      try {
-        analytics.push({
-          event: "referral_applied",
-          referral_code: code,
-          referrer_credit: Number(result.referrer_credit) || 0,
-          discount_amount: Number(result.discount_amount) || 0,
-        });
-      } catch { /* ignore */ }
-    } catch {
-      toast.error("Failed to validate referral code");
-    } finally {
-      setReferralLoading(false);
-    }
-  };
-
-  // Marketplace partner referral: validate the code, show "Referred by <name>",
-  // and (when the email is known) tie the attribution to the email as well as
-  // the visitor id. record_referral_attribution is idempotent server-side and
-  // best-effort here — it must never block checkout.
+  // Best-effort email attribution for a partner referral (order is matched by
+  // email server-side). Idempotent server-side; never blocks checkout.
   const attributeEmail = useCallback(async (code: string, email: string) => {
     const c = normalizeCode(code);
     const em = (email || "").trim();
@@ -1235,34 +1189,119 @@ export default function CheckoutPage() {
     } catch { /* best-effort */ }
   }, []);
 
-  const checkPartnerRef = useCallback(async (rawCode: string) => {
+  // Clears ONLY the partner side (used when a discount code wins, so a code is
+  // never both types at once): hides the gift picker and drops the gift choice.
+  const clearPartnerState = useCallback(() => {
+    setPartnerRefStatus("idle");
+    setPartnerRefName(null);
+    setSelectedGift(null);
+    clearSelectedGift();
+  }, []);
+
+  // Try the PARTNER programme (case-insensitive). Returns true if it applied.
+  // On success it also clears any discount, so the two are mutually exclusive.
+  const tryPartnerReferral = useCallback(async (rawCode: string): Promise<boolean> => {
     const code = normalizeCode(rawCode);
-    if (!code) { setPartnerRefStatus("idle"); setPartnerRefName(null); return; }
-    setPartnerRefStatus("checking");
+    if (!code) return false;
     try {
       const { data } = await (supabase as any).rpc("validate_referral_partner_code", { p_code: code });
       const row = Array.isArray(data) ? data[0] : data;
       if (row?.is_valid) {
+        setAppliedReferral(null); // a partner code gives no discount
         setPartnerRefStatus("valid");
         setPartnerRefName(row.first_name || null);
         setRefCode(code);
         const em = (form.email || "").trim();
         if (em) void attributeEmail(code, em);
-      } else {
-        setPartnerRefStatus("invalid");
-        setPartnerRefName(null);
+        return true;
       }
-    } catch {
-      // Silent: a validation outage must not surface an error or block the order.
-      setPartnerRefStatus("idle");
-      setPartnerRefName(null);
-    }
+    } catch { /* fall through to the discount path */ }
+    return false;
   }, [form.email, attributeEmail]);
 
-  // Validate a prefilled code once on mount so "Referred by <name>" shows without
-  // the customer having to touch the field.
+  // Try the DISCOUNT programme (validate_referral_code is CASE-SENSITIVE).
+  // Returns the RAW RPC result ({ valid, discount_amount, message, ... }) so the
+  // caller can tell a genuine rejection reason (e.g. minimum order) apart from an
+  // unrecognized code. Null only on a transport error.
+  const tryDiscountCode = useCallback(async (pCode: string) => {
+    try {
+      const { data, error } = await supabase.rpc("validate_referral_code", {
+        p_code: pCode,
+        p_order_amount: subtotal,
+        p_redeemer_email: form.email,
+        p_redeemer_phone: form.phone,
+      });
+      if (error) return null;
+      return typeof data === "string" ? JSON.parse(data) : data;
+    } catch {
+      return null;
+    }
+  }, [subtotal, form.email, form.phone]);
+
+  // Unified Apply: partner first, then discount (exact-as-typed, then uppercased),
+  // else one gentle non-blocking message. Never blocks checkout.
+  const applyReferral = async () => {
+    const raw = refInput.trim();
+    if (!raw) { toast.error("Enter a referral code"); return; }
+    setReferralLoading(true);
+    setRefNotFound(false);
+    try {
+      // 1) Partner referral (case-insensitive) wins if it validates.
+      if (await tryPartnerReferral(raw)) return;
+
+      // 2) Discount referral. Mutually exclusive with a coupon; needs an email.
+      if (appliedCoupon) { toast.error("Remove your coupon first to use a discount code."); return; }
+      if (!form.email) { toast.error("Enter your email first, then tap Apply."); return; }
+
+      // validate_referral_code is case-sensitive and codes are stored uppercase,
+      // so try exactly as typed, then the uppercased form. Keep the "best" result:
+      // a valid hit wins; otherwise a specific rejection ("Minimum order…") beats
+      // the generic "Invalid referral code" that means the code does not exist.
+      const attempts = raw === raw.toUpperCase() ? [raw] : [raw, raw.toUpperCase()];
+      let result: any = null;
+      let matchedCode = raw;
+      for (const attempt of attempts) {
+        const r = await tryDiscountCode(attempt);
+        if (r?.valid) { result = r; matchedCode = attempt; break; }
+        if (r?.message && r.message !== "Invalid referral code") { result = r; matchedCode = attempt; }
+        else if (!result) { result = r; matchedCode = attempt; }
+      }
+
+      if (result?.valid) {
+        clearPartnerState(); // discount wins → no partner gift path
+        const code = result.code || matchedCode;
+        setAppliedReferral({ id: result.referral_code_id, code, discount_amount: result.discount_amount || 0 });
+        toast.success(result.message || `${fmt(result.discount_amount || 0)} off applied!`);
+        try {
+          analytics.push({ event: "referral_applied", referral_code: code, referrer_credit: Number(result.referrer_credit) || 0, discount_amount: Number(result.discount_amount) || 0 });
+        } catch { /* ignore */ }
+      } else if (result?.message && result.message !== "Invalid referral code") {
+        // A real code that cannot apply right now (min order, expired, already
+        // used). Surface the reason so she can fix it; non-blocking.
+        toast.error(result.message);
+      } else {
+        setRefNotFound(true); // neither partner nor discount recognized the code
+      }
+    } catch {
+      setRefNotFound(true); // gentle, non-blocking
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
+  // Full reset for the Remove control: clears BOTH paths, totals and picker.
+  const clearReferral = () => {
+    setRefInput("");
+    setRefNotFound(false);
+    setAppliedReferral(null);
+    clearPartnerState();
+    clearRefCode();
+  };
+
+  // Validate a prefilled code once on mount (partner-only, silent — no error if it
+  // does not match, since the customer has not acted yet).
   useEffect(() => {
-    if (partnerRef) void checkPartnerRef(partnerRef);
+    if (refInput) void tryPartnerReferral(refInput);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2441,7 +2480,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex flex-col md:flex-row gap-3">
                   <InputField name="phone" label="Phone Number" value={form.phone} onChange={v => update("phone", v)} onBlur={() => handleBlur("phone")} error={errors.phone} type="tel" placeholder="08012345678" />
-                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); void saveLandingQuote(); if (partnerRefStatus === "valid") void attributeEmail(partnerRef, form.email); }} error={errors.email} type="email" placeholder="you@example.com" />
+                  <InputField name="email" label="Email Address" value={form.email} onChange={v => update("email", v)} onBlur={() => { handleBlur("email"); saveAbandonedCart(); void saveLandingQuote(); if (partnerRefStatus === "valid") void attributeEmail(refInput, form.email); }} error={errors.email} type="email" placeholder="you@example.com" />
                 </div>
                 <InputField name="address" label="Street Address" value={form.address} onChange={v => update("address", v)} onBlur={() => handleBlur("address")} error={errors.address} />
 
@@ -2718,54 +2757,39 @@ export default function CheckoutPage() {
               )}
             </div>
 
-            {/* Referral Code */}
+            {/* Referral code — ONE input that resolves either a partner referral
+                (free gift) or a discount referral (₦ off). Coupon is separate. */}
             <div className="bg-card rounded-card shadow-card p-4 md:p-8">
-              <h2 className="pf text-lg mb-4">🎁 Referral Code</h2>
-              {appliedCoupon ? (
-                <div className="text-text-light text-xs">Cannot combine with coupon. Remove your coupon to use a referral code.</div>
-              ) : appliedReferral ? (
+              <h2 className="pf text-lg mb-1">🎁 Have a referral code?</h2>
+              <p className="text-text-light text-sm mb-4">From a seller or a friend. We will work out whether it is a free gift or money off.</p>
+              {appliedReferral ? (
                 <div className="flex items-center justify-between bg-forest-light rounded-[10px] p-3">
-                  <div>
-                    <span className="text-forest font-bold text-sm">{appliedReferral.code}</span>
-                    <span className="text-forest text-xs ml-2">— saving {fmt(referralDiscount)}</span>
-                  </div>
-                  <button onClick={() => { setAppliedReferral(null); setReferralCode(""); }} className="text-destructive text-xs font-semibold hover:underline">Remove</button>
+                  <span className="text-forest font-bold text-sm">✓ {fmt(referralDiscount)} off applied</span>
+                  <button type="button" onClick={clearReferral} className="text-destructive text-xs font-semibold hover:underline">Remove</button>
+                </div>
+              ) : partnerRefStatus === "valid" ? (
+                <div className="flex items-center justify-between bg-forest-light rounded-[10px] p-3">
+                  <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"} — pick your free gift below 🎁</span>
+                  <button type="button" onClick={clearReferral} className="text-destructive text-xs font-semibold hover:underline ml-3 shrink-0">Remove</button>
                 </div>
               ) : (
-                <div className="flex gap-2">
-                  <input value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} placeholder="Enter referral code"
-                    className="flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-forest outline-none uppercase" />
-                  <button onClick={applyReferral} disabled={referralLoading}
-                    className="rounded-[10px] bg-forest px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-forest-deep disabled:opacity-50 font-body">
-                    {referralLoading ? "..." : "Apply"}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Marketplace partner referral (unlocks a free gift, not a discount) */}
-            <div className="bg-card rounded-card shadow-card p-4 md:p-8">
-              <h2 className="pf text-lg mb-1">🤝 Referred by a seller or friend?</h2>
-              <p className="text-text-light text-sm mb-4">Enter their BundledMum referral code to unlock a free mum gift with your first order.</p>
-              <div className="flex gap-2">
-                <input
-                  value={partnerRef}
-                  onChange={e => { setPartnerRef(e.target.value.toUpperCase()); setPartnerRefStatus("idle"); setPartnerRefName(null); }}
-                  onBlur={() => void checkPartnerRef(partnerRef)}
-                  placeholder="Enter referral code"
-                  className="flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-coral outline-none uppercase" />
-                <button type="button" onClick={() => void checkPartnerRef(partnerRef)} disabled={partnerRefStatus === "checking"}
-                  className="rounded-[10px] bg-coral px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-coral-dark disabled:opacity-50 font-body">
-                  {partnerRefStatus === "checking" ? "..." : "Apply"}
-                </button>
-              </div>
-              {partnerRefStatus === "valid" && (
-                <div className="mt-3 flex items-center gap-2 bg-forest-light rounded-[10px] p-3">
-                  <span className="text-forest font-bold text-sm">✓ Referred by {partnerRefName || "a BundledMum partner"}</span>
-                </div>
-              )}
-              {partnerRefStatus === "invalid" && (
-                <div className="mt-3 text-text-light text-xs">We could not find that code, but you can still place your order.</div>
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      value={refInput}
+                      onChange={e => { setRefInput(e.target.value); setRefNotFound(false); }}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void applyReferral(); } }}
+                      placeholder="Enter referral code"
+                      className="flex-1 rounded-[10px] border-[1.5px] border-border px-3 py-2.5 text-sm bg-card font-body focus:border-coral outline-none" />
+                    <button type="button" onClick={() => void applyReferral()} disabled={referralLoading}
+                      className="rounded-[10px] bg-coral px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-coral-dark disabled:opacity-50 font-body">
+                      {referralLoading ? "..." : "Apply"}
+                    </button>
+                  </div>
+                  {refNotFound && (
+                    <div className="mt-3 text-text-light text-xs">We could not find that code. You can still complete your order.</div>
+                  )}
+                </>
               )}
             </div>
 

@@ -1,6 +1,43 @@
 # Handoff
 
-## Marketplace partner referral — gift now PERSISTED + image source fixed (this turn)
+## Checkout referral — TWO inputs merged into ONE (this turn)
+- **Problem**: checkout had two separate referral inputs (discount vs partner);
+  customers put a code in the wrong box, saw an error, and abandoned.
+- **Merged** both into ONE "🎁 Have a referral code?" block in
+  `src/pages/CheckoutPage.tsx`. Coupon block is untouched (separate, third thing).
+- **Resolve order on Apply** (`applyReferral`): try PARTNER first
+  (`validate_referral_partner_code`, case-insensitive via `normalizeCode`) → on
+  valid, clear any discount, show "✓ Referred by {first_name} — pick your free gift
+  below 🎁", reveal the gift picker, set partner payload fields (unchanged). Else try
+  DISCOUNT (`validate_referral_code`, 4-arg overload, CASE-SENSITIVE) trying the code
+  exactly as typed then uppercased → on valid, clear partner/gift state, apply the
+  discount as before ("✓ {amount} off applied"). Mutually exclusive with a coupon and
+  needs an email (both preserved). Else one gentle non-blocking message
+  ("We could not find that code. You can still complete your order.").
+- **Refinement**: `validate_referral_code` returns `{valid:false,message}` for a REAL
+  code blocked by a rule (e.g. "Minimum order of ₦10000 required…") vs
+  `message:"Invalid referral code"` for an unknown code. The merged handler surfaces
+  the specific reason (toast) and only shows the generic gentle message when the code
+  is genuinely unrecognized — preserving the old discount UX.
+- **State**: single `refInput` (prefilled from `bm_ref_code`), unified
+  `referralLoading`, `refNotFound`; kept `appliedReferral` (discount → totals +
+  `referral_code_used`) and `partnerRefStatus`/`selectedGift` (partner →
+  `selected_gift_product_id`). Removed `referralCode`/`checkPartnerRef`; `partnerRef`
+  renamed to `refInput`. The input no longer force-uppercases, so the
+  exact-then-uppercased discount attempt is meaningful. `clearReferral` (Remove)
+  resets BOTH paths, totals, gift picker and localStorage (`bm_ref_code`,`bm_ref_gift`).
+- **Overload note**: the prompt cited `validate_referral_code(p_code) → {id,code,
+  is_active}` (a real 1-arg overload). Checkout uses the 4-arg overload returning the
+  computed `discount_amount` + message; kept that to preserve the discount amount and
+  order/email/phone validation exactly as today.
+- **Verified live** (cart bumped to ₦10,800 to clear the ₦10k discount minimum):
+  one input, both old blocks gone; partner `TESTMUM`/`testmum` → "Referred by Amara"
+  + 19-card gift picker, no discount; lowercase discount `bm-af5ea1` → "✓ ₦2,000 off
+  applied", total ₦10,800→₦8,800, picker hidden; unknown code → gentle message, not
+  blocked; Remove → full reset (total back, localStorage cleared); mutual exclusion
+  both ways; coupon block usable under a partner referral, blocked under a discount.
+
+## Marketplace partner referral — gift now PERSISTED + image source fixed (prior turn)
 - **Gift persistence (the earlier GAP, now closed)**: `orders.selected_gift_product_id`
   (uuid, nullable, FK products.id) now exists, guarded server-side by
   `trg_guard_referral_gift` (nulls the value if the order has no `referral_partner_id`
