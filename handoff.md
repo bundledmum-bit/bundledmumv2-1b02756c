@@ -57,9 +57,13 @@
   "Paid into the account you registered with, ending {last4}."; buyer OR no bank on
   file → "We will ask for your account details the first time you earn…". Buyers are
   NEVER asked for bank details and never shown a partial account.
-- **whatsapp_share_url**: fixed 5-paragraph copy with real line breaks,
-  `{first_name}`/`{code}` filled, `encodeURIComponent`'d onto `https://wa.me/?text=`;
-  contains `https://bundledmum.com/quiz?ref={code}`.
+- **whatsapp_share_url** (copy refreshed, deployed v5): warmer, gift-led 6-paragraph
+  message, real line breaks, `encodeURIComponent`'d onto `https://wa.me/?text=`.
+  `buildWhatsappShareUrl(code)` now takes ONLY the code — `{first_name}` was dropped
+  from the message body (the sender is the sharer; naming themselves read oddly) but
+  `first_name` stays in the `vars` object for the email templates. Contains
+  `https://bundledmum.com/quiz?ref={code}` and "(Gifts apply on orders from ₦150,000.)".
+  Verified encoding: `₦`→`%E2%82%A6`, 💚→`%F0%9F%92%9A`, 🎁→`%F0%9F%8E%81`, ref present.
 - **Auth (FIXED — was a 401 bug)**: the original guard compared the bearer to
   `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`. But the DB triggers/cron authenticate
   with the **Vault** secret `service_role_key` (a valid service_role JWT), which is a

@@ -86,15 +86,18 @@ function buildPayoutLine(
   return 'We will ask for your account details the first time you earn, so there is nothing to do now.';
 }
 
-// wa.me share link. The message is fixed copy with {first_name}/{code} filled in
-// and REAL line breaks between paragraphs, then URL-encoded. Contains ?ref={code}.
-function buildWhatsappShareUrl(firstName: string, code: string): string {
+// wa.me share link. Warm, gift-led copy with {code} filled in and REAL line breaks
+// between paragraphs, then URL-encoded. Contains ?ref={code}. first_name is NOT used
+// in the message body (the sender is the person sharing, so naming themselves reads
+// oddly) — it stays available to the email templates via the vars object.
+function buildWhatsappShareUrl(code: string): string {
   const message = [
-    `${firstName} is introducing you to bundledmum.com 💚`,
-    'They deliver the complete items on your hospital list before your due date, built around your budget, anywhere in Nigeria.',
-    'You can send your hospital list to them on WhatsApp: https://wa.me/2347040667424',
-    `Or build your own list from your budget here: https://bundledmum.com/quiz?ref=${code}`,
-    `Tell them you are from me, my code is ${code} 🎁 You will get a free gift when you order.`,
+    'Hi 💚 Because I care about you, I want to make your delivery preparation easier, and give you free gifts too.',
+    'I am introducing you to bundledmum.com. They deliver the complete items on your hospital list before your due date, built around your budget, anywhere in Nigeria.',
+    'Here is my gift to you 🎁 Use my code and you will get free maternity gifts on your order, whether you build your hospital list on their website or just send your list to them on WhatsApp.',
+    'Send your list on WhatsApp: https://wa.me/2347040667424',
+    `Or build your list from your budget: https://bundledmum.com/quiz?ref=${code}`,
+    `My code is ${code}. Tell them you are from me 💚 (Gifts apply on orders from ₦150,000.)`,
   ].join('\n\n');
   return 'https://wa.me/?text=' + encodeURIComponent(message);
 }
@@ -251,7 +254,7 @@ Deno.serve(async (req) => {
         first_name:        firstName,
         referral_code:     partner.code,
         payout_line:       buildPayoutLine(partner, seller),
-        whatsapp_share_url: buildWhatsappShareUrl(firstName, partner.code),
+        whatsapp_share_url: buildWhatsappShareUrl(partner.code),
       };
       const { html, subject } = renderTemplate(tmpl.html_body, tmpl.subject, vars);
       const result = await sendViaResend([partner.email], PARTNER_FROM, subject, html, resendKey);
@@ -292,7 +295,7 @@ Deno.serve(async (req) => {
         first_name:         firstName,
         referral_code:      partner.code,
         payout_line:        buildPayoutLine(partner, seller),
-        whatsapp_share_url: buildWhatsappShareUrl(firstName, partner.code),
+        whatsapp_share_url: buildWhatsappShareUrl(partner.code),
         commission_amount:  plainNaira(commission.commission_naira),
         order_number:       order?.order_number ?? '',
         payment_date:       friendlyDate(commission.payable_on),
