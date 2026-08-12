@@ -1,6 +1,6 @@
 # Handoff
 
-## Lovable connector gateway is DEAD project-wide — migrating all email fns to direct Resend (in progress)
+## Lovable connector gateway is DEAD project-wide — ALL email fns migrated to direct Resend (COMPLETE)
 - **Finding**: the Lovable connector gateway `https://connector-gateway.lovable.dev/resend/emails`
   (auth `Bearer ${LOVABLE_API_KEY}` + `X-Connection-Api-Key: ${RESEND_API_KEY}`) returns
   `401 "Credential not found"` for EVERY call — its stored Resend credential is dead.
@@ -8,24 +8,60 @@
   `fetch("https://api.resend.com/emails", { headers: { "Content-Type":"application/json",
   "Authorization": \`Bearer ${RESEND_API_KEY}\` }, body: {from,to,reply_to,subject,html} })`,
   removing `GATEWAY_URL`, the `LOVABLE_API_KEY` bearer and the `X-Connection-Api-Key` header;
-  guard requires only `RESEND_API_KEY`. Templates/recipients/logic unchanged.
-- **Repo tracked only 8 fns**; the gateway senders are deployed as flat `index.ts` (untracked),
-  so an MCP deploy of them is durable (git-sync only redeploys tracked fns). Repo copies added
-  for each migrated fn anyway (repo == deployed).
-- **MIGRATED + DEPLOYED (direct Resend) this sweep:**
-  - `send-abandoned-cart` v36 — the confirmed LIVE bug (hourly cron retried forever; it only
-    stamps stage_sent/stageN_sent_at after a successful send, so a real customer got 0 recovery
-    emails). Staging/dedup/timing untouched.
-  - `send-order-confirmation` v36
-  - `send-reorder-reminders` v32
-  - `send-quote-email` v26 (kept its admin test-send guard)
-- **STILL TO SWEEP/MIGRATE** (older senders, expected same gateway pattern): send-hr-notification,
-  send-task-daily-summary, send-approval-notification, send-daily-summary, notify-quiz-lead,
-  send-subscription-admin-reminders, send-new-order-notification, send-subscription-intro,
-  notify-abandoned-checkout, send-box-topup-reminders, test-smtp, invite-admin-user; plus verify
-  the marketplace `send-marketplace-*` set (built later off send-marketplace-email = direct Resend,
-  expected clean). Already-clean (direct Resend): send-transactional-email, send-internal-order-notification,
-  send-referral-email. NOTE: some fns may use LOVABLE_API_KEY for a NON-email (AI) purpose — leave those.
+  guard requires only `RESEND_API_KEY`. Templates/recipients/scheduling/staging/dedup/logging
+  UNCHANGED everywhere. No cron touched.
+- **Durability**: repo copies added for EVERY migrated fn (repo == deployed), so a Lovable
+  git-sync redeploys the correct code. (Confirmed live: pushing the repo copy of `test-smtp`
+  triggered a git-sync redeploy to v27 with the SAME `ezbr_sha256` as my MCP v26 — durable.)
+
+### FINAL REPORT — every function checked (exhaustive scan of all 76 deployed fns)
+
+**MIGRATED off the gateway this sweep (18 fns; all deployed + repo copy committed):**
+
+| Function | Deployed v | Was on gateway? | Change |
+|---|---|---|---|
+| send-abandoned-cart | v36 | YES | direct Resend. (Confirmed LIVE bug: hourly cron retried forever — only stamps stage_sent after a successful send. **Verified working: returned `{success:true,processed:1,failed:0}`**.) |
+| send-order-confirmation | v36 | YES | direct Resend |
+| send-reorder-reminders | v32 | YES | direct Resend (renamed helper sendViaGateway→sendReorderEmail) |
+| send-quote-email | v26 | YES | direct Resend (kept admin test-send guard) |
+| send-new-order-notification | v17 | YES | direct Resend |
+| send-hr-notification | v30 | YES | direct Resend (helpers renamed →sendViaResend) |
+| send-task-daily-summary | v28 | YES | direct Resend |
+| send-approval-notification | v26 | YES | direct Resend (kept gateway_status/response label keys) |
+| send-daily-summary | v24 | YES | direct Resend |
+| notify-quiz-lead | v24 | YES | direct Resend |
+| send-subscription-admin-reminders | v17 | YES (VARIANT: `X-Lovable-Api-Key`/`X-Resend-Api-Key` scheme + misnamed RESEND_URL→gateway) | direct Resend |
+| send-subscription-intro | v15 | YES | direct Resend |
+| notify-abandoned-checkout | v7 | YES | direct Resend (WhatsApp outreach alert; email_send_log untouched) |
+| test-smtp | v26→v27 | YES | direct Resend (kept open-relay security guard: service-role or active admin) |
+| bundledmum-health-check | v22 | **YES — MISSED in the original list; caught by the exhaustive scan** | direct Resend (7am/7pm cron health email; all 9 checks + HTML + health_check_log untouched) |
+
+  (Earlier in the same sweep, before this session: `send-transactional-email` v52 +
+  `send-internal-order-notification` — see "Storefront order emails" section below.)
+
+**DELIBERATELY LEFT ALONE (flagged, not email-via-gateway):**
+- `invite-admin-user` — uses **Supabase auth invite** (`admin.auth.admin.inviteUserByEmail`),
+  not the Resend gateway. No LOVABLE_API_KEY. Correct as-is.
+- `send-box-topup-reminders` — **already clean**: dispatches via `send-transactional-email`
+  (itself direct Resend); never touched the gateway.
+- `check-resend-email-status` — **already clean**: read-only Resend status lookup
+  (`GET api.resend.com/emails/{id}`), direct.
+- The 13 `send-marketplace-*` / marketplace fns — **all already clean** (built later off
+  `send-marketplace-email` = direct Resend). Senders POST direct to `api.resend.com`;
+  the cron/orchestrator ones (marketplace-daily-emails, marketplace-seller-onboarding-sweep,
+  marketplace-return-overdue-sweep, send-marketplace-notification, preview-marketplace-email)
+  dispatch to those senders. None on the gateway.
+- Already-clean storefront senders: `send-transactional-email`, `send-internal-order-notification`,
+  `send-referral-email`.
+- No function was found using LOVABLE_API_KEY for a NON-email (AI) purpose — the AI gateway
+  (`ai.gateway.lovable.dev`) is not used anywhere; AI fns use ANTHROPIC_API_KEY / GEMINI_API_KEY.
+
+**ZERO remaining active references confirmed (exhaustive scan of all 76 fns):**
+`connector-gateway.lovable.dev` = 0, `X-Connection-Api-Key` = 0, LOVABLE_API_KEY-as-email-bearer = 0.
+The substring `LOVABLE_API_KEY` now appears ONLY inside the past-tense migration comment
+(`// Previously routed through the dead Lovable connector gateway with LOVABLE_API_KEY…`) in the
+migrated fns — no live usage. The two just-migrated deployed versions (bundledmum-health-check v22,
+test-smtp v27) were re-fetched and grepped clean.
 
 ## Referral free gift — shown in the checkout order summary (prior turn)
 - **Why**: the chosen free gift was only visible inside the gift picker; she couldn't
