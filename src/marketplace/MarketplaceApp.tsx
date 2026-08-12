@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import InstallPage from "./InstallPage";
+import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -120,6 +121,7 @@ export default function MarketplaceApp() {
           </Routes>
           </div>
           <MarketplaceFooter />
+          <MarketplaceInstallBanner />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

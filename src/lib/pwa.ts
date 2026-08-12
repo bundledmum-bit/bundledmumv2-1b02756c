@@ -93,6 +93,13 @@ export async function hasRelatedInstalledApp(): Promise<boolean> {
 export function listenForAppInstalled(): void {
   if (typeof window === "undefined") return;
   window.addEventListener("appinstalled", () => {
+    // This listener is registered once at app boot (initPwa() in main.tsx),
+    // regardless of route, so it also fires for a MARKETPLACE install — its
+    // own separate PWA (see MarketplaceInstallBanner.tsx), not this one.
+    // Skip it there: writing PWA_INSTALLED_KEY here for a marketplace
+    // install would wrongly hide the STOREFRONT's own banner forever on
+    // that device for someone who never installed the storefront app.
+    if (window.location.pathname.startsWith("/marketplace")) return;
     trackEvent("pwa_installed", { source: "appinstalled" });
     // Remember the install so later normal-tab visits suppress the prompts.
     try { localStorage.setItem(PWA_INSTALLED_KEY, "1"); } catch { /* ignore */ }
