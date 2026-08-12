@@ -6276,3 +6276,13 @@ Preserved: the code sign-in flow and `returnTo` handling in both apps, transacti
 Files touched: `src/pages/AccountLoginPage.tsx`, `src/marketplace/auth/MarketplaceLoginPage.tsx`.
 
 `npm run build` clean. Live-verified end to end in the Browser pane against the real Supabase project: sent a real code, confirmed the `<form>` wrapper and input type on both pages, confirmed the 60s cooldown display, submitted a wrong code and confirmed the reworded message renders, and confirmed the real `error.code`/`error.message` are now captured via the browser console — matching the production auth logs exactly.
+
+## 64. The marketplace icon looked faded, real cause found and fixed (2026-08-12)
+
+**Report**: "the green looks faded on mobile." Investigated rather than guessed — re-fetched the source from Supabase storage and checked for the usual suspects: no embedded ICC color profile (ruling out a color-management mismatch), and the actual green pixel value in every generated icon file is an exact match to the brand's own `#2D6A4F`, same as the admin icon's coral is an exact match to `#F4845F`. The color itself was never wrong.
+
+**The real difference, found by sampling pixels**: the admin icon's heart cutout is solid, opaque **white** (`#FFFFFF`), a crisp highlight punched through the coral. The marketplace icon's heart cutout — confirmed against both the Supabase-hosted source and the site's own `BM-ICON-GREEN.svg` — is **fully transparent** in the source art (alpha 0), and §59/§62's compositing let it show straight through to the cream background (`#FFF8F4`), one shade of near-white sitting on another. At full size the difference is subtle; at small mobile icon sizes, where fine detail compresses fastest, that lost internal contrast is what read as "faded" — a softer, less defined mark next to admin's crisp one.
+
+**Fixed at the source, not by drawing a heart shape freehand**: flood-filled the source PNG's alpha channel from every border pixel to find which transparent regions are the outer background (reachable from the edge) versus enclosed holes (not reachable — the heart cutout specifically, 26,067 pixels). Painted only the enclosed holes solid white, leaving the true outer transparency untouched, then re-ran the exact same §62 compositing (70% fill for the "any" icons, 80% for maskable, same cream, same margins) on this corrected source. Re-verified margins are unchanged (15.0-15.2%, still matching admin's 14.8-15.0%) and the heart pixel now reads pure `#FFFFFF`.
+
+`npm run build` clean. All five marketplace icon files regenerated: `bm-mkt-pwa-192.png`, `bm-mkt-pwa-512.png`, `bm-mkt-apple-touch-icon.png`, `bm-mkt-pwa-maskable-192.png`, `bm-mkt-pwa-maskable-512.png`. Filenames unchanged, no code touched.
