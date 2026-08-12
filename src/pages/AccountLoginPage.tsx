@@ -17,6 +17,17 @@ import { sanitizeOtpInput, isCompleteOtp, OTP_LENGTH } from "@/lib/otpCode";
 // something Supabase's API actually tells us.
 const OTP_EXPIRY_MS = 60 * 60 * 1000;
 
+// Supabase's own send rate limit is longer than this codebase's old 30s
+// cooldown — confirmed against real auth logs, which showed a resend
+// attempt still rejected with a 429 nearly 40 seconds after the previous
+// send, on a decreasing-wait-time pattern that only cleared around the
+// 60s mark. A client cooldown shorter than the server's own window invites
+// exactly the failure this file now handles more honestly: tapping resend
+// "too early" either fails outright, or (if Supabase queues a second send
+// once the window passes) leaves two valid-looking codes in the inbox at
+// once, of which only the newer one actually verifies.
+const RESEND_COOLDOWN_S = 60;
+
 /**
  * Passwordless email sign-in, by 6-digit code (was a magic link — Supabase's
  * email template now sends {{ .Token }} instead of a link, so this page's
@@ -101,7 +112,7 @@ export default function AccountLoginPage() {
       setOtp("");
       setOtpError("");
       setStage("sent");
-      setCooldown(30);
+      setCooldown(RESEND_COOLDOWN_S);
       toast.success("Code sent — check your inbox.");
     } catch (e: any) {
       setErrorMessage(e?.message || "Couldn't send your code. Please try again.");
@@ -111,16 +122,20 @@ export default function AccountLoginPage() {
     }
   };
 
-  // verifyOtp fails with the same generic "token has expired or is invalid"
-  // for a genuinely expired code, an already-used one, and a plain wrong
-  // one — Supabase's own API does not distinguish them (confirmed against
-  // their troubleshooting docs). So "expired" is an honest, disclosed
-  // inference from OUR OWN send timestamp against the known ~1hr window,
-  // not something the API tells us directly; and "wrong" vs "already used"
-  // is told apart by whether this is a repeat of a code that JUST failed
-  // (clearly still wrong) or the first attempt at a fresh-looking code that
-  // still fails (more likely stale/already used somewhere else) — the
-  // closest honest three-way split actually available.
+  // verifyOtp fails with the same generic error_code "otp_expired" for a
+  // genuinely expired code, an already-used one, and a plain wrong one —
+  // confirmed both against Supabase's own troubleshooting docs AND this
+  // project's real auth logs (every failed /verify in production carries
+  // that identical code, never anything more specific). So "expired" below
+  // is an honest, disclosed inference from OUR OWN send timestamp against
+  // the known ~1hr window, not something the API tells us directly; and
+  // "wrong" vs. everything else is told apart by whether this is a repeat
+  // of a code that JUST failed (clearly still wrong) or the first attempt
+  // at a fresh-looking code that still fails — for that first-attempt case,
+  // the honest answer is "we don't know why", not a confident guess. Real
+  // logs also showed the likelier real cause: requesting more than one code
+  // in quick succession leaves an OLDER, no-longer-valid one still sitting
+  // in the inbox, which is what the copy below actually points at.
   const verifyCode = async (value: string) => {
     if (!isCompleteOtp(value)) {
       setOtpError(`Enter all ${OTP_LENGTH} digits of the code.`);
@@ -133,14 +148,18 @@ export default function AccountLoginPage() {
       const { error } = await supabase.auth.verifyOtp({ email: addr, token: value, type: "email" });
       if (error) throw error;
       // Success: the isLoggedIn effect above handles the redirect.
-    } catch {
+    } catch (e: any) {
+      // Not used to branch the message — Supabase genuinely doesn't give us
+      // more to go on — but kept and logged so a future, more specific
+      // error_code from Supabase doesn't go unnoticed here.
+      if (e?.code || e?.message) console.warn("verifyOtp failed:", e?.code, e?.message);
       const elapsed = sentAtRef.current ? Date.now() - sentAtRef.current : 0;
       if (elapsed > OTP_EXPIRY_MS) {
         setOtpError("That code has expired. Send yourself a new one below.");
       } else if (lastFailedCodeRef.current === value) {
         setOtpError("That code isn't right. Check the digits and try again.");
       } else {
-        setOtpError("That code has already been used, or the digits aren't quite right. Check your email for the most recent one, or request a new code below.");
+        setOtpError("That code didn't work. If you requested more than one, only the most recent email is valid — check for a newer one, or request a fresh code below.");
       }
       lastFailedCodeRef.current = value;
       setOtp("");
@@ -174,20 +193,27 @@ export default function AccountLoginPage() {
                 We sent a 6-digit code to <b className="text-foreground">{email.trim().toLowerCase()}</b>.
                 Enter it below to sign in.
               </p>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete="one-time-code"
-                autoFocus
-                value={otp}
-                onChange={e => onOtpChange(e.target.value)}
-                onPaste={e => { e.preventDefault(); onOtpChange(e.clipboardData.getData("text")); }}
-                disabled={verifying}
-                placeholder="000000"
-                maxLength={OTP_LENGTH}
-                className="w-full text-center text-2xl font-bold tracking-[0.5em] rounded-lg border border-input py-3 pl-[0.5em] bg-background outline-none focus:ring-2 focus:ring-ring min-h-[44px] disabled:opacity-60"
-              />
+              {/* Chrome on Android only offers the one-time-code autofill
+                  suggestion (SMS/clipboard code) when the input sits inside
+                  a real <form> — a bare input, even with autoComplete
+                  set, is not enough on that platform. iOS Safari doesn't
+                  have this requirement but the form is harmless there. */}
+              <form onSubmit={e => { e.preventDefault(); if (isCompleteOtp(otp)) verifyCode(otp); }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={otp}
+                  onChange={e => onOtpChange(e.target.value)}
+                  onPaste={e => { e.preventDefault(); onOtpChange(e.clipboardData.getData("text")); }}
+                  disabled={verifying}
+                  placeholder="000000"
+                  maxLength={OTP_LENGTH}
+                  className="w-full text-center text-2xl font-bold tracking-[0.5em] rounded-lg border border-input py-3 pl-[0.5em] bg-background outline-none focus:ring-2 focus:ring-ring min-h-[44px] disabled:opacity-60"
+                />
+              </form>
               {verifying && <p className="text-xs text-text-med">Checking...</p>}
               {otpError && <p className="text-xs text-destructive">{otpError}</p>}
               <div className="pt-2 text-xs text-text-light">
