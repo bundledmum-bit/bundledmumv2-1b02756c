@@ -1,6 +1,33 @@
 # Handoff
 
-## Referral free gift — shown in the checkout order summary (this turn)
+## Lovable connector gateway is DEAD project-wide — migrating all email fns to direct Resend (in progress)
+- **Finding**: the Lovable connector gateway `https://connector-gateway.lovable.dev/resend/emails`
+  (auth `Bearer ${LOVABLE_API_KEY}` + `X-Connection-Api-Key: ${RESEND_API_KEY}`) returns
+  `401 "Credential not found"` for EVERY call — its stored Resend credential is dead.
+  EVERY older email-sender function used this pattern. The fix everywhere is identical:
+  `fetch("https://api.resend.com/emails", { headers: { "Content-Type":"application/json",
+  "Authorization": \`Bearer ${RESEND_API_KEY}\` }, body: {from,to,reply_to,subject,html} })`,
+  removing `GATEWAY_URL`, the `LOVABLE_API_KEY` bearer and the `X-Connection-Api-Key` header;
+  guard requires only `RESEND_API_KEY`. Templates/recipients/logic unchanged.
+- **Repo tracked only 8 fns**; the gateway senders are deployed as flat `index.ts` (untracked),
+  so an MCP deploy of them is durable (git-sync only redeploys tracked fns). Repo copies added
+  for each migrated fn anyway (repo == deployed).
+- **MIGRATED + DEPLOYED (direct Resend) this sweep:**
+  - `send-abandoned-cart` v36 — the confirmed LIVE bug (hourly cron retried forever; it only
+    stamps stage_sent/stageN_sent_at after a successful send, so a real customer got 0 recovery
+    emails). Staging/dedup/timing untouched.
+  - `send-order-confirmation` v36
+  - `send-reorder-reminders` v32
+  - `send-quote-email` v26 (kept its admin test-send guard)
+- **STILL TO SWEEP/MIGRATE** (older senders, expected same gateway pattern): send-hr-notification,
+  send-task-daily-summary, send-approval-notification, send-daily-summary, notify-quiz-lead,
+  send-subscription-admin-reminders, send-new-order-notification, send-subscription-intro,
+  notify-abandoned-checkout, send-box-topup-reminders, test-smtp, invite-admin-user; plus verify
+  the marketplace `send-marketplace-*` set (built later off send-marketplace-email = direct Resend,
+  expected clean). Already-clean (direct Resend): send-transactional-email, send-internal-order-notification,
+  send-referral-email. NOTE: some fns may use LOVABLE_API_KEY for a NON-email (AI) purpose — leave those.
+
+## Referral free gift — shown in the checkout order summary (prior turn)
 - **Why**: the chosen free gift was only visible inside the gift picker; she couldn't
   see it among her products before paying. (After the order, the DB trigger
   `trg_add_referral_gift_line` already turns it into a ₦0 `order_items` row for admin/
