@@ -42,39 +42,39 @@ export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "
 export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string }> = {
   offer: {
     lead: "To ask for a lower price, we need your email",
-    sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a link, no password to set.",
+    sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a code, no password to set.",
   },
   sell: {
     lead: "To start selling, we need your email",
-    sub: "This becomes your seller account, so buyers and your payouts can find you. We'll email you a link, no password to remember.",
+    sub: "This becomes your seller account, so buyers and your payouts can find you. We'll email you a code, no password to remember.",
   },
   seller: {
     lead: "To open your seller dashboard, we need your email",
-    sub: "This keeps your listings, orders and payouts private to you. We'll email you a link, no password needed.",
+    sub: "This keeps your listings, orders and payouts private to you. We'll email you a code, no password needed.",
   },
   orders: {
     lead: "To see your orders, we need your email",
-    sub: "This is how we know which orders are yours, so nobody else can see them. We'll email you a link, no password to remember.",
+    sub: "This is how we know which orders are yours, so nobody else can see them. We'll email you a code, no password to remember.",
   },
   dispute: {
     lead: "To report a problem, we need your email",
-    sub: "This ties your report to your order, so our team can look into it and get back to you. We'll email you a link, no password needed.",
+    sub: "This ties your report to your order, so our team can look into it and get back to you. We'll email you a code, no password needed.",
   },
   return: {
     lead: "To send this back, we need your email",
-    sub: "This confirms it's really your order, so your refund goes to the right person. We'll email you a link, no password to set.",
+    sub: "This confirms it's really your order, so your refund goes to the right person. We'll email you a code, no password to set.",
   },
   payment: {
     lead: "To check on your transfer, we need your email",
-    sub: "This is how we match your payment to your order. We'll email you a link, no password needed.",
+    sub: "This is how we match your payment to your order. We'll email you a code, no password needed.",
   },
   question: {
     lead: "To ask a question, we need your email",
-    sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a link, no password to set.",
+    sub: "The seller needs to know who's asking, and we'll send you their answer. We'll email you a code, no password to set.",
   },
   answer_question: {
     lead: "To answer their question, we need your email",
-    sub: "This confirms it's really you, the seller, so your answer goes out under your name. We'll email you a link, no password to set.",
+    sub: "This confirms it's really you, the seller, so your answer goes out under your name. We'll email you a code, no password to set.",
   },
 };
 

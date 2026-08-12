@@ -29,7 +29,7 @@ export default function CookiesPage() {
 
           <div className="mkt-policy-section">
             <h2>Keeping you signed in</h2>
-            <p>So you don't have to click a new email link every visit.</p>
+            <p>So you don't have to enter a new code every visit.</p>
             <span className="mkt-policy-cookie-pill">Essential, can't be switched off</span>
           </div>
 

@@ -1610,12 +1610,32 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-login-sent .mkt-login-sent-icon { width: 56px; height: 56px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font: 700 24px/1 'Lato', sans-serif; color: var(--mkt-green); }
 .mkt-login-sent h1 { font: 900 26px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); margin: 0; text-wrap: pretty; }
 .mkt-login-sent p.lead { font: 400 14.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+/* 6-digit code entry: one input, wide letter-spacing reads as separated
+   cells without the focus-management complexity of six real inputs —
+   native paste (Mail copy) and the OS numeric keypad both just work. */
+.mkt-login-otp-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  height: 56px;
+  padding: 0 0 0 0.6em;
+  text-align: center;
+  font: 700 26px/1 'Nunito', sans-serif;
+  letter-spacing: 0.5em;
+  color: var(--mkt-black);
+}
+.mkt-login-otp-input::placeholder { color: var(--mkt-muted-2); opacity: 0.5; }
+.mkt-login-otp-input:focus { outline: none; border-color: var(--mkt-cream); box-shadow: 0 0 0 3px rgba(255,248,244,0.35); }
+.mkt-login-otp-input:disabled { opacity: 0.7; }
 .mkt-login-sent-card { background: var(--mkt-green-dark); border-radius: 13px; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
 .mkt-login-sent-card .waiting { display: flex; align-items: center; gap: 9px; }
 .mkt-login-sent-card .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #8FB6A2; flex: 0 0 18px; box-sizing: border-box; }
 .mkt-login-sent-card .waiting span { font: 700 12.5px/1.3 'Lato', sans-serif; color: var(--mkt-green-light); }
 .mkt-login-sent-card hr { border: none; height: 1px; background: var(--mkt-green); margin: 0; }
 .mkt-login-sent-card .note { font: 400 12px/1.5 'Lato', sans-serif; color: #9DBFAF; margin: 0; }
+.mkt-login-sent-card .note.err { color: #F5B7AD; font-weight: 700; }
 .mkt-login-sent-resend { border: 1.5px solid #6E9682; background: none; color: #8FB6A2; border-radius: 12px; padding: 13px; text-align: center; font: 800 14px/1 'Nunito', sans-serif; cursor: pointer; }
 .mkt-login-sent-resend:disabled { cursor: default; opacity: 0.9; }
 .mkt-login-sent-diff { text-align: center; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green-light); background: none; border: none; cursor: pointer; padding: 4px; }

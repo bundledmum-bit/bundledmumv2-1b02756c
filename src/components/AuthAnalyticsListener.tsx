@@ -58,16 +58,17 @@ export default function AuthAnalyticsListener() {
         }
         lastSignedInUserRef.current = userId;
         safe(() => analytics.push({ user_id: userId }));
-        safe(() => analytics.push({ event: "login", method: "magic_link" }));
+        safe(() => analytics.push({ event: "login", method: "otp_code" }));
 
         // sign_up: detect first-time account by checking auth.user.created_at
-        // within the last 60s. Magic-link flow creates the auth user on
-        // first verification, so this window catches it reliably.
+        // within the last 60s. The sign-in flow (code, was a magic link)
+        // creates the auth user on first verification, so this window
+        // catches it reliably either way.
         const createdAt = session.user.created_at ? new Date(session.user.created_at) : null;
         if (createdAt && !Number.isNaN(createdAt.getTime())) {
           const isNew = Date.now() - createdAt.getTime() < 60_000;
           if (isNew) {
-            safe(() => analytics.push({ event: "sign_up", method: "magic_link" }));
+            safe(() => analytics.push({ event: "sign_up", method: "otp_code" }));
           }
         }
         return;

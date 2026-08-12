@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -8,14 +8,30 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { recordLoginEvent } from "@/lib/recordLoginEvent";
 import { track as pixelTrack, trackOnce as pixelTrackOnce } from "@/lib/metaPixel";
 import { analytics } from "@/lib/ga";
+import { sanitizeOtpInput, isCompleteOtp, OTP_LENGTH } from "@/lib/otpCode";
+
+// Matches the code's actual expiry (the same Supabase project setting this
+// codebase has long documented as "1 hour" for the old magic link). Used
+// only to decide whether a failed verify is worth calling "expired" — see
+// the comment on verifyCode below for why this is an honest estimate, not
+// something Supabase's API actually tells us.
+const OTP_EXPIRY_MS = 60 * 60 * 1000;
 
 /**
- * Passwordless email magic-link login.
+ * Passwordless email sign-in, by 6-digit code (was a magic link — Supabase's
+ * email template now sends {{ .Token }} instead of a link, so this page's
+ * job changed from "wait for the browser to receive a redirect" to
+ * "collect the code and verify it directly").
  *
- * Three internal states:
- *  - idle:  email input + "Send me a login link"
- *  - sent:  confirmation card with resend (30s cooldown)
- *  - error: inline error + retry
+ * Internal states:
+ *  - idle:  email input + "Send me a code"
+ *  - sent:  code input (resend available, 30s cooldown)
+ *  - error: inline error on the email step + retry
+ *
+ * Transactional email links (order confirmations etc.) are UNCHANGED and
+ * unrelated to this page — they still carry a real link, still verified by
+ * Supabase's own client-side session pickup from the URL, nothing here
+ * touches that mechanism.
  */
 export default function AccountLoginPage() {
   const navigate = useNavigate();
@@ -28,6 +44,12 @@ export default function AccountLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [cooldown, setCooldown] = useState(0);
+
+  const [otp, setOtp] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [otpError, setOtpError] = useState<string>("");
+  const sentAtRef = useRef<number | null>(null);
+  const lastFailedCodeRef = useRef<string | null>(null);
 
   // If already logged in, bounce straight back to returnTo.
   useEffect(() => {
@@ -47,7 +69,7 @@ export default function AccountLoginPage() {
   }, [cooldown]);
 
   // New-device sign-in alert: fires once per GENUINE new sign-in, not on every
-  // load. SIGNED_IN only fires when a sign-in flow (here, the magic link)
+  // load. SIGNED_IN only fires when a sign-in flow (here, entering the code)
   // actually just completed; a page load that finds an already-valid session
   // fires INITIAL_SESSION instead, which this deliberately ignores. Same
   // shared customer account as the marketplace login, same wiring there too.
@@ -58,7 +80,7 @@ export default function AccountLoginPage() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const sendLink = async () => {
+  const sendCode = async () => {
     const addr = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
       setErrorMessage("Please enter a valid email address.");
@@ -68,31 +90,70 @@ export default function AccountLoginPage() {
     setSubmitting(true);
     setErrorMessage("");
     try {
-      // Magic-link emailRedirectTo MUST be the production URL — never
-      // window.location.origin, since the Lovable preview environment
-      // resolves that to a preview subdomain that breaks in production.
-      const BASE = "https://bundledmum.com";
-      const redirect = returnTo && returnTo !== "/account"
-        ? `${BASE}/account?returnTo=${encodeURIComponent(returnTo)}`
-        : `${BASE}/account`;
-      const { error } = await supabase.auth.signInWithOtp({
-        email: addr,
-        options: { emailRedirectTo: redirect },
-      });
+      const { error } = await supabase.auth.signInWithOtp({ email: addr });
       if (error) throw error;
-      pixelTrack("Lead", { lead_source: "account_login_magic_link", content_name: "Account sign-in magic link requested" });
+      pixelTrack("Lead", { lead_source: "account_login_otp", content_name: "Account sign-in code requested" });
       try {
-        analytics.push({ event: "magic_link_requested", location: "account_login" });
+        analytics.push({ event: "otp_requested", location: "account_login" });
       } catch { /* ignore */ }
+      sentAtRef.current = Date.now();
+      lastFailedCodeRef.current = null;
+      setOtp("");
+      setOtpError("");
       setStage("sent");
       setCooldown(30);
-      toast.success("Login link sent — check your inbox.");
+      toast.success("Code sent — check your inbox.");
     } catch (e: any) {
-      setErrorMessage(e?.message || "Couldn't send login link. Please try again.");
+      setErrorMessage(e?.message || "Couldn't send your code. Please try again.");
       setStage("error");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // verifyOtp fails with the same generic "token has expired or is invalid"
+  // for a genuinely expired code, an already-used one, and a plain wrong
+  // one — Supabase's own API does not distinguish them (confirmed against
+  // their troubleshooting docs). So "expired" is an honest, disclosed
+  // inference from OUR OWN send timestamp against the known ~1hr window,
+  // not something the API tells us directly; and "wrong" vs "already used"
+  // is told apart by whether this is a repeat of a code that JUST failed
+  // (clearly still wrong) or the first attempt at a fresh-looking code that
+  // still fails (more likely stale/already used somewhere else) — the
+  // closest honest three-way split actually available.
+  const verifyCode = async (value: string) => {
+    if (!isCompleteOtp(value)) {
+      setOtpError(`Enter all ${OTP_LENGTH} digits of the code.`);
+      return;
+    }
+    setVerifying(true);
+    setOtpError("");
+    try {
+      const addr = email.trim().toLowerCase();
+      const { error } = await supabase.auth.verifyOtp({ email: addr, token: value, type: "email" });
+      if (error) throw error;
+      // Success: the isLoggedIn effect above handles the redirect.
+    } catch {
+      const elapsed = sentAtRef.current ? Date.now() - sentAtRef.current : 0;
+      if (elapsed > OTP_EXPIRY_MS) {
+        setOtpError("That code has expired. Send yourself a new one below.");
+      } else if (lastFailedCodeRef.current === value) {
+        setOtpError("That code isn't right. Check the digits and try again.");
+      } else {
+        setOtpError("That code has already been used, or the digits aren't quite right. Check your email for the most recent one, or request a new code below.");
+      }
+      lastFailedCodeRef.current = value;
+      setOtp("");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const onOtpChange = (raw: string) => {
+    const clean = sanitizeOtpInput(raw);
+    setOtp(clean);
+    if (otpError) setOtpError("");
+    if (isCompleteOtp(clean)) verifyCode(clean);
   };
 
   return (
@@ -107,22 +168,38 @@ export default function AccountLoginPage() {
 
           {stage === "sent" ? (
             <div className="text-center space-y-3">
-              <div className="text-4xl">✉️</div>
-              <h1 className="pf text-xl font-bold">Check your inbox</h1>
+              <div className="text-4xl">🔢</div>
+              <h1 className="pf text-xl font-bold">Enter your code</h1>
               <p className="text-sm text-text-med leading-relaxed">
-                We sent a login link to <b className="text-foreground">{email.trim().toLowerCase()}</b>.
-                Click it to sign in — the link expires in 1 hour.
+                We sent a 6-digit code to <b className="text-foreground">{email.trim().toLowerCase()}</b>.
+                Enter it below to sign in.
               </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="one-time-code"
+                autoFocus
+                value={otp}
+                onChange={e => onOtpChange(e.target.value)}
+                onPaste={e => { e.preventDefault(); onOtpChange(e.clipboardData.getData("text")); }}
+                disabled={verifying}
+                placeholder="000000"
+                maxLength={OTP_LENGTH}
+                className="w-full text-center text-2xl font-bold tracking-[0.5em] rounded-lg border border-input py-3 pl-[0.5em] bg-background outline-none focus:ring-2 focus:ring-ring min-h-[44px] disabled:opacity-60"
+              />
+              {verifying && <p className="text-xs text-text-med">Checking...</p>}
+              {otpError && <p className="text-xs text-destructive">{otpError}</p>}
               <div className="pt-2 text-xs text-text-light">
                 Didn't get it?{" "}
                 {cooldown > 0 ? (
                   <span>Resend in {cooldown}s</span>
                 ) : (
-                  <button onClick={sendLink} className="text-forest font-semibold hover:underline">Resend</button>
+                  <button onClick={sendCode} className="text-forest font-semibold hover:underline">Resend</button>
                 )}
               </div>
               <button
-                onClick={() => { setStage("idle"); setEmail(""); }}
+                onClick={() => { setStage("idle"); setEmail(""); setOtp(""); setOtpError(""); }}
                 className="text-xs text-text-med hover:text-foreground pt-1"
               >
                 Use a different email →
@@ -132,7 +209,7 @@ export default function AccountLoginPage() {
             <>
               <h1 className="pf text-xl font-bold text-center mb-1">Sign in to your account</h1>
               <p className="text-xs text-text-light text-center mb-5">
-                We'll email you a magic link — no password needed.
+                We'll email you a 6-digit code — no password needed.
               </p>
               <label className="text-[10px] uppercase tracking-widest font-semibold text-text-med block mb-1">Email address</label>
               <div className="relative mb-1">
@@ -143,7 +220,7 @@ export default function AccountLoginPage() {
                   autoComplete="email"
                   value={email}
                   onChange={e => { setEmail(e.target.value); if (stage === "error") setStage("idle"); }}
-                  onKeyDown={e => { if (e.key === "Enter" && !submitting) sendLink(); }}
+                  onKeyDown={e => { if (e.key === "Enter" && !submitting) sendCode(); }}
                   placeholder="you@example.com"
                   className="w-full rounded-lg border border-input pl-9 pr-3 py-3 text-sm bg-background outline-none focus:ring-2 focus:ring-ring min-h-[44px]"
                 />
@@ -153,12 +230,12 @@ export default function AccountLoginPage() {
               )}
 
               <button
-                onClick={sendLink}
+                onClick={sendCode}
                 disabled={submitting || !email.trim()}
                 className="w-full mt-3 rounded-pill bg-forest py-3 text-sm font-semibold text-primary-foreground hover:bg-forest-deep disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 min-h-[44px]"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Send me a login link
+                Send me a code
               </button>
 
               <p className="text-[11px] text-text-light text-center mt-4 leading-relaxed">

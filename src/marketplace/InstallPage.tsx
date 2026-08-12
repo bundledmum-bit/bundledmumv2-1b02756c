@@ -101,7 +101,7 @@ export default function InstallPage() {
           {isIos && !installed && !isStandalone && (
             <div className="mkt-policy-section" style={{ background: "var(--mkt-cream)", borderRadius: 12, padding: "14px 16px" }}>
               <p style={{ margin: 0 }}>
-                Already signed in here? You'll need to sign in once more inside the app after installing, then it stays signed in from there.
+                Already signed in here? The installed app keeps its own sign in, separate from Safari, so you'll just enter the 6-digit code we email you once to get set up in the app. After that, it stays signed in.
               </p>
             </div>
           )}
