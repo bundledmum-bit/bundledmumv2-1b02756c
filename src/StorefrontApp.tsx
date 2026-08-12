@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient, MutationCache } from "@tanstack/react-query";
+import { Helmet } from "react-helmet-async";
 import { toast as sonnerToast } from "sonner";
 import { BrowserRouter, Route, Routes, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -321,6 +322,44 @@ function ComingSoonGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Default installable-app tags for this whole router, moved here from static
+ * index.html (see the comment there). Rendered for every route EXCEPT
+ * /admin/*, which supplies its own complete set via AdminLayout.tsx's own
+ * Helmet once authenticated.
+ *
+ * This has to be a skip, not just "render both and let the later one win" —
+ * confirmed live that react-helmet-async does NOT dedupe link/meta tags
+ * across two separately-mounted <Helmet> instances the way it dedupes
+ * <title>. Both tags land in the DOM side by side, and a browser's actual
+ * manifest lookup (document.querySelector-equivalent: the first matching
+ * link[rel=manifest] in the document) picks whichever mounted first — which,
+ * since this default sits above AdminLayout in the tree, was always this
+ * one. That meant the admin PWA's own manifest override has never actually
+ * applied in a real browser; confirmed directly against a live authenticated
+ * /admin session while building the marketplace's own installable app (this
+ * is what a marketplace-scoped override would have silently hit too, since
+ * /marketplace is a separate router — see App.tsx — so it doesn't face this
+ * exact collision, but /admin does and still needs the same fix). Skipping
+ * the default entirely on /admin/* is what actually prevents the collision,
+ * rather than trying to out-order Helmet's non-deduping merge.
+ */
+function DefaultPwaMeta() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/admin")) return null;
+  return (
+    <Helmet>
+      <link rel="manifest" href="/manifest.webmanifest" />
+      <meta name="theme-color" content="#2D6A4F" />
+      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+      <meta name="apple-mobile-web-app-title" content="BundledMum" />
+    </Helmet>
+  );
+}
+
 function StorefrontShell() {
   const { height: legacyBarHeight, dismissed, setDismissed } = useAnnouncementHeight();
   const engineBarHeight = useAnnouncementEngineBarHeight();
@@ -464,6 +503,7 @@ const StorefrontApp = () => (
           <Sonner />
           <BrowserRouter>
             <PageTracker>
+            <DefaultPwaMeta />
             <ScrollToTop />
             <PixelRouteListener pixelId="947693044571219" />
             <AnalyticsRouteListener />

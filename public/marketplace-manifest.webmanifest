@@ -1,0 +1,38 @@
+{
+  "name": "BundledMum Marketplace",
+  "short_name": "BM Market",
+  "description": "Buy and sell used baby and children's items near you. Browse real listings, message sellers, and pay safely with buyer protection.",
+  "id": "/marketplace",
+  "start_url": "/marketplace",
+  "scope": "/marketplace",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF8F4",
+  "theme_color": "#2D6A4F",
+  "icons": [
+    {
+      "src": "/bm-mkt-pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/bm-mkt-pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/bm-mkt-pwa-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/bm-mkt-pwa-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

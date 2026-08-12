@@ -47,6 +47,7 @@ export default function MarketplaceFooter() {
             <Link to="/sell" className="mkt-ftr-link">Sell</Link>
             <Link to="/orders" className="mkt-ftr-link">My orders</Link>
             {seller && <Link to="/sell/dashboard" className="mkt-ftr-link">Seller dashboard</Link>}
+            <Link to="/install" className="mkt-ftr-link">Install the app</Link>
           </nav>
 
           <nav className="mkt-ftr-group">

@@ -15,14 +15,16 @@
     <meta name="author" content="BundledMum" />
     <!-- Canonical is set per-route via react-helmet-async (src/components/Seo.tsx). Do not add a static canonical here — it would duplicate. -->
     <link rel="icon" type="image/svg+xml" href="/src/assets/logos/BM-ICON-GREEN.svg">
-    <!-- PWA: installable customer app -->
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#2D6A4F" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="BundledMum" />
+    <!-- PWA manifest/icon tags are NOT static here. A link[rel=manifest] (and
+         the apple-touch-icon / apple-mobile-web-app-* tags) rendered via
+         react-helmet-async can only override ANOTHER Helmet-rendered tag —
+         Helmet has no way to replace a tag that was already in the static
+         HTML, so a static tag here would always win the browser's "first
+         link[rel=manifest] in the document" rule regardless of which route
+         is active. Every experience (storefront default in StorefrontApp.tsx,
+         /admin's override in AdminLayout.tsx, /marketplace's own in
+         MarketplaceApp.tsx) renders its own Helmet block instead, so the
+         active route's tags are the only ones ever in the DOM. -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://bundledmum.com/" />
     

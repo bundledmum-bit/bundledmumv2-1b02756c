@@ -1,6 +1,8 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Helmet } from "react-helmet-async";
 import PixelRouteListener from "@/components/PixelRouteListener";
+import InstallPage from "./InstallPage";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -61,12 +63,29 @@ export default function MarketplaceApp() {
     <QueryClientProvider client={marketplaceQueryClient}>
       <BrowserRouter basename={MARKETPLACE_BASENAME}>
         <div className="mkt">
+          {/* Marketplace gets its own installable PWA, separate from the
+              storefront's (index.html's default manifest is the storefront's,
+              name "BundledMum", start_url "/"). Helmet swaps these tags in
+              only while a marketplace route is mounted — the same pattern
+              AdminLayout.tsx uses for /admin — and reverts to the storefront
+              defaults the moment the visitor navigates away, since App.tsx's
+              path split unmounts this whole tree. */}
+          <Helmet>
+            <link rel="manifest" href="/marketplace-manifest.webmanifest" />
+            <meta name="theme-color" content="#2D6A4F" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+            <meta name="apple-mobile-web-app-title" content="BM Market" />
+            <link rel="apple-touch-icon" href="/bm-mkt-apple-touch-icon.png" />
+          </Helmet>
           <PixelRouteListener pixelId={MARKETPLACE_PIXEL_ID} />
           <MarketplaceScrollManager />
           <MarketplaceHeader />
           <div className="mkt-main">
           <Routes>
             <Route path="/" element={<BrowsePage />} />
+            <Route path="/install" element={<InstallPage />} />
             <Route path="/login" element={<MarketplaceLoginPage />} />
             <Route path="/listing/:id" element={<ListingDetailPage />} />
             <Route path="/listing/:id/offer" element={<BuyerOfferPage />} />
