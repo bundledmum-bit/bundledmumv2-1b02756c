@@ -53,11 +53,18 @@ export function OpsEmpty({ title, body }: { title: string; body: string }) {
 }
 
 /** A bank account number (or any value) as a tap target with its own copy button.
- * Works on desktop and mobile. */
-export function CopyField({ value, label }: { value: string; label?: string }) {
+ * Works on desktop and mobile. onCopied fires once per successful copy, for a
+ * caller that needs to know a copy genuinely happened (e.g. gating an action
+ * on it) rather than just showing the transient "Copied" label. */
+export function CopyField({ value, label, onCopied }: { value: string; label?: string; onCopied?: () => void }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
-    try { await navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* clipboard blocked */ }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      onCopied?.();
+      setTimeout(() => setCopied(false), 1600);
+    } catch { /* clipboard blocked */ }
   }
   return (
     <button
@@ -80,7 +87,7 @@ export interface ConfirmKv { label: string; value: string }
  * a real transfer.
  */
 export function ConfirmDialog({
-  open, title, body, kv, confirmLabel, danger, busy, error, onConfirm, onCancel, children,
+  open, title, body, kv, confirmLabel, danger, busy, error, onConfirm, onCancel, children, confirmDisabled,
 }: {
   open: boolean;
   title: string;
@@ -93,6 +100,11 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
+  /** Disables the confirm button independent of busy — for a multi-step
+   * gate (see the payout release flow) where the action must stay
+   * unavailable until every step is genuinely done, not just "not
+   * currently submitting". */
+  confirmDisabled?: boolean;
 }) {
   if (!open) return null;
   return (
@@ -116,7 +128,7 @@ export function ConfirmDialog({
           <button onClick={onCancel} disabled={busy} className="sm:flex-1 font-heading font-extrabold text-sm rounded-xl py-3 border" style={{ borderColor: "#F0DDD2", background: "#fff" }}>
             Not yet, go back
           </button>
-          <button onClick={onConfirm} disabled={busy} className="sm:flex-[1.4] font-heading font-extrabold text-sm rounded-xl py-3 text-white" style={{ background: danger ? "#C0392B" : "#2D6A4F" }}>
+          <button onClick={onConfirm} disabled={busy || confirmDisabled} className="sm:flex-[1.4] font-heading font-extrabold text-sm rounded-xl py-3 text-white disabled:opacity-40" style={{ background: danger ? "#C0392B" : "#2D6A4F" }}>
             {busy ? "Working..." : confirmLabel}
           </button>
         </div>

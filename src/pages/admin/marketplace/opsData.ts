@@ -68,6 +68,65 @@ export async function markPayoutFailed(orderId: string, reason: string): Promise
   return data === true;
 }
 
+// ─── Payout proof (payment screenshot) ───────────────────────────────────────
+// admin_mark_payout_released now REFUSES without proof attached — enforced in
+// the database (guard_payout_release_requires_proof or equivalent), not just
+// here, so this holds however the RPC is called. The bucket is private
+// (admin read/write only, gated by the same has_admin_permission check as
+// everything else on this screen), so a proof is only ever shown via a
+// short-lived signed URL, never a public one.
+
+export const PAYOUT_PROOF_BUCKET = "payout-proofs";
+const PAYOUT_PROOF_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Uploads a payment screenshot for this order. No client-side compression —
+ * this is a screenshot out of a banking app, not a photo, and the bucket's
+ * own 5MB limit is generous for that; the size check here just catches an
+ * oversized file with a clear message before it ever reaches storage.
+ * Returns the storage PATH, never a public URL (the bucket is private) —
+ * this is exactly what admin_attach_payout_proof stores, and the email side
+ * already knows to sign it when sending. */
+export async function uploadPayoutProof(orderId: string, file: File): Promise<{ path: string }> {
+  if (!file.type.startsWith("image/")) throw new Error("Please choose an image file.");
+  if (file.size > PAYOUT_PROOF_MAX_BYTES) throw new Error("This image is larger than 5MB, please choose a smaller screenshot.");
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `${orderId}/${Date.now()}.${ext}`;
+  const { error } = await adb.storage.from(PAYOUT_PROOF_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+  if (error) throw error;
+  return { path };
+}
+
+/** Records the uploaded screenshot against the order. Raises "A payment
+ * screenshot is required" if proofPath is empty — the caller surfaces
+ * whatever the database says, never a paraphrase. */
+export async function attachPayoutProof(orderId: string, proofPath: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("admin_attach_payout_proof", { p_order_id: orderId, p_proof_url: proofPath });
+  if (error) throw error;
+  return data === true;
+}
+
+/** A short-lived signed URL to preview a proof screenshot in the admin UI.
+ * Never a public URL, the bucket does not allow one by design. */
+export async function getPayoutProofSignedUrl(path: string): Promise<string | null> {
+  const { data, error } = await adb.storage.from(PAYOUT_PROOF_BUCKET).createSignedUrl(path, 300);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
+/** Whether this order already has a payout proof attached, read directly
+ * from marketplace_orders (payout_proof_url is not one of the columns
+ * marketplace_payout_queue exposes) under the same "Admin manage orders"
+ * policy that already grants admin read across this whole ops surface.
+ * Used only to resume the release flow sensibly if an admin uploaded, then
+ * navigated away before releasing — never to widen what a seller or buyer
+ * can read, this table's own RLS is untouched. */
+export async function fetchPayoutProofState(orderId: string): Promise<{ path: string | null; uploadedAt: string | null }> {
+  const { data, error } = await adb.from("marketplace_orders").select("payout_proof_url, payout_proof_uploaded_at").eq("id", orderId).maybeSingle();
+  if (error) return { path: null, uploadedAt: null };
+  const row = data as { payout_proof_url?: string | null; payout_proof_uploaded_at?: string | null } | null;
+  return { path: row?.payout_proof_url ?? null, uploadedAt: row?.payout_proof_uploaded_at ?? null };
+}
+
 export async function markRefundPaid(orderId: string): Promise<boolean> {
   const { data, error } = await adb.rpc("admin_mark_refund_paid", { p_order_id: orderId });
   if (error) throw error;
