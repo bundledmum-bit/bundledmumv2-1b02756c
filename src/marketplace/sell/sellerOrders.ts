@@ -106,6 +106,62 @@ export function groupSellerOrders(orders: SellerOrder[]) {
   };
 }
 
+// ─── Post-purchase review (private feedback to BundledMum, never shown to
+// the buyer, asked once ever after a seller's first completed sale) ───────
+
+export interface MarketplaceReview {
+  id: string;
+  rating: number;
+  answer: string | null;
+  created_at: string;
+}
+
+/** The seller review question, admin-editable in site_settings
+ * (marketplace_seller_review_question). Never hardcoded except as the
+ * fallback used only if the setting itself cannot be read. */
+export async function getSellerReviewQuestion(): Promise<string> {
+  const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_seller_review_question").maybeSingle();
+  const v = (data as { value?: unknown } | null)?.value;
+  return typeof v === "string" && v.trim() ? v.trim() : "What would make selling here easier, or what nearly put you off?";
+}
+
+/** Whether this seller is due their one-time review ask: true only once
+ * they have a completed sale AND have not yet reviewed. Decided entirely
+ * server side rather than worked out here, since "first completed sale
+ * only, never again" is a rule that must live in exactly one place. */
+export async function sellerShouldReview(sellerId: string): Promise<boolean> {
+  const { data, error } = await sdb.rpc("seller_should_review", { p_seller_id: sellerId });
+  if (error) return false;
+  return data === true;
+}
+
+/** This seller's own review, if they have already left one (there is at
+ * most one, ever). RLS ("Seller reads own review") only ever returns rows
+ * where seller_id is this seller. */
+export async function fetchSellerReview(sellerId: string): Promise<MarketplaceReview | null> {
+  const { data, error } = await sdb.from("marketplace_reviews")
+    .select("id, rating, answer, created_at")
+    .eq("seller_id", sellerId)
+    .eq("reviewer_type", "seller")
+    .maybeSingle();
+  if (error) return null;
+  return (data as unknown as MarketplaceReview) ?? null;
+}
+
+/** Submits, or updates if one already exists, the seller's one-time
+ * private review. The rating alone is enough (1-5); the written answer is
+ * always optional. p_order_id anchors it to the completed sale that
+ * triggered the ask. */
+export async function submitSellerReview(orderId: string, rating: number, answer: string): Promise<boolean> {
+  const { data, error } = await sdb.rpc("submit_seller_review", {
+    p_order_id: orderId,
+    p_rating: rating,
+    p_answer: answer.trim() || null,
+  });
+  if (error) return false;
+  return data === true;
+}
+
 // ─── Returns (design 20a) ──────────────────────────────────────────────────
 export interface OrderDispute {
   id: string;

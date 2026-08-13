@@ -9,6 +9,7 @@ import { sellerWhatsAppLink, sellerCallLink } from "../checkout/orders";
 import { fetchSellerOrder, getSellerOrderContact, fetchOrderDispute, sellerConfirmReturnReceived, getReturnConfirmDays } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import SellerReviewBlock from "./SellerReviewBlock";
 
 /**
  * Seller order detail. Shows only the seller's payout (seller_share_naira),
@@ -216,6 +217,10 @@ export default function SellerOrderDetailPage() {
               <div className="step todo"><div className="dot todo" style={{ background: completed ? "var(--mkt-green)" : undefined }} /><div><b className={completed ? "" : "todo"}>{completed ? "Paid to your bank" : "Buyer confirms, we pay you"}</b><span>{completed ? bankLine : `Then we transfer your ${formatNaira(order.seller_share_naira)}.`}</span></div></div>
             </div>
           )}
+
+          {/* Private review, BundledMum only, gated on seller_should_review
+              (their first completed sale only, ever). */}
+          {completed && seller && <SellerReviewBlock orderId={order.id} sellerId={seller.id} />}
 
           {/* Return awaited: buyer has not posted it back yet */}
           {returnAwaited && (

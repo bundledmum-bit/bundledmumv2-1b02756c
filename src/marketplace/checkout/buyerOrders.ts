@@ -116,6 +116,52 @@ export async function confirmReceipt(orderId: string): Promise<boolean> {
   return data === true;
 }
 
+// ─── Post-purchase review (private feedback to BundledMum, never shown to
+// the seller) ────────────────────────────────────────────────────────────
+
+export interface MarketplaceReview {
+  id: string;
+  rating: number;
+  answer: string | null;
+  created_at: string;
+}
+
+/** The buyer review question, admin-editable in site_settings
+ * (marketplace_review_question). Never hardcoded except as the fallback
+ * used only if the setting itself cannot be read. */
+export async function getBuyerReviewQuestion(): Promise<string> {
+  const { data } = await cdb.from("site_settings").select("value").eq("key", "marketplace_review_question").maybeSingle();
+  const v = (data as { value?: unknown } | null)?.value;
+  return typeof v === "string" && v.trim() ? v.trim() : "What nearly stopped you buying, or what would make this easier next time?";
+}
+
+/** This buyer's own review for this order, if they have already left one.
+ * RLS ("Buyer reads own review") only ever returns rows where buyer_id is
+ * this buyer, so there is no way to read anyone else's answer this way. */
+export async function fetchBuyerReview(orderId: string): Promise<MarketplaceReview | null> {
+  const { data, error } = await cdb.from("marketplace_reviews")
+    .select("id, rating, answer, created_at")
+    .eq("order_id", orderId)
+    .eq("reviewer_type", "buyer")
+    .maybeSingle();
+  if (error) return null;
+  return (data as unknown as MarketplaceReview) ?? null;
+}
+
+/** Submits, or updates if one already exists for this order, the buyer's
+ * private review. The rating alone is enough (1-5); the written answer is
+ * always optional. Returns false for a rating outside 1-5, an order that
+ * has not been confirmed yet, or an order that is not this buyer's. */
+export async function submitBuyerReview(orderId: string, rating: number, answer: string): Promise<boolean> {
+  const { data, error } = await cdb.rpc("submit_marketplace_review", {
+    p_order_id: orderId,
+    p_rating: rating,
+    p_answer: answer.trim() || null,
+  });
+  if (error) return false;
+  return data === true;
+}
+
 export interface DisputeResult {
   ok: boolean;
   disputeId?: string;

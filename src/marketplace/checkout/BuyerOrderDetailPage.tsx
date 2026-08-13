@@ -8,6 +8,7 @@ import { formatNaira, getOrderContact, sellerWhatsAppLink, sellerCallLink } from
 import { fetchBuyerOrder, getDisputeWindowDays, confirmDeadline, daysLeft, confirmReceipt, fetchOrderDispute, getReturnConfirmDays } from "./buyerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import BuyerReviewBlock from "./BuyerReviewBlock";
 
 /**
  * Buyer order detail (design T3/T3b tracking + T4 confirm-or-dispute + T4c
@@ -246,6 +247,11 @@ export default function BuyerOrderDetailPage() {
               <div className="hb-line"><span className="hb-tick">✓</span>Your payment has been released to {sellerName} and the order is closed. Your receipt is in your email.</div>
             </div>
           )}
+
+          {/* Private review, BundledMum only. Sits right after the "all
+              done" reassurance, the natural moment once the order is
+              genuinely closed. */}
+          {completed && <BuyerReviewBlock orderId={order.id} />}
 
           {/* Disputed state */}
           {disputed && (

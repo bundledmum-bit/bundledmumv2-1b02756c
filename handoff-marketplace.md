@@ -6370,3 +6370,38 @@ Verified via clean `tsc --noEmit`, clean `eslint` on every touched file, clean `
 Files touched: `src/marketplace/sell/SellerListingSharePage.tsx` (new), `src/marketplace/sell/sellData.ts`, `src/marketplace/MarketplaceApp.tsx`, `src/marketplace/sell/SellerDashboardPage.tsx`.
 
 `npm run build` clean.
+
+## 68. First real sale reviewed, both sides — and the deployed email links resolved a route question before it became a wrong one (2026-08-12)
+
+**Context**: the marketplace's first real sale completed end to end (paid, dispatched, confirmed, paid out, reconciled). The backend for asking both sides how it went was already deployed and tested — `submit_marketplace_review`, `submit_seller_review`, `seller_should_review`, the two `site_settings` question keys, and an hourly sweep (`marketplace-review-requests`) that emails a day after confirmation, never after a dispute. This pass builds the pages those emails link to.
+
+**Before, audited**: neither `BuyerOrderDetailPage.tsx` nor `SellerOrderDetailPage.tsx` had any review or rating UI, and no reference to any of the new RPCs existed anywhere in the repo (`src/` or `supabase/`, confirmed by a zero-hit grep). No reusable star-rating **input** existed anywhere in the codebase either — every existing star (`ProductDetailDrawer.tsx`, `ProductPage.tsx`, `TestimonialsSection.tsx`, `SubscribeLanding.tsx`) is read-only display, driven by a stored rating; the closest thing to a rating *input* was a plain `<select>` on an unrelated admin testimonials form. A new clickable star input had to be built from scratch.
+
+**A real mismatch found and resolved before writing any UI code**: the task described building a page "reachable at a route the email can link to," which read as needing a new dedicated review route. Rather than assume, the actual deployed `send-marketplace-email` edge function was read directly (`get_edge_function`, not the repo copy — Lovable deploys directly and repo copies lag, per this project's own standing rule) and its link-building logic is unambiguous:
+```js
+const buyerLink = SITE + '/marketplace/orders/' + o.id;
+const sellerLink = SITE + '/marketplace/sell/orders/' + o.id;
+```
+Both review-request slugs (`marketplace_buyer_review_request`, `marketplace_seller_review_request`) resolve to these — the **existing** buyer and seller order detail pages, not a new route. Building a separate `/orders/:id/review` page would have been dead code the email never actually points at. This is why the review UI lives inline on the existing order pages rather than behind new routes — confirmed against the real, live destination, not assumed from the prompt's own phrasing.
+
+**Built**: `StarRatingInput.tsx` (new, `src/marketplace/components/`) — five real 44px `<button role="radio">`s, brand coral when filled, matching the existing read-only star convention's colour language rather than inventing a new one. `BuyerReviewBlock.tsx` and `SellerReviewBlock.tsx` (new), each self-contained: fetch the relevant question from `site_settings` (`marketplace_review_question` / `marketplace_seller_review_question`, read live via the same `.eq("key", ...).maybeSingle()` pattern every other setting in this codebase already uses — confirmed both keys' real current values against the database, not assumed), fetch any existing review via direct `marketplace_reviews` reads (confirmed the RLS policies — "Buyer reads own review" / "Seller reads own review" — permit exactly this, each scoped to the caller's own row, nothing else), and submit via the two RPCs.
+
+**The rating alone submits**: the submit button is disabled only while `rating < 1`; the written answer is a plain optional textarea, never required, on both sides.
+
+**Goes to BundledMum, said plainly**: *"This is private feedback for BundledMum, we never show it to the seller"* (buyer) / *"...we never show it to the buyer. We only ask once."* (seller) — sits directly under each block's heading, before the stars, not buried after.
+
+**Where each sits**:
+- **Buyer**: `BuyerOrderDetailPage.tsx`, directly under the existing "All done" reassurance box, shown only when `order_status === "completed"` — the exact page and moment the deployed email already lands on.
+- **Seller**: `SellerOrderDetailPage.tsx`, directly after the order timeline, shown only when `completed` **and** `sellerShouldReview(seller.id)` is true (or a review already exists, so the "already reviewed" state still has somewhere to render) — again the exact page the deployed email lands on. Not the dashboard: the email doesn't go there, and gating server-side on `seller_should_review` means the prompt naturally appears on whichever completed order page a seller happens to visit, not just the one order that originally triggered it.
+
+**After submitting**: the form collapses into a read state showing the saved stars (and the written answer, if any) plus **"Saved, thank you."**, immediately and without navigating away — not a silent close.
+
+**Already reviewed, never re-asked**: on any later visit, the same read state renders directly from the fetched existing review (no default-open form) — the stars show, with a small "Change your rating" link that reopens the form pre-filled, satisfying "show it was received and that they can change it" without ever nagging on load.
+
+**Preserved**: the confirm-receipt flow (untouched — the review block only reads `order_status`, never writes it), both order pages' and the dashboard's existing structure and actions, sections 7 through 67.
+
+Verified via clean `tsc --noEmit`, clean `eslint` on every touched/new file, clean `npm run build`, and live confirmation in the Browser pane that both `/marketplace/orders/:id` and `/marketplace/sell/orders/:id` still load and correctly gate an unauthenticated visit (redirecting to login with the right `returnTo`/`reason`) with zero console errors from the new code — proving the new imports and components load cleanly. A full authenticated walkthrough against a real completed order needs a real buyer/seller inbox this environment doesn't have (same limitation as every other authenticated seller/buyer screen this session), so the actual review-submission flow is code-reviewed and build-verified, not watched rendering with real data.
+
+Files touched: `src/marketplace/components/StarRatingInput.tsx` (new), `src/marketplace/checkout/BuyerReviewBlock.tsx` (new), `src/marketplace/sell/SellerReviewBlock.tsx` (new), `src/marketplace/checkout/buyerOrders.ts`, `src/marketplace/sell/sellerOrders.ts`, `src/marketplace/checkout/BuyerOrderDetailPage.tsx`, `src/marketplace/sell/SellerOrderDetailPage.tsx`.
+
+`npm run build` clean.
