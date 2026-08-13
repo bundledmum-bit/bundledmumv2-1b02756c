@@ -6308,3 +6308,30 @@ Preserved: filter chips, live counts, urgency ordering and the all-clear state, 
 Files touched: `src/pages/admin/marketplace/opsData.ts`, `src/pages/admin/marketplace/MarketplaceOutreach.tsx`.
 
 `npm run build` clean.
+
+## 66. "Make changes" surfaced on the dashboard, and the edit screen's silent dead end fixed (2026-08-12)
+
+**Before, audited**:
+1. **Dashboard actions per listing**: live listings showed exactly one button, **"Lower price"**, opening `/sell/listings/:id/price`. Pending review showed **"Edit"**. Rejected showed **"Fix and resend"**. Delisted (seller-caused) showed two buttons, **"Put it back up"** and **"Edit & resubmit"**.
+2. **Price edit screen**: price (down only, raise blocked client-side and server-side), the original/"cost new" field, the negotiable toggle, and a delist-then-edit path — already fully built, using the seller side's established `.mkt-sheet-overlay`/`.mkt-sheet` confirm pattern (the same one `SellerDashboardPage.tsx`'s own relist confirm already uses). Reachable two ways on that screen: a "Delist and edit fully" button inside the raise-price error box, and a "Delist it first" text link under "Everything else, locked while live" — both only visible after a seller has already opened the price screen specifically.
+3. **The full edit form for a LIVE listing**: confirmed via code, not assumed — `CreateListingPage.tsx` had a `useEffect` that silently `navigate("/sell/dashboard", { replace: true })`s the moment it loads a listing with `status === "live"`, with only a flashed, generic "Listing not found... cannot be edited from here" frame visible for the instant before the redirect fires. No mention of delisting, no path forward — a seller landing here (bookmark, back button, an old link) had no way to learn why or what to do.
+4. **Was the delist → edit → resubmit path explained anywhere?** Yes, but only after already being on the price screen specifically — which a seller reaches by tapping a button labelled **"Lower price"**, exactly the discoverability problem reported. Nowhere on the dashboard itself, and nowhere on the edit screen (silent bounce), was this mentioned.
+
+**Built**: `DelistToEditSheet.tsx`, one shared confirmation component (reusing the exact existing `.mkt-sheet-overlay`/`.mkt-sheet` markup, not a new pattern) now used in all three places this action is offered, so the wording can never drift between them. Exact copy:
+
+> **Take {title} down to make changes?**
+> It comes off browse right away. You can then change photos, category, title, description, anything about it. Before it can go back up, it needs a quick review again, same as a new listing, even if you end up changing nothing.
+
+This states plainly: it goes offline immediately, everything becomes editable, it needs re-review before returning, and — the honesty the task asked for — confirming and then changing nothing still leaves it offline and still needing resubmission, since that's simply what "it comes off right away" and "needs review again... even if you end up changing nothing" together say. `sellerDelistForEdit()` (new, in `sellData.ts`) is the one status-only update (`{status: "delisted"}`) behind it, extracted from what `SellerPriceEditPage.tsx` already did inline so all three call sites share identical behaviour and error handling, not three copies that could drift.
+
+**Dashboard**: live listings now show two buttons side by side, matching the two-button `.mkt-lrow.col` layout already established for delisted listings (not invented fresh) — **"Lower price"** (unchanged, instant, no confirmation, since lowering a price is genuinely safe) and **"Make changes"** (new, opens the shared sheet; on confirm, delists and navigates straight to `/sell/listings/:id/edit`, landing on the now-unlocked full form exactly as the task specified).
+
+**The edit-screen dead end, fixed at the source**: the redirect effect now only fires for `status === "sold"` (which genuinely has nothing left to resubmit and correctly still bounces to the dashboard) — a **live** listing gets its own render branch instead of being redirected away: *"This listing is live. Photos, category, title, description and everything else about it are locked while it's live, that's what stops an approved listing quietly turning into something else. Only the price can change without a new check."* — with **"Lower the price instead"**, **"Make changes"** (the same shared sheet), and a plain "Back to dashboard" all right there. Confirming doesn't navigate away and back — it invalidates the same `["mkt-edit-listing", editId]` query the page already reads, which flips `existingListing.status` to `"delisted"` and the component falls straight through into the real, fully editable form on the next render.
+
+**Preserved**: the database rule (`guard_seller_listing_edits`) is untouched, and the frontend still never attempts a content edit on a live listing — the whole point of this pass is surfacing the existing, correct delist-first path, not working around it. The price-lowering path is unchanged and still instant. The delist option stays on the price screen too (now via the shared sheet, so its wording only got more honest, not different in substance) — moving it off that screen entirely wasn't right, since a seller already deciding to lower price is a natural moment to also notice "or delist to change more."
+
+Verified via clean `tsc --noEmit`, clean `eslint` on every touched file (one pre-existing, unrelated lint warning in `sellData.ts`'s untouched `hasContactLeak` confirmed via `git diff --stat` to predate this change), and clean `npm run build`. `/marketplace/sell/*` needs a real seller session (email-code sign-in) this environment can't complete without inbox access, so this is code-reviewed and build-verified only, not watched rendering live.
+
+Files touched: `src/marketplace/sell/DelistToEditSheet.tsx` (new), `src/marketplace/sell/sellData.ts`, `src/marketplace/sell/SellerDashboardPage.tsx`, `src/marketplace/sell/SellerPriceEditPage.tsx`, `src/marketplace/sell/CreateListingPage.tsx`.
+
+`npm run build` clean.

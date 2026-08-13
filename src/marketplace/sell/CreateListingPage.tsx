@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
 import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import DelistToEditSheet from "./DelistToEditSheet";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
@@ -105,10 +106,16 @@ const MAX_PHOTOS = 8;
 export default function CreateListingPage() {
   const { loading, isLoggedIn, seller, user } = useSeller();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { id: editId } = useParams<{ id?: string }>();
   const isEditMode = !!editId;
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
+  // A seller landing here directly for a LIVE listing (bookmark, back button,
+  // the dashboard's old "Edit" affordance before this pass) used to be
+  // silently bounced to the dashboard with no explanation — see the
+  // live-specific render branch below instead.
+  const [liveDelistOpen, setLiveDelistOpen] = useState(false);
 
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -223,12 +230,15 @@ export default function CreateListingPage() {
     staleTime: 60000,
   });
 
-  // Redirect a listing that can no longer be full-edited (already went live,
-  // or sold) back to the dashboard — this form is never the right place for
-  // either, SellerPriceEditPage.tsx handles live.
+  // A SOLD listing has nothing left to resubmit, so this form still isn't
+  // the right place for it — back to the dashboard, same as before. A LIVE
+  // listing used to be redirected away here too, silently, with no
+  // explanation of why or what to do instead; it now gets its own render
+  // branch below (explain, offer to delist right there) rather than being
+  // bounced before the seller can even read why.
   useEffect(() => {
     if (!isEditMode || !existingListing) return;
-    if (existingListing.status === "live" || existingListing.status === "sold") {
+    if (existingListing.status === "sold") {
       navigate("/sell/dashboard", { replace: true });
     }
   }, [isEditMode, existingListing, navigate]);
@@ -558,11 +568,46 @@ export default function CreateListingPage() {
 
   if (loading || (isEditMode && existingLoading)) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
-  // Edit mode: not found, not this seller's, or already redirected away
-  // (live/sold) — the redirect effect above will navigate, this is just the
-  // frame shown for the instant before that happens, and the genuine
-  // not-found case (bad id, or listing belongs to someone else).
-  if (isEditMode && !existingLoading && (!existingListing || existingListing.status === "live" || existingListing.status === "sold")) {
+  // A LIVE listing lands here explained, not bounced: photos, category,
+  // title, description, anything about the item is locked while it's live
+  // (only the price screen can touch it, and only the price), and this is
+  // where a seller would otherwise conclude that's simply impossible. The
+  // same delist-then-edit action as the dashboard and price screen, right
+  // here — confirming just refetches this exact query, which flips
+  // existingListing.status to "delisted" and falls straight through into
+  // the real, fully editable form below on the very next render, no
+  // navigate needed.
+  if (isEditMode && !existingLoading && existingListing && existingListing.status === "live") {
+    return (
+      <div className="mkt-center">
+        <MarketplaceTitle title="Listing is live" />
+        <div className="mkt-empty-title">This listing is live</div>
+        <div className="mkt-empty-sub">
+          Photos, category, title, description and everything else about it are locked while it's live, that's what stops an approved listing quietly turning into something else.
+          Only the price can change without a new check.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 280 }}>
+          <button className="mkt-secondary" onClick={() => navigate(`/sell/listings/${existingListing.id}/price`)}>Lower the price instead</button>
+          <button className="mkt-secondary" style={{ borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => setLiveDelistOpen(true)}>Make changes</button>
+          <button className="mkt-primary" style={{ background: "transparent", color: "var(--mkt-muted)" }} onClick={() => navigate("/sell/dashboard")}>Back to dashboard</button>
+        </div>
+        {liveDelistOpen && (
+          <DelistToEditSheet
+            listing={existingListing}
+            onCancel={() => setLiveDelistOpen(false)}
+            onDelisted={() => { setLiveDelistOpen(false); queryClient.invalidateQueries({ queryKey: ["mkt-edit-listing", editId] }); }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Edit mode: not found, not this seller's, sold (nothing left to
+  // resubmit), or already redirected away — the redirect effect above will
+  // navigate for sold, this is just the frame shown for the instant before
+  // that happens, and the genuine not-found case (bad id, or listing
+  // belongs to someone else).
+  if (isEditMode && !existingLoading && (!existingListing || existingListing.status === "sold")) {
     return (
       <div className="mkt-center">
         <MarketplaceTitle title="Listing not found" />

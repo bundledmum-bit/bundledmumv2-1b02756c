@@ -9,6 +9,7 @@ import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./seller
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { fetchSellerOffersNeedingAttention } from "../offers";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import DelistToEditSheet from "./DelistToEditSheet";
 
 interface MyListing {
   id: string;
@@ -86,6 +87,11 @@ export default function SellerDashboardPage() {
   const [relistTarget, setRelistTarget] = useState<MyListing | null>(null);
   const [relistBusy, setRelistBusy] = useState(false);
   const [relistError, setRelistError] = useState<string | null>(null);
+  // "Make changes" on a live listing (design follow-up): delist-then-edit
+  // used to live only on the price screen, behind a button labelled for
+  // lowering price — nobody would think to look there for a photo change.
+  // Same action, same shared confirmation, now also reachable directly.
+  const [changesTarget, setChangesTarget] = useState<MyListing | null>(null);
 
   async function confirmRelist() {
     if (!relistTarget) return;
@@ -262,7 +268,7 @@ export default function SellerDashboardPage() {
                       );
                     }
 
-                    if (g.key === "live" || g.key === "pending_review") {
+                    if (g.key === "pending_review") {
                       return (
                         <div className="mkt-lrow" key={l.id}>
                           <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
@@ -271,14 +277,32 @@ export default function SellerDashboardPage() {
                             <div className="meta">{meta}</div>
                           </div>
                           <span className={`mkt-st ${g.pill}`}>{g.label}</span>
-                          {/* Distinct button label per status (design 21a E1), so the scope of
-                              each edit is obvious before it is even opened: a live listing only
-                              opens the price-only screen, everything else opens the full form. */}
-                          {g.key === "live" ? (
-                            <button className="mkt-lrow-action" onClick={() => navigate(`/sell/listings/${l.id}/price`)}>Lower price</button>
-                          ) : (
-                            <button className="mkt-lrow-action" onClick={() => navigate(`/sell/listings/${l.id}/edit`)}>Edit</button>
-                          )}
+                          <button className="mkt-lrow-action" onClick={() => navigate(`/sell/listings/${l.id}/edit`)}>Edit</button>
+                        </div>
+                      );
+                    }
+
+                    if (g.key === "live") {
+                      // Two clearly separate actions (design follow-up, was one
+                      // button labelled only for price, "make changes" wasn't
+                      // discoverable there): lowering the price stays instant,
+                      // no confirmation, since it's genuinely safe; anything
+                      // else about the listing needs it delisted first, and
+                      // that's a real cost worth a confirmation before it happens.
+                      return (
+                        <div className="mkt-lrow col" key={l.id}>
+                          <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                            <div className="th">{l.image_url && <img src={l.image_url} alt="" />}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.title}</div>
+                              <div className="meta">{meta}</div>
+                            </div>
+                            <span className={`mkt-st ${g.pill}`}>{g.label}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => navigate(`/sell/listings/${l.id}/price`)}>Lower price</button>
+                            <button className="mkt-secondary" style={{ flex: 1, borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => setChangesTarget(l)}>Make changes</button>
+                          </div>
                         </div>
                       );
                     }
@@ -370,6 +394,14 @@ export default function SellerDashboardPage() {
             <button className="back" onClick={() => setRelistTarget(null)} disabled={relistBusy}>Leave it down</button>
           </div>
         </div>
+      )}
+
+      {changesTarget && (
+        <DelistToEditSheet
+          listing={changesTarget}
+          onCancel={() => setChangesTarget(null)}
+          onDelisted={() => navigate(`/sell/listings/${changesTarget.id}/edit`)}
+        />
       )}
     </div>
   );

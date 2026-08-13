@@ -6,6 +6,7 @@ import { useSeller } from "./useSeller";
 import { sdb, buyerPrice, formatNaira, genericErrorMessage, parseListingEditError } from "./sellData";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import DelistToEditSheet from "./DelistToEditSheet";
 
 interface LiveListing { id: string; title: string; image_url: string | null; price_naira: number; original_price_naira: number | null; status: string; is_negotiable: boolean }
 
@@ -29,8 +30,6 @@ export default function SellerPriceEditPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [delistOpen, setDelistOpen] = useState(false);
-  const [delistBusy, setDelistBusy] = useState(false);
-  const [delistError, setDelistError] = useState<string | null>(null);
   const hydratedRef = useRef(false);
 
   useEffect(() => {
@@ -109,21 +108,6 @@ export default function SellerPriceEditPage() {
       return;
     }
     navigate("/sell/dashboard");
-  }
-
-  async function confirmDelist() {
-    if (!listing) return;
-    setDelistBusy(true); setDelistError(null);
-    // Direct status-only update — no other field changes in the same write,
-    // so it clears guard_seller_listing_edits' live-price/content check
-    // trivially, and track_marketplace_delisting stamps delisted_by='seller'.
-    const { error: updErr } = await sdb.from("marketplace_listings").update({ status: "delisted" }).eq("id", listing.id);
-    setDelistBusy(false);
-    if (updErr) {
-      setDelistError(parseListingEditError(updErr.message) || genericErrorMessage("delist listing", updErr));
-      return;
-    }
-    navigate(`/sell/listings/${listing.id}/edit`, { replace: true });
   }
 
   if (loading || isLoading) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
@@ -217,7 +201,7 @@ export default function SellerPriceEditPage() {
           <div className="mkt-errbox" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
             <b>Need to charge more?</b>
             <span>People may already have seen this at {formatNaira(listing.price_naira)}, raising it on them isn't fair. Delist it, change the price freely, and send it back for a quick review before it returns live.</span>
-            <button className="mkt-secondary" style={{ borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => { setDelistError(null); setDelistOpen(true); }}>Delist and edit fully</button>
+            <button className="mkt-secondary" style={{ borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => setDelistOpen(true)}>Delist and edit fully</button>
           </div>
         )}
 
@@ -232,7 +216,7 @@ export default function SellerPriceEditPage() {
         </div>
         {!isRaise && (
           <div className="mkt-help">
-            Need to change any of that? <button type="button" onClick={() => { setDelistError(null); setDelistOpen(true); }} style={{ background: "none", border: "none", padding: 0, font: "700 11.5px/1.5 'Lato', sans-serif", color: "var(--mkt-coral-dark)", cursor: "pointer" }}>Delist it first</button>, then edit freely.
+            Need to change any of that? <button type="button" onClick={() => setDelistOpen(true)} style={{ background: "none", border: "none", padding: 0, font: "700 11.5px/1.5 'Lato', sans-serif", color: "var(--mkt-coral-dark)", cursor: "pointer" }}>Delist it first</button>, then edit freely.
           </div>
         )}
 
@@ -244,19 +228,11 @@ export default function SellerPriceEditPage() {
       </div>
 
       {delistOpen && (
-        <div className="mkt-sheet-overlay" onClick={() => !delistBusy && setDelistOpen(false)}>
-          <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="grab" />
-            <h3>Take it off the marketplace to edit?</h3>
-            <p>This comes off browse right away. Once you have made your changes, it needs a quick review again before it can go back up, same as any new listing.</p>
-            <div className="kv">
-              <div className="r"><span>{listing.title}</span><b>{formatNaira(listing.price_naira)}</b></div>
-            </div>
-            {delistError && <div className="mkt-errbox"><span className="m">!</span><span>{delistError}</span></div>}
-            <button className="mkt-primary" style={{ background: "var(--mkt-error)", color: "var(--mkt-cream)" }} onClick={confirmDelist} disabled={delistBusy}>{delistBusy ? "Delisting..." : "Delist and edit"}</button>
-            <button className="back" onClick={() => setDelistOpen(false)} disabled={delistBusy}>Cancel, keep it live for now</button>
-          </div>
-        </div>
+        <DelistToEditSheet
+          listing={listing}
+          onCancel={() => setDelistOpen(false)}
+          onDelisted={() => navigate(`/sell/listings/${listing.id}/edit`, { replace: true })}
+        />
       )}
     </div>
   );

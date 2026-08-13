@@ -268,6 +268,24 @@ export async function sellerRelistListing(listingId: string): Promise<boolean> {
   return data === true;
 }
 
+/**
+ * Takes a LIVE listing off the marketplace so its content (photos, category,
+ * title, description, anything) can be edited freely — a live listing may
+ * only have its price lowered otherwise (guard_seller_listing_edits is the
+ * actual source of truth, this just triggers the same status change a
+ * seller could make by hand). Status-only update, no other field in the
+ * same write, so it clears that guard trivially; track_marketplace_delisting
+ * stamps delisted_by='seller' so it can be told apart from an admin removal
+ * and put back up later. Shared by every screen that offers this action
+ * (dashboard, price edit, the full edit form's live-listing block) so the
+ * one operation and its error handling can't drift between them.
+ */
+export async function sellerDelistForEdit(listingId: string): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await sdb.from("marketplace_listings").update({ status: "delisted" }).eq("id", listingId);
+  if (error) return { ok: false, error: parseListingEditError(error.message) || genericErrorMessage("delist listing", error) };
+  return { ok: true };
+}
+
 /** Buyer price from the seller asking price and the current markup percent. */
 export function buyerPrice(askingNaira: number, markupPct: number): number {
   if (!isFinite(askingNaira) || askingNaira <= 0) return 0;
