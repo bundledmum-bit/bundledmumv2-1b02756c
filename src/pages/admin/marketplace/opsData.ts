@@ -283,6 +283,20 @@ export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
   return (data ?? []) as unknown as OutreachRow[];
 }
 
+/** stage_key → how many times that stage's sequence can be sent before it
+ * stops returning that person entirely. Admin-editable in
+ * marketplace_outreach_stage_config, read live rather than hardcoded here —
+ * a hardcoded copy would silently drift the moment someone changes a
+ * ceiling in the table. Read-only for this screen; editing ceilings is a
+ * separate future admin surface, not built here. */
+export async function fetchOutreachStageCeilings(): Promise<Record<string, number>> {
+  const { data, error } = await adb.from("marketplace_outreach_stage_config").select("stage_key, max_attempts");
+  if (error) throw error;
+  const out: Record<string, number> = {};
+  for (const row of (data ?? []) as { stage_key: string; max_attempts: number }[]) out[row.stage_key] = row.max_attempts;
+  return out;
+}
+
 /** Records that this exact (person, outreach type) was messaged — a
  * deliberate, explicit admin action, never fired just because the
  * WhatsApp link was tapped (tapping a link is not proof a message was
@@ -300,6 +314,41 @@ export async function undoOutreachContact(personId: string, stageKey: string): P
   const { data, error } = await adb.rpc("undo_outreach_contact", { p_person_id: personId, p_stage_key: stageKey });
   if (error) throw error;
   return data === true;
+}
+
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
+
+export interface AttemptInfo {
+  ordinal: string; // "1st", "2nd"...
+  remainingAfter: number; // messages left in the sequence after this one sends
+  isFinal: boolean;
+  highStakes: boolean; // this stage's ceiling is the highest of any stage — real money/refund territory
+}
+
+/** Where a row sits in its stage's message sequence, purely derived from
+ * times_contacted (how many times this exact stage has already been sent to
+ * this exact person) against that stage's ceiling — never stored, always
+ * recomputed from live data so it can't drift from what the backend would
+ * actually do next. Returns null when the ceiling isn't known yet (config
+ * still loading, or a stage_key the config table doesn't cover) rather than
+ * guessing — attempt info silently doesn't render in that case, the rest of
+ * the row is unaffected. */
+export function getAttemptInfo(row: OutreachRow, ceilings: Record<string, number>): AttemptInfo | null {
+  const cap = ceilings[row.stage_key];
+  if (!cap) return null;
+  const attemptNumber = row.times_contacted + 1; // the message about to go out
+  const remainingAfter = cap - attemptNumber;
+  const highestCeiling = Math.max(...Object.values(ceilings));
+  return {
+    ordinal: ordinal(attemptNumber),
+    remainingAfter,
+    isFinal: remainingAfter <= 0,
+    highStakes: cap === highestCeiling,
+  };
 }
 
 /** "2 days ago" / "Just now" — the operator-facing relative form for

@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import {
-  fetchOutreachQueue, previewWhatsAppMessage, logOutreachContact, undoOutreachContact, relativeTimeAgo,
+  fetchOutreachQueue, fetchOutreachStageCeilings, previewWhatsAppMessage, logOutreachContact, undoOutreachContact,
+  relativeTimeAgo, getAttemptInfo,
   SELLER_OUTREACH_STAGES, BUYER_OUTREACH_STAGES,
   type OutreachRow,
 } from "./opsData";
@@ -68,6 +69,15 @@ export default function MarketplaceOutreach() {
     queryKey: QUEUE_KEY,
     staleTime: 15000,
     queryFn: fetchOutreachQueue,
+  });
+
+  // Sequence ceilings, admin-editable and read live (see fetchOutreachStageCeilings) —
+  // static-ish reference data, so a longer staleTime than the queue itself is fine.
+  // Missing while loading just means attempt info silently doesn't render yet.
+  const { data: ceilings = {} } = useQuery({
+    queryKey: ["mkt-outreach-stage-ceilings"],
+    staleTime: 60000,
+    queryFn: fetchOutreachStageCeilings,
   });
 
   const [side, setSide] = useState<Side>("seller");
@@ -180,6 +190,14 @@ export default function MarketplaceOutreach() {
         </button>
       </div>
 
+      {/* Brief, unobtrusive — explains why people vanish from this list as
+          their sequence completes, so it reads as intended behaviour rather
+          than lost work. Plain muted text, no card or icon, sits quietly
+          below the filters rather than competing with them for attention. */}
+      <p className="mt-2.5 text-[11px] text-text-med max-w-xl">
+        People drop off this list once they've had every message in their sequence. That's expected, not lost work.
+      </p>
+
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         {/* list */}
         <div className={`flex flex-col gap-2.5 ${selected ? "hidden lg:flex" : ""}`}>
@@ -199,7 +217,7 @@ export default function MarketplaceOutreach() {
               <OpsEmpty title="Nothing here" body="Nobody currently matches this filter. That's a calm, correct result, not a broken one." />
             )
           ) : (
-            people.map((p) => <PersonRow key={`${p.personType}:${p.personId}`} person={p}
+            people.map((p) => <PersonRow key={`${p.personType}:${p.personId}`} person={p} ceilings={ceilings}
               selected={selectedKey === `${p.personType}:${p.personId}`}
               onSelect={() => setSelectedKey(`${p.personType}:${p.personId}`)} />)
           )}
@@ -207,7 +225,7 @@ export default function MarketplaceOutreach() {
 
         {/* detail, desktop sticky, matches Sellers/Buyers/Disputes */}
         <div className={selected ? "lg:sticky lg:top-6 lg:self-start" : "hidden lg:block lg:sticky lg:top-6 lg:self-start"}>
-          {selected ? <PersonDetail person={selected} onBack={() => setSelectedKey(null)} />
+          {selected ? <PersonDetail person={selected} ceilings={ceilings} onBack={() => setSelectedKey(null)} />
             : <OpsEmpty title="Pick someone" body="Select a row to see their full message and every reason they're in the queue." />}
         </div>
       </div>
@@ -229,13 +247,40 @@ function ContactStatusLine({ row }: { row: OutreachRow }) {
   );
 }
 
+/** Where this row sits in its stage's sequence — "2nd message, 1 left after
+ * this" so an operator can tell at a glance whether someone's fresh or
+ * nearly exhausted, and a distinct, clearly-marked treatment on the final
+ * attempt since that person disappears from the queue right after. Red is
+ * reserved for the final attempt on the highest-ceiling stages specifically
+ * (real money/refund territory, per marketplace_outreach_stage_config's own
+ * rationale) rather than every final attempt — a soft nudge like "listed, no
+ * sale" running out isn't an emergency and shouldn't read like one. Renders
+ * nothing when the ceiling isn't known yet (config still loading). */
+function AttemptBadge({ row, ceilings }: { row: OutreachRow; ceilings: Record<string, number> }) {
+  const info = getAttemptInfo(row, ceilings);
+  if (!info) return null;
+  if (info.isFinal) {
+    return (
+      <span className="font-heading font-extrabold text-[11px] px-2 py-0.5 rounded-md whitespace-nowrap"
+        style={info.highStakes ? { background: "#C0392B", color: "#FFF8F4" } : { background: "#D4613C", color: "#FFF8F4" }}>
+        {info.ordinal} message, final, they drop off after this
+      </span>
+    );
+  }
+  return (
+    <span className="text-[11px]" style={{ color: "#8A7A72" }}>
+      {info.ordinal} message, {info.remainingAfter} left after this
+    </span>
+  );
+}
+
 /** Mark as sent sits right beside Send on WhatsApp as the natural two-step
  * (open the chat, then confirm it actually went) rather than one combined
  * action — tapping the WhatsApp link is not proof a message was sent, so
  * only this explicit button ever calls log_outreach_contact. Undo is a
  * small text link, not hidden but not prominent either, shown whenever
  * this exact (person, type) has at least one contact recorded. */
-function ContactActions({ row }: { row: OutreachRow }) {
+function ContactActions({ row, ceilings }: { row: OutreachRow; ceilings: Record<string, number> }) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -274,6 +319,7 @@ function ContactActions({ row }: { row: OutreachRow }) {
           <button onClick={undo} disabled={busy} className="text-[11px] underline" style={{ color: "#8A7A72" }}>Undo</button>
         )}
       </div>
+      <AttemptBadge row={row} ceilings={ceilings} />
       <div className="flex gap-2">
         <a href={row.whatsapp_link} target="_blank" rel="noreferrer"
           className="flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#25D366", color: "#fff" }}>
@@ -296,7 +342,7 @@ function ContactActions({ row }: { row: OutreachRow }) {
  * actions on mobile — mobile has no separate detail step, everything
  * actionable is already on the card, matching the design's own mobile
  * treatment. */
-function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; selected: boolean; onSelect: () => void }) {
+function PersonRow({ person, ceilings, selected, onSelect }: { person: GroupedPerson; ceilings: Record<string, number>; selected: boolean; onSelect: () => void }) {
   const urgent = person.primary.urgency < 0;
   const preview = previewWhatsAppMessage(person.primary.whatsapp_link);
   const stageLabel = (person.primary.person_type === "seller" ? SELLER_OUTREACH_STAGES : BUYER_OUTREACH_STAGES)
@@ -312,7 +358,7 @@ function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; sele
             {person.extra.length > 0 && <span className="font-bold text-[11px]" style={{ color: "#2D6A4F" }}>+{person.extra.length} more</span>}
           </div>
           <div className="text-xs text-text-med mt-0.5 truncate">{person.primary.label}{person.primary.context ? ` · ${person.primary.context}` : ""}</div>
-          <div className="mt-0.5"><ContactStatusLine row={person.primary} /></div>
+          <div className="mt-0.5 flex items-center gap-2 flex-wrap"><ContactStatusLine row={person.primary} /><AttemptBadge row={person.primary} ceilings={ceilings} /></div>
         </div>
         <span className="flex-none flex items-center gap-1.5 font-heading font-extrabold text-xs px-3 py-2 rounded-lg" style={{ background: "#25D366", color: "#fff" }}>
           <span className="w-4 h-4 rounded-full flex items-center justify-center text-[9px]" style={{ background: "#fff", color: "#25D366" }}>✆</span>
@@ -331,13 +377,13 @@ function PersonRow({ person, selected, onSelect }: { person: GroupedPerson; sele
           <button onClick={onSelect} className="text-left font-bold text-[11px]" style={{ color: "#2D6A4F" }}>Also matches {person.extra.length} more, tap to see all</button>
         )}
         {preview && <div className="rounded-lg border p-2.5 text-[11.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#fff", color: "#3D3936" }}>{preview}</div>}
-        <ContactActions row={person.primary} />
+        <ContactActions row={person.primary} ceilings={ceilings} />
       </div>
     </div>
   );
 }
 
-function PersonDetail({ person, onBack }: { person: GroupedPerson; onBack: () => void }) {
+function PersonDetail({ person, ceilings, onBack }: { person: GroupedPerson; ceilings: Record<string, number>; onBack: () => void }) {
   const all = [person.primary, ...person.extra];
   return (
     <div className="flex flex-col gap-3">
@@ -358,7 +404,7 @@ function PersonDetail({ person, onBack }: { person: GroupedPerson; onBack: () =>
             <div key={r.stage_key} className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: "#F0DDD2" }}>
               <div className="text-xs text-text-med">{r.label}{r.context ? ` · ${r.context}` : ""}</div>
               {preview && <div className="rounded-lg border p-3 text-[12.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#FFF8F4", color: "#3D3936" }}>{preview}</div>}
-              <ContactActions row={r} />
+              <ContactActions row={r} ceilings={ceilings} />
             </div>
           );
         })}
