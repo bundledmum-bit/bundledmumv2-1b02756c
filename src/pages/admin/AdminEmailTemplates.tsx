@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Mail, Eye, EyeOff, Send, X, Clock, Zap, Power } from "lucide-react";
+import { ArrowLeft, Save, Mail, Eye, EyeOff, Send, X, Clock, Zap, Power, AlertTriangle, Filter } from "lucide-react";
 import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 
 // ---------------------------------------------------------------------------
@@ -159,6 +159,58 @@ interface Template {
 }
 
 // ---------------------------------------------------------------------------
+// Critical vs ordinary — turning an email OFF is invisible (nothing errors,
+// nobody complains, it just silently stops), so the confirmation has to warn
+// harder for the emails where that silence actually hurts someone.
+//
+// THE RULE: an email is CRITICAL when it is buyer/seller facing (not an
+// internal_ or _admin_ notice — those land in BundledMum's own inbox, not a
+// customer's, a different kind of miss) AND its slug names a concrete change
+// to an order's status or a payment/payout/refund event, rather than a
+// reminder, marketing nudge or onboarding tip. Nudges and digests (abandoned
+// cart, reorder reminders, "your listing hasn't sold yet", review requests,
+// welcome emails, stock alerts) tell someone about something optional or
+// upcoming — missing one is a missed opportunity, not money looking like it
+// vanished.
+//
+// This is a rule, not a maintained list: any future template whose slug
+// carries one of these words is automatically critical without anyone
+// having to remember to add it here.
+// Lookbehind for a letter (not just \b) so "order" doesn't false-match
+// inside "reorder_reminder" — that's a promotional nudge, not an order-state
+// change, and a plain \b would still match "order" there.
+const CRITICAL_KEYWORDS = /(?<![a-z])(order|payment|paid|confirm|dispatch|shipped|deliver|cancel|refund|payout|dispute|return|sale|offer|renew)/;
+
+function isCriticalTemplate(t: Pick<Template, "slug">): boolean {
+  if (t.slug.startsWith("internal_") || t.slug.includes("_admin_")) return false;
+  return CRITICAL_KEYWORDS.test(t.slug);
+}
+
+// Specific, honest consequences for the emails this was explicitly built
+// around — used verbatim where we have them. Everything else critical still
+// gets a real warning (see criticalConsequence below), just grounded in the
+// template's own trigger_description rather than a bespoke sentence per slug,
+// since hand-writing one for all ~30 critical templates would be exactly the
+// kind of list this rule is meant to avoid needing.
+const CRITICAL_CONSEQUENCES: Record<string, string> = {
+  marketplace_order_confirmation: "A buyer just paid and will hear nothing back, which looks exactly like their money has vanished.",
+  marketplace_seller_sale: "A seller will never learn they sold something, and their item just sits there unsent.",
+  marketplace_buyer_dispatched: "A buyer will never learn their item is on the way.",
+  marketplace_buyer_confirm_prompt: "Nobody is ever asked to confirm the item arrived, so the seller's payout stalls indefinitely.",
+  marketplace_seller_payout_sent: "A seller gets paid with no notification telling them so.",
+};
+
+function criticalConsequence(t: Template): string {
+  if (CRITICAL_CONSEQUENCES[t.slug]) return CRITICAL_CONSEQUENCES[t.slug];
+  if (/dispute|return|refund/.test(t.slug)) return "Someone is mid-problem, waiting on a dispute, return or refund, and will hear nothing.";
+  if (t.trigger_description) {
+    const lower = t.trigger_description.charAt(0).toLowerCase() + t.trigger_description.slice(1);
+    return `Normally this fires when ${lower} — that message will simply stop going out.`;
+  }
+  return "This tells a buyer or seller something about their money or their order — that message will simply stop going out.";
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -168,6 +220,7 @@ export default function AdminEmailTemplates() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [pendingToggle, setPendingToggle] = useState<Template | null>(null);
   const [testOpen, setTestOpen] = useState<Template | null>(null);
+  const [showOnlyPaused, setShowOnlyPaused] = useState(false);
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ["admin-email-templates"],
@@ -182,8 +235,11 @@ export default function AdminEmailTemplates() {
     },
   });
 
-  const transactional = (templates || []).filter(t => t.trigger_type !== "scheduled");
-  const scheduled = (templates || []).filter(t => t.trigger_type === "scheduled");
+  const allTemplates = templates || [];
+  const pausedCount = allTemplates.filter(t => t.is_active === false).length;
+  const visible = showOnlyPaused ? allTemplates.filter(t => t.is_active === false) : allTemplates;
+  const transactional = visible.filter(t => t.trigger_type !== "scheduled");
+  const scheduled = visible.filter(t => t.trigger_type === "scheduled");
 
   const toggleActive = useMutation({
     mutationFn: async (payload: { id: string; next: boolean }) => {
@@ -200,6 +256,15 @@ export default function AdminEmailTemplates() {
     onError: (e: any) => toast.error(e?.message || "Couldn't update status"),
   });
 
+  // Turning an email back ON just resumes normal behaviour, no confirmation
+  // needed. Turning one OFF is the one that needs a moment of friction,
+  // since the consequence is invisible — see ConfirmPauseModal.
+  function requestToggle(t: Template) {
+    const turningOn = t.is_active === false;
+    if (turningOn) { toggleActive.mutate({ id: t.id, next: true }); return; }
+    setPendingToggle(t);
+  }
+
   if (editing) {
     return (
       <EditTemplateView
@@ -215,11 +280,34 @@ export default function AdminEmailTemplates() {
 
   return (
     <div>
-      <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <header className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h1 className="pf text-2xl font-bold flex items-center gap-2">
           <Mail className="w-6 h-6" /> Email Templates
         </h1>
       </header>
+
+      {/* A switched-off email is otherwise invisible in a list this long
+          (88 templates today) — this line and filter make it impossible to
+          miss how many are currently not sending. */}
+      {!isLoading && allTemplates.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap mb-6">
+          <span className={`text-xs font-semibold ${pausedCount > 0 ? "text-amber-700" : "text-text-med"}`}>
+            {pausedCount === 0
+              ? `All ${allTemplates.length} templates are active`
+              : `${pausedCount} of ${allTemplates.length} templates ${pausedCount === 1 ? "is" : "are"} switched off`}
+          </span>
+          {pausedCount > 0 && (
+            <button
+              onClick={() => setShowOnlyPaused(v => !v)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-[11px] font-semibold border transition-colors ${
+                showOnlyPaused ? "bg-amber-500 border-amber-500 text-white" : "border-border text-text-med hover:bg-muted"
+              }`}
+            >
+              <Filter className="w-3 h-3" /> {showOnlyPaused ? "Showing paused only" : "Show only paused"}
+            </button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="text-center py-10 text-text-med">Loading…</div>
@@ -243,7 +331,7 @@ export default function AdminEmailTemplates() {
                   template={t}
                   onEdit={() => setEditing(t)}
                   onTest={() => setTestOpen(t)}
-                  onToggleRequest={() => setPendingToggle(t)}
+                  onToggleRequest={() => requestToggle(t)}
                 />
               ))}
               {transactional.length === 0 && (
@@ -287,7 +375,7 @@ export default function AdminEmailTemplates() {
                   template={t}
                   onEdit={() => setEditing(t)}
                   onTest={() => setTestOpen(t)}
-                  onToggleRequest={() => setPendingToggle(t)}
+                  onToggleRequest={() => requestToggle(t)}
                 />
               ))}
               {scheduled.length === 0 && (
@@ -298,12 +386,13 @@ export default function AdminEmailTemplates() {
         </div>
       )}
 
-      {/* Pause confirmation */}
+      {/* Pause confirmation — this is the only direction that ever opens a
+          modal, turning an email back on needs none (see requestToggle). */}
       {pendingToggle && (
-        <ConfirmToggleModal
+        <ConfirmPauseModal
           template={pendingToggle}
           onCancel={() => setPendingToggle(null)}
-          onConfirm={() => toggleActive.mutate({ id: pendingToggle.id, next: !(pendingToggle.is_active ?? true) })}
+          onConfirm={() => toggleActive.mutate({ id: pendingToggle.id, next: false })}
           busy={toggleActive.isPending}
         />
       )}
@@ -334,9 +423,13 @@ function TemplateCard({
 }) {
   const active = t.is_active !== false;
   const isScheduled = t.trigger_type === "scheduled";
+  const critical = isCriticalTemplate(t);
 
   return (
-    <article className="bg-card border border-border rounded-xl p-4">
+    <article
+      className={active ? "bg-card border border-border rounded-xl p-4" : "bg-card border rounded-xl p-4"}
+      style={active ? undefined : { borderColor: "#D4613C", borderLeftWidth: 4, background: "#FDF4F1" }}
+    >
       <div className="flex items-start gap-3">
         <button
           onClick={onToggleRequest}
@@ -344,22 +437,30 @@ function TemplateCard({
           className={`mt-0.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-[11px] font-semibold transition-colors flex-shrink-0 ${
             active
               ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-              : "bg-muted text-text-light hover:bg-border"
+              : "hover:opacity-80"
           }`}
-          title={active ? "Active — click to pause" : "Paused — click to activate"}
+          style={active ? undefined : { background: "#D4613C", color: "#fff" }}
+          title={active ? "Active — click to pause" : "Switched off — click to turn back on"}
         >
-          <span className={`inline-block w-2 h-2 rounded-full ${active ? "bg-emerald-500" : "bg-gray-400"}`} />
-          {active ? "Active" : "Paused"}
+          <span className={`inline-block w-2 h-2 rounded-full ${active ? "bg-emerald-500" : "bg-white"}`} />
+          {active ? "Active" : "Switched off"}
         </button>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="font-bold text-sm">{t.name}</h3>
-            <span className={`inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-              isScheduled ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
-            }`}>
-              {isScheduled ? "Scheduled" : "Transactional"}
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {critical && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#FCE4E1", color: "#C0392B" }}>
+                  <AlertTriangle className="w-2.5 h-2.5" /> Critical
+                </span>
+              )}
+              <span className={`inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                isScheduled ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+              }`}>
+                {isScheduled ? "Scheduled" : "Transactional"}
+              </span>
+            </div>
           </div>
 
           {t.trigger_description && (
@@ -629,31 +730,36 @@ function EditTemplateView({ template: t, onClose, onSaved }: { template: Templat
 }
 
 // ---------------------------------------------------------------------------
-// Pause / activate confirmation modal
+// Pause confirmation modal — two tiers. Turning an email back on never opens
+// this at all (see requestToggle), it just resumes.
 // ---------------------------------------------------------------------------
 
-function ConfirmToggleModal({ template, onCancel, onConfirm, busy }: {
+function ConfirmPauseModal({ template, onCancel, onConfirm, busy }: {
   template: Template;
   onCancel: () => void;
   onConfirm: () => void;
   busy: boolean;
 }) {
-  const pausing = template.is_active !== false;
+  const critical = isCriticalTemplate(template);
   return (
     <div className="fixed inset-0 bg-foreground/50 z-50 flex items-center justify-center p-4 max-md:items-end max-md:p-0" onClick={onCancel}>
       <div className="bg-card border border-border rounded-xl p-5 w-full max-w-sm max-md:max-w-full max-md:w-full max-md:rounded-b-none max-md:rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${pausing ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
-            <Power className="w-4 h-4" />
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            style={critical ? { background: "#FCE4E1", color: "#C0392B" } : { background: "#FDE8DF", color: "#D4613C" }}
+          >
+            {critical ? <AlertTriangle className="w-4 h-4" /> : <Power className="w-4 h-4" />}
           </div>
           <div className="flex-1">
-            <h3 className="font-bold text-sm">{pausing ? `Pause ${template.name}?` : `Activate ${template.name}?`}</h3>
-            <p className="text-xs text-text-med mt-1 leading-relaxed">
-              {pausing ? (
-                <>No new <b>{template.trigger_event}</b> emails will be sent until you turn this back on.</>
-              ) : (
-                <>This template will start sending again automatically on its configured trigger.</>
-              )}
+            <h3 className="font-bold text-sm" style={critical ? { color: "#C0392B" } : undefined}>
+              {critical ? `This is a critical email. Pause ${template.name}?` : `Pause ${template.name}?`}
+            </h3>
+            <p className="text-xs text-text-med mt-1.5 leading-relaxed">
+              {critical ? criticalConsequence(template) : <>No new <b>{template.trigger_event}</b> emails will be sent until you turn this back on.</>}
+            </p>
+            <p className="text-[11px] text-text-light mt-2 leading-relaxed">
+              Nothing breaks and no error appears anywhere, it will just quietly stop sending, so this is easy to forget about.
             </p>
           </div>
         </div>
@@ -662,9 +768,10 @@ function ConfirmToggleModal({ template, onCancel, onConfirm, busy }: {
           <button
             onClick={onConfirm}
             disabled={busy}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 ${pausing ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-forest text-primary-foreground hover:bg-forest-deep"}`}
+            className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-40 text-white"
+            style={{ background: critical ? "#C0392B" : "#D4613C" }}
           >
-            {busy ? "Saving…" : pausing ? "Pause email" : "Activate email"}
+            {busy ? "Saving…" : critical ? "Yes, pause this critical email" : "Pause email"}
           </button>
         </div>
       </div>
