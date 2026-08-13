@@ -303,6 +303,12 @@ export default function SellerDashboardPage() {
                             <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => navigate(`/sell/listings/${l.id}/price`)}>Lower price</button>
                             <button className="mkt-secondary" style={{ flex: 1, borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => setChangesTarget(l)}>Make changes</button>
                           </div>
+                          {/* A third row, not squeezed into the row above — three
+                              full-size buttons across a phone width overflows.
+                              Full width and WhatsApp green on purpose: sharing to
+                              Status is the single most effective thing a seller
+                              can do for a slow listing, it earns the emphasis. */}
+                          <button className="mkt-secondary" style={{ borderColor: "#25D366", color: "#178a45" }} onClick={() => navigate(`/sell/share/${l.id}`)}>Share on WhatsApp</button>
                         </div>
                       );
                     }

@@ -19,6 +19,21 @@ export function formatNaira(value: number | null | undefined): string {
   return `₦${Math.round(n).toLocaleString("en-NG")}`;
 }
 
+/** Fetches an already-uploaded, already-watermarked-and-square listing photo
+ * (a plain public LISTING_BUCKET URL) and turns it into a File — the Web
+ * Share API's canShare/share both need an actual File, not a URL. Used only
+ * by the seller listing-share page; every other helper in this file goes
+ * the other direction (a File picked on-device, on its way up). Throws on a
+ * failed fetch (offline, CORS, a deleted object) — callers treat that as
+ * "sharing the photo as a file isn't available right now" and degrade to a
+ * text-only or manual fallback rather than surfacing a raw error. */
+export async function fetchListingPhotoAsFile(url: string, filename = "listing-photo.jpg"): Promise<File> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not fetch the photo (${res.status})`);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
 /**
  * Raised when a selected file cannot be decoded as an image at all, for
  * example a PDF or a corrupt file renamed to .jpg. Distinct from every other

@@ -6335,3 +6335,38 @@ Verified via clean `tsc --noEmit`, clean `eslint` on every touched file (one pre
 Files touched: `src/marketplace/sell/DelistToEditSheet.tsx` (new), `src/marketplace/sell/sellData.ts`, `src/marketplace/sell/SellerDashboardPage.tsx`, `src/marketplace/sell/SellerPriceEditPage.tsx`, `src/marketplace/sell/CreateListingPage.tsx`.
 
 `npm run build` clean.
+
+## 67. WhatsApp Status share page built, unblocking the already-deployed abandoned-listing email (2026-08-12)
+
+**Before, audited**: `navigator.share`/`navigator.canShare` were not used anywhere in `src/marketplace/` — three storefront-only usages existed elsewhere (`quizListPdf.ts`, `GiftResultsPage.tsx`, `ProductPage.tsx`); `quizListPdf.ts`'s pattern (`canShare({files})` + `typeof share === "function"`, `AbortError` treated as a silent cancel) was the closest precedent and is what this follows. No share action existed anywhere on listing detail or the seller dashboard. Seller routes are flat `<Route path="/sell/...">` entries in `MarketplaceApp.tsx`; `/sell/share/:listingId` slots into that same list. Listing photos live in the public `marketplace-listings` bucket as plain URLs, already watermarked ("Buy Used Baby/Children Items on BundledMum") and square-cropped at upload time, confirmed by reading the actual `drawWatermark`/`processListingImage` code, not assumed — no reprocessing needed, the stored `image_url` is already Status-ready. No file existed to turn a stored photo URL back into a `File` for sharing, since every existing upload helper goes the other direction (a picked `File` going up).
+
+**Built**: `SellerListingSharePage.tsx` at `/sell/share/:listingId`. Ownership follows the same convention every other seller page already uses — the fetch itself is scoped with `.eq("seller_id", seller!.id)`, backed by RLS, never fetched unscoped and compared client-side, so someone else's listing id in the URL returns nothing and reads as "not found." Live-verified: an unauthenticated visit correctly bounced to `/marketplace/login?returnTo=%2Fsell%2Fshare%2F<id>&reason=seller`, the exact same gate every other seller page uses, proving the route, the auth redirect, and the `returnTo` wiring all work end to end.
+
+**Share text, exact wording used**:
+> Selling this: {title} for {price}. Check it out on BundledMum Marketplace: {listing url}
+
+Item name, price, and a link to the listing, as asked. Never a separate `url:` field alongside `files:` (some browsers reject that combination) — the link always lives inside `text`, matching how `quizListPdf.ts` already does it.
+
+**Support detection, in order, never assumed from device/browser sniffing**:
+1. `typeof navigator.share !== "function"` → **manual** (no Web Share API at all, overwhelmingly desktop).
+2. Otherwise, if there's no photo or `navigator.canShare` doesn't exist → **text**.
+3. Otherwise, the photo is actually fetched and turned into a real `File` (new `fetchListingPhotoAsFile()` in `sellData.ts`), and `canShare` is asked about *that exact file* — support can depend on the file itself, not just the API's presence, so the check has to use a real file, not a guess. If `canShare` says yes → **files**; if no, or the fetch/build fails for any reason (offline, CORS, a deleted object) → **text**.
+
+Live-confirmed the real environment here (a desktop-class Electron/Chrome browser) reports `navigator.share`/`navigator.canShare` as both absent, exactly the condition the **manual** branch is gated on — direct proof that branch fires correctly for genuine desktop browsers, not just in theory.
+
+**The three fallbacks**:
+- **files**: one WhatsApp-green "Share to WhatsApp" button calls `navigator.share({ files: [photoFile], text })` — photo and text together, the best case, two taps from there (WhatsApp, then My Status).
+- **text**: the same button, `navigator.share({ text })` only (no `files` key at all). A note underneath: *"Your phone can't attach the photo automatically here. Save the photo above yourself (press and hold it), and add it to your Status along with the message."* — the listing photo is shown full-size on the page specifically so a long-press-to-save is right there, not a separate flow.
+- **manual**: no share button (the API doesn't exist to call). A note that sharing works best from a phone, the message shown in a selectable box with a "Copy message" button (Clipboard API), and a "Download photo" button that fetches the image into a real `Blob`/object URL and triggers a genuine download — a plain `<a download>` on a cross-origin Supabase URL would just open the image instead of downloading it, so this fetches first rather than relying on that attribute alone.
+
+**Never a dead end on error**: a share attempt can fail even in the files/text branches (a dismissed permission prompt, a transient failure) — `AbortError` (the sheet closed without picking anything) is treated as a silent cancel, any other failure shows an error message plus a "Copy message" fallback button, found and fixed during this same pass so the error copy's own promise ("copy the message below") was actually true in every mode, not just manual.
+
+**Dashboard**: live listings get a third, full-width "Share on WhatsApp" button below the existing "Lower price"/"Make changes" row (not squeezed into that same row — three full-label buttons across a phone width would overflow), styled in WhatsApp green per brand, linking straight to `/sell/share/:id`. The existing two-button row is untouched.
+
+**Preserved**: Make changes and Lower price (§66), the listing edit/delist rules (still enforced entirely server-side, this page never attempts to touch listing content), sections 7 through 66.
+
+Verified via clean `tsc --noEmit`, clean `eslint` on every touched file, clean `npm run build`, and the live route/auth-gate check above. A full authenticated walkthrough with a real live listing needs a real seller inbox this environment doesn't have (same limitation as every other seller-authenticated screen this session), so the actual share-mode UI states are code-reviewed and build-verified, not watched rendering with real data.
+
+Files touched: `src/marketplace/sell/SellerListingSharePage.tsx` (new), `src/marketplace/sell/sellData.ts`, `src/marketplace/MarketplaceApp.tsx`, `src/marketplace/sell/SellerDashboardPage.tsx`.
+
+`npm run build` clean.

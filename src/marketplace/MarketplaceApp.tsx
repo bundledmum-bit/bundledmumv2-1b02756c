@@ -28,6 +28,7 @@ import BuyerReturnPage from "./checkout/BuyerReturnPage";
 import BuyerOfferPage from "./checkout/BuyerOfferPage";
 import SellerOfferPage from "./sell/SellerOfferPage";
 import SellerQuestionDetailPage from "./sell/SellerQuestionDetailPage";
+import SellerListingSharePage from "./sell/SellerListingSharePage";
 import TermsPage from "./policy/TermsPage";
 import PrivacyPage from "./policy/PrivacyPage";
 import BuyerProtectionPage from "./policy/BuyerProtectionPage";
@@ -96,6 +97,7 @@ export default function MarketplaceApp() {
             <Route path="/sell/new" element={<CreateListingPage />} />
             <Route path="/sell/listings/:id/edit" element={<CreateListingPage />} />
             <Route path="/sell/listings/:id/price" element={<SellerPriceEditPage />} />
+            <Route path="/sell/share/:listingId" element={<SellerListingSharePage />} />
             <Route path="/sell/dashboard" element={<SellerDashboardPage />} />
             <Route path="/sell/payouts" element={<SellerPayoutsPage />} />
             <Route path="/sell/orders/:orderId" element={<SellerOrderDetailPage />} />
