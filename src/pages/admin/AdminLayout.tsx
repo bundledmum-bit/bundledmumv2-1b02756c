@@ -95,6 +95,7 @@ function AdminLayoutInner() {
     { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
     { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
     { label: "Money owed", to: "/admin/marketplace/money-owed", icon: Coins },
+    { label: "Finance", to: "/admin/marketplace/finance", icon: BarChart3 },
     { label: "Categories", to: "/admin/marketplace/categories", icon: ListTree },
     { label: "Featured categories", to: "/admin/marketplace/featured-categories", icon: Star },
     { label: "Settings", to: "/admin/marketplace/settings", icon: Settings },
