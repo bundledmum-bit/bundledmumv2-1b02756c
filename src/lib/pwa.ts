@@ -34,6 +34,14 @@ export function isIosSafari(): boolean {
   return /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA/.test(ua);
 }
 
+/** Chrome on iOS (CriOS) — same iOS "Add to Home Screen" system action as
+ * Safari since iOS 16.4, but reached through Chrome's own Share icon next to
+ * its address bar rather than Safari's toolbar. See InstallSequence.tsx. */
+export function isIosChrome(): boolean {
+  if (!isIos()) return false;
+  return /CriOS/.test(navigator.userAgent || "");
+}
+
 /** Register the minimal service worker. Non-blocking — never delays render. */
 export function registerServiceWorker(): void {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;

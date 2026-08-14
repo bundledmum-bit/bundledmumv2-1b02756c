@@ -6,6 +6,7 @@ import {
   isStandalone,
   isIos,
   isIosSafari,
+  isIosChrome,
   isPwaInstalledFlag,
   hasRelatedInstalledApp,
 } from "@/lib/pwa";
@@ -43,5 +44,6 @@ export function usePwaInstall() {
     installed,
     isIos: isIos(),
     isIosSafari: isIosSafari(),
+    isIosChrome: isIosChrome(),
   };
 }

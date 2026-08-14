@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePwaInstall } from "@/hooks/usePwaInstall";
 import MarketplaceSeo from "./components/MarketplaceSeo";
+import InstallSequence, { type SeqBrowser } from "./components/InstallSequence";
 
 /**
  * Marketplace "Install the app" screen — mirrors the storefront's InstallApp.tsx
@@ -15,8 +16,14 @@ import MarketplaceSeo from "./components/MarketplaceSeo";
  * below. Copy is hardcoded here, same as AdminInstall.tsx's own pattern.
  */
 export default function InstallPage() {
-  const { canInstallNative, promptInstall, isStandalone, isIos } = usePwaInstall();
+  const { canInstallNative, promptInstall, isStandalone, isIos, isIosChrome } = usePwaInstall();
   const [installed, setInstalled] = useState(false);
+  // Detection picks the default; the switch inside InstallSequence covers the
+  // rest (detection reading the wrong thing, or someone reading on one device
+  // to set another up). Any iOS browser we can't tell apart from Safari or
+  // Chrome (Firefox, Edge, an in-app browser) defaults to Safari, since that
+  // path always works — some third-party browsers on older iOS can't A2HS at all.
+  const initialSeqBrowser: SeqBrowser = isIosChrome ? "chrome" : "safari";
 
   useEffect(() => {
     const onInstalled = () => setInstalled(true);
@@ -66,16 +73,22 @@ export default function InstallPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <div className="mkt-step">
                     <span className="mkt-step-num">1</span>
-                    <span>Open <strong>bundledmum.com/marketplace</strong> in <strong>Safari</strong>.</span>
+                    <span>Open <strong>bundledmum.com/marketplace</strong> in <strong>Safari</strong> or <strong>Chrome</strong>.</span>
                   </div>
                   <div className="mkt-step">
                     <span className="mkt-step-num">2</span>
-                    <span>Tap the <strong>Share</strong> button.</span>
+                    <span>Tap the <strong>Share</strong> icon (shown below for your browser).</span>
                   </div>
                   <div className="mkt-step">
                     <span className="mkt-step-num final">3</span>
-                    <span>Choose <strong>Add to Home Screen</strong>.</span>
+                    <span>Scroll down and choose <strong>Add to Home Screen</strong>.</span>
                   </div>
+                </div>
+              )}
+
+              {isIos && (
+                <div style={{ marginTop: 20 }}>
+                  <InstallSequence initial={initialSeqBrowser} />
                 </div>
               )}
 
