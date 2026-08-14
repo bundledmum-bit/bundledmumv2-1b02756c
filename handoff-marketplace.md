@@ -6498,3 +6498,11 @@ Verified via clean `tsc --noEmit` and clean `npm run build`. This is an authenti
 Files touched: `src/pages/admin/marketplace/MarketplaceFinance.tsx`, `src/StorefrontApp.tsx`, `src/pages/admin/AdminLayout.tsx`, `handoff-marketplace.md`.
 
 `npm run build` clean.
+
+## 72. Finance: monthly history as stacked cards on mobile, not a horizontal-scroll table (2026-08-14)
+
+Follow-up to §71. The stat grids and the escrow liability block were already 2-column on mobile (`grid-cols-2`) and needed no change, but "Monthly history" was still a `overflow-x-auto` table — usable but cramped once genuinely used on a phone. Mirrored the storefront finance screen's own mobile pattern (`useIsMobile()` from `@/hooks/use-mobile`, already used by `AdminFinance.tsx`'s `FCardList`/`FCard`): on mobile, each month renders as its own card (month + total collected as the header row, orders/take rate/owed-to-sellers/gross revenue/held-in-escrow/refunded as label:value pairs below, same color rules as the table — escrow coral when non-zero, refunded red when non-zero), desktop keeps the existing table unchanged.
+
+Files touched: `src/pages/admin/marketplace/MarketplaceFinance.tsx`.
+
+`npm run build` clean.

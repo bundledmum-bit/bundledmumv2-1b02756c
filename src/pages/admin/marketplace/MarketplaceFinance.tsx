@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { adb, formatNaira } from "./opsData";
 import { OpsHeader, OpsEmpty } from "./opsUi";
 
@@ -56,6 +57,7 @@ function monthLabel(iso: string): string {
 }
 
 export default function MarketplaceFinance() {
+  const isMobile = useIsMobile();
   const { data, isLoading } = useQuery({
     queryKey: ["mkt-finance"],
     staleTime: 30000,
@@ -161,37 +163,62 @@ export default function MarketplaceFinance() {
       </div>
 
       <SectionLabel>Monthly history</SectionLabel>
-      <div className="mt-2 rounded-2xl border overflow-hidden" style={{ borderColor: "#F0DDD2" }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left" style={{ background: "#FFF8F4" }}>
-                <Th>Month</Th><Th>Orders</Th><Th>Collected</Th><Th>Owed to sellers</Th><Th>Gross revenue</Th><Th>Take rate</Th><Th>Held in escrow</Th><Th>Pending payout</Th><Th>Refunded</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {finance.map((r) => {
-                const escrow = n(r.held_in_escrow_naira);
-                const pending = n(r.pending_payout_naira);
-                const refunded = n(r.refunded_naira);
-                return (
-                  <tr key={r.month} className="border-t" style={{ borderColor: "#F0DDD2" }}>
-                    <Td>{monthLabel(r.month)}</Td>
-                    <Td>{n(r.orders)}</Td>
-                    <Td><span className="tabular-nums font-heading font-bold">{formatNaira(r.total_collected_naira)}</span></Td>
-                    <Td><span className="tabular-nums">{formatNaira(r.owed_to_sellers_naira)}</span></Td>
-                    <Td><span className="tabular-nums">{formatNaira(r.gross_revenue_naira)}</span></Td>
-                    <Td>{n(r.take_rate_percent).toFixed(1)}%</Td>
-                    <Td><span className="tabular-nums" style={escrow > 0 ? { color: "#D4613C" } : undefined}>{formatNaira(escrow)}</span></Td>
-                    <Td><span className="tabular-nums" style={pending > 0 ? { color: "#D4613C" } : undefined}>{formatNaira(pending)}</span></Td>
-                    <Td><span className="tabular-nums" style={refunded > 0 ? { color: "#C0392B" } : undefined}>{formatNaira(refunded)}</span></Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {isMobile ? (
+        <div className="mt-2 space-y-2">
+          {finance.map((r) => {
+            const escrow = n(r.held_in_escrow_naira);
+            const refunded = n(r.refunded_naira);
+            return (
+              <div key={r.month} className="rounded-2xl border p-3" style={{ borderColor: "#F0DDD2", background: "#fff" }}>
+                <div className="flex items-baseline justify-between">
+                  <div className="text-[13px] font-heading font-bold text-foreground">{monthLabel(r.month)}</div>
+                  <div className="text-[13px] font-heading font-bold text-foreground tabular-nums">{formatNaira(r.total_collected_naira)}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-[11px]">
+                  <HistoryRow label="Orders" value={String(n(r.orders))} />
+                  <HistoryRow label="Take rate" value={`${n(r.take_rate_percent).toFixed(1)}%`} />
+                  <HistoryRow label="Owed to sellers" value={formatNaira(r.owed_to_sellers_naira)} />
+                  <HistoryRow label="Gross revenue" value={formatNaira(r.gross_revenue_naira)} color="#1A4A33" />
+                  <HistoryRow label="Held in escrow" value={formatNaira(escrow)} color={escrow > 0 ? "#D4613C" : undefined} />
+                  <HistoryRow label="Refunded" value={formatNaira(refunded)} color={refunded > 0 ? "#C0392B" : undefined} />
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      ) : (
+        <div className="mt-2 rounded-2xl border overflow-hidden" style={{ borderColor: "#F0DDD2" }}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left" style={{ background: "#FFF8F4" }}>
+                  <Th>Month</Th><Th>Orders</Th><Th>Collected</Th><Th>Owed to sellers</Th><Th>Gross revenue</Th><Th>Take rate</Th><Th>Held in escrow</Th><Th>Pending payout</Th><Th>Refunded</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {finance.map((r) => {
+                  const escrow = n(r.held_in_escrow_naira);
+                  const pending = n(r.pending_payout_naira);
+                  const refunded = n(r.refunded_naira);
+                  return (
+                    <tr key={r.month} className="border-t" style={{ borderColor: "#F0DDD2" }}>
+                      <Td>{monthLabel(r.month)}</Td>
+                      <Td>{n(r.orders)}</Td>
+                      <Td><span className="tabular-nums font-heading font-bold">{formatNaira(r.total_collected_naira)}</span></Td>
+                      <Td><span className="tabular-nums">{formatNaira(r.owed_to_sellers_naira)}</span></Td>
+                      <Td><span className="tabular-nums">{formatNaira(r.gross_revenue_naira)}</span></Td>
+                      <Td>{n(r.take_rate_percent).toFixed(1)}%</Td>
+                      <Td><span className="tabular-nums" style={escrow > 0 ? { color: "#D4613C" } : undefined}>{formatNaira(escrow)}</span></Td>
+                      <Td><span className="tabular-nums" style={pending > 0 ? { color: "#D4613C" } : undefined}>{formatNaira(pending)}</span></Td>
+                      <Td><span className="tabular-nums" style={refunded > 0 ? { color: "#C0392B" } : undefined}>{formatNaira(refunded)}</span></Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -208,6 +235,15 @@ function Stat({ label, value, sub, tone, emphasize }: {
       <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">{label}</div>
       <div className="text-lg font-heading font-black mt-0.5" style={{ color: tone === "negative" ? "#C0392B" : emphasize ? "#1A4A33" : "#1A1A1A" }}>{value}</div>
       {sub && <div className="text-[10px] text-text-light mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function HistoryRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="flex items-baseline justify-between text-text-med">
+      <span>{label}</span>
+      <span className="tabular-nums font-medium" style={color ? { color } : { color: "#1A1A1A" }}>{value}</span>
     </div>
   );
 }
