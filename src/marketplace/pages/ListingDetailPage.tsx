@@ -359,6 +359,20 @@ export default function ListingDetailPage() {
             ‹
           </button>
           {heroState && <span className="mkt-hero-state">{heroState}</span>}
+          {/* The only visible sign the photo opens fullscreen — nothing else on
+              the hero hinted at this before (desktop had a hover cursor,
+              mobile had nothing). Doubles as the photo count, since a buyer
+              scanning past scrollable thumbnails may never notice there are
+              more. Sits over the tap button, pointer-events off so the tap
+              still lands on the button underneath. */}
+          {hero && (
+            <span className="mkt-hero-cue" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+              </svg>
+              {images.length > 1 && <span>{Math.max(0, images.indexOf(hero)) + 1} / {images.length}</span>}
+            </span>
+          )}
         </div>
 
         {images.length > 1 ? (
