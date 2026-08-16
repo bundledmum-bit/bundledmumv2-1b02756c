@@ -134,6 +134,44 @@ export default function CheckoutPage() {
     if (detailsValid) { setCommitted(true); checkoutIntent.current = true; }
   }
 
+  // Capture-as-they-type: someone who fills in a name and email and then
+  // leaves, before ever clicking "Continue to payment", currently vanishes
+  // entirely — no order, no record. One attempt id per visit to this page,
+  // reused for every call so record_checkout_attempt's upsert updates the
+  // same row rather than creating a new one per keystroke. Debounced 1.2s
+  // (long enough that a normal typing pause doesn't fire mid-word, short
+  // enough to still catch someone who leaves shortly after). Fire and
+  // forget, same shape as sendMarketplaceConversionEvent: never awaited,
+  // wrapped in try/catch, a failure is invisible to the buyer. Only runs
+  // while there's an actual form to type into (showDetailsForm) — a
+  // signed-in buyer with everything already on file skips straight to
+  // order creation, which is the 'order' source the abandoned-checkouts
+  // view already covers.
+  const attemptId = useRef<string>(crypto.randomUUID());
+  const attemptRecorded = useRef(false);
+  useEffect(() => {
+    if (!showDetailsForm || !listingId) return;
+    const name = nameInput.trim();
+    const email = emailInput.trim();
+    const phone = (hasAltPhone ? altPhoneInput : phoneInput).trim();
+    if (!name && !email && !phone) return;
+    const t = setTimeout(() => {
+      try {
+        cdb.rpc("record_checkout_attempt", {
+          p_attempt_id: attemptId.current,
+          p_listing_id: listingId,
+          p_full_name: name || undefined,
+          p_email: email || undefined,
+          p_phone: phone || undefined,
+        }).then(() => { attemptRecorded.current = true; }, () => { /* best effort */ });
+      } catch {
+        /* tracking is best-effort only, must never be visible to the buyer */
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [showDetailsForm, listingId, nameInput, emailInput, phoneInput, altPhoneInput, hasAltPhone]);
+  const attemptLinked = useRef(false);
+
   const { data: settings } = useQuery({
     queryKey: ["mkt-checkout-settings"],
     queryFn: async () => {
@@ -184,6 +222,24 @@ export default function CheckoutPage() {
     }),
   });
   const order = orderQ.data?.order;
+
+  // Once a real order exists, fold the attempt into it so the same person
+  // never shows up as two separate stalled rows (a typed-then-abandoned
+  // attempt and, if they come back and pay, an unrelated order). No-ops
+  // harmlessly if nothing was ever recorded (attemptRecorded false — e.g. a
+  // signed-in buyer who never saw the form at all).
+  useEffect(() => {
+    if (!order || !attemptRecorded.current || attemptLinked.current) return;
+    attemptLinked.current = true;
+    try {
+      cdb.rpc("link_checkout_attempt_to_order", { p_attempt_id: attemptId.current, p_order_id: order.id }).then(() => {}, () => {
+        /* best effort */
+      });
+    } catch {
+      /* tracking is best-effort only, must never be visible to the buyer */
+    }
+  }, [order]);
+
   // True when the server found this buyer's accepted price had passed its
   // 24-hour deadline by the time the order was actually created — a real,
   // expected outcome (the listing page's own countdown can reach the buyer

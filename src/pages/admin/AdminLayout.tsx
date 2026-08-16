@@ -11,7 +11,7 @@ import {
   Package, ShoppingBag, ClipboardList, Truck, MessageSquare, Settings,
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
-  Smartphone, Banknote, Gavel, Coins, ClipboardCheck, ListTree, Contact, Star,
+  Smartphone, Banknote, Gavel, Coins, ClipboardCheck, ListTree, Contact, Star, ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
@@ -88,6 +88,7 @@ function AdminLayoutInner() {
     { label: "Payout queue", to: "/admin/marketplace/payouts", icon: Banknote },
     { label: "Review queue", to: "/admin/marketplace/review", icon: ClipboardCheck, badge: mktPendingCount },
     { label: "Follow up", to: "/admin/marketplace/outreach", icon: Megaphone },
+    { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
     { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
     { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },
     { label: "Sellers", to: "/admin/marketplace/sellers", icon: Users },
