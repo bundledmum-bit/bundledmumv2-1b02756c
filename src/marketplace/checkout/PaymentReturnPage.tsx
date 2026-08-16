@@ -5,6 +5,7 @@ import { useMarketplaceWhatsAppNumber, waHref, waContextHref } from "../lib/what
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import ProtectionBadge from "../components/ProtectionBadge";
 
 /**
  * Payment return, where Paystack sends the buyer back with ?reference=. It
@@ -126,7 +127,7 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
       <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div className="check">✓</div>
-          <div className="mkt-sticker"><span className="ic">🛡</span>We refund you if it's not as described</div>
+          <ProtectionBadge />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>

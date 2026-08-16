@@ -12,6 +12,7 @@ import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutEr
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import ProtectionBadge from "../components/ProtectionBadge";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -494,7 +495,6 @@ export default function CheckoutPage() {
               <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to collect it yourself or agree a send and who covers it.</div>
               <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>Not as described? Send it back and get refunded the same day it arrives with the seller.</div>
             </div>
 
             {!showDetailsForm && (
@@ -538,6 +538,11 @@ export default function CheckoutPage() {
       {/* Paystack pay button */}
       {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && (
         <div className="mkt-sell-foot">
+          {/* Same protection promise as the payment confirmation page, word
+              for word — right before the money actually moves. See
+              ProtectionBadge.tsx. Centered, not stretched, so it reads as a
+              small badge rather than competing with the button below it. */}
+          <ProtectionBadge style={{ alignSelf: "center" }} />
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
             {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}

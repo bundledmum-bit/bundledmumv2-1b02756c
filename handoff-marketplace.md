@@ -6560,3 +6560,35 @@ Files touched: `src/marketplace/components/InstallSequence.tsx` (new), `src/mark
 Files touched: `src/marketplace/pages/ListingDetailPage.tsx`, `src/marketplace/marketplace.css`.
 
 `npm run build` clean.
+
+## 75. The protection promise moved to before the decision, not just after it (2026-08-16)
+
+**Audit first**:
+
+1. **The confirmation page's exact wording, quoted verbatim** — `PaymentReturnPage.tsx`'s `PaidState`, a `.mkt-sticker` element sitting top-right next to the big checkmark, above the "Paid, and your money is safe with us" heading:
+   ```
+   <div className="mkt-sticker"><span className="ic">🛡</span>We refund you if it's not as described</div>
+   ```
+   Styling (`.mkt-sticker` in `marketplace.css`): a rotated (`-4deg`) pill, dashed 2px coral border, cream background, green-dark bold Nunito text, drop shadow, `max-width: 150px` — a deliberate "sticker," not a plain banner.
+
+2. **What listing detail and checkout already carried**:
+   - **Listing detail**: nothing. The file's own top-of-file docstring claims it has "an escrow reassurance note" — that's stale documentation, not real code; no protection/refund wording exists anywhere in the actual JSX, confirmed by grep. (The one `.mkt-reassure` block that does exist there is unrelated — it only renders for multi-quantity listings, confirming "the seller says all N are identical," a different topic entirely, left untouched.)
+   - **Checkout**: yes, and it **differed** — inside `.mkt-heldbox`'s four-line explainer ("Your money is held, not sent"), the fourth line read *"Not as described? Send it back and get refunded the same day it arrives with the seller."* A same-day promise the confirmation page doesn't make, and a real competing claim sitting on the one page where someone is about to pay. Per the task's own instruction, this was replaced rather than left alongside the new one.
+
+3. **Files touched**: `src/marketplace/components/ProtectionBadge.tsx` (new, the single shared source), `src/marketplace/checkout/PaymentReturnPage.tsx`, `src/marketplace/checkout/CheckoutPage.tsx`, `src/marketplace/pages/ListingDetailPage.tsx`.
+
+4. **Mismatch worth flagging**: only the stale docstring above — the prompt itself matched the real code everywhere else.
+
+**Shared, so it can't drift**: `ProtectionBadge.tsx` renders the exact original markup (`<div className="mkt-sticker"><span className="ic">🛡</span>We refund you if it's not as described</div>`), byte-identical, as its only content — an optional `style` prop exists purely for placement (e.g. centering) and never touches the wording or the `.mkt-sticker` class. `PaymentReturnPage.tsx`'s own inline JSX was replaced with `<ProtectionBadge />` too, so all three call sites now import the same component and the sentence is written in exactly one file in the whole codebase.
+
+**Placement**:
+- **Listing detail**: directly after the price block (price, title, "bought new at," availability) and before anything else — the first thing after the number someone is deciding whether to pay, not buried under the description or seller row.
+- **Checkout**: inside the `.mkt-sell-foot` block that holds the actual Paystack "Pay ₦X" button, immediately above it, centered (`alignSelf: "center"`) so the naturally-full-width flex footer doesn't stretch a small rotated sticker into an odd banner shape. Live-verified at 375×812: filled the contact form, reached the pay step, and the badge renders correctly, compact and centered, directly above "Pay ₦19,391" without overlapping or visually competing with it.
+
+**Live-verified, all three**: listing detail (real listing, 375×812) shows the badge right below the price with its rotated-sticker look intact; checkout shows it immediately above the pay button after completing the contact-details step; the confirmation page's own version was not re-screenshotted (unreachable without a real payment in this environment) but is a pure refactor — same props, same markup, `style={undefined}` — so it renders byte-for-byte as before.
+
+**Preserved**: the confirmation page exactly as it was (only the JSX authoring changed, not the output); listing detail's price block, buy action, sticky panel and mobile buy bar (badge sits between the price block and the rest of the body, doesn't touch any of those); checkout's line breakdown, pay button, and negotiated-price path (only the one competing `.hb-line` was removed, the other three explainer lines and the whole payment flow are untouched); sections 7 through 74.
+
+Files touched: `src/marketplace/components/ProtectionBadge.tsx` (new), `src/marketplace/checkout/PaymentReturnPage.tsx`, `src/marketplace/checkout/CheckoutPage.tsx`, `src/marketplace/pages/ListingDetailPage.tsx`.
+
+`npm run build` clean.

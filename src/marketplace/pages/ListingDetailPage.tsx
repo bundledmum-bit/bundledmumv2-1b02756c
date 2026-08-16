@@ -30,6 +30,7 @@ import { fetchGoneListingContext, fetchOwnListingIfMine } from "../lib/goneListi
 import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundOrGoneScreen";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
+import ProtectionBadge from "../components/ProtectionBadge";
 
 const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
 
@@ -448,6 +449,11 @@ export default function ListingDetailPage() {
             <span className={available === 1 ? "mkt-avail low" : "mkt-avail"}>{available === 1 ? "Last one" : `${available} available`}</span>
           )}
         </div>
+
+        {/* Same protection promise as the payment confirmation page, word
+            for word — here is where hesitation actually happens, before
+            the decision, not after paying. See ProtectionBadge.tsx. */}
+        <ProtectionBadge />
 
         {multi && (
           <div className="mkt-reassure">
