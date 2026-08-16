@@ -124,9 +124,14 @@ export default function CheckoutPage() {
   const showDetailsForm = !authLoading && profileLoaded && needAnyDetail && !committed;
   const canCreateOrder = isLoggedIn ? (profileLoaded && (!needAnyDetail || committed)) : committed;
 
+  // Marks genuine checkout intent for InitiateCheckout below — set the
+  // instant "Continue to payment" is actually clicked. Never used to gate
+  // the ORDER itself (that's committed/canCreateOrder, untouched); this is
+  // tracking-only.
+  const checkoutIntent = useRef(false);
   function commitDetails() {
     setTouched(true);
-    if (detailsValid) setCommitted(true);
+    if (detailsValid) { setCommitted(true); checkoutIntent.current = true; }
   }
 
   const { data: settings } = useQuery({
@@ -231,17 +236,26 @@ export default function CheckoutPage() {
   const feeAdded = payQ.data ? payQ.data.fee_added_by_paystack !== false : true;
   const transferTotal = itemPrice + serviceFee;
 
-  // InitiateCheckout, fired once per checkout load once a real order exists
-  // and its total is the authoritative figure the buyer actually sees below
-  // (paystackTotal once Paystack has priced it, or transferTotal on the bank
-  // fallback) — never a value computed separately here. Guarded by a ref, not
-  // sessionStorage, since this only needs to not re-fire within this one page
-  // load. Fire and forget: never blocks render, failures are swallowed.
+  // InitiateCheckout, fired on the "Continue to payment" CLICK, not on page
+  // load — checkoutIntent (set above, in commitDetails) is the click signal.
+  // A buyer whose profile already has everything needed never sees that
+  // button at all (showDetailsForm is false from the very first render for
+  // them), so !showDetailsForm stands in as their equivalent: there was
+  // nothing to click through, they arrived already committed by definition,
+  // same concept canCreateOrder already uses to skip the form for them.
+  // Either way, the actual firing still waits for a real order and its
+  // authoritative total (paystackTotal once Paystack has priced it, or
+  // transferTotal on the bank fallback) — never a value computed separately
+  // here, never fired just because data happened to become ready. Guarded by
+  // a ref, not sessionStorage, since this only needs to not re-fire within
+  // this one page load. Fire and forget: never blocks render, failures are
+  // swallowed.
   const checkoutTotal = paystackEnabled ? paystackTotal : transferTotal;
   const totalReady = paystackEnabled ? !!payQ.data : true;
+  const checkoutIntentReady = checkoutIntent.current || !showDetailsForm;
   const initiateCheckoutFired = useRef(false);
   useEffect(() => {
-    if (!order || !totalReady || initiateCheckoutFired.current) return;
+    if (!order || !totalReady || !checkoutIntentReady || initiateCheckoutFired.current) return;
     initiateCheckoutFired.current = true;
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
@@ -256,7 +270,35 @@ export default function CheckoutPage() {
       email,
       phone,
     });
-  }, [order, totalReady, checkoutTotal]);
+  }, [order, totalReady, checkoutTotal, checkoutIntentReady]);
+
+  // AddPaymentInfo, fired on the Pay click itself, right before the redirect
+  // to Paystack — same authoritative paystackTotal already shown on the
+  // button, never recomputed. window.location.assign is a full page
+  // navigation, which CAN cancel an in-flight tracking request the instant
+  // it fires, unlike the client-side navigate() Buy now uses. That's an
+  // accepted, explicitly sanctioned tradeoff here: both calls are fired
+  // synchronously and neither is awaited, so the redirect never waits on
+  // them — losing an occasional event to the navigation is fine, delaying
+  // someone's payment by even one network round trip is not.
+  function handlePay() {
+    if (!payQ.data) return;
+    const eventId = crypto.randomUUID();
+    const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
+    const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
+    track("AddPaymentInfo", { content_ids: [listingId], value: paystackTotal, currency: "NGN" }, eventId);
+    sendMarketplaceConversionEvent({
+      event_name: "AddPaymentInfo",
+      event_id: eventId,
+      event_source_url: window.location.href,
+      content_id: listingId as string,
+      value: paystackTotal,
+      email,
+      phone,
+    });
+    setRedirecting(true);
+    window.location.assign(payQ.data.authorization_url);
+  }
 
   async function copy(text: string, tag: string) {
     try { await navigator.clipboard.writeText(text); setCopied(tag); setTimeout(() => setCopied(null), 1600); } catch { /* clipboard blocked */ }
@@ -548,7 +590,7 @@ export default function CheckoutPage() {
               ProtectionBadge.tsx. */}
           <ProtectionBadge variant="card-row" />
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
-            onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
+            onClick={handlePay}>
             {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
           </button>
           <div className="helper">Card, transfer or USSD on Paystack</div>

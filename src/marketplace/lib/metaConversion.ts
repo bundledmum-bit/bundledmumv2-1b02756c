@@ -1,7 +1,7 @@
 import { mdb } from "../data/mdb";
 
 interface MarketplaceConversionEvent {
-  event_name: "ViewContent" | "InitiateCheckout";
+  event_name: "ViewContent" | "AddToCart" | "InitiateCheckout" | "AddPaymentInfo";
   event_id: string;
   event_source_url: string;
   content_id?: string;

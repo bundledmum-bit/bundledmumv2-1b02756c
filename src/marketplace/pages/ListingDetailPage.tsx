@@ -338,6 +338,32 @@ export default function ListingDetailPage() {
     setAskSheetOpen(true);
   }
 
+  // AddToCart, fired on the Buy now click itself, never on load — this is a
+  // real click-navigate handler, not a redirect, so there's no risk of the
+  // route change cancelling the in-flight tracking call the way a full page
+  // redirect (see Pay, in CheckoutPage.tsx) can. Fire and forget: navigate()
+  // runs unconditionally right after, regardless of whether tracking
+  // succeeds. value is exactly the price already shown on this button —
+  // never recomputed.
+  function handleBuyNow() {
+    const value = showAcceptedPrice ? myPrice! : listing.final_price_naira;
+    const eventId = crypto.randomUUID();
+    const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
+    const phone = buyerPhone ?? undefined;
+    track("AddToCart", { content_ids: [listing.id], content_name: listing.title, value, currency: "NGN" }, eventId);
+    sendMarketplaceConversionEvent({
+      event_name: "AddToCart",
+      event_id: eventId,
+      event_source_url: window.location.href,
+      content_id: listing.id,
+      content_name: listing.title,
+      value,
+      email,
+      phone,
+    });
+    navigate(showAcceptedPrice && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`);
+  }
+
   return (
     <div className="mkt-detail">
       <MarketplaceSeo
@@ -604,7 +630,7 @@ export default function ListingDetailPage() {
           <small>{multi ? "Price each" : "Price"}</small>
           <b>{formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}</b>
         </div>
-        <button className="mkt-buy" onClick={() => navigate(showAcceptedPrice && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`)}>
+        <button className="mkt-buy" onClick={handleBuyNow}>
           {showAcceptedPrice ? `Buy now at ${formatNaira(myPrice!)}` : multi ? "Buy one now" : "Buy now"}
         </button>
       </div>
