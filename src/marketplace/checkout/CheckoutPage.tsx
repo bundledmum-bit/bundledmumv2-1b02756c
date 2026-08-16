@@ -42,6 +42,41 @@ export default function CheckoutPage() {
   const { isLoggedIn, loading: authLoading, user } = useCustomerAuth();
   const waNumber = useMarketplaceWhatsAppNumber();
 
+  // Resuming an abandoned checkout from a WhatsApp link (§79's outreach).
+  // Two shapes, mutually exclusive: ?resume_order for someone whose order
+  // already exists, ?resume for someone who only typed details. Neither ever
+  // carries a name/email/phone itself, only an opaque id — the actual
+  // details are fetched server side, never round-tripped through the URL.
+  // Both RPCs return zero rows for the same two reasons collapsed into one
+  // WHERE clause (older than marketplace_resume_link_days, OR the listing
+  // is no longer live — confirmed by reading both functions' deployed SQL),
+  // genuinely indistinguishable from the result alone. Not needed here
+  // though: this page's own listingGone check below already renders its
+  // own "this one has just gone" screen and returns before any of this
+  // ever reaches the buyer, using the exact same listingId. So by the time
+  // an empty resume result would actually be shown, the listing is already
+  // known to be live — leaving link expiry as the only honest explanation
+  // left standing, not a guess.
+  const resumeOrderId = searchParams.get("resume_order") || undefined;
+  const resumeAttemptId = searchParams.get("resume") || undefined;
+  const resumeQ = useQuery({
+    queryKey: ["mkt-checkout-resume", resumeOrderId, resumeAttemptId],
+    enabled: !!(resumeOrderId || resumeAttemptId),
+    staleTime: Infinity,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = resumeOrderId
+        ? await cdb.rpc("get_order_resume_data", { p_order_id: resumeOrderId })
+        : await cdb.rpc("get_checkout_resume_data", { p_attempt_id: resumeAttemptId });
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{ listing_id: string; full_name: string | null; email: string | null; phone: string | null }>;
+      return rows[0] ?? null;
+    },
+  });
+  // null (not undefined) is the real "link expired" signal — undefined just
+  // means the query hasn't resolved yet, and must not be treated the same.
+  const resumeExpired = resumeQ.isFetched && resumeQ.data === null;
+
   const { data: listing, isLoading } = useListing(listingId);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -79,6 +114,21 @@ export default function CheckoutPage() {
   const [emailInput, setEmailInput] = useState("");
   const [committed, setCommitted] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [detailsRestored, setDetailsRestored] = useState(false);
+
+  // Pre-fill from a resume link once, the moment the data arrives. Guarded
+  // so it can never re-run and stomp over something the person has since
+  // typed themselves — this only ever fires the first time real data shows
+  // up, exactly like every other once-only effect in this file.
+  const resumePrefilled = useRef(false);
+  useEffect(() => {
+    if (!resumeQ.data || resumePrefilled.current) return;
+    resumePrefilled.current = true;
+    if (resumeQ.data.full_name) setNameInput(resumeQ.data.full_name);
+    if (resumeQ.data.email) setEmailInput(resumeQ.data.email);
+    if (resumeQ.data.phone) setPhoneInput(resumeQ.data.phone);
+    setDetailsRestored(true);
+  }, [resumeQ.data]);
 
   // A logged-in buyer's existing name/phone, to know what (if anything) to ask for.
   const profileQ = useQuery({
@@ -509,6 +559,23 @@ export default function CheckoutPage() {
                     The seller arranges delivery with you directly, so they need your name and number.{needEmail ? " Your receipt and order link go to your email." : ""} This is not an account, no password needed.
                   </span>
                 </div>
+
+                {/* Restored from a resume link — said plainly so it doesn't
+                    read as unexplained browser autofill. Only ever shown
+                    once, right where the fields it filled actually are. */}
+                {detailsRestored && (
+                  <div style={{ background: "var(--mkt-green-light)", borderRadius: 10, padding: "10px 12px", font: "400 12.5px/1.5 'Lato', sans-serif", color: "var(--mkt-green-dark)" }}>
+                    Welcome back. We've filled in what you told us before, have a look and change anything you need to.
+                  </div>
+                )}
+                {/* No row for this link (and the listing is confirmed live,
+                    or we'd already have returned above) — the honest
+                    explanation left is that it's simply had its time. */}
+                {resumeExpired && (
+                  <div style={{ background: "var(--mkt-cream)", border: "1px solid var(--mkt-error-ink)", borderRadius: 10, padding: "10px 12px", font: "400 12.5px/1.5 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>
+                    That link has had its time and no longer works. No problem, just pop your details in below and carry on.
+                  </div>
+                )}
 
                 {needName && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
