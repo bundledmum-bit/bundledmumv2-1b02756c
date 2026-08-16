@@ -6610,3 +6610,11 @@ Preserved: the exact wording (only the visual treatment changed), listing detail
 Files touched: `src/marketplace/components/ProtectionBadge.tsx`, `src/marketplace/marketplace.css`, `src/marketplace/checkout/CheckoutPage.tsx`, `src/marketplace/checkout/PaymentReturnPage.tsx`.
 
 `npm run build` clean.
+
+## 76a. Protection badge also on checkout's details step (2026-08-16)
+
+Follow-up to §76 — the badge had only been added above the Paystack "Pay ₦X" button, not above "Continue to payment" in the earlier details-entry step (name/phone/email), even though that step is also a commitment moment (handing contact details to a stranger before money even changes hands). Added the identical `<ProtectionBadge variant="card-row" />` to that footer too, directly above the "Continue to payment" button — live-verified at 375×812, matching the pay-step placement exactly.
+
+Files touched: `src/marketplace/checkout/CheckoutPage.tsx`.
+
+`npm run build` clean.

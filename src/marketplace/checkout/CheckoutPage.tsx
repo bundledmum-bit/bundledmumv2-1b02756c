@@ -528,6 +528,10 @@ export default function CheckoutPage() {
       {/* Details step: commit name/phone/email, which lets the order be created. */}
       {paystackEnabled && showDetailsForm && (
         <div className="mkt-sell-foot">
+          {/* Same badge as the pay step below — this is also a moment of
+              committing (their contact details go to a stranger), so the
+              same reassurance belongs here too. See ProtectionBadge.tsx. */}
+          <ProtectionBadge variant="card-row" />
           <button className="mkt-primary" onClick={commitDetails}>
             Continue to payment
           </button>
