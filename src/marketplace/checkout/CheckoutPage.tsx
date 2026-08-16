@@ -260,12 +260,13 @@ export default function CheckoutPage() {
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
     const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
-    track("InitiateCheckout", { content_ids: [listingId], value: checkoutTotal, currency: "NGN" }, eventId);
+    track("InitiateCheckout", { content_ids: [listingId], num_items: 1, value: checkoutTotal, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "InitiateCheckout",
       event_id: eventId,
       event_source_url: window.location.href,
       content_id: listingId as string,
+      num_items: 1,
       value: checkoutTotal,
       email,
       phone,

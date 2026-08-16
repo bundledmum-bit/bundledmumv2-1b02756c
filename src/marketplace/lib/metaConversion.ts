@@ -6,6 +6,13 @@ interface MarketplaceConversionEvent {
   event_source_url: string;
   content_id?: string;
   content_name?: string;
+  /** Meta's dynamic-ads catalog matching needs this on ViewContent/AddToCart
+   * to resolve content_id against the product catalog — always "product"
+   * here, there is no other content type in this catalog. */
+  content_type?: "product";
+  /** Recommended on InitiateCheckout — always 1, every marketplace order is
+   * exactly one listing (marketplace_orders has no quantity column). */
+  num_items?: number;
   value?: number;
   email?: string;
   phone?: string;
