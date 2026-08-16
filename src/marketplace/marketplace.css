@@ -800,8 +800,21 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 /* Refund reassurance sticker, top of the paid page. A slight rotation and a
    dashed border read as a stamp rather than another plain pill, distinct
    from .mkt-pill-held right below it. */
-.mkt-sticker { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; background: var(--mkt-cream); color: var(--mkt-green-dark); border: 2px dashed var(--mkt-coral); border-radius: 999px; padding: 8px 13px; font: 800 11.5px/1.25 'Nunito', sans-serif; transform: rotate(-4deg); box-shadow: 0 6px 16px rgba(26,26,26,0.16); max-width: 150px; text-align: center; }
-.mkt-sticker .ic { font-size: 15px; line-height: 1; }
+/* ProtectionBadge — a real bordered card, not a chip, so a scanning eye
+   actually registers it as a distinct block. Green throughout (never coral,
+   never red — red is reserved for disputes/failed payouts/destructive
+   confirms elsewhere in this system and would misread as a warning here).
+   Shield sits solid-filled in a green-dark circle at real icon weight
+   rather than as a loose emoji. Two size variants only — see
+   ProtectionBadge.tsx. */
+.mkt-protection-badge { display: flex; align-items: center; background: var(--mkt-green-light); border: 1px solid #BFDECB; }
+.mkt-protection-badge .ic { flex: 0 0 auto; border-radius: 50%; background: var(--mkt-green); color: #fff; font-family: 'Lato', sans-serif; font-weight: 700; text-align: center; }
+.mkt-protection-badge .txt { font: 800 12.5px/1.35 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-protection-badge--card { gap: 10px; border-radius: 12px; padding: 10px 12px; }
+.mkt-protection-badge--card .ic { width: 28px; height: 28px; font-size: 14px; line-height: 28px; }
+.mkt-protection-badge--card-row { gap: 9px; border-radius: 11px; padding: 8px 11px; }
+.mkt-protection-badge--card-row .ic { width: 22px; height: 22px; font-size: 11px; line-height: 22px; }
+.mkt-protection-badge--card-row .txt { font: 800 11.5px/1.3 'Nunito', sans-serif; }
 
 /* Dashboard */
 .mkt-payout { background: var(--mkt-green-dark); border-radius: 12px; padding: 13px; display: flex; align-items: center; gap: 12px; }

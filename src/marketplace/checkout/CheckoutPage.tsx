@@ -539,10 +539,10 @@ export default function CheckoutPage() {
       {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && (
         <div className="mkt-sell-foot">
           {/* Same protection promise as the payment confirmation page, word
-              for word — right before the money actually moves. See
-              ProtectionBadge.tsx. Centered, not stretched, so it reads as a
-              small badge rather than competing with the button below it. */}
-          <ProtectionBadge style={{ alignSelf: "center" }} />
+              for word — right before the money actually moves. card-row is
+              the compact size variant for this tight footer. See
+              ProtectionBadge.tsx. */}
+          <ProtectionBadge variant="card-row" />
           <button className="mkt-primary" disabled={!payQ.data || redirecting}
             onClick={() => { if (payQ.data) { setRedirecting(true); window.location.assign(payQ.data.authorization_url); } }}>
             {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}

@@ -125,15 +125,17 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
     <div className="mkt-success">
       <MarketplaceSeo noindex title="Payment received" />
       <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div className="check">✓</div>
-          <ProtectionBadge />
-        </div>
+        <div className="check">✓</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
           <h1>Paid, and your money is safe with us</h1>
           <p>{isLoggedIn && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm the item arrived as described.</p>
         </div>
+
+        {/* White, borderless, full width against this page's solid green
+            background, so it still separates from its surroundings — the
+            one context-specific override, per ProtectionBadge.tsx. */}
+        <ProtectionBadge style={{ background: "#fff", border: "none", width: "100%", boxSizing: "border-box" }} />
 
         {isLoggedIn
           ? <SellerContact contact={contact} loading={isLoading} reference={reference} />
