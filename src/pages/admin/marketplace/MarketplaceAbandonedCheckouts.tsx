@@ -134,11 +134,26 @@ function Section({ title, hint, rows, empty }: { title: string; hint: string; ro
   );
 }
 
+/** Same base + param names get_buyer_nudge_suggestions() already builds
+ * server side for the logged-in-buyer version of this exact message
+ * (site || '/checkout/' || listing_id || '?resume_order=' || id, or
+ * '?resume=' for an attempt) — kept identical here so a guest row (no
+ * customer_id, which that RPC can't see at all) lands on the same
+ * pre-filled checkout experience a logged-in buyer's nudge would. */
+const MKT_SITE = "https://bundledmum.com/marketplace";
+function resumeLinkFor(r: AbandonedRow): string | null {
+  if (!r.listing_id) return null;
+  const param = r.source === "order" ? `resume_order=${r.ref_id}` : `resume=${r.ref_id}`;
+  return `${MKT_SITE}/checkout/${r.listing_id}?${param}`;
+}
+
 function Row({ r }: { r: AbandonedRow }) {
   const intlPhone = toIntlPhone(r.phone);
   const name = r.buyer_name || "Someone";
   const item = r.listing_title || "an item";
-  const waMessage = `Hi ${r.buyer_name || "there"}, this is BundledMum. We noticed you were checking out ${item} on the marketplace and wanted to see if you ran into any trouble or had a question before finishing up.`;
+  const resumeLink = resumeLinkFor(r);
+  const waMessage = `Hi ${r.buyer_name || "there"}, this is BundledMum. We noticed you were checking out ${item} on the marketplace and wanted to see if you ran into any trouble or had a question before finishing up.`
+    + (resumeLink ? `\n\nPick up right where you left off, your details are already saved: ${resumeLink}` : "");
   const waHref = intlPhone ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(waMessage)}` : null;
 
   return (

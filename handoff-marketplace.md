@@ -6706,3 +6706,17 @@ Preserved: normal checkout with no params (live-verified, byte-for-byte the same
 Files touched: `src/marketplace/checkout/CheckoutPage.tsx`.
 
 `npm run build` clean.
+
+## 81. Abandoned-checkouts screen's WhatsApp link now actually has a link (2026-08-16)
+
+**The inconsistency §80 flagged, confirmed real**: read `get_buyer_nudge_suggestions`'s live deployed SQL — it now has two stages this codebase didn't have at §79's audit time, `abandoned_at_payment` and `abandoned_before_payment`, each building `site || '/checkout/' || listing_id || '?resume_order=' || order_id` (or `?resume=` + attempt id) through `resolve_outreach_message()` against real, sequenced, database-editable templates in `marketplace_outreach_templates`. Meanwhile `MarketplaceAbandonedCheckouts.tsx`'s `Row` component built its WhatsApp message with **no link in it at all** — not a wrong param, an entirely missing one. Every message sent from that screen dropped someone on an empty checkout form regardless of what they clicked.
+
+**Fixed**: `resumeLinkFor()` builds `https://bundledmum.com/marketplace/checkout/{listing_id}?resume_order={ref_id}` for `source: 'order'` rows and `?resume={ref_id}` for `source: 'attempt'` rows — same base URL, same param names, same `ref_id`-as-the-id semantics as the RPC's own construction, verified byte-for-byte against its actual SQL rather than guessed. Live-verified against a real production row (Adewale's actual abandoned Baby Bassinet order, ₦54,000): built the exact URL the fixed code would produce and loaded it directly — checkout correctly showed the "Welcome back" banner with his real name, phone, and email pre-filled, the same experience §80 already proved for the outreach queue's version.
+
+**The message text — reported, not rewritten.** Read the actual templates: two attempts each for both stages, warm and specific ("*I am more interested in why you stopped than in the sale*", bold formatting, an explicit reassurance that money is held and never sent to a stranger, a genuine second-attempt tone shift rather than a repeat). The admin screen's own hardcoded line — *"Hi {name}, this is BundledMum. We noticed you were checking out {item}... wanted to see if you ran into any trouble..."* — is plainer and generic by comparison: no bold, no held-money reassurance, no sequenced variation, and previously no link at all. **It is noticeably weaker.** Not rewritten to match, on purpose: those templates are database-editable and sequenced per attempt number, keyed to a `customer_id` via `marketplace_outreach_log`; this screen's rows are frequently guests with no `customer_id` at all (the exact case that RPC can't see), so calling it directly isn't a safe drop-in either — `get_buyer_nudge_suggestions` returns only ONE top-priority stage per customer across five possible reasons, so calling it per abandoned-checkout row risks silently returning a message about a *different* concern entirely (a different order awaiting delivery, say) rather than this specific stalled checkout. Copying the template text into this file instead would create the exact drift risk flagged as out of bounds. Left as a known, reported gap rather than either duplicating or misapplying those templates.
+
+Preserved: everything else on the row (contact details, `StatusPill`, thumbnail, value, relative time), the two sections and total-value header, sections 7 through 80.
+
+Files touched: `src/pages/admin/marketplace/MarketplaceAbandonedCheckouts.tsx`.
+
+`npm run build` clean.
