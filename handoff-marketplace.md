@@ -6720,3 +6720,27 @@ Preserved: everything else on the row (contact details, `StatusPill`, thumbnail,
 Files touched: `src/pages/admin/marketplace/MarketplaceAbandonedCheckouts.tsx`.
 
 `npm run build` clean.
+
+## 82. Mark as sent / undo for abandoned checkouts, matching the outreach queue's own pattern (2026-08-16)
+
+**Audit first**: before this pass, `Row` rendered thumbnail, name, item, value, relative time, a `reached_payment_step` pill, contact details, and a single "Message on WhatsApp" link — no contact-tracking of any kind. `MarketplaceOutreach.tsx`'s `ContactActions` component is the exact shape to match: a status line ("Never contacted" in coral vs "Contacted {relative}" in muted text), an "Undo" text link shown only once contacted, and two side-by-side buttons — "Send on WhatsApp" and a separate "Mark as sent" — with `logOutreachContact`/`undoOutreachContact` calling `log_outreach_contact`/`undo_outreach_contact` and invalidating the query on success. `neverContactedOnly` there defaults to **showing everything**, with a toggle that *narrows* to uncontacted — the opposite default from what this task asked for (contacted rows should drop out of the working list *by default*), so the toggle's polarity was intentionally inverted here rather than copied, while everything else — the two-button layout, the separate explicit mark action, the small underlined Undo — was matched directly.
+
+**Backend confirmed live before writing anything**: `log_abandoned_contact(p_source, p_ref_id)` and `undo_abandoned_contact(p_source, p_ref_id)` both exist, both admin-permission-gated, both matching the outreach pair's shape exactly (upsert-by-conflict / delete-and-return-found). `marketplace_abandoned_checkouts` now carries `contacted_at`. Live numbers had drifted slightly from the task's own figures (13 abandoned / 3 in progress vs. the stated 12/4) — same expected 30-minute-window drift already reported in §79 and §80, not a bug. Verified the actual mechanism end to end against real rows (not just read the SQL): inserted directly into `marketplace_abandoned_contact_log` for a genuine attempt row, confirmed the view's `contacted_at` picked it up immediately, deleted it, confirmed it reverted to null — the same round trip `log_abandoned_contact`/`undo_abandoned_contact` perform, since the RPC's own admin-permission check can't be exercised from this environment's SQL access (no `auth.uid()` context here), only from a real admin session.
+
+**Built**: `logAbandonedContact`/`undoAbandonedContact` added to `opsData.ts` right beside the outreach pair, same signature shape, deliberately a separate log (`marketplace_abandoned_contact_log`, keyed by `source`+`ref_id`, not `person_id`+`stage_key`) since most rows here are guests with no customer record — the same reason §79 already gave for not reusing the outreach queue's system at all. `Row` now renders a `ContactActions` block matching `MarketplaceOutreach.tsx`'s layout: "Not yet contacted" (coral) or "Contacted {relative}" beneath the row, an Undo link the moment `contacted_at` is set, and "Message on WhatsApp" beside a separate "Mark as sent" button that only appears while uncontacted.
+
+**Marking removes the row from the working list, confirmed**: `abandoned`/`inProgress` are now filtered to `!r.contacted_at` before splitting by status, so a marked row leaves whichever section it was in the instant the mutation resolves and the query invalidates.
+
+**Not lost — a third, toggled group**: a "Already contacted · N" chip in the header (only rendered once at least one row has been contacted, matching the existing header-chip convention) reveals an "Already contacted" section, hint reading "Chased and still haven't bought — arguably the most interesting group here," quoting the task's own framing rather than inventing new copy for it. Off by default so the working list stays exactly what an operator needs; on, and every contacted row (regardless of which status group it came from) is visible again, each with the same Undo available.
+
+**WhatsApp tap does not auto-mark, confirmed by construction**: the `<a href={waHref}>` link and the `markSent()` handler are two entirely separate elements with no shared code path — opening the link fires nothing, exactly matching the outreach queue's own separation and the task's explicit requirement.
+
+**Undo exists and is discoverable**: a visible "Undo" text link renders directly next to the "Contacted" status line the moment a row is marked — not buried in a menu or a second screen, same placement `MarketplaceOutreach.tsx` already uses.
+
+**Resume links preserved**: `resumeLinkFor()` and its `?resume_order=`/`?resume=` construction from §81 are untouched, byte-identical, confirmed by diff — this pass only added the contact-tracking layer around the existing row, it didn't touch the message or link construction.
+
+Preserved: the abandoned/in-progress split and the total-abandoned-value header line, the resume links, the internal-testing heads-up banner, every other existing marketplace admin screen, sections 7 through 81.
+
+Files touched: `src/pages/admin/marketplace/MarketplaceAbandonedCheckouts.tsx`, `src/pages/admin/marketplace/opsData.ts`.
+
+`npm run build` clean.

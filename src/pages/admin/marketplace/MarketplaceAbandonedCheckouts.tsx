@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira, relativeTimeAgo } from "./opsData";
+import { adb, formatNaira, relativeTimeAgo, logAbandonedContact, undoAbandonedContact } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
 
 /**
@@ -19,7 +19,16 @@ import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
  * never see regardless. There is no sequenced message to reuse, so this
  * screen sends a single, honest, one-off WhatsApp contact instead of
  * bolting onto a system that doesn't cover this case.
+ *
+ * Mark as sent / undo mirrors MarketplaceOutreach.tsx's ContactActions
+ * shape exactly (same two-button row, same "tapping WhatsApp is not proof
+ * a message went" separation, same small underlined Undo) — deliberately
+ * NOT the same log, since marketplace_abandoned_contact_log is keyed by
+ * (source, ref_id) rather than (person_id, stage_key), for the same
+ * guests-have-no-customer-id reason the queue itself couldn't be reused.
  */
+
+const QUERY_KEY = ["mkt-abandoned-checkouts"];
 
 interface AbandonedRow {
   source: "order" | "attempt";
@@ -37,6 +46,7 @@ interface AbandonedRow {
   last_activity_at: string;
   status: "abandoned" | "in_progress";
   reached_payment_step: boolean;
+  contacted_at: string | null;
 }
 
 /** digits-only, Nigerian-number-aware — duplicated from MarketplaceBuyers.tsx
@@ -52,7 +62,7 @@ function toIntlPhone(raw: string | null | undefined): string {
 
 export default function MarketplaceAbandonedCheckouts() {
   const { data: rows, isLoading } = useQuery({
-    queryKey: ["mkt-abandoned-checkouts"],
+    queryKey: QUERY_KEY,
     staleTime: 15000,
     queryFn: async (): Promise<AbandonedRow[]> => {
       const { data, error } = await adb.from("marketplace_abandoned_checkouts").select("*").order("last_activity_at", { ascending: false });
@@ -61,12 +71,20 @@ export default function MarketplaceAbandonedCheckouts() {
     },
   });
 
-  const { abandoned, inProgress, totalAbandonedNaira } = useMemo(() => {
+  const [showContacted, setShowContacted] = useState(false);
+
+  const { abandoned, inProgress, contacted, totalAbandonedNaira } = useMemo(() => {
     const all = rows ?? [];
-    const ab = all.filter((r) => r.status === "abandoned");
-    const ip = all.filter((r) => r.status === "in_progress");
+    // Once marked, a row leaves the working list — that is the entire point
+    // of marking it. It is never deleted or made unreachable though: every
+    // contacted row (from either status) lands in its own group instead,
+    // toggled into view rather than mixed back into the working sections.
+    const working = all.filter((r) => !r.contacted_at);
+    const ab = working.filter((r) => r.status === "abandoned");
+    const ip = working.filter((r) => r.status === "in_progress");
+    const ct = all.filter((r) => r.contacted_at);
     const total = ab.reduce((s, r) => s + (r.amount_naira || 0), 0);
-    return { abandoned: ab, inProgress: ip, totalAbandonedNaira: total };
+    return { abandoned: ab, inProgress: ip, contacted: ct, totalAbandonedNaira: total };
   }, [rows]);
 
   // No structural "is this real" signal exists on either source (no test
@@ -92,6 +110,14 @@ export default function MarketplaceAbandonedCheckouts() {
       <OpsHeader
         title="Abandoned checkouts"
         subtitle={`${formatNaira(totalAbandonedNaira)} sitting abandoned across ${abandoned.length} ${abandoned.length === 1 ? "checkout" : "checkouts"}${inProgress.length > 0 ? `, ${inProgress.length} more still possibly in progress` : ""}.`}
+        right={contacted.length > 0 ? (
+          <button
+            onClick={() => setShowContacted((v) => !v)}
+            className="font-heading font-extrabold text-[11px] px-3 py-1.5 rounded-lg whitespace-nowrap"
+            style={showContacted ? { background: "#1A1A1A", color: "#FFF8F4" } : { background: "#fff", border: "1px solid #F0DDD2", color: "#6B5B54" }}>
+            {showContacted ? "✓ " : ""}Already contacted · {contacted.length}
+          </button>
+        ) : undefined}
       />
 
       <div className="mt-2 rounded-xl p-3 text-xs" style={{ background: "#FDE8DF", color: "#8C4A34" }}>
@@ -111,6 +137,14 @@ export default function MarketplaceAbandonedCheckouts() {
           rows={inProgress}
           empty="Nobody currently mid-checkout."
         />
+        {showContacted && (
+          <Section
+            title="Already contacted"
+            hint="Chased and still haven't bought — arguably the most interesting group here."
+            rows={contacted}
+            empty="Nobody's been marked as contacted yet."
+          />
+        )}
       </div>
     </div>
   );
@@ -187,14 +221,77 @@ function Row({ r }: { r: AbandonedRow }) {
           {!r.email && !r.phone && <span>No contact details captured</span>}
         </div>
 
-        {waHref && (
-          <a href={waHref} target="_blank" rel="noreferrer"
-            className="self-start mt-1 inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 font-heading font-extrabold text-[12px]"
-            style={{ background: "#25D366", color: "#FFFFFF" }}>
-            Message on WhatsApp
-          </a>
+        <ContactActions r={r} waHref={waHref} />
+      </div>
+    </div>
+  );
+}
+
+/** Contacted line + Mark as sent/Undo, matching MarketplaceOutreach.tsx's
+ * ContactActions layout exactly — WhatsApp and Mark as sent sit side by
+ * side as two separate actions on purpose (opening the chat is not proof a
+ * message went), Undo is a small text link shown only once contacted. */
+function ContactActions({ r, waHref }: { r: AbandonedRow; waHref: string | null }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function markSent() {
+    setBusy(true); setError(null);
+    try {
+      const ok = await logAbandonedContact(r.source, r.ref_id);
+      if (!ok) throw new Error("not saved");
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+    } catch {
+      setError("Could not save, try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undo() {
+    setBusy(true); setError(null);
+    try {
+      const ok = await undoAbandonedContact(r.source, r.ref_id);
+      if (!ok) throw new Error("not saved");
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+    } catch {
+      setError("Could not undo, try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 mt-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        {r.contacted_at ? (
+          <span className="text-[11px] text-text-med">Contacted {relativeTimeAgo(r.contacted_at)}</span>
+        ) : (
+          <span className="font-heading font-extrabold text-[11px]" style={{ color: "#D4613C" }}>Not yet contacted</span>
+        )}
+        {r.contacted_at && (
+          <button onClick={undo} disabled={busy} className="text-[11px] underline" style={{ color: "#8A7A72" }}>Undo</button>
         )}
       </div>
+      <div className="flex gap-2">
+        {waHref ? (
+          <a href={waHref} target="_blank" rel="noreferrer"
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#25D366", color: "#fff" }}>
+            Message on WhatsApp
+          </a>
+        ) : (
+          <span className="flex-1 flex items-center justify-center rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={{ background: "#EDE6E1", color: "#8A7A72" }}>No number on file</span>
+        )}
+        {!r.contacted_at && (
+          <button onClick={markSent} disabled={busy}
+            className="flex-1 flex items-center justify-center rounded-lg py-2.5 font-heading font-extrabold text-[12.5px] border"
+            style={{ borderColor: "#2D6A4F", color: "#2D6A4F", background: "#fff" }}>
+            {busy ? "Saving..." : "Mark as sent"}
+          </button>
+        )}
+      </div>
+      {error && <span className="text-[11px]" style={{ color: "#C0392B" }}>{error}</span>}
     </div>
   );
 }

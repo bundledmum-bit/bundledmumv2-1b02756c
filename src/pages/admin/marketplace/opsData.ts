@@ -375,6 +375,23 @@ export async function undoOutreachContact(personId: string, stageKey: string): P
   return data === true;
 }
 
+/** Same idea as logOutreachContact/undoOutreachContact, deliberately a
+ * separate log (marketplace_abandoned_contact_log, keyed by source+ref_id
+ * rather than person_id+stage_key) — most abandoned-checkout rows are
+ * guests with no customer record, so the outreach log genuinely could not
+ * be reused here. */
+export async function logAbandonedContact(source: "order" | "attempt", refId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("log_abandoned_contact", { p_source: source, p_ref_id: refId });
+  if (error) throw error;
+  return data === true;
+}
+
+export async function undoAbandonedContact(source: "order" | "attempt", refId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("undo_abandoned_contact", { p_source: source, p_ref_id: refId });
+  if (error) throw error;
+  return data === true;
+}
+
 function ordinal(n: number): string {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
