@@ -26,11 +26,16 @@ export default function AreaCombobox({
   value,
   onChange,
   disabled,
+  error,
 }: {
   areas: Area[];
   value: string;
   onChange: (name: string) => void;
   disabled: boolean;
+  /** Same red-border treatment as .mkt-input.error elsewhere on the form —
+   * optional so existing callers (e.g. BrowsePage's location filter, which
+   * has no submit/validation concept) are unaffected. */
+  error?: boolean;
 }) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
@@ -76,7 +81,7 @@ export default function AreaCombobox({
     <div>
       <div className="mkt-combo">
         <input
-          className="mkt-input"
+          className={error ? "mkt-input error" : "mkt-input"}
           type="text"
           role="combobox"
           aria-expanded={open}

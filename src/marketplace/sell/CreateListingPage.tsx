@@ -166,6 +166,13 @@ export default function CreateListingPage() {
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const conditionQuestionsRef = useRef<HTMLDivElement | null>(null);
   const conditionFieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // Client-side mirror of the DB's enforce_listing_location trigger (only
+  // fires at status='live', which this form never sets directly — a draft
+  // or pending listing may still be incomplete). Checked here so a seller
+  // is told upfront rather than only ever finding out from an admin
+  // rejection or, on an eventual live-write path, the raw trigger error.
+  const [locationInvalid, setLocationInvalid] = useState<{ state: boolean; area: boolean }>({ state: false, area: false });
+  const locationRef = useRef<HTMLDivElement | null>(null);
 
   function changeCategory(id: string) {
     setCategoryId(id);
@@ -449,6 +456,20 @@ export default function CreateListingPage() {
     }
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
+
+    // Required client side even though the database only blocks this at
+    // status='live' (this form always writes 'pending_review') — a buyer
+    // judging whether a purchase is even workable needs both, so asking
+    // upfront beats letting it slip to admin review or, eventually, a
+    // live-write path hitting the raw trigger instead.
+    if (!stateId || !areaName.trim()) {
+      setLocationInvalid({ state: !stateId, area: !!stateId && !areaName.trim() });
+      setError(!stateId ? "Choose the state this item is in." : "Choose the area or city this item is in.");
+      locationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    setLocationInvalid({ state: false, area: false });
+
     if (!condition) { setError("Choose the condition."); return; }
 
     // The six condition questions, same "cannot ask questions later" reasoning
@@ -555,6 +576,18 @@ export default function CreateListingPage() {
         const keys = categoryFields.filter((f) => labels.includes(f.label)).map((f) => f.field_key);
         setInvalidKeys(new Set(keys));
         setRecovery({ labels, keys });
+        return;
+      }
+      // enforce_listing_location only fires at status='live', which this
+      // form never writes directly — should not be reachable given the
+      // check above, but this form must never be the only guard (the same
+      // reasoning as every other trigger handled here). Shown exactly as
+      // written rather than mapped to a generic message: it already says
+      // precisely what to do.
+      if (msg === "Choose the state this item is in before it can go live" || msg === "Choose the area or city this item is in before it can go live") {
+        setLocationInvalid({ state: msg.startsWith("Choose the state"), area: msg.startsWith("Choose the area") });
+        setError(msg);
+        locationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }
       // A known listing-edit rejection (should not normally be reachable,
@@ -735,16 +768,31 @@ export default function CreateListingPage() {
           </select>
         </div>
 
-        <div className="mkt-field">
-          <span className="mkt-uplabel">State</span>
-          <select className="mkt-native-select" value={stateId} onChange={(e) => { setStateId(e.target.value); setAreaName(""); }}>
-            <option value="">Choose state</option>
-            {states.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </div>
-        <div className="mkt-field">
-          <span className="mkt-uplabel">Area</span>
-          <AreaCombobox key={stateId} areas={areas} value={areaName} onChange={setAreaName} disabled={!stateId} />
+        <div ref={locationRef} style={{ display: "contents" }}>
+          <div className="mkt-field">
+            <span className="mkt-uplabel">State</span>
+            <select
+              className={locationInvalid.state ? "mkt-native-select error" : "mkt-native-select"}
+              value={stateId}
+              onChange={(e) => { setStateId(e.target.value); setAreaName(""); setLocationInvalid({ state: false, area: false }); }}
+            >
+              <option value="">Choose state</option>
+              {states.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {locationInvalid.state && <span className="mkt-field-error">Buyers need to know roughly where the item is, so they can judge whether the purchase is even workable.</span>}
+          </div>
+          <div className="mkt-field">
+            <span className="mkt-uplabel">Area</span>
+            <AreaCombobox
+              key={stateId}
+              areas={areas}
+              value={areaName}
+              onChange={(name) => { setAreaName(name); if (name.trim()) setLocationInvalid((v) => ({ ...v, area: false })); }}
+              disabled={!stateId}
+              error={locationInvalid.area}
+            />
+            {locationInvalid.area && <span className="mkt-field-error">This is what tells a nearby buyer the item is actually reachable.</span>}
+          </div>
         </div>
 
         <div className="mkt-field">

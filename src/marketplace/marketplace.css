@@ -695,6 +695,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-textarea { min-height: 92px; resize: vertical; }
 .mkt-input:focus, .mkt-textarea:focus, .mkt-native-select:focus { outline: none; border-color: var(--mkt-coral); box-shadow: 0 0 0 3px var(--mkt-coral-light); }
 .mkt-input.error, .mkt-textarea.error, .mkt-native-select.error { border-color: var(--mkt-error); border-width: 1.5px; }
+.mkt-field-error { display: block; margin-top: 6px; font: 400 12px/1.4 'Lato', sans-serif; color: var(--mkt-error-ink); }
 .mkt-help { font: 400 11px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
 
 /* Error box (design red), used for validation + contact-detail block */
