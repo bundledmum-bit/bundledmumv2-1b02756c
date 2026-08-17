@@ -31,6 +31,7 @@ import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundO
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
+import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
 
 const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
 
@@ -482,6 +483,20 @@ export default function ListingDetailPage() {
             for word — here is where hesitation actually happens, before
             the decision, not after paying. See ProtectionBadge.tsx. */}
         <ProtectionBadge />
+
+        {/* Message BundledMum (design 35a). Sits directly under the
+            protection card exactly as the mockup arranges it, at the point
+            of hesitation right below the price and in the same glance as
+            the Buy now bar. Deliberately far from "Ask a question" further
+            down — that one goes to the SELLER and is answered publicly on
+            the listing, this one goes to us. A quiet underlined text link,
+            never a second button competing with Buy now. */}
+        <WhatsAppHelpLink
+          context="listing"
+          listingId={listing.id}
+          itemName={listing.title}
+          price={formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}
+        />
 
         {multi && (
           <div className="mkt-reassure">

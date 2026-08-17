@@ -958,6 +958,19 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
    glyph in markup is hidden with font-size:0. */
 .mkt-wa .ic { width: 22px; height: 22px; flex: 0 0 auto; background: url("../assets/whatsapp-logo.svg") center / contain no-repeat; font-size: 0; }
 
+/* ── Contextual WhatsApp help, listing detail + both checkout steps
+   (design 35a, WhatsAppHelpLink.tsx) ──
+   Deliberately NOT .mkt-wa: that is a full green button, and a second button
+   beside Buy now or Pay reads as a second decision. This is a quiet text
+   link, colour carried only by the inline WhatsApp glyph, so a confident
+   buyer's eye slides past it while a hesitant one finds it in the same
+   glance as the primary action. It is also visually nothing like
+   .mkt-offer-entry ("Ask a question", which goes to the SELLER) — different
+   shape, different weight, no border. */
+.mkt-whatsapp-help { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 3px 0; text-decoration: none; background: none; border: none; }
+.mkt-whatsapp-help svg { flex: 0 0 17px; }
+.mkt-whatsapp-help .txt { font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-green); text-decoration: underline; text-decoration-color: #8FB6A2; }
+
 /* ==================== PAYSTACK CHECKOUT + RESULT ==================== */
 /* held-funds reassurance (never states a held amount that differs from paid) */
 .mkt-heldbox { background: var(--mkt-green-light); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 10px; }

@@ -13,6 +13,7 @@ import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import ProtectionBadge from "../components/ProtectionBadge";
+import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -669,6 +670,22 @@ export default function CheckoutPage() {
                 <span>The next step opens Paystack's secure page to take your payment. We never see or store your card details, and you come straight back here when it is done.</span>
               </div>
             )}
+
+            {/* Message BundledMum (design 35a). Same quiet text link as
+                listing detail, beneath the held-funds reassurance and above
+                the footer that carries the primary action, on both steps —
+                but a different worry each time, so a different pre-filled
+                message: handing over contact details on the details step,
+                paying upfront instead of on delivery on the payment step.
+                On the payment step the amount is the real total she is
+                about to pay; while Paystack is still pricing it, no figure
+                is sent rather than a wrong one. */}
+            <WhatsAppHelpLink
+              context={showDetailsForm ? "checkoutDetails" : "checkoutPayment"}
+              listingId={listing.id}
+              itemName={listing.title}
+              price={showDetailsForm ? formatNaira(itemPrice) : (payQ.data ? formatNaira(paystackTotal) : null)}
+            />
 
             {createCode && createCode !== "unknown" && !listingGone && !ownListing && (
               <div className="mkt-errbox"><span className="m">!</span><span>{friendlyCreateError(createCode)}</span></div>
