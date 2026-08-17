@@ -47,7 +47,10 @@ const LABELS: Record<WhatsAppHelpContext, string> = {
  * figure, the amount clause is simply left out and the sentence still reads
  * naturally.
  */
-function buildMessage(context: WhatsAppHelpContext, item: string, price: string | null, url: string): string {
+/** Exported so WhatsAppInactivityPrompt.tsx (§36a's floating card, the same
+ * three moments surfaced proactively) sends the exact same pre-filled
+ * message this quiet link does — never a second, invented one. */
+export function buildMessage(context: WhatsAppHelpContext, item: string, price: string | null, url: string): string {
   switch (context) {
     case "listing":
       return `Hi, I was looking at the ${item}${price ? ` (${price})` : ""}.\n${url}\n\nA couple of things I wanted to check before buying, is the seller genuine and are the photos accurate to the actual item?`;
@@ -65,6 +68,20 @@ export function listingUrlFor(listingId: string): string {
   return `${window.location.origin}/marketplace/listing/${listingId}`;
 }
 
+const CONTACTED_KEY = "bm-mkt-contacted-us";
+/** Set the moment she finds the door herself — this link, or "Ask the
+ * seller" (see ListingDetailPage.tsx's openAskSheet). Read by
+ * WhatsAppInactivityPrompt.tsx (§36a) to suppress the proactive prompt for
+ * the rest of THIS session: sessionStorage, not localStorage, since this is
+ * about this visit, not a standing preference. A prompt after she's already
+ * found the door reads as not listening, not as help. */
+export function markContactedUs(): void {
+  try { sessionStorage.setItem(CONTACTED_KEY, "1"); } catch { /* best effort */ }
+}
+export function hasContactedUs(): boolean {
+  try { return sessionStorage.getItem(CONTACTED_KEY) === "1"; } catch { return false; }
+}
+
 export default function WhatsAppHelpLink({ context, listingId, itemName, price }: {
   context: WhatsAppHelpContext;
   listingId: string;
@@ -76,7 +93,7 @@ export default function WhatsAppHelpLink({ context, listingId, itemName, price }
   const message = buildMessage(context, itemName, price, listingUrlFor(listingId));
 
   return (
-    <a className="mkt-whatsapp-help" href={waHref(number, message)} target="_blank" rel="noreferrer">
+    <a className="mkt-whatsapp-help" href={waHref(number, message)} target="_blank" rel="noreferrer" onClick={markContactedUs}>
       <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="#25D366" d="M12 0C5.373 0 0 5.373 0 12c0 2.116.552 4.103 1.518 5.828L0 24l6.335-1.482A11.94 11.94 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z" />
         <path fill="#FFF" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.472-.148-.67.15-.198.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.372-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />

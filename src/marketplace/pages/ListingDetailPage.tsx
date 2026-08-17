@@ -31,7 +31,8 @@ import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundO
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
-import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
+import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
+import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
 
 const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
 
@@ -337,6 +338,7 @@ export default function ListingDetailPage() {
 
   function openAskSheet() {
     if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "question"); return; }
+    markContactedUs(); // she's found the door herself — see WhatsAppHelpLink.tsx
     setAskSheetOpen(true);
   }
 
@@ -492,6 +494,15 @@ export default function ListingDetailPage() {
             the listing, this one goes to us. A quiet underlined text link,
             never a second button competing with Buy now. */}
         <WhatsAppHelpLink
+          context="listing"
+          listingId={listing.id}
+          itemName={listing.title}
+          price={formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}
+        />
+        {/* §36a: the same link above, surfaced proactively on inactivity or
+            (mobile) a sharp scroll up — never in place of the quiet link,
+            always alongside it. */}
+        <WhatsAppInactivityPrompt
           context="listing"
           listingId={listing.id}
           itemName={listing.title}

@@ -14,6 +14,7 @@ import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import ProtectionBadge from "../components/ProtectionBadge";
 import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
+import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
 
 /**
  * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
@@ -681,6 +682,14 @@ export default function CheckoutPage() {
                 about to pay; while Paystack is still pricing it, no figure
                 is sent rather than a wrong one. */}
             <WhatsAppHelpLink
+              context={showDetailsForm ? "checkoutDetails" : "checkoutPayment"}
+              listingId={listing.id}
+              itemName={listing.title}
+              price={showDetailsForm ? formatNaira(itemPrice) : (payQ.data ? formatNaira(paystackTotal) : null)}
+            />
+            {/* §36a: the highest-anxiety page fires soonest of all — same
+                link above, surfaced proactively. */}
+            <WhatsAppInactivityPrompt
               context={showDetailsForm ? "checkoutDetails" : "checkoutPayment"}
               listingId={listing.id}
               itemName={listing.title}

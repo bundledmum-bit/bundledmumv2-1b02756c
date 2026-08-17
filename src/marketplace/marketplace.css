@@ -971,6 +971,56 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-whatsapp-help svg { flex: 0 0 17px; }
 .mkt-whatsapp-help .txt { font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-green); text-decoration: underline; text-decoration-color: #8FB6A2; }
 
+/* Inactivity prompt (§36a) — floating card surfacing the SAME quiet
+   WhatsAppHelpLink already on the page (never removed, never replaced),
+   at the moment she looks like she's about to leave. Mobile: anchored
+   above the fixed Buy now bar, the identical clearance
+   .mkt-install-banner.clear-bar already uses for the same reason, so it
+   never overlaps. Desktop: bottom right, no fixed bar there to protect.
+   One rise-and-settle keyframe, no repeat — continuous motion reads as an
+   advert, one movement that settles reads as a person. */
+.mkt-wa-prompt {
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 96px);
+  z-index: 30; /* same tier as .mkt-install-banner: above .mkt-buybar (20), below .mkt-menu (80) */
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: #fff;
+  border: 1px solid #E3E8E5;
+  border-radius: 16px;
+  padding: 13px 14px;
+  box-shadow: 0 10px 26px rgba(26, 26, 26, .16);
+  text-decoration: none;
+  animation: mkt-wa-prompt-rise 0.4s ease-out;
+}
+.mkt-wa-prompt .ic { flex: 0 0 30px; }
+.mkt-wa-prompt .body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mkt-wa-prompt .headline { font: 800 13.5px/1.25 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-wa-prompt .sub { font: 400 11.5px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-wa-prompt .close {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: #F5F1EC;
+  color: #8A7A72;
+  font: 700 13px/1 'Lato', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+@keyframes mkt-wa-prompt-rise { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mkt-wa-prompt { animation: none; } }
+@media (min-width: 1024px) {
+  .mkt-wa-prompt { left: auto; right: 24px; bottom: 24px; max-width: 360px; }
+}
+
 /* ==================== PAYSTACK CHECKOUT + RESULT ==================== */
 /* held-funds reassurance (never states a held amount that differs from paid) */
 .mkt-heldbox { background: var(--mkt-green-light); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
