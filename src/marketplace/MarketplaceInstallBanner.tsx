@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { isStandalone, isIos } from "@/lib/pwa";
+import { subscribeToWaPromptVisible } from "./components/WhatsAppInactivityPrompt";
 
 /**
  * Marketplace-scoped "install the app" banner, matching the storefront's own
@@ -72,6 +73,15 @@ export default function MarketplaceInstallBanner() {
   const [bpEvent, setBpEvent] = useState<BIPEvent | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The WhatsApp inactivity prompt (§36a/§85) wins when both would be
+  // visible: it fires because someone is hesitating over an actual
+  // purchase, a moment-specific signal, while this banner is a standing
+  // convenience offer that can simply wait for a later visit. Suppressed
+  // entirely while the other is showing, not repositioned — two prompts
+  // stacking on a phone reads as broken, which is worse than either alone.
+  const [waPromptVisible, setWaPromptVisible] = useState(false);
+  useEffect(() => subscribeToWaPromptVisible(setWaPromptVisible), []);
+
   // Someone arriving from an ad hasn't decided they care yet — wait until
   // they've actually spent a bit of time browsing before asking, rather than
   // greeting them with an install pitch on their very first paint (the
@@ -105,7 +115,7 @@ export default function MarketplaceInstallBanner() {
   const onListingDetail = pathname.startsWith("/listing/");
   const onInstallPage = pathname === "/install";
 
-  if (installed || dismissed || !ready || onInstallPage || isStandalone()) return null;
+  if (installed || dismissed || !ready || onInstallPage || isStandalone() || waPromptVisible) return null;
 
   const dismiss = () => {
     setDismissed(true);

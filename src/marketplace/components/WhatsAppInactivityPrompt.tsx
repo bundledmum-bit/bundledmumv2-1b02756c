@@ -57,6 +57,46 @@ function markShownThisSession(): void {
 const SCROLL_UP_FRACTION = 0.4;
 const SCROLL_UP_WINDOW_MS = 1000;
 
+/**
+ * This prompt vs. the PWA install banner (MarketplaceInstallBanner.tsx):
+ * both float above the fixed Buy now bar at the same clearance and the
+ * same z-index tier, and were observed genuinely overlapping when both
+ * happened to be visible at once. Two prompts stacking on a phone reads
+ * as broken at the exact moment someone is deciding whether to trust the
+ * site with money — worse than either prompt alone.
+ *
+ * This prompt wins: it fires because someone is hesitating over an actual
+ * purchase, a moment-specific signal. The install banner is a standing
+ * convenience offer with no real urgency — it can simply wait and show
+ * on a later visit. So the loser is SUPPRESSED while the winner shows,
+ * not repositioned — stacking two prompts is the problem, not where they
+ * sit. One-directional: the install banner subscribes to this and hides
+ * itself; this prompt never needs to know the banner exists.
+ *
+ * A plain module-level pub/sub rather than React context, since the two
+ * components share no parent in the tree (MarketplaceInstallBanner mounts
+ * once in MarketplaceApp.tsx; this mounts per listing/checkout page) —
+ * this is the smallest thing that lets an unrelated sibling react to a
+ * state change without lifting state up through the whole app.
+ */
+type VisibilityListener = (visible: boolean) => void;
+const visibilityListeners = new Set<VisibilityListener>();
+let promptCurrentlyVisible = false;
+function setPromptVisible(v: boolean): void {
+  if (promptCurrentlyVisible === v) return;
+  promptCurrentlyVisible = v;
+  visibilityListeners.forEach((fn) => fn(v));
+}
+/** Subscribe to this prompt's risen/dismissed state. Calls fn once
+ * immediately with the current value (so a subscriber mounting AFTER the
+ * prompt has already risen still gets the right answer, not just future
+ * changes), then again on every change. Returns the unsubscribe. */
+export function subscribeToWaPromptVisible(fn: VisibilityListener): () => void {
+  visibilityListeners.add(fn);
+  fn(promptCurrentlyVisible);
+  return () => visibilityListeners.delete(fn);
+}
+
 export default function WhatsAppInactivityPrompt({ context, listingId, itemName, price }: {
   context: WhatsAppHelpContext;
   listingId: string;
@@ -129,6 +169,15 @@ export default function WhatsAppInactivityPrompt({ context, listingId, itemName,
       cleanupSecondTrigger();
     };
   }, [context, isMobile]);
+
+  // Tell MarketplaceInstallBanner (or anything else that ever cares) exactly
+  // when this is genuinely on screen — reset on unmount too, e.g. navigating
+  // away from this page mid-prompt must not leave the banner suppressed
+  // forever for a card that no longer exists.
+  useEffect(() => {
+    setPromptVisible(risen && !dismissed);
+    return () => setPromptVisible(false);
+  }, [risen, dismissed]);
 
   if (!risen || dismissed) return null;
 

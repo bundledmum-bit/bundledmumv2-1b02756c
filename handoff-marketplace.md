@@ -6809,3 +6809,17 @@ Preserved: Buy now, Pay, Ask for a lower price, Ask the seller a question, and t
 Files touched: `src/marketplace/components/WhatsAppInactivityPrompt.tsx` (new), `src/marketplace/components/WhatsAppHelpLink.tsx`, `src/marketplace/pages/ListingDetailPage.tsx`, `src/marketplace/checkout/CheckoutPage.tsx`, `src/marketplace/marketplace.css`.
 
 `npm run build` clean.
+
+## 86. WhatsApp prompt wins over the install banner, enforced by suppression not position (2026-08-16)
+
+**The call, and why**: agreed with the steer given — the WhatsApp prompt wins on listing detail and checkout. It fires specifically because someone is showing signs of hesitating over an actual purchase, a moment-specific signal tied to real money on the table. The install banner is a standing convenience offer with no urgency of its own; it can simply wait and show on a later visit, or later in the same one. Two prompts stacking reads as broken at exactly the moment someone is deciding whether to trust the site — the wrong impression to risk for an app-install pitch.
+
+**Enforced by suppression, not position**: a small module-level pub/sub added to `WhatsAppInactivityPrompt.tsx` (`subscribeToWaPromptVisible`) — the two components share no parent in the tree (the install banner mounts once in `MarketplaceApp.tsx`; the WhatsApp prompt mounts per listing/checkout page), so this is the smallest thing that lets an unrelated sibling react to a state change without lifting state through the whole app. The prompt syncs its own `risen && !dismissed` into this on every change, and resets it on unmount too — navigating away mid-prompt must not leave the banner suppressed forever for a card that no longer exists. `MarketplaceInstallBanner.tsx` subscribes once and adds `waPromptVisible` to its existing early-return guard (alongside `installed`/`dismissed`/`!ready`/`onInstallPage`/`isStandalone()`) — one-directional: the banner knows about the prompt, the prompt never needs to know the banner exists at all.
+
+**Confirmed by measurement, not screenshot** (the screenshot tool was still unreliable in this environment, per §85's own note): cleared both components' storage, navigated fresh to a live listing, triggered the WhatsApp prompt via the scroll-up gesture (immediate), then waited the real 21 seconds past the install banner's own 20-second eligibility delay — `document.querySelector('.mkt-install-banner')` returned `null` the entire time the WhatsApp prompt was on screen, confirmed at the exact moment the banner would otherwise have appeared. Then dismissed the WhatsApp prompt and re-checked immediately: the install banner appeared right away (it had been eligible and waiting the whole time, just held back), proving the suppression is a genuine defer, not a permanent block. A final check across the whole sequence: `!!installBanner && !!waPrompt` was `false` at every single measurement, never both true.
+
+Preserved: the install banner's own timing, dismissal, and "already installed" logic (untouched — it still shows exactly when it always did, just possibly a little later if the WhatsApp prompt happens to be up at that moment), the WhatsApp prompt's own triggers/timings/suppression from §85 (untouched, this only adds one more condition that can hide it — never affects when it fires), sections 7 through 85.
+
+Files touched: `src/marketplace/components/WhatsAppInactivityPrompt.tsx`, `src/marketplace/MarketplaceInstallBanner.tsx`.
+
+`npm run build` clean.
