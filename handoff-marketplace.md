@@ -6982,3 +6982,37 @@ Preserved: `MarketplaceAbandonedCheckouts.tsx`, untouched — the 5 unpaid rows 
 Files touched: `src/pages/admin/marketplace/MarketplaceOrders.tsx` only.
 
 `npm run build` clean.
+
+## 94. Pay by card or Paystack's own bank transfer, chosen before initialisation (2026-08-18)
+
+**Audit, before any code changed**: the Paystack transaction is initialised **server-side**, in the edge function `marketplace-initialize-payment` — which, notably, had **no local source file anywhere in this repo**, only a deployed version (fetched live via `get_edge_function`, not found by grepping `supabase/functions/`; that directory only holds legacy storefront functions). The client (`src/marketplace/checkout/orders.ts`'s `initializePayment()`, called from `CheckoutPage.tsx`'s `payQ` query) invokes it with just `{ order_id, callback_url }`. The function's actual call to Paystack was:
+```ts
+const initRes = await fetch('https://api.paystack.co/transaction/initialize', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: customer.email,
+    amount: subtotal * 100,
+    reference: attemptReference,
+    callback_url,
+    metadata: { marketplace_order_id: order.id, order_reference: order.paystack_transaction_reference, listing_title: listing.title },
+  }),
+});
+```
+**No `channels` parameter anywhere**, confirming the prompt's own guess: Paystack was falling back to whatever channels are enabled on the dashboard, hence its own default screen. The Pay button (`handlePay()`) does a full-page `window.location.assign(payQ.data.authorization_url)` to Paystack's hosted page, no inline popup involved.
+
+**The existing manual transfer fallback**, found and left alone: `TransferFallback` in `CheckoutPage.tsx`, showing BundledMum's own bank account for a buyer to transfer to directly, confirmed by hand later by an admin (`AwaitingPaymentPage.tsx`). Gated by `site_settings.marketplace_payment_transfer_enabled`, confirmed live as `false`; it only ever renders when `marketplace_payment_paystack_enabled` is off, which it isn't. Confirmed unchanged and still `false` after this work.
+
+**Files touched**: `supabase/functions/marketplace-initialize-payment/index.ts` (new local file, tracking a function that previously had none, plus the actual `channels` addition, redeployed), `src/marketplace/checkout/orders.ts` (`initializePayment()`'s input type, new `PaymentChannel` type), `src/marketplace/checkout/CheckoutPage.tsx` (channel state, UI, `payQ` wiring), `src/marketplace/marketplace.css` (`.mkt-paymethods`/`.mkt-paymethod`).
+
+**How the choice reaches initialisation**: a new `payChannel` state in `CheckoutPage.tsx`, default `"card"`, is included in `payQ`'s query key (`["mkt-init-pay", order?.id, payChannel]`) and passed straight through `initializePayment({ ..., channel: payChannel })` → the edge function body → `channels: [paystackChannel]` on the Paystack init call, where `resolveChannel()` maps anything other than the literal strings `"card"`/`"bank_transfer"` back to `"card"` rather than ever passing through an unrecognised value. Including `payChannel` in the query key means switching options genuinely re-initialises a fresh Paystack transaction (a `channels` restriction is fixed at initialisation and can't be changed on an already-opened one), never reuses the other channel's authorization URL.
+
+**Confirmed live, real Paystack round trips, no fabricated money moved**: walked a real listing through checkout in the browser up to the payment step (never clicked the final Pay button, never touched Paystack's own page). Card rendered selected by default, "Pay ₦74,214" enabled, helper text "Card payment via Paystack". Clicked Bank transfer: the button instantly re-enabled at the same total with helper text "Bank transfer via Paystack", the active-state styling moved to the second option, no error box appeared. Confirmed in the database that `payment_attempt_count` had incremented across genuinely separate calls, meaning each channel switch really did complete a fresh, successful round trip to Paystack's real `/transaction/initialize` endpoint (the count only advances after `initRes.ok`) rather than silently reusing a stale response. The test buyer/order rows this created were deleted immediately after, so no fake data was left in the live abandoned-checkout queue or anywhere else.
+
+**Simple by design, not under-explained**: two options, `💳 Card` and `🏦 Bank transfer`, card pre-selected — a buyer who doesn't care presses Pay without touching either. No copy explaining the difference between the two, per the brief ("a Nigerian buyer knows what a card is and what a transfer is"); the only disambiguating text is code comments and a helper line that names which one is about to be used.
+
+**Fee estimate, one honest limitation stated rather than glossed over**: `estimatePaystackAddition()` mirrors Paystack's *card* fee schedule (1.5% + ₦100, capped ₦2000, waived under ₦2500). Paystack's real bank-transfer fee is typically a different, lower flat fee, but no verified schedule for it exists anywhere in this codebase or was given in the task, so rather than guess at a number the same card-shaped estimate is shown for both channels — still labelled an estimate in the UI exactly as it already was, not a new inaccuracy, just an existing one now shared across two channels instead of one. Noted explicitly in the edge function's own comment for whoever picks this up next.
+
+Preserved: the negotiated-price path and expired-offer handling (untouched, `offerExpired`/`offerPriceMismatch` logic never read); abandoned checkout capture, resume links, and the payment-step WhatsApp help (`WhatsAppHelpLink`/`WhatsAppInactivityPrompt` calls untouched, still receive the same `paystackTotal`); `AddPaymentInfo` firing synchronously on the Pay click without delaying the redirect (`handlePay()`'s tracking calls and the immediate `window.location.assign` are unchanged, just now redirect to whichever channel's `authorization_url` came back); `ProtectionBadge` near the pay button (untouched); sections 7 through 93.
+
+`npm run build` clean.

@@ -118,6 +118,14 @@ export interface InitPayment {
   fee_added_by_paystack: boolean;
 }
 
+/** Which Paystack channel the transaction opens straight into. 'card' is the
+ * default. 'bank_transfer' is Paystack's OWN transfer channel (a dynamic
+ * virtual account, auto-verified by Paystack itself, same as a card payment)
+ * — a completely different thing from the manual, admin-confirmed bank
+ * transfer fallback (marketplace_payment_transfer_enabled, see
+ * TransferFallback in CheckoutPage.tsx), which stays untouched and off. */
+export type PaymentChannel = "card" | "bank_transfer";
+
 /**
  * Initialises the Paystack transaction server-side (v5) and returns the hosted
  * payment page URL plus the money figures. Because Paystack's "pass transaction
@@ -127,9 +135,9 @@ export interface InitPayment {
  * your order' (403), 'This order is already paid' (409), 'This item is no longer
  * available' (409), 'Payment is not configured' (500).
  */
-export async function initializePayment(input: { orderId: string; callbackUrl: string }): Promise<InitPayment> {
+export async function initializePayment(input: { orderId: string; callbackUrl: string; channel: PaymentChannel }): Promise<InitPayment> {
   const { data, error } = await cdb.functions.invoke("marketplace-initialize-payment", {
-    body: { order_id: input.orderId, callback_url: input.callbackUrl },
+    body: { order_id: input.orderId, callback_url: input.callbackUrl, channel: input.channel },
   });
   if (error) throw new CheckoutError((await invokeErrorCode(error)) || "unknown");
   return data as InitPayment;

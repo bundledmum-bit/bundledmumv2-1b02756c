@@ -8,7 +8,7 @@ import CountryCodePicker from "../components/CountryCodePicker";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
-import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError } from "./orders";
+import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError, type PaymentChannel } from "./orders";
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
@@ -83,6 +83,9 @@ export default function CheckoutPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
+  // Which Paystack channel to open into. Card by default, so someone who
+  // does not care can just press pay without choosing anything (§94).
+  const [payChannel, setPayChannel] = useState<PaymentChannel>("card");
 
   // Checking out from an accepted offer (design 23a). create-marketplace-order
   // does not yet read offer_id at all (see orders.ts) — it always prices from
@@ -306,9 +309,12 @@ export default function CheckoutPage() {
   const offerPriceMismatch = !offerExpired && negotiatedPrice != null && order != null && Number(order.item_price_naira) !== negotiatedPrice;
 
   // Initialise the Paystack transaction to get the authoritative fee, total and
-  // hosted page URL. Only when paystack is the active method.
+  // hosted page URL. Only when paystack is the active method. payChannel is
+  // part of the query key: switching card <-> bank transfer re-initialises
+  // against Paystack rather than reusing a transaction opened for the other
+  // channel (channels is set once, at initialisation, not changeable after).
   const payQ = useQuery({
-    queryKey: ["mkt-init-pay", order?.id],
+    queryKey: ["mkt-init-pay", order?.id, payChannel],
     enabled: !!order && paystackEnabled,
     retry: false,
     staleTime: Infinity,
@@ -316,6 +322,7 @@ export default function CheckoutPage() {
     queryFn: () => initializePayment({
       orderId: order!.id,
       callbackUrl: `${window.location.origin}/marketplace/checkout/return`,
+      channel: payChannel,
     }),
   });
 
@@ -665,6 +672,25 @@ export default function CheckoutPage() {
               <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
             </div>
 
+            {/* Card vs. bank transfer, both via Paystack, both auto-confirmed
+                (§94). Card first and pre-selected, so a buyer who does not
+                care can just press pay. This is Paystack's own transfer
+                channel, not the separate manual/admin-confirmed bank
+                transfer fallback below (TransferFallback), which only ever
+                renders when Paystack itself is off and stays off. */}
+            {!showDetailsForm && (
+              <div className="mkt-paymethods">
+                <button type="button" className={payChannel === "card" ? "mkt-paymethod active" : "mkt-paymethod"} onClick={() => setPayChannel("card")}>
+                  <span className="ic">💳</span>
+                  <span className="t">Card</span>
+                </button>
+                <button type="button" className={payChannel === "bank_transfer" ? "mkt-paymethod active" : "mkt-paymethod"} onClick={() => setPayChannel("bank_transfer")}>
+                  <span className="ic">🏦</span>
+                  <span className="t">Bank transfer</span>
+                </button>
+              </div>
+            )}
+
             {!showDetailsForm && (
               <div className="mkt-help" style={{ display: "flex", gap: 8 }}>
                 <span>🔒</span>
@@ -743,7 +769,7 @@ export default function CheckoutPage() {
             onClick={handlePay}>
             {payQ.data ? (redirecting ? "Opening Paystack..." : `Pay ${formatNaira(paystackTotal)}`) : "Preparing your payment..."}
           </button>
-          <div className="helper">Card, transfer or USSD on Paystack</div>
+          <div className="helper">{payChannel === "card" ? "Card payment via Paystack" : "Bank transfer via Paystack"}</div>
         </div>
       )}
 
