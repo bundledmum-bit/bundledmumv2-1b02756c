@@ -7048,3 +7048,19 @@ Preserved: every deployed function exactly as it currently runs (nothing was dep
 Files touched: 54 new files under `supabase/functions/<slug>/index.ts` (see the per-batch lists above for the full 54 slugs). No existing file was modified. `send-push` and `push-subscriber-welcome` deliberately not added.
 
 `npm run build` clean (unaffected — these are backend Deno functions, no frontend code was touched).
+
+## 96. The last two: send-push and push-subscriber-welcome, closing the gap (2026-08-18)
+
+Both functions withheld in §95 have been redeployed (confirmed live at `send-push` v19 and `push-subscriber-welcome` v18) with the hardcoded `VAPID_PRIVATE_KEY`/`VAPID_PUBLIC_KEY` fallback literals removed — both now read `Deno.env.get("VAPID_PUBLIC_KEY")`/`Deno.env.get("VAPID_PRIVATE_KEY")` only, and return *"Push is not configured: VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set as secrets"* rather than silently working off an embedded key if either secret is ever missing or misspelled.
+
+Fetched both, confirmed the version numbers matched what was reported live (v19/v18) before touching anything, and wrote them verbatim into `supabase/functions/send-push/index.ts` and `supabase/functions/push-subscriber-welcome/index.ts` — no reformatting.
+
+**Secret scan, re-run exactly as before**: the same pattern sweep (Paystack, Resend, AWS, JWT-shaped, Google key patterns) plus a plain `VAPID` grep across both new files. Zero pattern matches. Every `VAPID` occurrence in both files is either a comment, an env var name inside `Deno.env.get(...)`, or an error message string — no literal key value anywhere.
+
+**Full coverage confirmed by diffing the deployed slug list against the repo directory list directly**, not by eye: 80 functions are deployed, `supabase/functions/` now has exactly 80 directories, and a set comparison between the two lists came back empty both ways — nothing deployed is missing from the repo, and nothing in the repo doesn't correspond to something deployed. The gap from §95 is fully closed.
+
+Preserved: everything else untouched, no other function's file was touched, nothing was deployed or redeployed (both were already live before this section, deployed outside this session per the task).
+
+Files touched: `supabase/functions/send-push/index.ts` (new), `supabase/functions/push-subscriber-welcome/index.ts` (new).
+
+`npm run build` clean.
