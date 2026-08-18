@@ -194,6 +194,10 @@
    translucent overlay) so it stays legible over a photo of any brightness
    without depending on what's behind it. */
 .mkt-card-state { position: absolute; top: 8px; right: 8px; font: 800 10px/1 'Nunito', sans-serif; letter-spacing: 0.02em; padding: 5px 8px; border-radius: 7px; background: var(--mkt-green-dark); color: var(--mkt-cream); }
+/* Design 37a's own call for the browse card: small and passive, a single
+   glyph in the opposite corner from the qty/state pills, never a second
+   badge — it only has to say "there's more here". */
+.mkt-card-video-ic { position: absolute; bottom: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%; background: rgba(26,26,26,0.55); color: #fff; font: 400 9px/22px 'Lato', sans-serif; text-align: center; padding-left: 2px; }
 .mkt-card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mkt-card-body { padding: 9px 10px 11px; display: flex; flex-direction: column; gap: 5px; }
 .mkt-price {
@@ -744,6 +748,52 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-onelisting .ic { flex: 0 0 auto; font-size: 15px; line-height: 1.4; }
 .mkt-onelisting p { margin: 0; font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-coral-dark); }
 .mkt-onelisting p b { font-family: 'Nunito', sans-serif; font-weight: 800; }
+
+/* ── Optional listing video, seller form (design 37a) ───────────────────── */
+.mkt-video-field { margin-top: 4px; }
+.mkt-video-optional { font: 400 12px/1 'Lato', sans-serif; color: var(--mkt-muted-2); font-weight: 400; margin-left: 6px; }
+.mkt-video-add { width: 100%; border: 1.5px dashed var(--mkt-coral-dark); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; background: #fff; cursor: pointer; }
+.mkt-video-add .ic { width: 44px; height: 44px; border-radius: 50%; background: var(--mkt-coral-light); color: var(--mkt-coral-dark); display: flex; align-items: center; justify-content: center; font: 700 18px/1 'Lato', sans-serif; }
+.mkt-video-add .t { font: 800 13.5px/1 'Nunito', sans-serif; color: var(--mkt-coral-dark); }
+.mkt-video-add .s { font: 400 11px/1.4 'Lato', sans-serif; color: var(--mkt-muted-2); text-align: center; }
+.mkt-video-footnote { margin-top: 2px; color: var(--mkt-muted-2) !important; font-size: 10.5px !important; }
+
+.mkt-video-processing { display: flex; flex-direction: column; gap: 10px; }
+.mkt-video-processing .frame { position: relative; border-radius: 13px; overflow: hidden; background: var(--mkt-black); aspect-ratio: 16/10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; }
+.mkt-video-processing .spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,248,244,0.3); border-top-color: var(--mkt-coral); animation: mkt-spin 0.9s linear infinite; }
+.mkt-video-processing .label { font: 800 12.5px/1 'Nunito', sans-serif; color: var(--mkt-cream); }
+.mkt-video-processing .bar-row { display: flex; align-items: center; gap: 9px; }
+.mkt-video-processing .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--mkt-grey-chip); overflow: hidden; }
+.mkt-video-processing .bar i { display: block; height: 100%; background: var(--mkt-green); }
+.mkt-video-processing .bar-row span { font: 700 11px/1 'Lato', sans-serif; color: var(--mkt-muted); flex: 0 0 auto; }
+
+.mkt-video-preview { display: flex; align-items: center; gap: 12px; }
+.mkt-video-preview .frame { position: relative; width: 96px; flex: 0 0 96px; aspect-ratio: 16/10; border-radius: 10px; overflow: hidden; background: var(--mkt-black); }
+.mkt-video-preview .frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-video-preview .dur { position: absolute; left: 6px; bottom: 6px; background: rgba(26,26,26,0.55); color: var(--mkt-cream); font: 700 10px/1 'Lato', sans-serif; padding: 3px 6px; border-radius: 5px; }
+
+/* ── Listing video card, listing detail (design 37a) ─────────────────────── */
+.mkt-video-card { display: flex; flex-direction: column; gap: 7px; padding: 0 16px; margin-top: 4px; }
+.mkt-video-h { font: 800 13px/1 'Nunito', sans-serif; letter-spacing: 0.02em; }
+.mkt-video-frame { position: relative; border-radius: 16px; overflow: hidden; background: var(--mkt-black); aspect-ratio: 16/10; border: none; padding: 0; cursor: pointer; display: block; width: 100%; }
+.mkt-video-frame video { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--mkt-black); }
+.mkt-video-frame .scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); pointer-events: none; }
+.mkt-video-frame .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 60px; height: 60px; border-radius: 50%; background: rgba(255,248,244,.94); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.3); }
+.mkt-video-frame .play span { width: 0; height: 0; border-top: 12px solid transparent; border-bottom: 12px solid transparent; border-left: 18px solid var(--mkt-green); margin-left: 4px; }
+.mkt-video-frame .dur { position: absolute; left: 12px; bottom: 10px; background: rgba(26,26,26,.55); color: var(--mkt-cream); font: 700 11px/1 'Lato', sans-serif; padding: 4px 8px; border-radius: 6px; }
+.mkt-video-frame .tap { position: absolute; right: 12px; bottom: 10px; background: rgba(255,248,244,.94); color: var(--mkt-green-dark); font: 800 10px/1 'Nunito', sans-serif; padding: 4px 8px; border-radius: 6px; }
+.mkt-video-frame .controls { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.mkt-video-frame .track { height: 3px; border-radius: 2px; background: rgba(255,248,244,.3); overflow: hidden; }
+.mkt-video-frame .track i { display: block; height: 3px; background: var(--mkt-coral); }
+.mkt-video-frame .controls .row { display: flex; align-items: center; justify-content: space-between; }
+.mkt-video-frame .controls .t { font: 700 11px/1 'Lato', sans-serif; color: var(--mkt-cream); }
+.mkt-video-frame .pause { width: 24px; height: 24px; border-radius: 50%; background: rgba(255,248,244,.85); display: flex; align-items: center; justify-content: center; gap: 2px; }
+.mkt-video-frame .pause i { width: 3px; height: 9px; background: var(--mkt-black); display: block; }
+.mkt-video-caption { margin: 0; font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted-2); }
+
+@media (min-width: 1024px) {
+  .mkt-video-card { padding: 0; max-width: 480px; }
+}
 
 /* Short condition-notes nudge (design 20a, RT7). Coral, deliberately not the
    error red used for real validation failures on this form, since it never

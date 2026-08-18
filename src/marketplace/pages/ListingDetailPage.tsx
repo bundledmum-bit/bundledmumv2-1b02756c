@@ -31,6 +31,7 @@ import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundO
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
+import ListingVideoCard from "../components/ListingVideoCard";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
 
@@ -421,6 +422,17 @@ export default function ListingDetailPage() {
             ))}
           </div>
         ) : null}
+
+        {/* Design 37a: last, after every photo. Absent entirely — no card,
+            no border, no "no video available" line — when the listing has
+            none, which is most of them. */}
+        {listing.video_url && (
+          <ListingVideoCard
+            videoUrl={listing.video_url}
+            posterUrl={listing.video_poster_url || listing.video_url}
+            durationSeconds={listing.video_duration_seconds || 0}
+          />
+        )}
       </div>
 
       {/* Fullscreen only, zoom never touches the inline gallery above — the

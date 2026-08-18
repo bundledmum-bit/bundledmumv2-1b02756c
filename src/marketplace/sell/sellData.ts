@@ -136,6 +136,230 @@ export async function processListingImage(file: File, size = 1200, quality = 0.8
   }
 }
 
+/** Public bucket for the one optional listing video + its poster frame. */
+export const LISTING_VIDEO_BUCKET = "marketplace-videos";
+
+/** Raised when a chosen video is longer than site_settings' own
+ * marketplace_video_max_seconds — checked client side, upfront, right after
+ * picking the file and before any compression work is spent on a clip that
+ * will just be rejected. The exact same limit the database trigger itself
+ * reads, never a second hardcoded number that could drift from it. */
+export class VideoTooLongError extends Error {
+  constructor(public readonly maxSeconds: number, public readonly actualSeconds: number) {
+    super(`This video is ${Math.round(actualSeconds)}s, please choose one ${maxSeconds}s or shorter.`);
+  }
+}
+
+export interface ProcessedVideo {
+  blob: Blob;
+  posterBlob: Blob;
+  durationSeconds: number;
+  /** Real content type of `blob` — 'video/webm' after a genuine re-encode,
+   * or the original file's own type when compression wasn't possible on
+   * this device and the source file is uploaded as-is. */
+  mimeType: string;
+  /** Whether `blob` is actually the compressed re-encode, or the original
+   * file uploaded untouched because this device/browser has no
+   * captureStream()/MediaRecorder support. Reported honestly rather than
+   * silently claimed as compressed either way. */
+  wasCompressed: boolean;
+}
+
+// Longest edge, the same "cap the biggest dimension" lever compressImage
+// already uses for photos — the single biggest driver of file size for a
+// re-encode, since halving each dimension roughly quarters the pixel count
+// MediaRecorder has to spend bits on. 720 keeps a "does it work" demo clip
+// clearly watchable on a phone screen without paying for detail nobody
+// asked to see.
+const VIDEO_MAX_EDGE = 720;
+const VIDEO_BITRATE = 1_500_000; // ~1.5 Mbps video
+const AUDIO_BITRATE = 96_000;    // keeps real audio (see "Playing with sound" in the design), modest bitrate
+const VIDEO_FPS = 24;
+
+/** Reads just the metadata (duration, dimensions) without decoding the
+ * whole file — used for the upfront duration check, cheap and fast, before
+ * committing to the much slower full re-encode pass below. */
+export function readVideoMetadata(file: File): Promise<{ duration: number; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.muted = true;
+    v.onloadedmetadata = () => {
+      const { duration, videoWidth, videoHeight } = v;
+      URL.revokeObjectURL(url);
+      if (!isFinite(duration) || duration <= 0) { reject(new Error("Could not read this video.")); return; }
+      resolve({ duration, width: videoWidth, height: videoHeight });
+    };
+    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That file doesn't look like a video.")); };
+    v.src = url;
+  });
+}
+
+/** A single representative frame as a JPEG blob, for video_poster_url — the
+ * still frame the resting card shows before anyone taps play. Seeks a small
+ * offset into the clip rather than frame zero, since some encoders emit a
+ * black or garbage first frame. */
+function capturePosterFrame(video: HTMLVideoElement, w: number, h: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const targetTime = Math.min(0.2, video.duration / 2);
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Could not read this video.")); return; }
+      ctx.drawImage(video, 0, 0, w, h);
+      canvas.toBlob((blob) => {
+        if (blob && blob.size > 0) resolve(blob);
+        else reject(new Error("Could not read this video."));
+      }, "image/jpeg", 0.82);
+    };
+    video.addEventListener("seeked", onSeeked);
+    video.currentTime = targetTime;
+  });
+}
+
+/**
+ * Compresses a listing video client side before upload — the single most
+ * important part of this feature. An uncompressed phone clip is 20-50MB;
+ * one of those is roughly a hundred listing photos, and a Nigerian buyer
+ * pays for her own data to watch it, so this matters to her before it
+ * matters to us.
+ *
+ * Re-encodes via native browser APIs only, no new library, the same spirit
+ * as compressImage's canvas approach: draw the source video onto a
+ * downscaled canvas frame by frame (capping the longest edge at
+ * VIDEO_MAX_EDGE, the video equivalent of compressImage's maxEdge), and
+ * record that canvas' captureStream() through MediaRecorder at an explicit,
+ * modest bitrate — real control over the two biggest levers on file size
+ * (resolution and bitrate), rather than trusting whatever the device's own
+ * camera encoder chose. The original video's audio track is merged in
+ * separately (canvas.captureStream() carries video only), so the result
+ * keeps sound.
+ *
+ * Falls back to uploading the ORIGINAL file untouched if this device lacks
+ * captureStream()/MediaRecorder support (older Safari, chiefly) or the
+ * re-encode produces nothing usable — a genuine video is never lost, same
+ * "fall back rather than fail" philosophy as processListingImage. Reports
+ * which path was actually taken via wasCompressed rather than claiming
+ * compression happened either way.
+ */
+export async function processListingVideo(file: File, onProgress?: (pct: number) => void): Promise<ProcessedVideo> {
+  const url = URL.createObjectURL(file);
+  try {
+    const video = document.createElement("video");
+    video.muted = true; // avoids autoplay-gesture blocks; captureStream() still carries the real audio track regardless
+    video.playsInline = true;
+    video.src = url;
+
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("That file doesn't look like a video."));
+    });
+
+    const duration = video.duration;
+    const srcW = video.videoWidth || 720;
+    const srcH = video.videoHeight || 720;
+    const scale = Math.min(1, VIDEO_MAX_EDGE / Math.max(srcW, srcH));
+    // Even dimensions: some video encoders require them.
+    const w = Math.max(2, Math.round((srcW * scale) / 2) * 2);
+    const h = Math.max(2, Math.round((srcH * scale) / 2) * 2);
+
+    const posterBlob = await capturePosterFrame(video, w, h);
+
+    const canRecord = typeof MediaRecorder !== "undefined"
+      && typeof (video as unknown as { captureStream?: unknown }).captureStream === "function"
+      && typeof (document.createElement("canvas") as unknown as { captureStream?: unknown }).captureStream === "function";
+
+    if (!canRecord) {
+      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+    }
+
+    const mimeType = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ].find((t) => MediaRecorder.isTypeSupported(t));
+
+    if (!mimeType) {
+      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+    }
+
+    video.currentTime = 0;
+    await new Promise<void>((resolve) => {
+      if (video.currentTime === 0) { resolve(); return; }
+      video.onseeked = () => resolve();
+    });
+
+    const canvasStream = (canvas as unknown as { captureStream: (fps?: number) => MediaStream }).captureStream(VIDEO_FPS);
+    const sourceStream = (video as unknown as { captureStream: () => MediaStream }).captureStream();
+    const combined = new MediaStream([...canvasStream.getVideoTracks(), ...sourceStream.getAudioTracks()]);
+
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(combined, {
+      mimeType,
+      videoBitsPerSecond: VIDEO_BITRATE,
+      audioBitsPerSecond: AUDIO_BITRATE,
+    });
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    const recordStopped = new Promise<void>((resolve) => { recorder.onstop = () => resolve(); });
+
+    let raf = 0;
+    function drawLoop() {
+      if (video.paused || video.ended) return;
+      ctx!.drawImage(video, 0, 0, w, h);
+      if (onProgress && duration > 0) onProgress(Math.min(98, Math.round((video.currentTime / duration) * 100)));
+      raf = requestAnimationFrame(drawLoop);
+    }
+
+    recorder.start();
+    await video.play();
+    drawLoop();
+    await new Promise<void>((resolve) => { video.onended = () => resolve(); });
+    cancelAnimationFrame(raf);
+    recorder.stop();
+    await recordStopped;
+
+    const blob = new Blob(chunks, { type: mimeType });
+    if (onProgress) onProgress(100);
+
+    if (blob.size === 0) {
+      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+    }
+    return { blob, posterBlob, durationSeconds: duration, mimeType, wasCompressed: true };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Same shape as describeUploadError, for the marketplace-videos bucket
+ * (8MB hard cap, mp4/webm/quicktime only). Compression should keep a real
+ * upload well under the cap, so this is the rare-recovery path for a
+ * device where compression wasn't possible and the original file itself
+ * is still too big or an unsupported container. */
+export function describeVideoUploadError(error: unknown): string {
+  if (error instanceof VideoTooLongError) return error.message;
+  const raw = String((error as { message?: string } | null)?.message || "");
+  if (/exceed|too large|maximum.*size|payload too large/i.test(raw)) {
+    return "That video is too large even after compressing. Please choose a shorter clip.";
+  }
+  if (/mime type|not supported|invalid.*type|content.type/i.test(raw)) {
+    return "That video format isn't supported. Please choose an MP4, WEBM or MOV file.";
+  }
+  if (raw) console.error("[marketplace] video upload failed:", error);
+  return "The video didn't upload. Please check your connection and try again, or skip it, it's optional.";
+}
+
 /**
  * Turns a storage-upload rejection into a specific, human message. The
  * marketplace-listings bucket enforces a 5MB size limit and an image-only

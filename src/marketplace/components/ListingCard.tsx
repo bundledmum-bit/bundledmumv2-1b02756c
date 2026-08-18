@@ -29,6 +29,10 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
         ) : null}
         {showQty && <span className={available === 1 ? "mkt-card-qty low" : "mkt-card-qty"}>{qtyLabel}</span>}
         {state && <span className="mkt-card-state">{state}</span>}
+        {/* Design 37a's own call: small and passive, a single glyph saying
+            "there's more here" — the video card itself does the persuading
+            once tapped into, this just needs to not be a second badge. */}
+        {listing.video_url && <span className="mkt-card-video-ic" aria-hidden="true">▶</span>}
       </div>
       <div className="mkt-card-body">
         <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>

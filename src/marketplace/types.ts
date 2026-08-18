@@ -65,4 +65,10 @@ export interface MarketplaceListing {
   attributes: Record<string, string | number | boolean>;
   category: MarketplaceCategoryEmbed | null;
   seller: MarketplaceSellerPublic | null;
+  /** One optional seller-recorded video, up to marketplace_video_max_seconds
+   * (currently 15s). Null on most listings — rendered as nothing at all,
+   * never a placeholder, see ListingDetailPage.tsx. */
+  video_url: string | null;
+  video_poster_url: string | null;
+  video_duration_seconds: number | null;
 }

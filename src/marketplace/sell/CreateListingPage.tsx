@@ -3,7 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller } from "./useSeller";
-import { sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError } from "./sellData";
+import {
+  sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
+  LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
+} from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
@@ -49,6 +52,10 @@ interface ConditionQuestion {
 // null blob means an already-uploaded photo carried over from the existing
 // listing being edited — url is its real public URL, nothing to upload again.
 interface PhotoDraft { blob: Blob | null; url: string }
+/** blob/posterBlob null means "already uploaded" (edit mode carrying over an
+ * existing video, url/posterUrl already live public URLs) — the exact same
+ * null-means-existing convention PhotoDraft uses above. */
+interface VideoDraft { blob: Blob | null; posterBlob: Blob | null; url: string; posterUrl: string; durationSeconds: number; mimeType: string }
 
 interface ExistingListing {
   id: string;
@@ -69,6 +76,9 @@ interface ExistingListing {
   image_url: string | null;
   gallery_urls: string[] | null;
   rejection_reason: string | null;
+  video_url: string | null;
+  video_poster_url: string | null;
+  video_duration_seconds: number | null;
 }
 
 const CONDITIONS = ["Almost new", "Good", "Fair"];
@@ -119,6 +129,11 @@ export default function CreateListingPage() {
 
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const videoFileRef = useRef<HTMLInputElement | null>(null);
+  const [video, setVideo] = useState<VideoDraft | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [stateId, setStateId] = useState("");
@@ -147,7 +162,7 @@ export default function CreateListingPage() {
     enabled: isEditMode && !!seller,
     queryFn: async (): Promise<ExistingListing | null> => {
       const { data } = await sdb.from("marketplace_listings")
-        .select("id, status, title, description, condition, condition_notes, condition_answers, category_id, location_state, location_city, attributes, price_naira, original_price_naira, quantity, is_negotiable, image_url, gallery_urls, rejection_reason")
+        .select("id, status, title, description, condition, condition_notes, condition_answers, category_id, location_state, location_city, attributes, price_naira, original_price_naira, quantity, is_negotiable, image_url, gallery_urls, rejection_reason, video_url, video_poster_url, video_duration_seconds")
         .eq("id", editId as string)
         .eq("seller_id", seller!.id)
         .maybeSingle();
@@ -199,6 +214,21 @@ export default function CreateListingPage() {
       const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_markup_percent").maybeSingle();
       const v = Number((data as { value: unknown } | null)?.value);
       return isFinite(v) ? v : null;
+    },
+    staleTime: 60000,
+  });
+
+  // The same limit enforce_listing_video_limits itself reads server side —
+  // read live, never a second hardcoded "15" that could quietly drift from
+  // the database's own number. Falls back to 15 only while this is still
+  // loading (matches the trigger's own coalesce(v_max, 15) default), not a
+  // separately-chosen number.
+  const { data: videoMaxSeconds = 15 } = useQuery({
+    queryKey: ["mkt-video-max-seconds"],
+    queryFn: async () => {
+      const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_video_max_seconds").maybeSingle();
+      const v = Number((data as { value: unknown } | null)?.value);
+      return isFinite(v) && v > 0 ? v : 15;
     },
     staleTime: 60000,
   });
@@ -278,6 +308,16 @@ export default function CreateListingPage() {
       .filter((u): u is string => !!u)
       .map((url) => ({ blob: null, url }));
     setPhotos(existingPhotos);
+    if (existingListing.video_url) {
+      setVideo({
+        blob: null,
+        posterBlob: null,
+        url: existingListing.video_url,
+        posterUrl: existingListing.video_poster_url || existingListing.video_url,
+        durationSeconds: existingListing.video_duration_seconds || 0,
+        mimeType: "video/webm",
+      });
+    }
   }, [isEditMode, existingListing, states]);
 
   const { data: areas = [] } = useQuery({
@@ -440,6 +480,49 @@ export default function CreateListingPage() {
     });
   }
 
+  async function addVideo(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setVideoError(null);
+    setVideoBusy(true);
+    setVideoProgress(0);
+    try {
+      // Cheap metadata read first, so a clip that's too long is rejected
+      // upfront rather than after spending a slow compression pass on it.
+      const meta = await readVideoMetadata(file);
+      if (meta.duration > videoMaxSeconds + 1) {
+        throw new VideoTooLongError(videoMaxSeconds, meta.duration);
+      }
+      const processed = await processListingVideo(file, setVideoProgress);
+      setVideo((prev) => {
+        if (prev?.blob) { URL.revokeObjectURL(prev.url); URL.revokeObjectURL(prev.posterUrl); }
+        return {
+          blob: processed.blob,
+          posterBlob: processed.posterBlob,
+          url: URL.createObjectURL(processed.blob),
+          posterUrl: URL.createObjectURL(processed.posterBlob),
+          durationSeconds: processed.durationSeconds,
+          mimeType: processed.mimeType,
+        };
+      });
+    } catch (e) {
+      setVideoError(e instanceof VideoTooLongError ? e.message : describeVideoUploadError(e));
+    } finally {
+      setVideoBusy(false);
+    }
+  }
+
+  function removeVideo() {
+    setVideo((prev) => {
+      // Same "only a newly-processed draft owns an object URL" rule as
+      // removePhoto — an existing video carried over in edit mode is a real
+      // remote URL, nothing to revoke.
+      if (prev?.blob) { URL.revokeObjectURL(prev.url); URL.revokeObjectURL(prev.posterUrl); }
+      return null;
+    });
+    setVideoError(null);
+  }
+
   function goToQuestions() {
     const firstKey = recovery?.keys[0];
     const target = (firstKey && fieldRefs.current[firstKey]) || questionsRef.current;
@@ -531,6 +614,41 @@ export default function CreateListingPage() {
       return;
     }
 
+    // The video, optional, up to one. blob/posterBlob present means a fresh
+    // draft needing upload (same shape as photos above); null means it was
+    // carried over from the listing being edited and already lives in
+    // storage, nothing to re-upload.
+    let videoUrl: string | null = null;
+    let videoPosterUrl: string | null = null;
+    let videoDurationSeconds: number | null = null;
+    if (video) {
+      try {
+        if (video.blob && video.posterBlob) {
+          const ext = video.mimeType.includes("webm") ? "webm" : video.mimeType.includes("quicktime") ? "mov" : "mp4";
+          const videoPath = `${user.id}/${Date.now()}-video.${ext}`;
+          const { error: vErr } = await sdb.storage.from(LISTING_VIDEO_BUCKET).upload(videoPath, video.blob, { cacheControl: "3600", upsert: false, contentType: video.mimeType });
+          if (vErr) throw vErr;
+          const { data: vPub } = sdb.storage.from(LISTING_VIDEO_BUCKET).getPublicUrl(videoPath);
+          videoUrl = vPub.publicUrl;
+
+          const posterPath = `${user.id}/${Date.now()}-video-poster.jpg`;
+          const { error: pErr } = await sdb.storage.from(LISTING_VIDEO_BUCKET).upload(posterPath, video.posterBlob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
+          if (pErr) throw pErr;
+          const { data: pPub } = sdb.storage.from(LISTING_VIDEO_BUCKET).getPublicUrl(posterPath);
+          videoPosterUrl = pPub.publicUrl;
+          videoDurationSeconds = video.durationSeconds;
+        } else {
+          videoUrl = video.url;
+          videoPosterUrl = video.posterUrl;
+          videoDurationSeconds = video.durationSeconds;
+        }
+      } catch (e) {
+        setBusy(false);
+        setError(describeVideoUploadError(e));
+        return;
+      }
+    }
+
     try {
       const stateName = states.find((s) => s.id === stateId)?.name ?? null;
       const payload = {
@@ -550,6 +668,9 @@ export default function CreateListingPage() {
         attributes: buildAttributes(),
         image_url: urls[0],
         gallery_urls: urls.slice(1),
+        video_url: videoUrl,
+        video_poster_url: videoPosterUrl,
+        video_duration_seconds: videoDurationSeconds,
         status: "pending_review",
       };
       // Resubmitting a rejected/delisted/pending listing is a direct UPDATE
@@ -588,6 +709,13 @@ export default function CreateListingPage() {
         setLocationInvalid({ state: msg.startsWith("Choose the state"), area: msg.startsWith("Choose the area") });
         setError(msg);
         locationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      // enforce_listing_video_limits, same "should not be reachable given
+      // the upfront readVideoMetadata check, but never the only guard"
+      // reasoning — shown exactly as written, it already says what to do.
+      if (/^Videos must be \d+ seconds or shorter$/.test(msg)) {
+        setVideoError(msg);
         return;
       }
       // A known listing-edit rejection (should not normally be reachable,
@@ -753,6 +881,48 @@ export default function CreateListingPage() {
             <span className="ic">🛍️</span>
             <p><b>One item, one listing.</b> If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below.</p>
           </div>
+        </div>
+
+        {/* One optional video, design 37a, sits right after photos in the
+            seller form too. Genuinely optional: never counted in `filled`
+            (the progress bar above), never blocks submit, no validation
+            beyond the duration check inside addVideo itself. */}
+        <div className="mkt-field mkt-video-field">
+          <div className="mkt-field-head">
+            <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
+          </div>
+          <p className="mkt-help">{videoMaxSeconds} seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
+
+          {videoBusy ? (
+            <div className="mkt-video-processing">
+              <div className="frame">
+                <div className="spinner" />
+                <span className="label">Compressing your video…</span>
+              </div>
+              <div className="bar-row">
+                <div className="bar"><i style={{ width: `${videoProgress}%` }} /></div>
+                <span>{videoProgress}%</span>
+              </div>
+              <p className="mkt-help">Takes a little longer than a photo, usually under a minute. You can carry on filling in the rest of the form while this finishes.</p>
+            </div>
+          ) : video ? (
+            <div className="mkt-video-preview">
+              <div className="frame">
+                <img src={video.posterUrl} alt="" />
+                <span className="dur">{Math.round(video.durationSeconds)}s</span>
+              </div>
+              <button type="button" className="mkt-secondary" onClick={removeVideo}>Remove video</button>
+            </div>
+          ) : (
+            <button type="button" className="mkt-video-add" onClick={() => videoFileRef.current?.click()}>
+              <span className="ic">▶</span>
+              <span className="t">Record or upload a video</span>
+              <span className="s">Up to {videoMaxSeconds} seconds. We'll compress it for you.</span>
+            </button>
+          )}
+          <input ref={videoFileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(e) => { addVideo(e.target.files); e.target.value = ""; }} />
+          {videoError && <div className="mkt-errbox"><span className="m">!</span><span>{videoError}</span></div>}
+          <p className="mkt-help mkt-video-footnote">One video, up to {videoMaxSeconds} seconds, we compress it automatically. Photos are still required either way, this is extra, not a substitute.</p>
         </div>
 
         <div className="mkt-field">
