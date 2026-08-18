@@ -741,7 +741,14 @@ export default function CreateListingPage() {
       // enforce_listing_video_limits, same "should not be reachable given
       // the upfront readVideoMetadata check, but never the only guard"
       // reasoning — shown exactly as written, it already says what to do.
-      if (/^Videos must be \d+ seconds or shorter$/.test(msg)) {
+      // Covers all three of the trigger's own messages: too long, a
+      // duration that never made it into video_duration_seconds, and one
+      // that read as zero or negative.
+      if (
+        /^Videos must be \d+ seconds or shorter$/.test(msg)
+        || msg === "We could not read how long that video is, please try recording it again"
+        || msg === "That video appears to be empty, please try recording it again"
+      ) {
         setVideoError(msg);
         return;
       }
