@@ -12,6 +12,7 @@ import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import DelistToEditSheet from "./DelistToEditSheet";
+import { useMarketplaceVideoEnabled } from "../videoSettings";
 
 interface Category { id: string; name: string }
 interface Place { id: string; name: string }
@@ -127,6 +128,13 @@ export default function CreateListingPage() {
   // silently bounced to the dashboard with no explanation — see the
   // live-specific render branch below instead.
   const [liveDelistOpen, setLiveDelistOpen] = useState(false);
+
+  // Master switch, paused as of §91 (video couldn't be made reliable on
+  // iPhone) — defaults to false while loading and on any read failure, so
+  // this section never flashes into view and then vanishes. When this is
+  // false a seller must never see any control, hint, or mention that video
+  // exists at all, not just an empty/disabled one.
+  const videoEnabled = useMarketplaceVideoEnabled();
 
   const [photos, setPhotos] = useState<PhotoDraft[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -327,6 +335,13 @@ export default function CreateListingPage() {
       .filter((u): u is string => !!u)
       .map((url) => ({ blob: null, url }));
     setPhotos(existingPhotos);
+    // Deliberately NOT gated on videoEnabled: this only sets in-memory form
+    // state, never rendered while the field itself is hidden (below), so a
+    // seller still never sees or is told about it. Gating this too would
+    // mean submit()'s payload sends video_url: null for a listing that
+    // already has one, silently deleting real data on an unrelated edit —
+    // §91 is a rendering pause, not a data change, and nothing here should
+    // touch the database on its own.
     if (existingListing.video_url) {
       setVideo({
         blob: null,
@@ -937,53 +952,58 @@ export default function CreateListingPage() {
         {/* One optional video, design 37a, sits right after photos in the
             seller form too. Genuinely optional: never counted in `filled`
             (the progress bar above), never blocks submit, no validation
-            beyond the duration check inside addVideo itself. */}
-        <div className="mkt-field mkt-video-field">
-          <div className="mkt-field-head">
-            <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
-          </div>
-          <p className="mkt-help">{videoMaxSeconds} seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
+            beyond the duration check inside addVideo itself.
+            Paused as of §91 (marketplace_video_enabled) — while off, this
+            entire block renders nothing at all, not even a disabled
+            control or a hint that video exists. */}
+        {videoEnabled && (
+          <div className="mkt-field mkt-video-field">
+            <div className="mkt-field-head">
+              <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
+            </div>
+            <p className="mkt-help">{videoMaxSeconds} seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
 
-          {videoBusy ? (
-            videoCompressing ? (
-              <div className="mkt-video-processing">
+            {videoBusy ? (
+              videoCompressing ? (
+                <div className="mkt-video-processing">
+                  <div className="frame">
+                    <div className="spinner" />
+                    <span className="label">Compressing your video…</span>
+                  </div>
+                  <div className="bar-row">
+                    <div className="bar"><i style={{ width: `${videoProgress}%` }} /></div>
+                    <span>{videoProgress}%</span>
+                  </div>
+                  <p className="mkt-help">This one's a bit large, so it takes about as long as the video itself to compress, please hang on. You can carry on filling in the rest of the form while it finishes.</p>
+                </div>
+              ) : (
+                <div className="mkt-video-processing">
+                  <div className="frame">
+                    <div className="spinner" />
+                    <span className="label">Adding your video…</span>
+                  </div>
+                </div>
+              )
+            ) : video ? (
+              <div className="mkt-video-preview">
                 <div className="frame">
-                  <div className="spinner" />
-                  <span className="label">Compressing your video…</span>
+                  <img src={video.posterUrl} alt="" />
+                  <span className="dur">{Math.round(video.durationSeconds)}s</span>
                 </div>
-                <div className="bar-row">
-                  <div className="bar"><i style={{ width: `${videoProgress}%` }} /></div>
-                  <span>{videoProgress}%</span>
-                </div>
-                <p className="mkt-help">This one's a bit large, so it takes about as long as the video itself to compress, please hang on. You can carry on filling in the rest of the form while it finishes.</p>
+                <button type="button" className="mkt-secondary" onClick={removeVideo}>Remove video</button>
               </div>
             ) : (
-              <div className="mkt-video-processing">
-                <div className="frame">
-                  <div className="spinner" />
-                  <span className="label">Adding your video…</span>
-                </div>
-              </div>
-            )
-          ) : video ? (
-            <div className="mkt-video-preview">
-              <div className="frame">
-                <img src={video.posterUrl} alt="" />
-                <span className="dur">{Math.round(video.durationSeconds)}s</span>
-              </div>
-              <button type="button" className="mkt-secondary" onClick={removeVideo}>Remove video</button>
-            </div>
-          ) : (
-            <button type="button" className="mkt-video-add" onClick={() => videoFileRef.current?.click()}>
-              <span className="ic">▶</span>
-              <span className="t">Record or upload a video</span>
-              <span className="s">Up to {videoMaxSeconds} seconds. Large ones get compressed automatically.</span>
-            </button>
-          )}
-          <input ref={videoFileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(e) => { addVideo(e.target.files); e.target.value = ""; }} />
-          {videoError && <div className="mkt-errbox"><span className="m">!</span><span>{videoError}</span></div>}
-          <p className="mkt-help mkt-video-footnote">One video, up to {videoMaxSeconds} seconds. Most upload instantly, we only compress the large ones. Photos are still required either way, this is extra, not a substitute.</p>
-        </div>
+              <button type="button" className="mkt-video-add" onClick={() => videoFileRef.current?.click()}>
+                <span className="ic">▶</span>
+                <span className="t">Record or upload a video</span>
+                <span className="s">Up to {videoMaxSeconds} seconds. Large ones get compressed automatically.</span>
+              </button>
+            )}
+            <input ref={videoFileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(e) => { addVideo(e.target.files); e.target.value = ""; }} />
+            {videoError && <div className="mkt-errbox"><span className="m">!</span><span>{videoError}</span></div>}
+            <p className="mkt-help mkt-video-footnote">One video, up to {videoMaxSeconds} seconds. Most upload instantly, we only compress the large ones. Photos are still required either way, this is extra, not a substitute.</p>
+          </div>
+        )}
 
         <div className="mkt-field">
           <span className="mkt-uplabel">Title</span>

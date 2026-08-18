@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { MarketplaceListing } from "../types";
 import { formatNaira, locationLabel, stateBadgeLabel, conditionLabel, isVerifiedSeller } from "../lib/format";
 import VerifiedBadge from "./VerifiedBadge";
+import { useMarketplaceVideoEnabled } from "../videoSettings";
 
 /**
  * Browse-grid card, per the design card anatomy: photo, price, one-line title,
@@ -10,6 +11,9 @@ import VerifiedBadge from "./VerifiedBadge";
  */
 export default function ListingCard({ listing }: { listing: MarketplaceListing }) {
   const verified = isVerifiedSeller(listing);
+  // Paused as of §91, guarded on the setting rather than the data, same
+  // reasoning as ListingDetailPage's own card.
+  const videoEnabled = useMarketplaceVideoEnabled();
   // Availability speaks up only when there are several. A single-item listing
   // (the usual case) shows no badge, so the grid stays clean.
   const available = Number(listing.quantity ?? 1) - Number(listing.quantity_sold ?? 0);
@@ -32,7 +36,7 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
         {/* Design 37a's own call: small and passive, a single glyph saying
             "there's more here" — the video card itself does the persuading
             once tapped into, this just needs to not be a second badge. */}
-        {listing.video_url && <span className="mkt-card-video-ic" aria-hidden="true">▶</span>}
+        {videoEnabled && listing.video_url && <span className="mkt-card-video-ic" aria-hidden="true">▶</span>}
       </div>
       <div className="mkt-card-body">
         <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>

@@ -32,6 +32,7 @@ import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
 import ListingVideoCard from "../components/ListingVideoCard";
+import { useMarketplaceVideoEnabled } from "../videoSettings";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
 
@@ -96,6 +97,11 @@ export default function ListingDetailPage() {
   const { isLoggedIn, user } = useCustomerAuth();
   const { seller, loading: sellerLoading } = useSeller();
   const waNumber = useMarketplaceWhatsAppNumber();
+  // Paused as of §91 — guarded on the setting, not the data, so a listing
+  // that somehow still carries a video_url never renders the card while
+  // this is off. Defaults to false while loading/unreadable, so the card
+  // never flashes in and back out.
+  const videoEnabled = useMarketplaceVideoEnabled();
 
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [offerSheetOpen, setOfferSheetOpen] = useState(false);
@@ -425,8 +431,11 @@ export default function ListingDetailPage() {
 
         {/* Design 37a: last, after every photo. Absent entirely — no card,
             no border, no "no video available" line — when the listing has
-            none, which is most of them. */}
-        {listing.video_url && (
+            none, which is most of them. Also gated on marketplace_video_enabled
+            (§91): guarded on the setting rather than the data, so this stays
+            hidden even for a listing that somehow still has a video_url
+            while the feature is paused. */}
+        {videoEnabled && listing.video_url && (
           <ListingVideoCard
             videoUrl={listing.video_url}
             posterUrl={listing.video_poster_url || listing.video_url}

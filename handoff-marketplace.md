@@ -6934,3 +6934,29 @@ Preserved: the timeouts from §90, unchanged, still working as designed and stil
 Files touched: `src/marketplace/sell/sellData.ts` (`createHiddenVideoElement()` new, `readVideoMetadata()` and `processListingVideo()` rewired to use it, `VideoTooLargeError` now takes `wasCompressed` for an honest message, `canRecord` documented explicitly as the reason compression can't run on iOS).
 
 `npm run build` clean.
+
+## 92. Listing video paused, not removed — gated behind marketplace_video_enabled (2026-08-18)
+
+**Why**: video could not be made to work on iPhone. §91 fixed every documented iOS metadata-read cause, but client-side compression genuinely cannot run on iOS at all — `HTMLMediaElement.captureStream()` has never been implemented in WebKit. An iPhone seller with an oversized clip has no path forward, and iPhones are a large share of Nigerian sellers, so this is switched off until there's a real fix or a different approach, not shipped broken for a large chunk of sellers.
+
+**Before**: the seller-form video field (`.mkt-video-field`, `CreateListingPage.tsx`) rendered unconditionally, right after the photo section. `ListingVideoCard` rendered on listing detail (`ListingDetailPage.tsx`) whenever `listing.video_url` was set. The small `▶` badge on browse-grid cards (`ListingCard.tsx`) rendered on the same condition.
+
+**After**: a new shared hook, `useMarketplaceVideoEnabled()` (`src/marketplace/videoSettings.ts`, following the exact pattern already established by `policySettings.ts` for a setting read across multiple pages), reads `site_settings.marketplace_video_enabled` live — confirmed already deployed and set to `false`. All three render sites are now gated on it:
+
+- **Seller form**: the entire `.mkt-video-field` block (idle prompt, processing states, preview, everything) is wrapped in `{videoEnabled && (...)}`. While off, a seller sees nothing — no control, no disabled state, no mention that video exists at all. Live-verified: the field simply isn't in the page.
+- **Listing detail**: `{videoEnabled && listing.video_url && (<ListingVideoCard .../>)}` — guarded on the setting *and* the data, per the task's own instruction, so a listing that somehow still carries a `video_url` doesn't render the card while paused. Live-verified decisively: set a real `video_url`/`video_poster_url`/`video_duration_seconds` on a genuine live listing via direct SQL, reloaded its detail page — nothing rendered, no card, no heading, confirming the guard is genuinely on the setting and not on data presence. Reverted the test data immediately after.
+- **Browse grid**: `{videoEnabled && listing.video_url && <span className="mkt-card-video-ic" ...>}` in `ListingCard.tsx`, not explicitly named in the task but the same class of "visible trace of video for buyers" the task asks to eliminate — live-verified across 131 real cards on the browse grid (including the one with the test `video_url` still set at that point): zero video badges.
+
+**Nothing was deleted.** `processListingVideo`, `createHiddenVideoElement`, `ListingVideoCard`, the timeouts, the iOS fixes, the bare-mime-type fix, the poster's bucket — all untouched, still fully present, still exercised by the live-verification tests above (the pipeline itself still runs correctly; only its three UI entry points are gated). Turning it back on is one `UPDATE site_settings SET value = true WHERE key = 'marketplace_video_enabled'`, no rebuild, no redeploy.
+
+**The setting is read, never hardcoded** — same `useQuery` + `site_settings` pattern as every other marketplace_* flag in this codebase (`marketplace_video_max_seconds`, `marketplace_video_max_mb`, the whole of `policySettings.ts`).
+
+**What shows while the setting is loading**: nothing, by construction rather than by an explicit loading branch. `useMarketplaceVideoEnabled()` returns `data ?? false` — React Query's `data` is `undefined` from the very first render until the query resolves, so every caller sees `false` for that entire window, identical to the off state. There is no moment where the video section is visible and then removed once the real value arrives: it simply never appears unless the setting has already resolved to `true`. Live-verified indirectly — navigating fresh to a listing detail page never showed any video element at any point, consistent with this "off from first paint" behaviour rather than a flash-then-hide.
+
+**If the setting cannot be read at all**: same mechanism covers this for free — a failed query also leaves `data` as `undefined` (React Query's own retry/backoff runs in the background, but `data` stays unset throughout), so `?? false` applies. Defaults to off, never on, exactly as required — a broken read produces the same "nothing shown" result as a successful read of `false`.
+
+Preserved: the 4-photo minimum, crop, compression, and watermark (untouched, no changes to `processListingImage` or its call sites); the one-item-per-listing notice, condition questions, category questions, and location validation (untouched); the fullscreen photo viewer (untouched); sections 7 through 91.
+
+Files touched: `src/marketplace/videoSettings.ts` (new), `src/marketplace/sell/CreateListingPage.tsx` (video field gated, edit-mode hydration deliberately left ungated — see inline comment: it only sets in-memory form state, never rendered while the field is hidden, and gating it would make submit() silently null out an existing listing's video_url on an unrelated edit, which is a data change §92 was never meant to make), `src/marketplace/pages/ListingDetailPage.tsx` (card gated), `src/marketplace/components/ListingCard.tsx` (badge gated).
+
+`npm run build` clean.
