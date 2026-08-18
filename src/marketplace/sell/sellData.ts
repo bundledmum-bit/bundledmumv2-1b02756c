@@ -150,14 +150,22 @@ export class VideoTooLongError extends Error {
   }
 }
 
-/** Raised when a video is still over the bucket's own cap even after the
- * compression pass — a real, if rare, outcome once a clip is already dense
- * (busy scenes, high original bitrate) even after downscaling. Said
- * plainly, with the fix already in the seller's hands: the 15s limit
- * already applies, a shorter clip is the way out. */
+/** Raised when a video is still over the bucket's own cap once the pipeline
+ * is done with it. Said plainly, with the fix already in the seller's
+ * hands: the 15s limit already applies, a shorter clip is the way out.
+ * `wasCompressed` picks between two honest messages, since "even after
+ * compressing" is only true when a compression pass actually ran — on a
+ * device where it structurally can't (iOS Safari, see handoff §91:
+ * HTMLMediaElement.captureStream() isn't implemented in WebKit at all, so
+ * canRecord is false and the original file is uploaded untouched), saying
+ * "even after compressing" would be a real, if small, lie. */
 export class VideoTooLargeError extends Error {
-  constructor(public readonly maxMb: number) {
-    super(`This video is still too large to upload, even after compressing. Please try recording a shorter clip.`);
+  constructor(public readonly maxMb: number, public readonly wasCompressed: boolean) {
+    super(
+      wasCompressed
+        ? "This video is still too large to upload, even after compressing. Please try recording a shorter clip."
+        : "This video is too large to upload, and this device can't compress it automatically. Please try recording a shorter clip.",
+    );
   }
 }
 
@@ -241,25 +249,72 @@ const SEEK_TIMEOUT_MS = 10_000;
  * storage and no error shown. */
 export const VIDEO_UPLOAD_TIMEOUT_MS = 25_000;
 
+/**
+ * Creates a <video> element wired the way iOS Safari actually requires —
+ * reasoned from Apple's own documented WebKit behaviour (not measured on a
+ * real device in this environment, see handoff §91):
+ *
+ * - The blob goes on a <source> CHILD element, never on video.src directly.
+ *   Blob URLs set as video.src are documented as looping/exhausting memory
+ *   on iOS 15 and failing outright on iOS 17.4.1; Apple's own recommended
+ *   workaround is a <source> child instead.
+ * - The element is attached to the DOM (visually hidden, not display:none —
+ *   iOS is documented to suspend loading on elements it considers
+ *   offscreen/non-rendered) rather than left detached in memory, which iOS
+ *   is documented to suspend (readyState/networkState stuck) to save
+ *   battery.
+ * - preload="metadata" explicitly (iOS is documented to only honour this
+ *   value, not "auto"), plus muted + playsInline, both required on iOS for
+ *   a video element to load or play without a user gesture.
+ * - The source URL carries a #t=0.001 fragment, a documented iOS trick that
+ *   forces WebKit to actually decode an initial frame rather than staying
+ *   idle — relevant to both the metadata read and the poster capture right
+ *   after it. Harmless elsewhere: browsers that don't apply Media Fragments
+ *   for decoding simply ignore it.
+ *
+ * Returns a cleanup() that removes the element and revokes the object URL —
+ * callers must call it (in a finally) once genuinely done with the element.
+ */
+function createHiddenVideoElement(file: File): { video: HTMLVideoElement; cleanup: () => void } {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  // Visually hidden but genuinely laid out/rendered, not display:none —
+  // iOS's own suspension behaviour is documented as keying off whether an
+  // element is actually in the render tree, not just present in the DOM.
+  video.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;";
+  video.setAttribute("aria-hidden", "true");
+  const source = document.createElement("source");
+  source.type = file.type || "video/mp4";
+  source.src = `${url}#t=0.001`;
+  video.appendChild(source);
+  document.body.appendChild(video);
+  return {
+    video,
+    cleanup: () => {
+      video.remove();
+      URL.revokeObjectURL(url);
+    },
+  };
+}
+
 /** Reads just the metadata (duration, dimensions) without decoding the
  * whole file — used for the upfront duration check, cheap and fast, before
  * committing to the much slower full re-encode pass below. */
 export function readVideoMetadata(file: File): Promise<{ duration: number; width: number; height: number }> {
-  const url = URL.createObjectURL(file);
+  const { video: v, cleanup } = createHiddenVideoElement(file);
   const read = new Promise<{ duration: number; width: number; height: number }>((resolve, reject) => {
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    v.muted = true;
     v.onloadedmetadata = () => {
       const { duration, videoWidth, videoHeight } = v;
       if (!isFinite(duration) || duration <= 0) { reject(new Error("Could not read this video.")); return; }
       resolve({ duration, width: videoWidth, height: videoHeight });
     };
     v.onerror = () => reject(new Error("That file doesn't look like a video."));
-    v.src = url;
   });
   return withTimeout(read, METADATA_TIMEOUT_MS, "Could not read this video in time. Please try again.")
-    .finally(() => URL.revokeObjectURL(url));
+    .finally(cleanup);
 }
 
 /** A single representative frame as a JPEG blob, for video_poster_url — the
@@ -336,7 +391,7 @@ export async function processListingVideo(
 ): Promise<ProcessedVideo> {
   const maxBytes = maxMb * 1024 * 1024;
   function finish(result: ProcessedVideo): ProcessedVideo {
-    if (result.blob.size > maxBytes) throw new VideoTooLargeError(maxMb);
+    if (result.blob.size > maxBytes) throw new VideoTooLargeError(maxMb, result.wasCompressed);
     return result;
   }
   // The bucket's own allowed_mime_types is exactly ["video/mp4",
@@ -350,13 +405,8 @@ export async function processListingVideo(
     return (m || "video/mp4").split(";")[0].trim();
   }
 
-  const url = URL.createObjectURL(file);
+  const { video, cleanup } = createHiddenVideoElement(file);
   try {
-    const video = document.createElement("video");
-    video.muted = true; // avoids autoplay-gesture blocks; captureStream() still carries the real audio track regardless
-    video.playsInline = true;
-    video.src = url;
-
     await withTimeout(
       new Promise<void>((resolve, reject) => {
         video.onloadedmetadata = () => resolve();
@@ -382,6 +432,17 @@ export async function processListingVideo(
       return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
 
+    // This is also the real answer to "can compression work on iOS at
+    // all": no. HTMLMediaElement.captureStream() — video.captureStream()
+    // below, the only way to pull the original audio track out — has never
+    // been implemented in WebKit (documented, longstanding gap, still true
+    // in current Safari), so canRecord is always false on an iPhone or iPad
+    // regardless of iOS version. This isn't a special iOS case in the code;
+    // it's the same capability check that already exists for any browser
+    // lacking the API, and it already falls back to uploading the original
+    // file untouched (the bucket accepts video/quicktime, so an iPhone's
+    // own MOV upload is fine as long as it fits — see VideoTooLargeError's
+    // wasCompressed-aware message for when it doesn't).
     const canRecord = typeof MediaRecorder !== "undefined"
       && typeof (video as unknown as { captureStream?: unknown }).captureStream === "function"
       && typeof (document.createElement("canvas") as unknown as { captureStream?: unknown }).captureStream === "function";
@@ -465,7 +526,7 @@ export async function processListingVideo(
     }
     return finish({ blob, posterBlob, durationSeconds: duration, mimeType: bareRecordMime, wasCompressed: true });
   } finally {
-    URL.revokeObjectURL(url);
+    cleanup();
   }
 }
 
