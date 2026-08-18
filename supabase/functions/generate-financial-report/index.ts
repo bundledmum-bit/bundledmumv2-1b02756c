@@ -1,0 +1,134 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const MODEL = "claude-sonnet-4-6";
+
+// Robust JSON extraction: tolerate leading prose, code fences, or trailing
+// commentary by slicing from the first '{' to the last '}' and parsing that.
+function extractJson(text: string): any {
+  const raw = (text || "").trim();
+  try { return JSON.parse(raw); } catch (_) { /* fall through */ }
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  try { return JSON.parse(cleaned); } catch (_) { /* fall through */ }
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) {
+    return JSON.parse(cleaned.slice(first, last + 1));
+  }
+  throw new Error("no json object found");
+}
+
+const SYSTEM_PROMPT = `You are writing the narrative sections of an investor financial report for BundledMum, a Nigerian maternity e-commerce business (launched 18 May 2026, founder-funded with NGN 10,000,000 committed capital, source-on-demand fulfilment model, Lagos-based). You will be given VERIFIED FINANCIAL FIGURES as JSON. Rules, absolute:
+1. Use ONLY numbers present in the provided figures. NEVER compute, estimate, extrapolate, or invent any number. Every figure you cite must appear verbatim in the data.
+2. There are only TWO months of trading data (May, June 2026). You MUST state explicitly that this is too short to establish a trend and that any forward figures are labeled scenarios, not predictions.
+3. Do NOT spin negative figures positively. If net profit is negative or marketing ROI is negative, state it plainly.
+4. For projections, only restate the provided scenario figures and always name their assumption (e.g. 'at a 20% month-on-month growth assumption').
+5. No em dashes anywhere. Use commas or full stops.
+6. Explain the key story the data shows: May had a low average markup (28.1%) and high unpredicted extra costs, compressing gross margin to 8.8%. June's markup rose (60.4%) and extra costs fell, lifting margin to 30.4%. Net loss nonetheless widened because operating and marketing spend grew faster than gross profit. Present this honestly.
+7. MARKETING CHANNELS: using marketing_by_channel (each row has an is_measurable flag) and the acquisition figures, state plainly what share of acquisition spend goes to UNMEASURABLE channels (hub partnerships, influencer, giveaway) versus MEASURABLE channels (Meta, Google ads). State clearly as a key weakness that most of the spend is not attributable, so a true ROAS and CAC cannot be measured for the majority of spend.
+8. UNIT ECONOMICS: comment ONLY on per-order economics. Cover the average gross profit per order, the average order value, and the revenue concentration risk (the largest order as a percentage of revenue). Flag the concentration honestly as a risk. Do NOT discuss the quote pipeline in this section.
+9. QUOTE PIPELINE: these quotes are individual RETAIL customer enquiries generated largely by Meta Ads flowing into WhatsApp, where a customer requests a quote for their own order, views it, and often does not complete. They are NOT a B2B pipeline. Comment on the open pipeline value, the paid conversion rate, and that the pipeline represents customer demand not yet converted. The dead or expired pipeline is large, far larger than realised revenue, and consists of real, often repeatedly viewed, high value customer quotes that expired without converting. Make this honest connection: the volume of high value, repeatedly viewed, then expired quotes indicates the primary constraint is quote to order CONVERSION and FOLLOW UP, not demand generation. This suggests paid acquisition (Meta) may be generating genuine high intent demand that is being lost at the manual WhatsApp quote and follow up stage, rather than the ads themselves failing. Frame this as a concrete, fixable execution gap, a structured follow up and closing process, sitting on top of proven interest, and present it as an opportunity, not merely something that warrants investigation. Keep it honest: viewed interest is NOT committed revenue, do not imply the dead pipeline is recoverable revenue. State that only a structured follow up process could test how much of it is convertible.
+Return a JSON object with keys: executive_summary, margin_and_cost_analysis, marketing_channel_analysis, unit_economics_analysis, quote_pipeline_analysis, burn_and_runway, outlook_and_scenarios. Each value is 1 to 3 short paragraphs of plain prose. Return ONLY the JSON, no preamble, no markdown.`;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+
+    // Auth: must be an active super admin (mirrors approve-pending-product).
+    const authHeader = req.headers.get("Authorization") || "";
+    const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+    const { data: userData, error: userErr } = await userClient.auth.getUser();
+    if (userErr || !userData?.user) {
+      return new Response(JSON.stringify({ error: "Not authenticated" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const admin = createClient(supabaseUrl, serviceKey);
+    const { data: adminRow } = await admin.from("admin_users")
+      .select("id, role, is_active").eq("auth_user_id", userData.user.id).maybeSingle();
+    if (!adminRow || adminRow.role !== "super_admin" || !adminRow.is_active) {
+      return new Response(JSON.stringify({ error: "Super admin only" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Input range. Default: launch month to today.
+    let body: any = {};
+    try { body = await req.json(); } catch (_) { body = {}; }
+    const today = new Date().toISOString().slice(0, 10);
+    const p_start = (typeof body.p_start === "string" && body.p_start.trim()) ? body.p_start.trim() : "2026-05-01";
+    const p_end = (typeof body.p_end === "string" && body.p_end.trim()) ? body.p_end.trim() : today;
+
+    // ── Step A: pull LOCKED numbers server-side. All figures come from the DB.
+    // No figure is computed here or by Claude.
+    const [trendRes, metricsRes, scenariosRes, runwayRes, mktRes, ueRes, pipeRes] = await Promise.all([
+      admin.rpc("finance_monthly_trend", { p_start, p_end }),
+      admin.rpc("finance_period_metrics", { p_start, p_end }),
+      admin.rpc("finance_projection_scenarios"),
+      admin.from("finance_runway").select("*").single(),
+      admin.rpc("finance_marketing_by_channel", { p_start, p_end }),
+      admin.rpc("finance_unit_economics", { p_start, p_end }),
+      admin.from("finance_quote_pipeline").select("*").single(),
+    ]);
+    const firstErr = trendRes.error || metricsRes.error || scenariosRes.error || runwayRes.error || mktRes.error || ueRes.error || pipeRes.error;
+    if (firstErr) {
+      return new Response(JSON.stringify({ error: "Could not load financial figures", detail: firstErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const arr = (v: any) => (Array.isArray(v) ? v : (v ? [v] : []));
+    const figures = {
+      period: { p_start, p_end },
+      business: { name: "BundledMum", launched: "2026-05-18", committed_capital_ngn: 10000000, currency: "NGN" },
+      monthly_trend: arr(trendRes.data),
+      period_metrics: arr(metricsRes.data)[0] || null,
+      projection_scenarios: arr(scenariosRes.data)[0] || null,
+      runway: runwayRes.data || null,
+      marketing_by_channel: arr(mktRes.data),
+      unit_economics: arr(ueRes.data)[0] || null,
+      quote_pipeline: pipeRes.data || null,
+    };
+
+    // ── Step B: Claude writes ONLY the prose. If it fails, we still return the
+    // figures so the client renders a figures-only document (never blank).
+    let narrative: any = null;
+    let narrative_error: string | null = null;
+    if (!ANTHROPIC_API_KEY) {
+      narrative_error = "ANTHROPIC_API_KEY not configured";
+    } else {
+      try {
+        const aiResp = await fetch(ANTHROPIC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 2600,
+            system: SYSTEM_PROMPT,
+            messages: [{ role: "user", content: "VERIFIED FINANCIAL FIGURES:\n" + JSON.stringify(figures) }],
+          }),
+        });
+        if (!aiResp.ok) {
+          narrative_error = "Claude API call failed: " + (await aiResp.text()).slice(0, 300);
+        } else {
+          const aiData = await aiResp.json();
+          const aiText = (aiData.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
+          try { narrative = extractJson(aiText); }
+          catch { narrative_error = "Could not parse Claude response"; }
+        }
+      } catch (e) {
+        narrative_error = e instanceof Error ? e.message : "Claude request error";
+      }
+    }
+
+    // ── Step C: return figures + narrative (narrative may be null on AI failure).
+    return new Response(JSON.stringify({ figures, narrative, narrative_error }), {
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+});
