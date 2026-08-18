@@ -161,6 +161,13 @@ export class VideoTooLargeError extends Error {
   }
 }
 
+/** Raised by withTimeout below — a distinct class so callers can show its
+ * already-friendly message directly rather than letting it fall through to
+ * describeVideoUploadError's generic fallback, which would lose the
+ * specific "this is what actually happened" detail (metadata read timed
+ * out vs. a seek timed out vs. the upload itself stalled). */
+export class VideoTimeoutError extends Error {}
+
 /** Fraction of the bucket's own cap (site_settings' marketplace_video_max_mb,
  * currently 8) below which a clip uploads exactly as recorded, skipping the
  * slow real-time re-encode entirely. Most phone clips at 15 seconds,
@@ -186,7 +193,10 @@ export interface ProcessedVideo {
   durationSeconds: number;
   /** Real content type of `blob` — 'video/webm' after a genuine re-encode,
    * or the original file's own type when compression wasn't possible on
-   * this device and the source file is uploaded as-is. */
+   * this device and the source file is uploaded as-is. Always the bare
+   * type with no codec parameters (never e.g. 'video/webm;codecs=vp9,opus'),
+   * since this is used directly as the storage upload's contentType and
+   * the marketplace-videos bucket's allowed_mime_types is the bare form. */
   mimeType: string;
   /** Whether `blob` is actually the compressed re-encode, or the original
    * file uploaded untouched because this device/browser has no
@@ -206,24 +216,50 @@ const VIDEO_BITRATE = 1_500_000; // ~1.5 Mbps video
 const AUDIO_BITRATE = 96_000;    // keeps real audio (see "Playing with sound" in the design), modest bitrate
 const VIDEO_FPS = 24;
 
+/** Races a promise against a timer, rejecting with a clear message if it
+ * never settles. Every step below waits on a browser event (metadata
+ * loaded, seeked, play ended) that, on some device or with some file, can
+ * simply never fire — with no timeout that leaves a seller staring at
+ * "Adding your video" forever, no error, nothing landing in storage,
+ * because the code is still awaiting an event that was never coming. This
+ * guarantees every step either finishes or gives up and says so. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new VideoTimeoutError(message)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+const METADATA_TIMEOUT_MS = 12_000;
+const SEEK_TIMEOUT_MS = 10_000;
+/** Also used by CreateListingPage for the video/poster storage uploads
+ * themselves — a stalled connection must give up and say so, not hang the
+ * seller on "Adding your video" indefinitely with nothing ever landing in
+ * storage and no error shown. */
+export const VIDEO_UPLOAD_TIMEOUT_MS = 25_000;
+
 /** Reads just the metadata (duration, dimensions) without decoding the
  * whole file — used for the upfront duration check, cheap and fast, before
  * committing to the much slower full re-encode pass below. */
 export function readVideoMetadata(file: File): Promise<{ duration: number; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
+  const url = URL.createObjectURL(file);
+  const read = new Promise<{ duration: number; width: number; height: number }>((resolve, reject) => {
     const v = document.createElement("video");
     v.preload = "metadata";
     v.muted = true;
     v.onloadedmetadata = () => {
       const { duration, videoWidth, videoHeight } = v;
-      URL.revokeObjectURL(url);
       if (!isFinite(duration) || duration <= 0) { reject(new Error("Could not read this video.")); return; }
       resolve({ duration, width: videoWidth, height: videoHeight });
     };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("That file doesn't look like a video.")); };
+    v.onerror = () => reject(new Error("That file doesn't look like a video."));
     v.src = url;
   });
+  return withTimeout(read, METADATA_TIMEOUT_MS, "Could not read this video in time. Please try again.")
+    .finally(() => URL.revokeObjectURL(url));
 }
 
 /** A single representative frame as a JPEG blob, for video_poster_url — the
@@ -231,7 +267,7 @@ export function readVideoMetadata(file: File): Promise<{ duration: number; width
  * offset into the clip rather than frame zero, since some encoders emit a
  * black or garbage first frame. */
 function capturePosterFrame(video: HTMLVideoElement, w: number, h: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
+  const seek = new Promise<Blob>((resolve, reject) => {
     const targetTime = Math.min(0.2, video.duration / 2);
     const onSeeked = () => {
       video.removeEventListener("seeked", onSeeked);
@@ -249,6 +285,7 @@ function capturePosterFrame(video: HTMLVideoElement, w: number, h: number): Prom
     video.addEventListener("seeked", onSeeked);
     video.currentTime = targetTime;
   });
+  return withTimeout(seek, SEEK_TIMEOUT_MS, "Could not read this video in time. Please try again.");
 }
 
 /**
@@ -302,6 +339,16 @@ export async function processListingVideo(
     if (result.blob.size > maxBytes) throw new VideoTooLargeError(maxMb);
     return result;
   }
+  // The bucket's own allowed_mime_types is exactly ["video/mp4",
+  // "video/webm", "video/quicktime"] — bare types, no codec parameters.
+  // MediaRecorder needs the codec-qualified string to pick an encoder, but
+  // that same string sent as an upload's contentType does not match the
+  // bucket's allowlist and gets rejected by storage. Every return path
+  // funnels through here so the returned mimeType — which CreateListingPage
+  // uses directly as the upload's contentType — is always the bare form.
+  function bareMime(m: string): string {
+    return (m || "video/mp4").split(";")[0].trim();
+  }
 
   const url = URL.createObjectURL(file);
   try {
@@ -310,10 +357,14 @@ export async function processListingVideo(
     video.playsInline = true;
     video.src = url;
 
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("That file doesn't look like a video."));
-    });
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("That file doesn't look like a video."));
+      }),
+      METADATA_TIMEOUT_MS,
+      "Could not read this video in time. Please try again.",
+    );
 
     const duration = video.duration;
     const srcW = video.videoWidth || 720;
@@ -328,7 +379,7 @@ export async function processListingVideo(
     // The fast path: most clips already fit, so skip the real-time
     // re-encode entirely and upload exactly what was recorded.
     if (shouldSkipVideoCompression(file.size, maxMb)) {
-      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
 
     const canRecord = typeof MediaRecorder !== "undefined"
@@ -336,17 +387,17 @@ export async function processListingVideo(
       && typeof (document.createElement("canvas") as unknown as { captureStream?: unknown }).captureStream === "function";
 
     if (!canRecord) {
-      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
 
-    const mimeType = [
+    const recordMimeType = [
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ].find((t) => MediaRecorder.isTypeSupported(t));
 
-    if (!mimeType) {
-      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+    if (!recordMimeType) {
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
 
     const canvas = document.createElement("canvas");
@@ -354,14 +405,18 @@ export async function processListingVideo(
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
-      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
 
     video.currentTime = 0;
-    await new Promise<void>((resolve) => {
-      if (video.currentTime === 0) { resolve(); return; }
-      video.onseeked = () => resolve();
-    });
+    await withTimeout(
+      new Promise<void>((resolve) => {
+        if (video.currentTime === 0) { resolve(); return; }
+        video.onseeked = () => resolve();
+      }),
+      SEEK_TIMEOUT_MS,
+      "Could not read this video in time. Please try again.",
+    );
 
     const canvasStream = (canvas as unknown as { captureStream: (fps?: number) => MediaStream }).captureStream(VIDEO_FPS);
     const sourceStream = (video as unknown as { captureStream: () => MediaStream }).captureStream();
@@ -369,7 +424,7 @@ export async function processListingVideo(
 
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(combined, {
-      mimeType,
+      mimeType: recordMimeType,
       videoBitsPerSecond: VIDEO_BITRATE,
       audioBitsPerSecond: AUDIO_BITRATE,
     });
@@ -387,18 +442,28 @@ export async function processListingVideo(
     recorder.start();
     await video.play();
     drawLoop();
-    await new Promise<void>((resolve) => { video.onended = () => resolve(); });
+    // Real-time recording, so this is inherently proportional to the
+    // clip's own length (§88) — floor of 60s so a short clip still gets a
+    // generous margin, scaling up for longer ones so a genuinely slow
+    // mid-range device isn't cut off mid-encode.
+    const compressTimeoutMs = Math.max(60_000, duration * 6_000);
+    await withTimeout(
+      new Promise<void>((resolve) => { video.onended = () => resolve(); }),
+      compressTimeoutMs,
+      "Compressing this video is taking too long. Please try again, or a shorter clip.",
+    );
     cancelAnimationFrame(raf);
     recorder.stop();
     await recordStopped;
 
-    const blob = new Blob(chunks, { type: mimeType });
+    const bareRecordMime = bareMime(recordMimeType);
+    const blob = new Blob(chunks, { type: bareRecordMime });
     if (onProgress) onProgress(100);
 
     if (blob.size === 0) {
-      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: bareMime(file.type), wasCompressed: false });
     }
-    return finish({ blob, posterBlob, durationSeconds: duration, mimeType, wasCompressed: true });
+    return finish({ blob, posterBlob, durationSeconds: duration, mimeType: bareRecordMime, wasCompressed: true });
   } finally {
     URL.revokeObjectURL(url);
   }

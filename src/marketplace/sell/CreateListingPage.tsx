@@ -6,7 +6,7 @@ import { useSeller } from "./useSeller";
 import {
   sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
-  shouldSkipVideoCompression, VideoTooLargeError,
+  shouldSkipVideoCompression, VideoTooLargeError, VideoTimeoutError, withTimeout, VIDEO_UPLOAD_TIMEOUT_MS,
 } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
@@ -531,7 +531,9 @@ export default function CreateListingPage() {
       });
     } catch (e) {
       setVideoError(
-        e instanceof VideoTooLongError || e instanceof VideoTooLargeError ? e.message : describeVideoUploadError(e),
+        e instanceof VideoTooLongError || e instanceof VideoTooLargeError || e instanceof VideoTimeoutError
+          ? e.message
+          : describeVideoUploadError(e),
       );
     } finally {
       setVideoBusy(false);
@@ -653,15 +655,30 @@ export default function CreateListingPage() {
         if (video.blob && video.posterBlob) {
           const ext = video.mimeType.includes("webm") ? "webm" : video.mimeType.includes("quicktime") ? "mov" : "mp4";
           const videoPath = `${user.id}/${Date.now()}-video.${ext}`;
-          const { error: vErr } = await sdb.storage.from(LISTING_VIDEO_BUCKET).upload(videoPath, video.blob, { cacheControl: "3600", upsert: false, contentType: video.mimeType });
+          // video.mimeType is already bare (no codec parameters, see sellData's
+          // bareMime) so it matches marketplace-videos' allowed_mime_types exactly.
+          const { error: vErr } = await withTimeout(
+            sdb.storage.from(LISTING_VIDEO_BUCKET).upload(videoPath, video.blob, { cacheControl: "3600", upsert: false, contentType: video.mimeType }),
+            VIDEO_UPLOAD_TIMEOUT_MS,
+            "The video upload is taking too long. Please check your connection and try again.",
+          );
           if (vErr) throw vErr;
           const { data: vPub } = sdb.storage.from(LISTING_VIDEO_BUCKET).getPublicUrl(videoPath);
           videoUrl = vPub.publicUrl;
 
+          // The poster is a JPEG — marketplace-videos only accepts
+          // video/mp4, video/webm and video/quicktime, so an image upload
+          // there is rejected outright. It belongs with the other listing
+          // images: LISTING_BUCKET (marketplace-listings) already accepts
+          // image/jpeg with a 5MB cap, comfortably more than a poster needs.
           const posterPath = `${user.id}/${Date.now()}-video-poster.jpg`;
-          const { error: pErr } = await sdb.storage.from(LISTING_VIDEO_BUCKET).upload(posterPath, video.posterBlob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
+          const { error: pErr } = await withTimeout(
+            sdb.storage.from(LISTING_BUCKET).upload(posterPath, video.posterBlob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" }),
+            VIDEO_UPLOAD_TIMEOUT_MS,
+            "The video's poster image is taking too long to upload. Please check your connection and try again.",
+          );
           if (pErr) throw pErr;
-          const { data: pPub } = sdb.storage.from(LISTING_VIDEO_BUCKET).getPublicUrl(posterPath);
+          const { data: pPub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(posterPath);
           videoPosterUrl = pPub.publicUrl;
           videoDurationSeconds = video.durationSeconds;
         } else {
@@ -671,7 +688,7 @@ export default function CreateListingPage() {
         }
       } catch (e) {
         setBusy(false);
-        setError(describeVideoUploadError(e));
+        setError(e instanceof VideoTimeoutError ? e.message : describeVideoUploadError(e));
         return;
       }
     }
