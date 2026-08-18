@@ -6,6 +6,7 @@ import { useSeller } from "./useSeller";
 import {
   sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
+  shouldSkipVideoCompression, VideoTooLargeError,
 } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
@@ -132,6 +133,11 @@ export default function CreateListingPage() {
   const videoFileRef = useRef<HTMLInputElement | null>(null);
   const [video, setVideo] = useState<VideoDraft | null>(null);
   const [videoBusy, setVideoBusy] = useState(false);
+  // True only while the slow real-time re-encode path is actually running —
+  // distinct from videoBusy, which covers the instant skip-compression path
+  // too. Drives which processing message/UI is shown, so we never claim a
+  // long compress is happening when the file just uploads as-is.
+  const [videoCompressing, setVideoCompressing] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -229,6 +235,19 @@ export default function CreateListingPage() {
       const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_video_max_seconds").maybeSingle();
       const v = Number((data as { value: unknown } | null)?.value);
       return isFinite(v) && v > 0 ? v : 15;
+    },
+    staleTime: 60000,
+  });
+
+  // Same live-read pattern, for the storage bucket's own MB cap — used to
+  // decide whether a picked file can skip the slow real-time re-encode
+  // entirely (see shouldSkipVideoCompression), never a hardcoded "8".
+  const { data: videoMaxMb = 8 } = useQuery({
+    queryKey: ["mkt-video-max-mb"],
+    queryFn: async () => {
+      const { data } = await sdb.from("site_settings").select("value").eq("key", "marketplace_video_max_mb").maybeSingle();
+      const v = Number((data as { value: unknown } | null)?.value);
+      return isFinite(v) && v > 0 ? v : 8;
     },
     staleTime: 60000,
   });
@@ -486,6 +505,7 @@ export default function CreateListingPage() {
     setVideoError(null);
     setVideoBusy(true);
     setVideoProgress(0);
+    setVideoCompressing(false);
     try {
       // Cheap metadata read first, so a clip that's too long is rejected
       // upfront rather than after spending a slow compression pass on it.
@@ -493,7 +513,11 @@ export default function CreateListingPage() {
       if (meta.duration > videoMaxSeconds + 1) {
         throw new VideoTooLongError(videoMaxSeconds, meta.duration);
       }
-      const processed = await processListingVideo(file, setVideoProgress);
+      // Most clips already fit under the bucket's cap and skip compression
+      // entirely (processListingVideo decides this the same way) — only
+      // show the "this takes a while" messaging when it's actually true.
+      setVideoCompressing(!shouldSkipVideoCompression(file.size, videoMaxMb));
+      const processed = await processListingVideo(file, videoMaxMb, setVideoProgress);
       setVideo((prev) => {
         if (prev?.blob) { URL.revokeObjectURL(prev.url); URL.revokeObjectURL(prev.posterUrl); }
         return {
@@ -506,9 +530,12 @@ export default function CreateListingPage() {
         };
       });
     } catch (e) {
-      setVideoError(e instanceof VideoTooLongError ? e.message : describeVideoUploadError(e));
+      setVideoError(
+        e instanceof VideoTooLongError || e instanceof VideoTooLargeError ? e.message : describeVideoUploadError(e),
+      );
     } finally {
       setVideoBusy(false);
+      setVideoCompressing(false);
     }
   }
 
@@ -894,17 +921,26 @@ export default function CreateListingPage() {
           <p className="mkt-help">{videoMaxSeconds} seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
 
           {videoBusy ? (
-            <div className="mkt-video-processing">
-              <div className="frame">
-                <div className="spinner" />
-                <span className="label">Compressing your video…</span>
+            videoCompressing ? (
+              <div className="mkt-video-processing">
+                <div className="frame">
+                  <div className="spinner" />
+                  <span className="label">Compressing your video…</span>
+                </div>
+                <div className="bar-row">
+                  <div className="bar"><i style={{ width: `${videoProgress}%` }} /></div>
+                  <span>{videoProgress}%</span>
+                </div>
+                <p className="mkt-help">This one's a bit large, so it takes about as long as the video itself to compress, please hang on. You can carry on filling in the rest of the form while it finishes.</p>
               </div>
-              <div className="bar-row">
-                <div className="bar"><i style={{ width: `${videoProgress}%` }} /></div>
-                <span>{videoProgress}%</span>
+            ) : (
+              <div className="mkt-video-processing">
+                <div className="frame">
+                  <div className="spinner" />
+                  <span className="label">Adding your video…</span>
+                </div>
               </div>
-              <p className="mkt-help">Takes a little longer than a photo, usually under a minute. You can carry on filling in the rest of the form while this finishes.</p>
-            </div>
+            )
           ) : video ? (
             <div className="mkt-video-preview">
               <div className="frame">
@@ -917,12 +953,12 @@ export default function CreateListingPage() {
             <button type="button" className="mkt-video-add" onClick={() => videoFileRef.current?.click()}>
               <span className="ic">▶</span>
               <span className="t">Record or upload a video</span>
-              <span className="s">Up to {videoMaxSeconds} seconds. We'll compress it for you.</span>
+              <span className="s">Up to {videoMaxSeconds} seconds. Large ones get compressed automatically.</span>
             </button>
           )}
           <input ref={videoFileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden onChange={(e) => { addVideo(e.target.files); e.target.value = ""; }} />
           {videoError && <div className="mkt-errbox"><span className="m">!</span><span>{videoError}</span></div>}
-          <p className="mkt-help mkt-video-footnote">One video, up to {videoMaxSeconds} seconds, we compress it automatically. Photos are still required either way, this is extra, not a substitute.</p>
+          <p className="mkt-help mkt-video-footnote">One video, up to {videoMaxSeconds} seconds. Most upload instantly, we only compress the large ones. Photos are still required either way, this is extra, not a substitute.</p>
         </div>
 
         <div className="mkt-field">

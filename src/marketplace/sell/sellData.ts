@@ -150,6 +150,36 @@ export class VideoTooLongError extends Error {
   }
 }
 
+/** Raised when a video is still over the bucket's own cap even after the
+ * compression pass — a real, if rare, outcome once a clip is already dense
+ * (busy scenes, high original bitrate) even after downscaling. Said
+ * plainly, with the fix already in the seller's hands: the 15s limit
+ * already applies, a shorter clip is the way out. */
+export class VideoTooLargeError extends Error {
+  constructor(public readonly maxMb: number) {
+    super(`This video is still too large to upload, even after compressing. Please try recording a shorter clip.`);
+  }
+}
+
+/** Fraction of the bucket's own cap (site_settings' marketplace_video_max_mb,
+ * currently 8) below which a clip uploads exactly as recorded, skipping the
+ * slow real-time re-encode entirely. Most phone clips at 15 seconds,
+ * especially from a phone shooting 720p or 1080p, already land well under
+ * this — so most sellers get an instant upload rather than a guaranteed
+ * real-time wait. The 25% gap below the hard cap is genuine headroom, not
+ * decoration: it means a file that just barely qualifies for the fast path
+ * still has real room to spare, so the upload itself never fails at the
+ * last moment on some small discrepancy between the client's read of the
+ * file size and the server's. */
+const VIDEO_SKIP_COMPRESSION_RATIO = 0.75;
+
+/** True when `fileBytes` already comfortably fits the bucket's cap and can
+ * upload untouched — the fast path that makes most seller uploads instant.
+ * `maxMb` is always the live site_settings value, never hardcoded. */
+export function shouldSkipVideoCompression(fileBytes: number, maxMb: number): boolean {
+  return fileBytes <= maxMb * 1024 * 1024 * VIDEO_SKIP_COMPRESSION_RATIO;
+}
+
 export interface ProcessedVideo {
   blob: Blob;
   posterBlob: Blob;
@@ -222,22 +252,33 @@ function capturePosterFrame(video: HTMLVideoElement, w: number, h: number): Prom
 }
 
 /**
- * Compresses a listing video client side before upload — the single most
- * important part of this feature. An uncompressed phone clip is 20-50MB;
- * one of those is roughly a hundred listing photos, and a Nigerian buyer
- * pays for her own data to watch it, so this matters to her before it
- * matters to us.
+ * Prepares a listing video for upload, compressing it client side only when
+ * that's actually necessary.
  *
- * Re-encodes via native browser APIs only, no new library, the same spirit
- * as compressImage's canvas approach: draw the source video onto a
- * downscaled canvas frame by frame (capping the longest edge at
- * VIDEO_MAX_EDGE, the video equivalent of compressImage's maxEdge), and
- * record that canvas' captureStream() through MediaRecorder at an explicit,
- * modest bitrate — real control over the two biggest levers on file size
- * (resolution and bitrate), rather than trusting whatever the device's own
- * camera encoder chose. The original video's audio track is merged in
- * separately (canvas.captureStream() carries video only), so the result
- * keeps sound.
+ * The re-encode below is a real-time operation: it plays the clip through
+ * and records it frame by frame via canvas + MediaRecorder, so a 15 second
+ * video takes at least 15 seconds to compress, more on a mid-range phone.
+ * That's inherent to recording a MediaStream, not a tuning problem —
+ * dropping the bitrate or resolution doesn't touch it, because the
+ * bottleneck is playback speed, not encoding effort. So the fix is to
+ * compress less often rather than trying to compress faster: if the
+ * original file already comfortably fits the bucket's own cap (see
+ * shouldSkipVideoCompression, using the live site_settings value, never a
+ * hardcoded number), it uploads exactly as recorded and this function
+ * returns almost immediately. Most phone clips at 15 seconds, especially
+ * from a phone shooting 720p or 1080p, already qualify — so most sellers
+ * never pay the real-time wait at all. The poster frame is always
+ * extracted regardless of which path is taken, since the listing page's
+ * resting card depends on it either way.
+ *
+ * When compression genuinely is needed, it re-encodes via native browser
+ * APIs only, no new library, the same spirit as compressImage's canvas
+ * approach: draw the source video onto a downscaled canvas frame by frame
+ * (capping the longest edge at VIDEO_MAX_EDGE, the video equivalent of
+ * compressImage's maxEdge), and record that canvas' captureStream() through
+ * MediaRecorder at an explicit, modest bitrate. The original video's audio
+ * track is merged in separately (canvas.captureStream() carries video
+ * only), so the result keeps sound.
  *
  * Falls back to uploading the ORIGINAL file untouched if this device lacks
  * captureStream()/MediaRecorder support (older Safari, chiefly) or the
@@ -245,8 +286,23 @@ function capturePosterFrame(video: HTMLVideoElement, w: number, h: number): Prom
  * "fall back rather than fail" philosophy as processListingImage. Reports
  * which path was actually taken via wasCompressed rather than claiming
  * compression happened either way.
+ *
+ * Whatever path produces the final blob, it's checked against the real
+ * cap (maxMb) before returning — if it's still too big even after
+ * compressing (a genuinely rare, dense clip), this throws VideoTooLargeError
+ * rather than letting a doomed upload begin.
  */
-export async function processListingVideo(file: File, onProgress?: (pct: number) => void): Promise<ProcessedVideo> {
+export async function processListingVideo(
+  file: File,
+  maxMb: number,
+  onProgress?: (pct: number) => void,
+): Promise<ProcessedVideo> {
+  const maxBytes = maxMb * 1024 * 1024;
+  function finish(result: ProcessedVideo): ProcessedVideo {
+    if (result.blob.size > maxBytes) throw new VideoTooLargeError(maxMb);
+    return result;
+  }
+
   const url = URL.createObjectURL(file);
   try {
     const video = document.createElement("video");
@@ -269,12 +325,18 @@ export async function processListingVideo(file: File, onProgress?: (pct: number)
 
     const posterBlob = await capturePosterFrame(video, w, h);
 
+    // The fast path: most clips already fit, so skip the real-time
+    // re-encode entirely and upload exactly what was recorded.
+    if (shouldSkipVideoCompression(file.size, maxMb)) {
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
+    }
+
     const canRecord = typeof MediaRecorder !== "undefined"
       && typeof (video as unknown as { captureStream?: unknown }).captureStream === "function"
       && typeof (document.createElement("canvas") as unknown as { captureStream?: unknown }).captureStream === "function";
 
     if (!canRecord) {
-      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
     }
 
     const mimeType = [
@@ -284,7 +346,7 @@ export async function processListingVideo(file: File, onProgress?: (pct: number)
     ].find((t) => MediaRecorder.isTypeSupported(t));
 
     if (!mimeType) {
-      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
     }
 
     const canvas = document.createElement("canvas");
@@ -292,7 +354,7 @@ export async function processListingVideo(file: File, onProgress?: (pct: number)
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
-      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
     }
 
     video.currentTime = 0;
@@ -334,9 +396,9 @@ export async function processListingVideo(file: File, onProgress?: (pct: number)
     if (onProgress) onProgress(100);
 
     if (blob.size === 0) {
-      return { blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false };
+      return finish({ blob: file, posterBlob, durationSeconds: duration, mimeType: file.type || "video/mp4", wasCompressed: false });
     }
-    return { blob, posterBlob, durationSeconds: duration, mimeType, wasCompressed: true };
+    return finish({ blob, posterBlob, durationSeconds: duration, mimeType, wasCompressed: true });
   } finally {
     URL.revokeObjectURL(url);
   }
