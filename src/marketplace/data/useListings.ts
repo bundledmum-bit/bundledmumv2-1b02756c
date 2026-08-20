@@ -214,6 +214,104 @@ export function useAreasForState(stateId: string | undefined) {
   });
 }
 
+export interface HeroListing {
+  id: string;
+  title: string;
+  image_url: string;
+  final_price_naira: number;
+  location_state: string | null;
+  location_city: string | null;
+  condition: string | null;
+  is_negotiable: boolean;
+}
+
+/**
+ * Hero carousel listings for the desktop home (design 38a), via the
+ * get_hero_listings RPC. The RPC orders by view count server side, falling
+ * back to newest whenever real view data is too thin, but that ordering is
+ * NEVER surfaced to the buyer as a label — no "popular", "trending", no
+ * badge. With one completed sale and low traffic, calling something
+ * popular invites scrutiny it cannot survive, so this reads as a plain
+ * selection of items, not a ranking. The fallback is invisible by design
+ * and needs no handling here.
+ */
+export function useHeroListings(limit: number) {
+  return useQuery({
+    queryKey: ["marketplace", "hero-listings", limit],
+    queryFn: async (): Promise<HeroListing[]> => {
+      const { data, error } = await mdb.rpc("get_hero_listings", { p_limit: limit });
+      if (error) throw error;
+      return (data ?? []) as HeroListing[];
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
+export interface JustListedItem {
+  id: string;
+  title: string;
+  image_url: string | null;
+  final_price_naira: number;
+  created_at: string;
+  seller: MarketplaceSellerPublic | null;
+}
+
+/** Newest live listings for the desktop home's "Just listed" row (design
+ * 38a), each with its public seller attached so the freshest ones can say
+ * who actually listed it, not just when. Desktop only, see BrowsePage. */
+export function useJustListed(limit: number) {
+  return useQuery({
+    queryKey: ["marketplace", "just-listed", limit],
+    queryFn: async (): Promise<JustListedItem[]> => {
+      const { data, error } = await mdb
+        .from("marketplace_listings")
+        .select("id, title, image_url, final_price_naira, created_at, seller_id")
+        .eq("status", "live")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      const rows = (data ?? []) as Array<{
+        id: string; title: string; image_url: string | null;
+        final_price_naira: number; created_at: string; seller_id: string;
+      }>;
+      const sellers = await fetchSellersByIds(rows.map((r) => r.seller_id));
+      return rows.map((r) => ({ ...r, seller: sellers.get(r.seller_id) ?? null }));
+    },
+    staleTime: 60 * 1000,
+  });
+}
+
+export interface MarketplaceStats {
+  sellerCount: number;
+  liveListingValueNaira: number;
+}
+
+/**
+ * The three real numbers behind the desktop home's stat tiles (design 38a):
+ * genuine counts read live from marketplace_sellers_public (already
+ * publicly readable) and a sum of every live listing's final_price_naira.
+ * Deliberately real operational numbers rather than reviews, ratings, or a
+ * sold count — there has only been one completed sale, so anything of that
+ * kind would be fabricated. No new Supabase function, just the same plain
+ * client reads every other hook here already does.
+ */
+export function useMarketplaceStats() {
+  return useQuery({
+    queryKey: ["marketplace", "stats"],
+    queryFn: async (): Promise<MarketplaceStats> => {
+      const [sellersRes, listingsRes] = await Promise.all([
+        mdb.from("marketplace_sellers_public").select("id", { count: "exact", head: true }),
+        mdb.from("marketplace_listings").select("final_price_naira").eq("status", "live"),
+      ]);
+      const sellerCount = sellersRes.count ?? 0;
+      const rows = (listingsRes.data ?? []) as Array<{ final_price_naira: number }>;
+      const liveListingValueNaira = rows.reduce((sum, r) => sum + (Number(r.final_price_naira) || 0), 0);
+      return { sellerCount, liveListingValueNaira };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 /** A single listing by id, with its public seller attached. Still scoped to
  * status='live' so a non-live id 404s. */
 export function useListing(id: string | undefined) {

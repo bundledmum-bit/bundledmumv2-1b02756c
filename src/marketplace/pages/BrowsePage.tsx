@@ -11,15 +11,19 @@ import {
   useAllowedStates,
   useAreasForState,
   useFeaturedCategories,
+  useJustListed,
+  useMarketplaceStats,
   type BrowseFilters,
   type BrowseSort,
   type CategoryOption,
   type CategoryGroup,
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
+import MarketplaceHero from "../components/MarketplaceHero";
 import AreaCombobox from "../sell/AreaCombobox";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import CategoryNoStockYet from "../components/CategoryNoStockYet";
+import { formatNaira } from "../lib/format";
 
 /**
  * BROWSE, rebuilt to the design (13a B1-B4). Six category tiles then the grid on
@@ -62,6 +66,26 @@ function groupCategories(categories: CategoryOption[], groups: CategoryGroup[]) 
 }
 
 function naira(n: number) { return `₦${Math.round(n).toLocaleString("en-NG")}`; }
+
+/** "Just listed" freshness label (design 38a). A listing genuinely from
+ * today names the person behind it, "Listed today by {seller}", since on a
+ * marketplace where the doubt is about the stranger selling it, that's a
+ * real change in meaning, not just copy. Anything older stays a plain
+ * relative label with no name, matching the design's own example
+ * ("Yesterday", not "Yesterday by X") — the seller line is specifically
+ * about how fresh this is, not a general byline. Falls back to
+ * "BundledMum seller" when the seller has no public display name, the
+ * same fallback sellerDisplayName already uses on listing detail, never a
+ * blank or a dropped clause. */
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function justListedLabel(createdAt: string, sellerName: string | null | undefined): string {
+  const days = Math.floor((startOfDay(new Date()) - startOfDay(new Date(createdAt))) / 86400000);
+  if (days <= 0) return `Listed today by ${sellerName?.trim() || "BundledMum seller"}`;
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
 
 export default function BrowsePage() {
   // Optional deep link, e.g. from a gone listing's "Browse {category}" CTA or
@@ -111,6 +135,18 @@ export default function BrowsePage() {
   const { data: groups = [], isLoading: groupsLoading } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
   const { data: featured = [] } = useFeaturedCategories("browse_home");
+  // Desktop home only (design 38a) — fetched regardless, but only rendered
+  // when !anyFilter, same gate the category tiles already use below.
+  const { data: justListed = [] } = useJustListed(5);
+  const { data: stats } = useMarketplaceStats();
+  // ₦5,060,640 reads as "₦5.06m" — one decimal, never more precise than
+  // that, since this is a headline stat tile, not an invoice line.
+  const listingsValueLabel = useMemo(() => {
+    if (!stats) return "—";
+    const millions = stats.liveListingValueNaira / 1_000_000;
+    return millions >= 1 ? `₦${millions.toFixed(millions < 10 ? 2 : 1)}m` : naira(stats.liveListingValueNaira);
+  }, [stats]);
+  const sellerCount = stats?.sellerCount ?? null;
 
   // Resolves a pending ?category=slug or ?group=slug once categories/groups
   // have actually loaded (can't resolve against data that isn't there yet).
@@ -254,6 +290,15 @@ export default function BrowsePage() {
             <Link to="/sell" className="mkt-home-sell">Sell</Link>
           </div>
 
+          {/* Mobile only (design 38a's own "mobile degradation" note): the one
+              thing worth carrying down from the desktop hero, since it's cheap
+              to add and the conversion problem isn't mobile-exclusive. Hidden
+              at desktop, where the hero already states this. */}
+          <div className="mkt-trust-line">
+            <span className="ic" aria-hidden>✓</span>
+            <span>We hold your money until it arrives</span>
+          </div>
+
           <div className="mkt-searchwrap">
             <span className="mkt-search-ic" aria-hidden>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
@@ -295,6 +340,33 @@ export default function BrowsePage() {
         </div>
       )}
 
+      {/* Desktop home only (design 38a). Hidden entirely on mobile via CSS —
+          mobile's own home is unchanged apart from the trust-line above. */}
+      {!anyFilter && <MarketplaceHero />}
+
+      {!anyFilter && justListed.length > 0 && (
+        <div className="mkt-justlisted">
+          <div className="mkt-justlisted-h">
+            <span className="t">Just listed</span>
+            <span className="n">See all {count} items</span>
+          </div>
+          <div className="mkt-justlisted-row">
+            {justListed.map((l) => (
+              <Link key={l.id} className="mkt-card" to={`/listing/${l.id}`}>
+                <div className="mkt-card-imgwrap">
+                  {l.image_url ? <img className="mkt-card-img" src={l.image_url} alt={l.title} loading="lazy" /> : null}
+                </div>
+                <div className="mkt-card-body">
+                  <span className="mkt-price">{formatNaira(l.final_price_naira)}</span>
+                  <span className="mkt-card-title">{l.title}</span>
+                  <span className="mkt-justlisted-when">{justListedLabel(l.created_at, l.seller?.display_name)}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Category tiles, home only (they scroll away once a filter is on). The
           emoji is read live from marketplace_categories.icon; the chip colour is a
           fixed brand-palette rotation by index, not a per-category value. */}
@@ -306,6 +378,17 @@ export default function BrowsePage() {
               <span className="nm">{c.name}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Stat tiles (design 38a): real operational numbers rather than
+          fabricated activity or invented reviews, since there has only been
+          one completed sale. Desktop only (CSS-gated). */}
+      {!anyFilter && (
+        <div className="mkt-stattiles">
+          <div className="mkt-stattile"><span className="n">{sellerCount != null ? sellerCount : "—"}</span><span className="l">Sellers on the marketplace</span></div>
+          <div className="mkt-stattile"><span className="n">{listingsValueLabel}</span><span className="l">In listings live right now</span></div>
+          <div className="mkt-stattile"><span className="n">100%</span><span className="l">Of listings reviewed by our team before they go live</span></div>
         </div>
       )}
 
@@ -398,7 +481,7 @@ export default function BrowsePage() {
               {anyFilter && <button className="mkt-secondary" style={{ maxWidth: 220, marginTop: 6 }} onClick={clearAll}>Clear all filters</button>}
             </div>
           ) : (
-            <div className="mkt-grid" style={{ padding: "0 0 32px" }}>
+            <div id="mkt-grid" className="mkt-grid" style={{ padding: "0 0 32px" }}>
               {listings.map((l) => <ListingCard key={l.id} listing={l} />)}
             </div>
           )}

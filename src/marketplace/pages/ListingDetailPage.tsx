@@ -253,6 +253,20 @@ export default function ListingDetailPage() {
     });
   }, [isLiveView, listing?.id]);
 
+  // record_listing_view, fired once per genuinely live view, same gate and
+  // same fired-once-ref shape as ViewContent above so the two stay in sync
+  // (a sold/gone/removed view never counts, and a re-render never double
+  // counts). Fire and forget, no UI depends on it, and it returns nothing
+  // to read — a failure here must never be visible to the visitor.
+  const listingViewRecorded = useRef(false);
+  useEffect(() => {
+    if (!isLiveView || !listing || listingViewRecorded.current) return;
+    listingViewRecorded.current = true;
+    mdb.rpc("record_listing_view", { p_listing_id: listing.id }).then(({ error }) => {
+      if (error) console.error("[marketplace] record_listing_view failed:", error);
+    });
+  }, [isLiveView, listing?.id]);
+
   if (isLoading) {
     return (
       <div className="mkt-center">
