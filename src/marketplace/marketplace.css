@@ -2108,6 +2108,9 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-how-closing h2 { font: 900 20px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; }
 .mkt-how-closing-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .mkt-how-closing-cards .mkt-card-body { padding: 8px 9px 10px; }
+/* Fetched 4, mobile only shows the first 2 (matches the design's own
+   two-card mobile mock); desktop reveals all 4 (below). */
+.mkt-how-closing-cards .mkt-card:nth-child(n+3) { display: none; }
 .mkt-how-wa { text-align: center; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green-dark); text-decoration: underline; }
 
 @media (min-width: 1024px) {
@@ -2135,6 +2138,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-how-railcta { display: block; grid-area: railcta; }
   .mkt-how-closing { grid-area: closing; padding: 24px; }
   .mkt-how-closing-cards { grid-template-columns: repeat(4, 180px); }
+  .mkt-how-closing-cards .mkt-card:nth-child(n+3) { display: flex; }
 }
 
 /* ── FAQ page (design 41a) ─────────────────────────────────────────────── */

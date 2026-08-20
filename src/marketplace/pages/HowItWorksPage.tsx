@@ -42,7 +42,7 @@ function heroLocation(l: HeroListing): string {
 export default function HowItWorksPage() {
   const { data: s, isLoading } = useMarketplacePolicySettings();
   const { data: stats } = useMarketplaceStats();
-  const { data: sample = [] } = useHeroListings(2);
+  const { data: sample = [] } = useHeroListings(4);
   const number = useMarketplaceWhatsAppNumber();
   const itemCount = stats?.liveListingCount;
   const browseLabel = itemCount != null ? `Browse all ${itemCount} items` : "Browse everything";

@@ -7248,3 +7248,15 @@ Preserved: everything else from §97-§107 unchanged; sections 7 through 107.
 Files touched: `src/marketplace/pages/HowItWorksPage.tsx` (copy only).
 
 `npm run build` clean.
+
+## 109. How-it-works closing section shows more items on desktop (2026-08-20)
+
+The closing "Now go and see what other mums are letting go" section fetched only 2 real listings (`useHeroListings(2)`), matching mobile's own 2-card mock, but desktop's wider `.mkt-how-closing-cards` grid (`repeat(4, 180px)`, set in §107) had nothing to show in its 3rd/4th slot. Bumped the fetch to `useHeroListings(4)` and hid cards 3-4 on mobile with `.mkt-how-closing-cards .mkt-card:nth-child(n+3) { display: none; }`, unhidden again inside the desktop media query — same real listings, mobile still shows exactly the 2 the design specced, desktop now genuinely fills its own 4-wide row instead of leaving it half empty.
+
+Live-verified: desktop (1440px) now renders 4 real listing cards; mobile (375px) computed style confirms cards 3-4 are `display: none`, only the first 2 are `flex`.
+
+Preserved: everything else from §97-§108 unchanged; sections 7 through 108.
+
+Files touched: `src/marketplace/pages/HowItWorksPage.tsx` (`useHeroListings(4)`), `src/marketplace/marketplace.css` (`.mkt-how-closing-cards` nth-child rules).
+
+`npm run build` clean.
