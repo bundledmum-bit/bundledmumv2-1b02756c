@@ -7146,3 +7146,21 @@ Preserved: everything else from §97-§100 unchanged; sections 7 through 100.
 Files touched: `src/marketplace/components/MarketplaceHero.tsx`.
 
 `npm run build` clean.
+
+## 102. Just Listed + stat strip come to mobile (design 39a) (2026-08-20)
+
+**Design read directly** from design-sync project "Mobile marketplace design system", section 39a ("Mobile home, just listed + stat tiles"). Explicit stance: no hero, no redesign — category tiles stay first since they're the fastest route into the grid, unchanged; Just Listed goes right after as a single horizontal-scroll row; a compressed one-row, three-tile stat strip goes after that, labels cut to two—three words for phone width. The design's own fallback if it doesn't fit above the fold: keep Just Listed, cut the stat strip first, since "evidence of activity outperforms a stated number."
+
+**Built, reusing existing data and card anatomy, nothing new fetched**: both blocks are mobile-only (new `.mkt-jl-mobile`/`.mkt-stat-strip-mobile`, CSS-gated the same mobile-first way as everything else, hidden at 1024px) and sit right after the mobile category tiles, before "See more categories" — matching the design's exact order. Just Listed reuses the same `justListed` data (`useJustListed(5)`) and the identical `.mkt-card` anatomy already used everywhere, narrowed to a 132px flex-basis in a horizontal-scroll row (confirmed genuinely scrollable: `scrollWidth: 700` vs `clientWidth: 343`, `overflow-x: auto`) — 3 cards visible with a 4th peeking, same pattern the design specified. The stat strip reuses `sellerCount` and `count` (the same live numbers desktop's stat tiles already use), relabelled short per the design's own mockup text: "Sellers so far", "Items live now", "Reviewed by us" — no new query, no new number.
+
+**One deliberate deviation from the design's own mockup, not an oversight**: the design's mobile Just Listed cards show only a bare relative-date label ("Listed today" / "Yesterday"), with no seller name — a new `justListedShortLabel()` matches that exactly, distinct from desktop's `justListedLabel()` which does include "by {seller}". This is a genuine width constraint (132px card, no room), not a downgrade in what's shown elsewhere. The design's mockup also included a "248 items, trusted quality, checked by our team" line under the stat strip — deliberately **not** built, since §99 already removed that exact line from the page at the user's explicit instruction; re-adding it here would have directly contradicted that.
+
+**Also fixed in passing**: `.mkt-justlisted-when` (the "Listed today by X" / "Yesterday" text style) was accidentally scoped entirely inside the desktop-only `@media (min-width: 1024px)` block since §97 — harmless there because desktop Just Listed was the only thing using it, but it would have rendered unstyled on the new mobile block. Moved to the shared mobile-first base scope; desktop is unaffected (same computed style either way).
+
+Live-verified at 375px: category tiles → Just Listed (horizontal scroll, real listings, real prices, "Listed today"/relative dates) → stat strip (168 sellers, 166 items, 100% — genuinely the same live numbers as desktop) → "See more categories" → sort/filters → main grid, no gaps, no overlap. Re-checked 1440px: desktop's own Just Listed grid and stat tiles unchanged, `.mkt-jl-mobile`/`.mkt-stat-strip-mobile` both confirmed absent (CSS `display: none`).
+
+Preserved: everything else from §97-§101 unchanged; sections 7 through 101.
+
+Files touched: `src/marketplace/pages/BrowsePage.tsx` (`justListedShortLabel`, mobile Just Listed row, mobile stat strip), `src/marketplace/marketplace.css` (new `.mkt-jl-mobile*`/`.mkt-stat-strip-mobile*` rules, `.mkt-justlisted-when` moved out of the desktop-only media block).
+
+`npm run build` clean.

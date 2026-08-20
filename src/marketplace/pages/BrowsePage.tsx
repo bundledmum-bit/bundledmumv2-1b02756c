@@ -87,6 +87,16 @@ function justListedLabel(createdAt: string, sellerName: string | null | undefine
   return `${days} days ago`;
 }
 
+/* Mobile Just Listed row (design 39a): the same freshness fact as
+ * justListedLabel above, but without "by {seller}" — a 132px card has no
+ * room for it, and the design's own mockup shows the bare relative label. */
+function justListedShortLabel(createdAt: string): string {
+  const days = Math.floor((startOfDay(new Date()) - startOfDay(new Date(createdAt))) / 86400000);
+  if (days <= 0) return "Listed today";
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
+
 export default function BrowsePage() {
   // Optional deep link, e.g. from a gone listing's "Browse {category}" CTA or
   // an ad campaign: ?category=<slug-or-uuid> preselects a single category,
@@ -368,6 +378,48 @@ export default function BrowsePage() {
               <span className="nm">{c.name}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Just Listed + stat strip, mobile only (design 39a): categories stay
+          first since they're the fastest route into the grid, these two
+          come right after. Same data as the desktop versions above/below,
+          just a horizontal-scroll row and compressed tile labels sized for
+          a phone screen — not a redesign, an addition. */}
+      {!anyFilter && justListed.length > 0 && (
+        <div className="mkt-jl-mobile">
+          <div className="mkt-jl-mobile-h">
+            <span className="t">Just listed</span>
+            <button
+              type="button"
+              className="mkt-jl-mobile-seeall"
+              onClick={() => document.getElementById("mkt-grid")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              See all ›
+            </button>
+          </div>
+          <div className="mkt-jl-mobile-row">
+            {justListed.map((l) => (
+              <Link key={l.id} className="mkt-card" to={`/listing/${l.id}`}>
+                <div className="mkt-card-imgwrap">
+                  {l.image_url ? <img className="mkt-card-img" src={l.image_url} alt={l.title} loading="lazy" /> : null}
+                </div>
+                <div className="mkt-card-body">
+                  <span className="mkt-price">{formatNaira(l.final_price_naira)}</span>
+                  <span className="mkt-card-title">{l.title}</span>
+                  <span className="mkt-justlisted-when">{justListedShortLabel(l.created_at)}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!anyFilter && (
+        <div className="mkt-stat-strip-mobile">
+          <div className="tile"><span className="n">{sellerCount != null ? sellerCount : "—"}</span><span className="l">Sellers so far</span></div>
+          <div className="tile"><span className="n">{count}</span><span className="l">Items live now</span></div>
+          <div className="tile"><span className="n">100%</span><span className="l">Reviewed by us</span></div>
         </div>
       )}
 

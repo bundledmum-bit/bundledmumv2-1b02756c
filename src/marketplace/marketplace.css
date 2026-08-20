@@ -1317,8 +1317,27 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-homehero { display: none; }
 .mkt-justlisted { display: none; }
 .mkt-stattiles { display: none; }
+.mkt-justlisted-when { font: 400 9.5px/1 'Lato', sans-serif; color: var(--mkt-muted-2); }
+
+/* Just Listed + stat strip, mobile only (design 39a). Categories stay first;
+   these sit right after. .mkt-card is reused unchanged, just narrowed to a
+   132px flex-basis for the horizontal-scroll row. */
+.mkt-jl-mobile { display: flex; flex-direction: column; gap: 9px; padding: 16px 16px 4px; }
+.mkt-jl-mobile-h { display: flex; align-items: baseline; justify-content: space-between; }
+.mkt-jl-mobile-h .t { font: 900 17px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-black); }
+.mkt-jl-mobile-seeall { background: none; border: none; padding: 0; margin: 0; font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }
+.mkt-jl-mobile-row { display: flex; gap: 10px; overflow-x: auto; overflow-y: visible; padding-bottom: 2px; }
+.mkt-jl-mobile-row .mkt-card { flex: 0 0 132px; }
+
+.mkt-stat-strip-mobile { display: flex; gap: 8px; padding: 14px 16px 4px; }
+.mkt-stat-strip-mobile .tile { flex: 1; background: var(--mkt-green-light); border-radius: 12px; padding: 11px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.mkt-stat-strip-mobile .tile .n { font: 900 18px/1 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-stat-strip-mobile .tile .l { font: 700 9.5px/1.25 'Lato', sans-serif; color: var(--mkt-green-dark); }
 
 @media (min-width: 1024px) {
+  .mkt-jl-mobile { display: none; }
+  .mkt-stat-strip-mobile { display: none; }
+
   .mkt-homehero { display: block; max-width: 1240px; margin: 16px auto 0; padding: 0 24px; box-sizing: border-box; }
   .mkt-homehero-panel { background: var(--mkt-green-dark); border-radius: 20px; padding: 36px 40px; display: grid; grid-template-columns: 380px 1fr; gap: 36px; align-items: center; }
   .mkt-homehero-copy { display: flex; flex-direction: column; gap: 16px; }
@@ -1343,7 +1362,6 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-justlisted-seeall { background: none; border: none; padding: 0; margin: 0; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }
   .mkt-justlisted-seeall:hover { color: var(--mkt-green-dark); text-decoration: underline; }
   .mkt-justlisted-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
-  .mkt-justlisted-when { font: 400 9.5px/1 'Lato', sans-serif; color: var(--mkt-muted-2); }
 
   .mkt-stattiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1240px; margin: 32px auto 0; padding: 0 24px; box-sizing: border-box; }
   .mkt-stattile { background: var(--mkt-green-light); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 8px; }
