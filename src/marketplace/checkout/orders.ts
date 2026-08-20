@@ -67,7 +67,7 @@ async function invokeErrorCode(error: unknown): Promise<string> {
  * { reused: true }. Other errors: 'This item is no longer available',
  * 'You cannot buy your own listing'.
  */
-export async function createMarketplaceOrder(input: { listingId: string; email?: string; full_name?: string; phone?: string; whatsappNumber?: string; phoneIsWhatsapp?: boolean; offerId?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean }> {
+export async function createMarketplaceOrder(input: { listingId: string; email?: string; full_name?: string; phone?: string; whatsappNumber?: string; phoneIsWhatsapp?: boolean; offerId?: string }): Promise<{ order: OrderRow; email?: string; reused?: boolean; offer_expired?: boolean }> {
   const body: { listing_id: string; email?: string; full_name?: string; phone?: string; whatsapp_number?: string; phone_is_whatsapp?: boolean; offer_id?: string } = { listing_id: input.listingId };
   if (input.email) body.email = input.email;
   if (input.full_name) body.full_name = input.full_name;

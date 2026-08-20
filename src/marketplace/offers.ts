@@ -106,7 +106,7 @@ export async function fetchBuyerAcceptedOffer(listingId: string): Promise<Accept
  * rejections the database can raise are mapped to human copy; anything else
  * is logged and shown generically, never raw.
  */
-export async function buyerMakeOffer(listingId: string, discountNaira: number): Promise<{ ok: true; offerId: string } | { ok: false; message: string }> {
+export async function buyerMakeOffer(listingId: string, discountNaira: number): Promise<{ ok: true; offerId: string; message?: undefined } | { ok: false; message: string }> {
   const { data, error } = await cdb.rpc("buyer_make_offer", { p_listing_id: listingId, p_discount_naira: Math.round(discountNaira) });
   if (error) {
     const raw = String((error as { message?: string }).message || "");
@@ -177,7 +177,7 @@ export async function sellerRespondToOffer(
   offerId: string,
   action: "accept" | "decline" | "counter",
   counterSellerAmount?: number,
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<{ ok: true; message?: undefined } | { ok: false; message: string }> {
   const { data, error } = await sdb.rpc("seller_respond_to_offer", {
     p_offer_id: offerId,
     p_action: action,
