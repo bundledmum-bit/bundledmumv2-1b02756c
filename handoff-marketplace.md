@@ -7106,3 +7106,21 @@ Preserved: everything else from §97 unchanged; sections 7 through 97.
 Files touched: `src/marketplace/components/MarketplaceHero.tsx` (renamed `.mkt-hero*` → `.mkt-homehero*`), `src/marketplace/marketplace.css` (same rename, both the mobile-default and desktop-override rules).
 
 `npm run build` clean.
+
+## 99. Three small desktop-home corrections (2026-08-20)
+
+Three specific, user-reported fixes to §97's desktop home, all in `BrowsePage.tsx`:
+
+**"See all {count} items" wasn't a link.** It was a plain `<span>` — text that looked clickable but did nothing. Turned it into a real `<button>` (`.mkt-justlisted-seeall`), scrolling to `#mkt-grid` on click, the identical mechanism the hero's own "Browse everything" CTA already uses. Live-verified: `document.getElementById('mkt-grid').scrollIntoView({behavior:'instant'})` lands the grid exactly at the viewport top (`scrollY: 1018`, matching the grid's pre-scroll offset) — the target element and mechanism are correct. Smooth-scroll animation stalling mid-scroll in the automated browser tool itself is a known quirk of this test environment (also seen earlier in this session with plain `.click()`), not a defect in the fix.
+
+**"₦5.06m In listings live right now" → "159 Items listed right now".** The design's own stat tile showed the naira value of everything live; replaced with the plain listing count (`count`, already computed for pagination) with the label re-worded to match. Removed the now-unused `listingsValueLabel` memo entirely rather than leaving dead code — `stats.liveListingValueNaira` itself is untouched in `useMarketplaceStats()` in case something else needs it later, only the display was removed.
+
+**"159 items, checked by our team" removed** from the mobile/shared count-and-sort bar entirely (not reworded, deleted, per the request). `.mkt-fbar` was `justify-content: space-between` to keep that text on the left and the sort/filter controls on the right; with the text gone, changed it to `flex-end` so sort/filters don't jump to the left edge with nothing to balance against.
+
+Live-verified all three at 1440px: `.mkt-justlisted-seeall` is a real `<button>` reading "See all 159 items"; the second stat tile reads "159" / "Items listed right now"; `document.body.textContent.includes('checked by our team')` returns `false`. Re-checked mobile (375px): sort/filter bar still renders correctly, right-aligned, nothing else regressed.
+
+Preserved: everything else from §97/§98 unchanged; sections 7 through 98.
+
+Files touched: `src/marketplace/pages/BrowsePage.tsx` ("See all" link, stat tile, count-bar text removed), `src/marketplace/marketplace.css` (`.mkt-justlisted-seeall` styles, `.mkt-fbar` justify-content).
+
+`npm run build` clean.

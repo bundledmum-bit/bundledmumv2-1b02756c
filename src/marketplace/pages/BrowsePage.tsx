@@ -139,13 +139,6 @@ export default function BrowsePage() {
   // when !anyFilter, same gate the category tiles already use below.
   const { data: justListed = [] } = useJustListed(5);
   const { data: stats } = useMarketplaceStats();
-  // ₦5,060,640 reads as "₦5.06m" — one decimal, never more precise than
-  // that, since this is a headline stat tile, not an invoice line.
-  const listingsValueLabel = useMemo(() => {
-    if (!stats) return "—";
-    const millions = stats.liveListingValueNaira / 1_000_000;
-    return millions >= 1 ? `₦${millions.toFixed(millions < 10 ? 2 : 1)}m` : naira(stats.liveListingValueNaira);
-  }, [stats]);
   const sellerCount = stats?.sellerCount ?? null;
 
   // Resolves a pending ?category=slug or ?group=slug once categories/groups
@@ -348,7 +341,13 @@ export default function BrowsePage() {
         <div className="mkt-justlisted">
           <div className="mkt-justlisted-h">
             <span className="t">Just listed</span>
-            <span className="n">See all {count} items</span>
+            <button
+              type="button"
+              className="mkt-justlisted-seeall"
+              onClick={() => document.getElementById("mkt-grid")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            >
+              See all {count} items
+            </button>
           </div>
           <div className="mkt-justlisted-row">
             {justListed.map((l) => (
@@ -387,7 +386,7 @@ export default function BrowsePage() {
       {!anyFilter && (
         <div className="mkt-stattiles">
           <div className="mkt-stattile"><span className="n">{sellerCount != null ? sellerCount : "—"}</span><span className="l">Sellers on the marketplace</span></div>
-          <div className="mkt-stattile"><span className="n">{listingsValueLabel}</span><span className="l">In listings live right now</span></div>
+          <div className="mkt-stattile"><span className="n">{count}</span><span className="l">Items listed right now</span></div>
           <div className="mkt-stattile"><span className="n">100%</span><span className="l">Of listings reviewed by our team before they go live</span></div>
         </div>
       )}
@@ -428,7 +427,6 @@ export default function BrowsePage() {
 
       {/* Count + sort + filters (mobile) */}
       <div className="mkt-fbar">
-        <span className="mkt-count" style={{ padding: 0 }}>{count} {count === 1 ? "item" : "items"}, checked by our team</span>
         <div className="mkt-fbar-right">
           <select className="mkt-sortsel" value={filters.sort} onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value as BrowseSort }))} aria-label="Sort">
             <option value="newest">Newest first</option>
