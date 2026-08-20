@@ -14,3 +14,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://bundledmum.com/sitemap.xml
+Sitemap: https://rbtyprmkolqfylcbmgrk.supabase.co/functions/v1/marketplace-sitemap
