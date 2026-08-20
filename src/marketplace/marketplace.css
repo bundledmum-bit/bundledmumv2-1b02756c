@@ -1486,6 +1486,12 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-filters-btn { display: none; }
   .mkt-browse { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; max-width: 1240px; margin: 0 auto; }
   .mkt-fpanel { display: block; align-self: start; position: sticky; top: 16px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 18px; }
+
+  /* Sort bar lines up with .mkt-browse's own grid so it sits directly above
+     the product grid column, not the sidebar, and not floating off to the
+     unconstrained viewport edge. */
+  .mkt-fbar { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; width: 100%; max-width: 1240px; margin: 0 auto; padding: 10px 16px 12px; box-sizing: border-box; }
+  .mkt-fbar-right { grid-column: 2; justify-content: flex-end; }
 }
 
 /* ── Location + city control beside the search bar (design B1b/B1c) ── */

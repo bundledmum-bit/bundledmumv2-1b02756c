@@ -7200,3 +7200,17 @@ Preserved: everything else from §97-§104 unchanged; sections 7 through 104.
 Files touched: `src/marketplace/marketplace.css` (`.mkt-justlisted` desktop-override rule).
 
 `npm run build` clean.
+
+## 106. Desktop sort dropdown aligned above the last product card, not floating (2026-08-20)
+
+Reported live: the "Newest first" sort dropdown sat above nothing in particular — off to the right of the sidebar/grid layout below it, not aligned with either. Root cause: `.mkt-fbar` (the sort/filters bar) had its own independent `max-width: 1240px; margin: 0 auto` at desktop, entirely disconnected from `.mkt-browse`'s own `248px sidebar + product grid` layout beneath it, so the two containers centered independently and didn't line up.
+
+**Fix**: gave `.mkt-fbar` the exact same grid (`248px minmax(0, 1fr)` + `24px` gap + `1240px` max-width) as `.mkt-browse`, with the sort control placed in the second (product-grid) column and right-aligned within it — landing it directly above the grid's own right edge, which is also the right edge of the last card in each row. Hit a real CSS quirk getting there: without an explicit `width: 100%`, the grid container shrank to fit its own content (a `flex-direction: column` parent's default `stretch` didn't apply as expected once the item was itself `display: grid` with only `max-width` set, no `width`) — added `width: 100%; box-sizing: border-box;` to force it to actually claim the full available width before the `max-width` cap and centering kick in.
+
+Live-verified at 1440px: `.mkt-sortsel`'s right edge (`1321.5`) now exactly matches both `#mkt-grid`'s right edge and the last card in the first row's right edge — genuinely aligned above the last product card, not the middle. Re-checked 375px: mobile's sort/filters bar is untouched (the fix is entirely inside the `@media (min-width: 1024px)` block).
+
+Preserved: everything else from §97-§105 unchanged; sections 7 through 105.
+
+Files touched: `src/marketplace/marketplace.css` (`.mkt-fbar`/`.mkt-fbar-right` desktop-override rules).
+
+`npm run build` clean.
