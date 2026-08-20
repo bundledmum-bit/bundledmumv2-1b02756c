@@ -7090,3 +7090,19 @@ Preserved: browse's filters, category links, and group-slug links (none of their
 Files touched: `src/marketplace/data/useListings.ts` (`useHeroListings`, `useJustListed`, `useMarketplaceStats`), `src/marketplace/components/MarketplaceHero.tsx` (new), `src/marketplace/pages/BrowsePage.tsx` (hero, Just listed, stat tiles, mobile trust-line, `#mkt-grid` anchor), `src/marketplace/pages/ListingDetailPage.tsx` (`record_listing_view`), `src/marketplace/marketplace.css` (all new styles, desktop-gated).
 
 `npm run build` clean.
+
+## 98. Fixing the blank space below the desktop hero — a class-name collision, not a rendering artifact (2026-08-20)
+
+The user reported a large blank cream/coral-striped gap below the hero on the live desktop page, screenshotted directly. During §97's own live verification I'd seen the same symptom and wrongly dismissed it as a screenshot-tool scaling artifact, having checked only `.mkt-hero`'s rendered *width* (1240px, matching `max-width: 1240px`, looked correct) and not its height. That dismissal was wrong.
+
+**Root cause**: `MarketplaceHero.tsx`'s outer wrapper reused the class name `.mkt-hero` — already in use, unrelated, by `ListingDetailPage.tsx`'s own photo-gallery hero image. CSS selectors don't care which section of a stylesheet they're read from; a pre-existing desktop-only rule at `marketplace.css:490`, `.mkt-hero { aspect-ratio: 1 / 1; border-radius: 16px; }`, applied on top of my new `.mkt-hero { max-width: 1240px; }`, forcing the wrapper's *height* to match its 1240px width regardless of its actual content height (`.mkt-hero-panel` is ~383px). The box was real, oversized, and mostly empty — not a screenshot artifact.
+
+**Fix**: renamed every class introduced in §97 that started with the bare `.mkt-hero` token to `.mkt-homehero` (and its `-panel`, `-copy`, `-badge`, `-cta-row`, `-cta`, `-dots`, `-products` descendants, for consistency, though only the bare selector actually collided) — in `MarketplaceHero.tsx` and both `.mkt-hero` rules in `marketplace.css` (mobile `display: none` default, desktop `display: block; max-width: 1240px` override). The pre-existing listing-detail `.mkt-hero`/`.mkt-hero-tap`/`.mkt-hero-state`/`.mkt-hero-cue` family (lines 274-309 and 490) was not touched.
+
+**Verified by direct measurement, not just a screenshot**: at a real 1440px viewport, `getBoundingClientRect()` on `.mkt-homehero` now reads `height: 382.5625` (matching its actual content, not 1240), and `.mkt-justlisted` starts at `top: 494.5625` — immediately after, no gap. `document.querySelectorAll('.mkt-hero')` on the same page returns 0 elements, confirming zero collision. Screenshotted both the hero-to-Just-listed transition and the stat-tiles-to-browse-grid area below it — content now flows continuously with no blank space. Re-checked mobile (375px): trust-line, category tiles, and browse grid all render exactly as before, unaffected by the rename since mobile never showed the hero at all.
+
+Preserved: everything else from §97 unchanged; sections 7 through 97.
+
+Files touched: `src/marketplace/components/MarketplaceHero.tsx` (renamed `.mkt-hero*` → `.mkt-homehero*`), `src/marketplace/marketplace.css` (same rename, both the mobile-default and desktop-override rules).
+
+`npm run build` clean.

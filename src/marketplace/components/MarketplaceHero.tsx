@@ -63,28 +63,28 @@ export default function MarketplaceHero() {
 
   return (
     <div
-      className="mkt-hero"
+      className="mkt-homehero"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <div className="mkt-hero-panel">
-        <div className="mkt-hero-copy">
-          <div className="mkt-hero-badge">
+      <div className="mkt-homehero-panel">
+        <div className="mkt-homehero-copy">
+          <div className="mkt-homehero-badge">
             <span className="ic" aria-hidden>✓</span>
             <span>We hold your money until it arrives</span>
           </div>
           <h2>Buy trusted, used baby things from other Nigerian mums</h2>
           <p>You pay us first. We only release the money to the seller once you've confirmed the item arrived as described.</p>
-          <div className="mkt-hero-cta-row">
+          <div className="mkt-homehero-cta-row">
             <button
               type="button"
-              className="mkt-hero-cta"
+              className="mkt-homehero-cta"
               onClick={() => document.getElementById("mkt-grid")?.scrollIntoView({ behavior: "smooth", block: "start" })}
             >
               Browse everything
             </button>
             {slides.length > 1 && (
-              <div className="mkt-hero-dots">
+              <div className="mkt-homehero-dots">
                 {slides.map((_, i) => (
                   <button
                     key={i}
@@ -99,7 +99,7 @@ export default function MarketplaceHero() {
           </div>
         </div>
 
-        <div className="mkt-hero-products">
+        <div className="mkt-homehero-products">
           {current.map((l) => (
             <Link key={l.id} className="mkt-card" to={`/listing/${l.id}`}>
               <div className="mkt-card-imgwrap">

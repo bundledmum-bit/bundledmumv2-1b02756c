@@ -1320,30 +1320,30 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-trust-line { display: flex; align-items: center; gap: 7px; padding: 0 16px; font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green-dark); }
 .mkt-trust-line .ic { width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 9px/16px 'Lato', sans-serif; text-align: center; flex: 0 0 16px; }
 
-.mkt-hero { display: none; }
+.mkt-homehero { display: none; }
 .mkt-justlisted { display: none; }
 .mkt-stattiles { display: none; }
 
 @media (min-width: 1024px) {
   .mkt-trust-line { display: none; }
 
-  .mkt-hero { display: block; max-width: 1240px; margin: 16px auto 0; padding: 0 24px; box-sizing: border-box; }
-  .mkt-hero-panel { background: var(--mkt-green-dark); border-radius: 20px; padding: 36px 40px; display: grid; grid-template-columns: 380px 1fr; gap: 36px; align-items: center; }
-  .mkt-hero-copy { display: flex; flex-direction: column; gap: 16px; }
-  .mkt-hero-badge { display: flex; align-items: center; gap: 8px; }
-  .mkt-hero-badge .ic { width: 22px; height: 22px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 12px/22px 'Lato', sans-serif; text-align: center; flex: 0 0 22px; }
-  .mkt-hero-badge span:last-child { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }
-  .mkt-hero-copy h2 { font: 900 32px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); margin: 0; text-wrap: pretty; }
-  .mkt-hero-copy p { font: 400 15px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
-  .mkt-hero-cta-row { display: flex; align-items: center; gap: 9px; }
-  .mkt-hero-cta { background: var(--mkt-coral); color: var(--mkt-black); border: none; border-radius: 12px; padding: 15px 26px; font: 800 15px/1 'Nunito', sans-serif; cursor: pointer; }
-  .mkt-hero-cta:hover { background: var(--mkt-coral-dark); color: #fff; }
-  .mkt-hero-dots { display: flex; gap: 6px; }
-  .mkt-hero-dots button { width: 22px; height: 6px; border-radius: 3px; border: none; padding: 0; background: rgba(255,248,244,0.35); cursor: pointer; }
-  .mkt-hero-dots button.on { background: var(--mkt-coral); width: 22px; }
-  .mkt-hero-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .mkt-hero-products .mkt-card { border-radius: 14px; background: #fff; }
-  .mkt-hero-products .mkt-card-body { padding: 10px 11px 12px; }
+  .mkt-homehero { display: block; max-width: 1240px; margin: 16px auto 0; padding: 0 24px; box-sizing: border-box; }
+  .mkt-homehero-panel { background: var(--mkt-green-dark); border-radius: 20px; padding: 36px 40px; display: grid; grid-template-columns: 380px 1fr; gap: 36px; align-items: center; }
+  .mkt-homehero-copy { display: flex; flex-direction: column; gap: 16px; }
+  .mkt-homehero-badge { display: flex; align-items: center; gap: 8px; }
+  .mkt-homehero-badge .ic { width: 22px; height: 22px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 12px/22px 'Lato', sans-serif; text-align: center; flex: 0 0 22px; }
+  .mkt-homehero-badge span:last-child { font: 800 12px/1 'Nunito', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mkt-green-light); }
+  .mkt-homehero-copy h2 { font: 900 32px/1.15 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); margin: 0; text-wrap: pretty; }
+  .mkt-homehero-copy p { font: 400 15px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+  .mkt-homehero-cta-row { display: flex; align-items: center; gap: 9px; }
+  .mkt-homehero-cta { background: var(--mkt-coral); color: var(--mkt-black); border: none; border-radius: 12px; padding: 15px 26px; font: 800 15px/1 'Nunito', sans-serif; cursor: pointer; }
+  .mkt-homehero-cta:hover { background: var(--mkt-coral-dark); color: #fff; }
+  .mkt-homehero-dots { display: flex; gap: 6px; }
+  .mkt-homehero-dots button { width: 22px; height: 6px; border-radius: 3px; border: none; padding: 0; background: rgba(255,248,244,0.35); cursor: pointer; }
+  .mkt-homehero-dots button.on { background: var(--mkt-coral); width: 22px; }
+  .mkt-homehero-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .mkt-homehero-products .mkt-card { border-radius: 14px; background: #fff; }
+  .mkt-homehero-products .mkt-card-body { padding: 10px 11px 12px; }
 
   .mkt-justlisted { display: block; max-width: 1240px; margin: 32px auto 0; padding: 0 24px; box-sizing: border-box; }
   .mkt-justlisted-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
