@@ -7164,3 +7164,15 @@ Preserved: everything else from §97-§101 unchanged; sections 7 through 101.
 Files touched: `src/marketplace/pages/BrowsePage.tsx` (`justListedShortLabel`, mobile Just Listed row, mobile stat strip), `src/marketplace/marketplace.css` (new `.mkt-jl-mobile*`/`.mkt-stat-strip-mobile*` rules, `.mkt-justlisted-when` moved out of the desktop-only media block).
 
 `npm run build` clean.
+
+## 103. "See more categories" moved above Just Listed, not below (2026-08-20)
+
+§102 had placed the "See more categories" reveal-in-place block (`.mkt-cats-more`/`.mkt-cat-seemore`/`.mkt-cats-done`) *after* the mobile Just Listed row and stat strip — a JSX-ordering slip, since it belongs directly under the category tiles it expands, not after two unrelated sections. Moved the whole block (unchanged internals) to sit immediately after `.mkt-cats`, before Just Listed. This block isn't CSS-gated by breakpoint (desktop hides the category-tiles section entirely, so its order there is moot) — the move is mobile-only in effect.
+
+Live-verified at 375px: "See more categories 41 ▾" now renders directly under the 6 featured category tiles, before "Just listed". Clicked it and confirmed it still expands in place (grouped tiles, e.g. "Clothing and shoes group") without disturbing Just Listed or the stat strip below.
+
+Preserved: everything else from §97-§102 unchanged; sections 7 through 102.
+
+Files touched: `src/marketplace/pages/BrowsePage.tsx` (moved the "See more categories" JSX block, no internal changes).
+
+`npm run build` clean.

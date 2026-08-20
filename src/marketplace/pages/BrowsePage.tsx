@@ -381,6 +381,40 @@ export default function BrowsePage() {
         </div>
       )}
 
+      {/* See more categories (design 31a): the remaining categories reveal in
+          batches of 6, in place, grouped by the same 7 category groups used
+          everywhere else. Reuses .mkt-cat unchanged, no visual split from the
+          featured 6 above — a visible split would read as "second class". */}
+      {!anyFilter && revealedCats.length > 0 && (
+        <div className="mkt-cats-more">
+          {revealedCats.map((c, i) => {
+            const prev = i > 0 ? revealedCats[i - 1] : null;
+            const showHeader = c.group_id !== (prev?.group_id ?? null);
+            const group = groups.find((g) => g.id === c.group_id);
+            return (
+              <div key={c.id} style={{ display: "contents" }}>
+                {showHeader && group && <div className="mkt-cat-group-h">{group.name} group</div>}
+                <button className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id, groupId: "", categoryIds: null }))}>
+                  <span className="ic" aria-hidden style={{ background: (tileCats.length + i) % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
+                  <span className="nm">{c.name}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {!anyFilter && remainingCount > 0 && (
+        <button className="mkt-cat-seemore" onClick={() => setRevealCount((n) => n + 6)}>
+          See more categories <span className="n">{remainingCount}</span> ▾
+        </button>
+      )}
+      {!anyFilter && remainderCats.length > 0 && remainingCount === 0 && (
+        <div className="mkt-cats-done">
+          <span className="rule" aria-hidden />
+          <span>That's all {defaultTileCats.length}, for now</span>
+        </div>
+      )}
+
       {/* Just Listed + stat strip, mobile only (design 39a): categories stay
           first since they're the fastest route into the grid, these two
           come right after. Same data as the desktop versions above/below,
@@ -431,40 +465,6 @@ export default function BrowsePage() {
           <div className="mkt-stattile"><span className="n">{sellerCount != null ? sellerCount : "—"}</span><span className="l">Sellers on the marketplace</span></div>
           <div className="mkt-stattile"><span className="n">{count}</span><span className="l">Items listed right now</span></div>
           <div className="mkt-stattile"><span className="n">100%</span><span className="l">Of listings reviewed by our team before they go live</span></div>
-        </div>
-      )}
-
-      {/* See more categories (design 31a): the remaining categories reveal in
-          batches of 6, in place, grouped by the same 7 category groups used
-          everywhere else. Reuses .mkt-cat unchanged, no visual split from the
-          featured 6 above — a visible split would read as "second class". */}
-      {!anyFilter && revealedCats.length > 0 && (
-        <div className="mkt-cats-more">
-          {revealedCats.map((c, i) => {
-            const prev = i > 0 ? revealedCats[i - 1] : null;
-            const showHeader = c.group_id !== (prev?.group_id ?? null);
-            const group = groups.find((g) => g.id === c.group_id);
-            return (
-              <div key={c.id} style={{ display: "contents" }}>
-                {showHeader && group && <div className="mkt-cat-group-h">{group.name} group</div>}
-                <button className="mkt-cat" onClick={() => setFilters((f) => ({ ...f, categoryId: c.id, groupId: "", categoryIds: null }))}>
-                  <span className="ic" aria-hidden style={{ background: (tileCats.length + i) % 2 === 0 ? "var(--mkt-coral-light)" : "var(--mkt-green-light)" }}>{c.icon || CATEGORY_FALLBACK_ICON}</span>
-                  <span className="nm">{c.name}</span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {!anyFilter && remainingCount > 0 && (
-        <button className="mkt-cat-seemore" onClick={() => setRevealCount((n) => n + 6)}>
-          See more categories <span className="n">{remainingCount}</span> ▾
-        </button>
-      )}
-      {!anyFilter && remainderCats.length > 0 && remainingCount === 0 && (
-        <div className="mkt-cats-done">
-          <span className="rule" aria-hidden />
-          <span>That's all {defaultTileCats.length}, for now</span>
         </div>
       )}
 
