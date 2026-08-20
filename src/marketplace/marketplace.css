@@ -2047,3 +2047,168 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-pv-nav.prev { left: 18px; }
   .mkt-pv-nav.next { right: 18px; }
 }
+
+/* ── How buying works, buyer page (design 40a/41a) ─────────────────────────
+   Single flat DOM order matching mobile's own correct sequence (scenario,
+   worry, teaser, steps, safety net, closing); desktop switches to a genuine
+   two-column grid via grid-template-areas rather than a duplicated tree —
+   see HowItWorksPage.tsx's own comment for why. */
+.mkt-how-hero { background: var(--mkt-green); color: var(--mkt-cream); padding: 24px 16px 26px; }
+.mkt-how-hero .inner { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.mkt-how-hero .eyebrow { font: 900 13px/1 'Nunito', sans-serif; letter-spacing: -0.01em; color: var(--mkt-green-light); }
+.mkt-how-hero h1 { font: 900 24px/1.18 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; text-wrap: pretty; }
+
+.mkt-how-body { max-width: 1180px; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px; }
+
+.mkt-how-scenario { background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 15px; display: flex; gap: 13px; align-items: center; }
+.mkt-how-scenario .ic { width: 56px; height: 56px; border-radius: 12px; background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 7px, var(--mkt-cream) 7px 14px); flex: 0 0 56px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.mkt-how-scenario p { font: 400 13px/1.5 'Lato', sans-serif; color: #3D3936; margin: 0; }
+
+.mkt-how-worry { background: var(--mkt-coral-light); border-radius: 13px; padding: 13px; display: flex; gap: 11px; align-items: flex-start; }
+.mkt-how-worry span[aria-hidden] { font-size: 20px; flex: 0 0 20px; }
+.mkt-how-worry p { font: 700 13px/1.5 'Lato', sans-serif; color: #8C4A34; margin: 0; }
+
+.mkt-how-answer-teaser { background: var(--mkt-green-light); border-radius: 13px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.mkt-how-answer-teaser .lead { font: 800 14px/1.25 'Nunito', sans-serif; color: var(--mkt-green-dark); margin: 0; }
+.mkt-how-answer-teaser .sub { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); margin: 0; }
+
+.mkt-how-steps { display: flex; flex-direction: column; gap: 14px; }
+.mkt-how-step { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+.mkt-how-step .num { width: 26px; height: 26px; border-radius: 50%; background: var(--mkt-green); color: var(--mkt-cream); font: 900 13px/26px 'Nunito', sans-serif; text-align: center; flex: 0 0 26px; }
+.mkt-how-step .num.final { background: var(--mkt-coral); color: var(--mkt-black); }
+.mkt-how-step .body { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mkt-how-step .t { font: 800 14px/1.25 'Nunito', sans-serif; }
+.mkt-how-step .d { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-how-step .d.small { font-size: 11.5px; color: var(--mkt-muted-2); }
+.mkt-how-step .quote { background: var(--mkt-cream); border: 1px solid var(--mkt-border); border-radius: 10px; padding: 9px 11px; font: 400 11.5px/1.4 'Lato', sans-serif; color: #3D3936; }
+.mkt-how-step .money-diagram { display: flex; align-items: center; gap: 8px; background: var(--mkt-cream); border: 1px solid var(--mkt-border); border-radius: 11px; padding: 9px; }
+.mkt-how-step .money-diagram > span[aria-hidden]:not(.arr) { font-size: 18px; }
+.mkt-how-step .money-diagram .dim { opacity: 0.3; }
+.mkt-how-step .money-diagram .arr { font: 700 16px/1 'Lato', sans-serif; color: var(--mkt-input-border); }
+.mkt-how-step .money-diagram .arr.on { color: var(--mkt-muted-2); }
+.mkt-how-step .money-diagram .held { flex: 1; background: var(--mkt-green-dark); color: var(--mkt-cream); border-radius: 9px; padding: 8px 10px; text-align: center; font: 800 11.5px/1.3 'Nunito', sans-serif; }
+.mkt-how-step .money-diagram .held.struck { background: var(--mkt-grey-chip); color: var(--mkt-muted-2); text-decoration: line-through; font-size: 10.5px; }
+
+.mkt-how-safety { background: var(--mkt-green-dark); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 13px; }
+.mkt-how-safety .head { display: flex; align-items: center; gap: 9px; }
+.mkt-how-safety .head span[aria-hidden] { font-size: 22px; }
+.mkt-how-safety .head span:last-child { font: 900 18px/1.15 'Nunito', sans-serif; color: var(--mkt-cream); }
+.mkt-how-safety > .lead { font: 400 13px/1.55 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+.mkt-how-safety .promise { background: #fff; border-radius: 12px; padding: 13px; display: flex; flex-direction: column; gap: 7px; }
+.mkt-how-safety .promise .check { display: flex; align-items: center; gap: 8px; }
+.mkt-how-safety .promise .tick { width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 11px/20px 'Lato', sans-serif; text-align: center; flex: 0 0 20px; }
+.mkt-how-safety .promise .check span:last-child { font: 800 13.5px/1.3 'Nunito', sans-serif; }
+.mkt-how-safety .promise .fine { font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin: 0; padding-left: 28px; }
+.mkt-how-safety .closing { font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-light); margin: 0; }
+
+.mkt-how-cta { display: block; box-sizing: border-box; background: var(--mkt-coral); color: var(--mkt-black); border-radius: 12px; padding: 15px; text-align: center; font: 800 15px/1 'Nunito', sans-serif; text-decoration: none; }
+.mkt-how-railcta { display: none; }
+
+.mkt-how-closing { background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mkt-how-closing h2 { font: 900 20px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; margin: 0; }
+.mkt-how-closing-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mkt-how-closing-cards .mkt-card-body { padding: 8px 9px 10px; }
+.mkt-how-wa { text-align: center; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green-dark); text-decoration: underline; }
+
+@media (min-width: 1024px) {
+  .mkt-how-hero { padding: 32px 40px; }
+  .mkt-how-hero h1 { font-size: 34px; max-width: 760px; }
+
+  .mkt-how-body {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 20px 32px;
+    padding: 36px 40px 56px;
+    align-items: start;
+    grid-template-areas:
+      "scenario steps"
+      "worry    steps"
+      "safety   steps"
+      "railcta  steps"
+      "closing  closing";
+  }
+  .mkt-how-scenario { grid-area: scenario; }
+  .mkt-how-worry { grid-area: worry; }
+  .mkt-how-answer-teaser { display: none; }
+  .mkt-how-steps { grid-area: steps; }
+  .mkt-how-safety { grid-area: safety; }
+  .mkt-how-railcta { display: block; grid-area: railcta; }
+  .mkt-how-closing { grid-area: closing; padding: 24px; }
+  .mkt-how-closing-cards { grid-template-columns: repeat(4, 180px); }
+}
+
+/* ── FAQ page (design 41a) ─────────────────────────────────────────────── */
+.mkt-faq-hero { background: var(--mkt-green); padding: 20px 16px 22px; }
+.mkt-faq-hero .inner { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.mkt-faq-hero h1 { font: 900 22px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-cream); margin: 0; }
+.mkt-faq-search { background: #fff; border-radius: 12px; height: 44px; display: flex; align-items: center; gap: 9px; padding: 0 14px; }
+.mkt-faq-search .ic { font-size: 14px; flex: 0 0 auto; opacity: 0.55; }
+.mkt-faq-search input { flex: 1; border: none; outline: none; font: 400 14px/1 'Lato', sans-serif; color: var(--mkt-black); background: transparent; }
+.mkt-faq-search input::placeholder { color: var(--mkt-muted-2); }
+
+.mkt-faq-body { max-width: 1180px; margin: 0 auto; padding: 14px 16px 4px; display: flex; flex-direction: column; gap: 8px; }
+
+.mkt-faq-rail { display: flex; gap: 8px; }
+.mkt-faq-rail button { flex: 1; background: #fff; border: 1px solid var(--mkt-border); border-radius: 10px; padding: 10px; text-align: center; font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-black); cursor: pointer; }
+.mkt-faq-rail button.on { background: var(--mkt-black); border-color: var(--mkt-black); color: var(--mkt-cream); }
+.mkt-faq-rail-wa { display: none; }
+
+.mkt-faq-answers { display: flex; flex-direction: column; gap: 9px; padding-top: 6px; }
+.mkt-faq-item { background: #fff; border: 1px solid var(--mkt-border); border-radius: 13px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.mkt-faq-item.open { border: 1.5px solid var(--mkt-coral); }
+.mkt-faq-q { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: none; border: none; padding: 0; text-align: left; cursor: pointer; font: 800 14.5px/1.3 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-faq-q .chev { color: var(--mkt-muted-2); font: 700 16px/1 'Lato', sans-serif; flex: 0 0 auto; }
+.mkt-faq-item.open .mkt-faq-q .chev { transform: rotate(180deg); }
+.mkt-faq-a { font: 400 13px/1.55 'Lato', sans-serif; color: #3D3936; margin: 0; }
+
+.mkt-faq-empty { padding: 24px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.mkt-faq-empty .ic { width: 46px; height: 46px; border-radius: 13px; background: var(--mkt-coral-light); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.mkt-faq-empty .t { font: 900 19px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-faq-empty p { font: 400 13px/1.55 'Lato', sans-serif; color: var(--mkt-muted); max-width: 280px; margin: 0; }
+
+.mkt-faq-wa-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #25D366; border-radius: 11px; padding: 12px 20px; color: #fff; font: 800 14px/1 'Nunito', sans-serif; text-decoration: none; }
+.mkt-faq-browse-btn { flex: 1; border: 1.5px solid var(--mkt-green); color: var(--mkt-green); border-radius: 10px; padding: 11px; text-align: center; font: 800 13px/1 'Nunito', sans-serif; text-decoration: none; }
+
+.mkt-faq-foot { border-top: 1px solid var(--mkt-border); background: #fff; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 9px; max-width: 1180px; margin: 0 auto; }
+.mkt-faq-foot > span { font: 700 12px/1.4 'Lato', sans-serif; color: var(--mkt-muted); text-align: center; }
+.mkt-faq-foot .row { display: flex; gap: 9px; }
+.mkt-faq-foot .row .mkt-faq-wa-btn { flex: 1; }
+
+@media (min-width: 1024px) {
+  .mkt-faq-hero { padding: 32px 40px; }
+  .mkt-faq-hero .inner { align-items: center; text-align: center; }
+  .mkt-faq-hero h1 { font-size: 32px; }
+  .mkt-faq-search { width: 480px; height: 46px; }
+
+  .mkt-faq-body { display: grid; grid-template-columns: 220px 1fr; gap: 32px; padding: 32px 40px; }
+  .mkt-faq-rail { position: sticky; top: 20px; align-self: start; flex-direction: column; gap: 6px; }
+  .mkt-faq-rail button { text-align: left; padding: 12px 14px; }
+  .mkt-faq-rail-wa { display: block; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-muted); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--mkt-border); }
+  .mkt-faq-rail-wa a { color: var(--mkt-green-dark); font-weight: 700; }
+  .mkt-faq-answers { padding-top: 0; }
+  .mkt-faq-item.open { max-width: 720px; }
+  .mkt-faq-a { max-width: 640px; }
+
+  .mkt-faq-foot { display: none; }
+}
+
+/* ── Sell page, "How you get paid" block (design 40a W6 / 41a F5) ───────── */
+.mkt-sl-payout { margin: 4px 16px 4px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mkt-sl-payout-title { font: 900 19px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-sl-payout-steps { display: flex; flex-direction: column; gap: 9px; }
+.mkt-sl-payout-step { display: flex; gap: 10px; align-items: flex-start; }
+.mkt-sl-payout-step .num { width: 22px; height: 22px; border-radius: 50%; background: var(--mkt-green); color: var(--mkt-cream); font: 900 11px/22px 'Nunito', sans-serif; text-align: center; flex: 0 0 22px; }
+.mkt-sl-payout-step .num.final { background: var(--mkt-coral); color: var(--mkt-black); }
+.mkt-sl-payout-step .txt { font: 400 12.5px/1.5 'Lato', sans-serif; }
+.mkt-sl-payout-step .txt.final { font-weight: 700; }
+.mkt-sl-payout-proof { background: var(--mkt-green-light); border-radius: 12px; padding: 12px; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
+@media (min-width: 1024px) {
+  .mkt-sl-payout { margin: 0 48px 40px; padding: 32px; gap: 16px; }
+  .mkt-sl-payout-title { font-size: 24px; }
+  .mkt-sl-payout-steps { flex-direction: row; gap: 12px; }
+  .mkt-sl-payout-step { flex: 1; flex-direction: column; gap: 8px; }
+  .mkt-sl-payout-step .num { width: 26px; height: 26px; font-size: 12px; line-height: 26px; }
+  .mkt-sl-payout-step .txt { font-size: 12px; }
+  .mkt-sl-payout-proof { font-size: 12.5px; }
+}

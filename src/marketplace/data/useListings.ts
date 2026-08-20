@@ -284,29 +284,36 @@ export function useJustListed(limit: number) {
 export interface MarketplaceStats {
   sellerCount: number;
   liveListingValueNaira: number;
+  /** Plain live-listing count, for pages (how-it-works, FAQ) that need a real
+   * "browse all N items" number without pulling every price row. */
+  liveListingCount: number;
 }
 
 /**
- * The three real numbers behind the desktop home's stat tiles (design 38a):
- * genuine counts read live from marketplace_sellers_public (already
- * publicly readable) and a sum of every live listing's final_price_naira.
- * Deliberately real operational numbers rather than reviews, ratings, or a
- * sold count — there has only been one completed sale, so anything of that
- * kind would be fabricated. No new Supabase function, just the same plain
- * client reads every other hook here already does.
+ * The real numbers behind the desktop home's stat tiles (design 38a) and any
+ * other page that needs to say how many sellers or listings actually exist
+ * right now (design 40a/41a's "Browse all N items" and FAQ answers): genuine
+ * counts read live from marketplace_sellers_public (already publicly
+ * readable) and marketplace_listings where status='live'. Deliberately real
+ * operational numbers rather than reviews, ratings, or a sold count — there
+ * has only been one completed sale, so anything of that kind would be
+ * fabricated. No new Supabase function, just the same plain client reads
+ * every other hook here already does.
  */
 export function useMarketplaceStats() {
   return useQuery({
     queryKey: ["marketplace", "stats"],
     queryFn: async (): Promise<MarketplaceStats> => {
-      const [sellersRes, listingsRes] = await Promise.all([
+      const [sellersRes, listingsRes, countRes] = await Promise.all([
         mdb.from("marketplace_sellers_public").select("id", { count: "exact", head: true }),
         mdb.from("marketplace_listings").select("final_price_naira").eq("status", "live"),
+        mdb.from("marketplace_listings").select("id", { count: "exact", head: true }).eq("status", "live"),
       ]);
       const sellerCount = sellersRes.count ?? 0;
       const rows = (listingsRes.data ?? []) as Array<{ final_price_naira: number }>;
       const liveListingValueNaira = rows.reduce((sum, r) => sum + (Number(r.final_price_naira) || 0), 0);
-      return { sellerCount, liveListingValueNaira };
+      const liveListingCount = countRes.count ?? 0;
+      return { sellerCount, liveListingValueNaira, liveListingCount };
     },
     staleTime: 5 * 60 * 1000,
   });

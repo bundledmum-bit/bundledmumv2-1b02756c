@@ -15,6 +15,19 @@ const CORE_MESSAGE = [
   { title: "Every listing gets checked", body: "That review is what keeps buyers coming back, and coming back to yours." },
 ];
 
+/** "How you get paid" block (design 40a W6 / 41a F5): her mirror worry to a
+ * buyer's — will I actually get paid, can someone fake a fault — answered
+ * with the two pieces of real proof (dispatch photo, payout screenshot)
+ * rather than reassurance words. Five steps, same content at every width;
+ * only the layout changes, column on mobile, a single row on desktop. */
+const PAYOUT_STEPS = [
+  "You list it, we review before it goes live",
+  "A buyer pays, BundledMum holds the money, not you yet",
+  "You send it and confirm dispatch with a photo, your proof it left your hands",
+  "The buyer confirms it arrived as described",
+  "You're paid by bank transfer, with a screenshot as proof",
+];
+
 /**
  * Become a seller, /marketplace/sell (design 29a). A conversion landing page
  * for a parent deciding whether to sell what their child has outgrown, not a
@@ -161,6 +174,19 @@ export default function BecomeSellerPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="mkt-sl-payout">
+          <div className="mkt-sl-payout-title">How you get paid</div>
+          <div className="mkt-sl-payout-steps">
+            {PAYOUT_STEPS.map((step, i) => (
+              <div className="mkt-sl-payout-step" key={i}>
+                <span className={i === PAYOUT_STEPS.length - 1 ? "num final" : "num"}>{i + 1}</span>
+                <span className={i === PAYOUT_STEPS.length - 1 ? "txt final" : "txt"}>{step}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mkt-sl-payout-proof">Your dispatch photo is what protects you if a buyer ever claims it never arrived. Real proof, on both sides.</div>
         </div>
 
         <div className="mkt-sl-reseller">

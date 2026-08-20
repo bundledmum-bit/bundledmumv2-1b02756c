@@ -10,6 +10,8 @@ import MarketplaceScrollManager from "./MarketplaceScrollManager";
 import MarketplaceLoginPage from "./auth/MarketplaceLoginPage";
 import BrowsePage from "./pages/BrowsePage";
 import ListingDetailPage from "./pages/ListingDetailPage";
+import HowItWorksPage from "./pages/HowItWorksPage";
+import FaqPage from "./pages/FaqPage";
 import BecomeSellerPage from "./sell/BecomeSellerPage";
 import SellerSetupPage from "./sell/SellerSetupPage";
 import CreateListingPage from "./sell/CreateListingPage";
@@ -91,6 +93,8 @@ export default function MarketplaceApp() {
             <Route path="/login" element={<MarketplaceLoginPage />} />
             <Route path="/listing/:id" element={<ListingDetailPage />} />
             <Route path="/listing/:id/offer" element={<BuyerOfferPage />} />
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+            <Route path="/faq" element={<FaqPage />} />
             {/* Sell side: seller onboarding and listing creation */}
             <Route path="/sell" element={<BecomeSellerPage />} />
             <Route path="/sell/setup" element={<SellerSetupPage />} />
