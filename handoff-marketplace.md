@@ -7136,3 +7136,13 @@ Preserved: everything else from §97-§99 unchanged; sections 7 through 99.
 Files touched: `src/marketplace/pages/BrowsePage.tsx` (removed `.mkt-trust-line` block), `src/marketplace/marketplace.css` (removed now-unused `.mkt-trust-line` rules).
 
 `npm run build` clean.
+
+## 101. Desktop hero headline copy update (2026-08-20)
+
+"Buy trusted, used baby things from other Nigerian mums" → "Buy trusted, neatly used baby & children things from other Nigerian mums" in `MarketplaceHero.tsx`, desktop only. Live-verified: `document.querySelector('.mkt-homehero-copy h2').textContent` matches exactly.
+
+Preserved: everything else from §97-§100 unchanged; sections 7 through 100.
+
+Files touched: `src/marketplace/components/MarketplaceHero.tsx`.
+
+`npm run build` clean.

@@ -73,7 +73,7 @@ export default function MarketplaceHero() {
             <span className="ic" aria-hidden>✓</span>
             <span>We hold your money until it arrives</span>
           </div>
-          <h2>Buy trusted, used baby things from other Nigerian mums</h2>
+          <h2>Buy trusted, neatly used baby &amp; children things from other Nigerian mums</h2>
           <p>You pay us first. We only release the money to the seller once you've confirmed the item arrived as described.</p>
           <div className="mkt-homehero-cta-row">
             <button
