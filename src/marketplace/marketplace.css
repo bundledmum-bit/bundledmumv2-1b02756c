@@ -1313,20 +1313,12 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 
 /* ── Desktop home hero, Just listed, stat tiles (design 38a) ──────────────
    Desktop only throughout: default display:none, shown at 1024px, same
-   convention as the rest of this file's mobile-first breakpoints. Mobile's
-   home is unchanged except .mkt-trust-line, the one thing the design calls
-   out as cheap enough to carry down, hidden again once the hero itself
-   states the same line at desktop. */
-.mkt-trust-line { display: flex; align-items: center; gap: 7px; padding: 0 16px; font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green-dark); }
-.mkt-trust-line .ic { width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 700 9px/16px 'Lato', sans-serif; text-align: center; flex: 0 0 16px; }
-
+   convention as the rest of this file's mobile-first breakpoints. */
 .mkt-homehero { display: none; }
 .mkt-justlisted { display: none; }
 .mkt-stattiles { display: none; }
 
 @media (min-width: 1024px) {
-  .mkt-trust-line { display: none; }
-
   .mkt-homehero { display: block; max-width: 1240px; margin: 16px auto 0; padding: 0 24px; box-sizing: border-box; }
   .mkt-homehero-panel { background: var(--mkt-green-dark); border-radius: 20px; padding: 36px 40px; display: grid; grid-template-columns: 380px 1fr; gap: 36px; align-items: center; }
   .mkt-homehero-copy { display: flex; flex-direction: column; gap: 16px; }

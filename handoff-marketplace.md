@@ -7124,3 +7124,15 @@ Preserved: everything else from §97/§98 unchanged; sections 7 through 98.
 Files touched: `src/marketplace/pages/BrowsePage.tsx` ("See all" link, stat tile, count-bar text removed), `src/marketplace/marketplace.css` (`.mkt-justlisted-seeall` styles, `.mkt-fbar` justify-content).
 
 `npm run build` clean.
+
+## 100. Mobile trust-line removed from the home hero (2026-08-20)
+
+§97 carried "✓ We hold your money until it arrives" down to mobile, above the search bar, as the one thing the design explicitly called cheap enough to keep. Per request, removed it from mobile entirely: deleted the `.mkt-trust-line` block from `BrowsePage.tsx` and its two CSS rules (the base style and the desktop `display: none` override, both now unused). The desktop hero's own identical badge (inside `MarketplaceHero.tsx`, desktop-only) is untouched — this was mobile-only text, not the hero component itself.
+
+Live-verified at 375px: the mobile hero now goes straight from the headline to the search bar, no trust line, no gap left behind. Re-checked 1440px: desktop hero's own trust badge still renders exactly as before.
+
+Preserved: everything else from §97-§99 unchanged; sections 7 through 99.
+
+Files touched: `src/marketplace/pages/BrowsePage.tsx` (removed `.mkt-trust-line` block), `src/marketplace/marketplace.css` (removed now-unused `.mkt-trust-line` rules).
+
+`npm run build` clean.

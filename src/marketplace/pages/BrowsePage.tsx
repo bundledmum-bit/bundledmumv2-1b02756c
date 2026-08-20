@@ -283,15 +283,6 @@ export default function BrowsePage() {
             <Link to="/sell" className="mkt-home-sell">Sell</Link>
           </div>
 
-          {/* Mobile only (design 38a's own "mobile degradation" note): the one
-              thing worth carrying down from the desktop hero, since it's cheap
-              to add and the conversion problem isn't mobile-exclusive. Hidden
-              at desktop, where the hero already states this. */}
-          <div className="mkt-trust-line">
-            <span className="ic" aria-hidden>✓</span>
-            <span>We hold your money until it arrives</span>
-          </div>
-
           <div className="mkt-searchwrap">
             <span className="mkt-search-ic" aria-hidden>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
