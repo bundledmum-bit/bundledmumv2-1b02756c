@@ -1356,7 +1356,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-homehero-products .mkt-card { border-radius: 14px; background: #fff; }
   .mkt-homehero-products .mkt-card-body { padding: 10px 11px 12px; }
 
-  .mkt-justlisted { display: block; max-width: 1240px; margin: 32px auto 0; padding: 0 24px; box-sizing: border-box; }
+  .mkt-justlisted { display: none; }
   .mkt-justlisted-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px; }
   .mkt-justlisted-h .t { font: 900 24px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-black); }
   .mkt-justlisted-seeall { background: none; border: none; padding: 0; margin: 0; font: 700 13px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }

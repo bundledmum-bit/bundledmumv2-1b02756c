@@ -7188,3 +7188,15 @@ Preserved: everything else from §97-§103 unchanged; sections 7 through 103.
 Files touched: `src/marketplace/marketplace.css` (`.mkt-jl-mobile` base rule).
 
 `npm run build` clean.
+
+## 105. Desktop Just Listed hidden too (2026-08-20)
+
+Following §104's mobile hide, the desktop Just Listed grid (`.mkt-justlisted`, §97) is now hidden as well: its `@media (min-width: 1024px)` override changed from `display: block` back to `display: none`, matching its own mobile-first default. Same reversible pattern as §104 — CSS-only, the `useJustListed` fetch, the desktop grid markup, and `justListedLabel()` are all untouched, just not rendered. Just Listed is now hidden on both breakpoints.
+
+Live-verified at 1440px: `getComputedStyle('.mkt-justlisted').display` is `"none"`, and the stat tiles now sit directly under the hero (`top: 494.5625`, matching the hero's own bottom edge from §98's fix) with no gap.
+
+Preserved: everything else from §97-§104 unchanged; sections 7 through 104.
+
+Files touched: `src/marketplace/marketplace.css` (`.mkt-justlisted` desktop-override rule).
+
+`npm run build` clean.
