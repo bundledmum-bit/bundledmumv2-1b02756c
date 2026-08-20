@@ -7176,3 +7176,15 @@ Preserved: everything else from §97-§102 unchanged; sections 7 through 102.
 Files touched: `src/marketplace/pages/BrowsePage.tsx` (moved the "See more categories" JSX block, no internal changes).
 
 `npm run build` clean.
+
+## 104. Mobile Just Listed row hidden (2026-08-20)
+
+Per request, the mobile Just Listed row from §102 is hidden: `.mkt-jl-mobile`'s base rule changed from `display: flex` to `display: none`. CSS-only, JSX untouched, so it's a one-line revert if it comes back — the underlying `justListed` fetch, `justListedShortLabel()`, and the markup itself are all still there, just not rendered visually on mobile (they were already hidden at desktop from §102). The mobile stat strip (168 sellers / 166 items / 100%) and everything else from §102-§103 is untouched and still shows.
+
+Live-verified at 375px: page now flows category tiles → "See more categories" → stat strip → sort/filters → grid, no gap where Just Listed used to be.
+
+Preserved: everything else from §97-§103 unchanged; sections 7 through 103.
+
+Files touched: `src/marketplace/marketplace.css` (`.mkt-jl-mobile` base rule).
+
+`npm run build` clean.

@@ -1322,7 +1322,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 /* Just Listed + stat strip, mobile only (design 39a). Categories stay first;
    these sit right after. .mkt-card is reused unchanged, just narrowed to a
    132px flex-basis for the horizontal-scroll row. */
-.mkt-jl-mobile { display: flex; flex-direction: column; gap: 9px; padding: 16px 16px 4px; }
+.mkt-jl-mobile { display: none; }
 .mkt-jl-mobile-h { display: flex; align-items: baseline; justify-content: space-between; }
 .mkt-jl-mobile-h .t { font: 900 17px/1 'Nunito', sans-serif; letter-spacing: -0.02em; color: var(--mkt-black); }
 .mkt-jl-mobile-seeall { background: none; border: none; padding: 0; margin: 0; font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green); cursor: pointer; }
