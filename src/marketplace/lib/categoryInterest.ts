@@ -33,7 +33,7 @@ function setWatchedCategoryEmail(categoryId: string, email: string): void {
  * 'Please enter a valid email address' message, shown verbatim; anything
  * else is logged and shown as a generic retry prompt, never a raw error.
  */
-export async function registerCategoryInterest(categoryId: string, email: string): Promise<{ ok: true } | { ok: false; message: string }> {
+export async function registerCategoryInterest(categoryId: string, email: string): Promise<{ ok: true; message?: undefined } | { ok: false; message: string }> {
   const { error } = await mdb.rpc("register_category_interest", { p_category_id: categoryId, p_email: email });
   if (error) {
     const raw = String((error as { message?: string }).message || "");

@@ -506,7 +506,7 @@ export async function fetchMergeTargets(draftId: string, includeSource: boolean)
  * entry, directly after the target's own main photo) and deletes the draft.
  * Returns the raised message directly on failure, already written for a
  * person to read. */
-export async function mergeSplitDraft(draftId: string, targetListingId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+export async function mergeSplitDraft(draftId: string, targetListingId: string): Promise<{ ok: true; message?: undefined } | { ok: false; message: string }> {
   const { data, error } = await adb.rpc("admin_merge_split_draft", { p_draft_id: draftId, p_target_listing_id: targetListingId });
   if (error) return { ok: false, message: error.message };
   if (data !== true) return { ok: false, message: "This could not be merged. Refresh and try again." };

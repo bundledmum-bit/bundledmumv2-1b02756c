@@ -131,7 +131,7 @@ export async function fetchAnsweredQuestionsForListing(listingId: string): Promi
  * written for a person to read, so this surfaces error.message directly
  * rather than remapping it to different copy.
  */
-export async function buyerAskQuestion(listingId: string, question: string): Promise<{ ok: true; questionId: string } | { ok: false; message: string }> {
+export async function buyerAskQuestion(listingId: string, question: string): Promise<{ ok: true; questionId: string; message?: undefined } | { ok: false; message: string }> {
   const { data, error } = await cdb.rpc("buyer_ask_listing_question", { p_listing_id: listingId, p_question: question });
   if (error) {
     const message = String((error as { message?: string }).message || "") || "We could not send your question. Please refresh and try again.";
@@ -169,7 +169,7 @@ export async function fetchSellerQuestion(questionId: string): Promise<SellerQue
 
 /** Answers a question. Same bypass filtering as asking, surfaced the same
  * way, directly. */
-export async function sellerAnswerQuestion(questionId: string, answer: string): Promise<{ ok: true } | { ok: false; message: string }> {
+export async function sellerAnswerQuestion(questionId: string, answer: string): Promise<{ ok: true; message?: undefined } | { ok: false; message: string }> {
   const { data, error } = await sdb.rpc("seller_answer_listing_question", { p_question_id: questionId, p_answer: answer });
   if (error) {
     const message = String((error as { message?: string }).message || "") || "We could not save this. Please refresh and try again.";
