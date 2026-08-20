@@ -8,14 +8,17 @@ import { formatNaira, conditionLabel } from "../lib/format";
 
 /**
  * Buyer "how it works" page (design 40a/41a). Told as one illustrative
- * scenario — a mum finding a stroller from a stranger — with a diagram of
- * where the money actually sits at every step, rather than an abstract list
- * of rules. The scenario is a narrative device only, never presented as a
- * real testimonial; every number that IS a claim (seller/listing counts, day
- * windows, the refund-timing wording) is real and, where it changes day to
- * day, read live via useMarketplacePolicySettings / useMarketplaceStats
- * rather than hardcoded — the same discipline the five policy pages already
- * follow (a stale number here has drifted before).
+ * scenario — finding a stroller from a stranger — with a diagram of where
+ * the money actually sits at every step, rather than an abstract list of
+ * rules. Written in direct second person ("you", "your") rather than the
+ * design's own third-person "she", so the reader is the one in the story,
+ * not watching someone else go through it. The scenario is a narrative
+ * device only, never presented as a real testimonial; every number that IS
+ * a claim (seller/listing counts, day windows, the refund-timing wording)
+ * is real and, where it changes day to day, read live via
+ * useMarketplacePolicySettings / useMarketplaceStats rather than hardcoded
+ * — the same discipline the five policy pages already follow (a stale
+ * number here has drifted before).
  *
  * Never "refunded immediately": wording matches BuyerProtectionPage.tsx and
  * the policy pages exactly — refunded the same day the seller confirms the
@@ -63,7 +66,7 @@ export default function HowItWorksPage() {
       <div className="mkt-how-body">
         <div className="mkt-how-scenario">
           <span className="ic" aria-hidden>🧑🏽</span>
-          <p>She's found something she wants — say a stroller for {naira(42500)}, a third of the shop price — from another mum she's never met.</p>
+          <p>You've found something you want — say a stroller for {naira(42500)}, a third of the shop price — from another mum you've never met.</p>
         </div>
 
         <div className="mkt-how-worry">
@@ -80,7 +83,7 @@ export default function HowItWorksPage() {
           <div className="mkt-how-step">
             <span className="num">1</span>
             <div className="body">
-              <div className="t">She finds the item she wants</div>
+              <div className="t">You find the item you want</div>
               <div className="d">Photos, price, condition notes — all checked by us before it ever went live.</div>
             </div>
           </div>
@@ -88,7 +91,7 @@ export default function HowItWorksPage() {
           <div className="mkt-how-step">
             <span className="num">2</span>
             <div className="body">
-              <div className="t">She pays. It goes to BundledMum, not the seller</div>
+              <div className="t">You pay. It goes to BundledMum, not the seller</div>
               <div className="money-diagram">
                 <span aria-hidden>🧑🏽</span><span className="arr on" aria-hidden>→</span>
                 <span className="held">{naira(42500)} held by BundledMum</span>
@@ -101,15 +104,15 @@ export default function HowItWorksPage() {
           <div className="mkt-how-step">
             <span className="num">3</span>
             <div className="body">
-              <div className="t">We hand her the seller's contact</div>
-              <div className="d">Now that payment is safely with us, not before.</div>
+              <div className="t">We hand you the seller's contact</div>
+              <div className="d">Now that your payment is safely with us, not before.</div>
             </div>
           </div>
 
           <div className="mkt-how-step">
             <span className="num">4</span>
             <div className="body">
-              <div className="t">She messages the seller directly</div>
+              <div className="t">You message the seller directly</div>
               <div className="d">Ask for a video, ask what colour, ask anything — on WhatsApp, whatever's easiest.</div>
               <div className="quote">"Hi, does it still fold flat? Can you send a quick video?"</div>
             </div>
@@ -118,33 +121,33 @@ export default function HowItWorksPage() {
           <div className="mkt-how-step">
             <span className="num">5</span>
             <div className="body">
-              <div className="t">They agree delivery, she sends it</div>
-              <div className="d">Dispatch rider, drop off — however suits them both. BundledMum doesn't deliver and doesn't set a delivery price.</div>
+              <div className="t">You agree delivery, they send it</div>
+              <div className="d">Dispatch rider, drop off — whatever suits you both. BundledMum doesn't deliver and doesn't set a delivery price.</div>
             </div>
           </div>
 
           <div className="mkt-how-step">
             <span className="num final">6</span>
             <div className="body">
-              <div className="t">It arrives. She confirms it — only then is the money released</div>
+              <div className="t">It arrives. You confirm it — only then is the money released</div>
               <div className="money-diagram">
                 <span aria-hidden>🧑🏽</span><span className="arr" aria-hidden>→</span>
                 <span className="held struck">held</span>
                 <span className="arr on" aria-hidden>→</span><span aria-hidden>🧑🏾‍🦱</span>
               </div>
-              <div className="d small">Her tap is what moves the money — nothing moves without it.</div>
+              <div className="d small">Your tap is what moves the money — nothing moves without it.</div>
             </div>
           </div>
         </div>
 
         <div className="mkt-how-safety">
           <div className="head"><span aria-hidden>🛡</span><span>What if it's not as described?</span></div>
-          <p className="lead">She tells us, and sends it back to the seller instead of confirming.</p>
+          <p className="lead">You tell us, and send it back to the seller instead of confirming.</p>
           <div className="promise">
-            <div className="check"><span className="tick" aria-hidden>✓</span><span>She's refunded the same day the seller confirms it arrived back</span></div>
-            <p className="fine">Not "immediately" — the seller does need to receive it and say so, but from that moment her money is back with her that day. She has up to {s.disputeWindowDays} days after dispatch to report a problem; the seller then has {s.returnConfirmDays} days to confirm the return arrived.</p>
+            <div className="check"><span className="tick" aria-hidden>✓</span><span>You're refunded the same day the seller confirms it arrived back</span></div>
+            <p className="fine">Not "immediately" — the seller does need to receive it and say so, but from that moment your money is back with you that day. You have up to {s.disputeWindowDays} days after dispatch to report a problem; the seller then has {s.returnConfirmDays} days to confirm the return arrived.</p>
           </div>
-          <p className="closing">Her money was never in the seller's hands to lose in the first place — that's the whole design.</p>
+          <p className="closing">Your money was never in the seller's hands to lose in the first place — that's the whole design.</p>
         </div>
 
         <Link to="/" className="mkt-how-cta mkt-how-railcta">{browseLabel}</Link>

@@ -7236,3 +7236,15 @@ Files touched: `src/marketplace/marketplace.css` (`.mkt-fbar`/`.mkt-fbar-right` 
 Files touched: `src/marketplace/pages/HowItWorksPage.tsx` (new), `src/marketplace/pages/FaqPage.tsx` (new), `src/marketplace/sell/BecomeSellerPage.tsx` (new "How you get paid" block), `src/marketplace/MarketplaceApp.tsx` (`/how-it-works`, `/faq` routes), `src/marketplace/MarketplaceFooter.tsx` (both links), `src/marketplace/data/useListings.ts` (`liveListingCount` added to `useMarketplaceStats`), `src/marketplace/marketplace.css` (`.mkt-how-*`, `.mkt-faq-*`, `.mkt-sl-payout-*`).
 
 `npm run build` clean.
+
+## 108. How-it-works page switched from "she" to "you" (2026-08-20)
+
+§107 followed the design's own third-person telling ("she finds the item… her money…") — a mum named Amina, watched from outside. Per request, rewritten to direct second person throughout the scenario, worry, all 6 steps, and the safety-net card ("You've found something you want…", "You pay. It goes to BundledMum…", "You're refunded the same day the seller confirms it arrived back…") so the reader is the one in the story, not observing someone else's. "She/her" is kept only where it correctly refers to the *seller* ("pay her and she just doesn't send it", "your money never touches her account") — those weren't wrong, they're a different person from the reader. Refund wording, day counts, and every other fact are unchanged from §107.
+
+Live-verified at 375px: scenario, all 6 steps, and the safety-net card all read in second person; only the two remaining "she/her" references (both about the seller) checked and confirmed correct.
+
+Preserved: everything else from §97-§107 unchanged; sections 7 through 107.
+
+Files touched: `src/marketplace/pages/HowItWorksPage.tsx` (copy only).
+
+`npm run build` clean.
