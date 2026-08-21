@@ -78,6 +78,15 @@ const SCROLL_UP_WINDOW_MS = 1000;
  * once in MarketplaceApp.tsx; this mounts per listing/checkout page) —
  * this is the smallest thing that lets an unrelated sibling react to a
  * state change without lifting state up through the whole app.
+ *
+ * "This prompt never needs to know the banner exists" holds regardless of
+ * which one fires first: setPromptVisible() here notifies every current
+ * subscriber the moment risen changes, so even if the banner is already
+ * showing when this prompt rises later, that rise itself is what hides
+ * the banner — re-verified live after the banner's trigger changed to
+ * 10s-or-30%-scroll (§112), which made banner-first the common ordering
+ * on most pages rather than the WA prompt's own 10-20s window firing
+ * first as it more often did before.
  */
 type VisibilityListener = (visible: boolean) => void;
 const visibilityListeners = new Set<VisibilityListener>();

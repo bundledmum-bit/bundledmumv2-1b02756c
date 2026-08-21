@@ -81,6 +81,20 @@ export default function MarketplaceInstallBanner() {
   // convenience offer that can simply wait for a later visit. Suppressed
   // entirely while the other is showing, not repositioned — two prompts
   // stacking on a phone reads as broken, which is worse than either alone.
+  //
+  // This is genuinely order-independent, not just "one-directional" in a
+  // way that only happens to work when the WA prompt fires first: the
+  // subscription is a LIVE callback (subscribeToWaPromptVisible calls fn
+  // immediately with the current value AND on every future change), so if
+  // this banner is already showing when the WA prompt later rises, that
+  // rise itself notifies this component and forces it to re-render and
+  // hide — there's no snapshot to go stale. Verified live on
+  // /listing/:id with the banner's new 10s-or-30%-scroll trigger (earlier
+  // than the WA prompt's own 10-20s window on many pages, so this
+  // reversed ordering is the common case now, not an edge case): the
+  // banner appears first, then disappears the instant the WA prompt
+  // rises — confirmed via getBoundingClientRect, never both in the DOM
+  // at once (§112).
   const [waPromptVisible, setWaPromptVisible] = useState(false);
   useEffect(() => subscribeToWaPromptVisible(setWaPromptVisible), []);
 
