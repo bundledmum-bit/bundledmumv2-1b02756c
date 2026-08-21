@@ -2376,6 +2376,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-cart-checkout .mkt-buy { margin: 0 16px; width: calc(100% - 32px); }
 .mkt-cart-checkout .mkt-buy:disabled { background: #F0DDD2; color: #B79C8E; cursor: not-allowed; }
 .mkt-cart-pay-note { margin: 0 16px; text-align: center; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-cart-paymethods { margin: 0 16px; }
 
 @media (min-width: 1024px) {
   .mkt-cart-page { max-width: 1040px; margin: 0 auto; padding: 24px 32px 60px; }
@@ -2383,7 +2384,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-cart-header { padding: 0 0 8px; }
   .mkt-cart-empty, .mkt-cart-sold-alert, .mkt-cart-banner, .mkt-cart-seller-group,
   .mkt-cart-continue, .mkt-cart-seller-summary, .mkt-cart-pricebreak, .mkt-cart-trust,
-  .mkt-cart-checkout .mkt-buy, .mkt-cart-pay-note { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+  .mkt-cart-checkout .mkt-buy, .mkt-cart-pay-note, .mkt-cart-paymethods { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
   .mkt-cart-checkout .mkt-buy { width: 100%; }
   .mkt-cart-footer { padding-left: 0; padding-right: 0; }
 

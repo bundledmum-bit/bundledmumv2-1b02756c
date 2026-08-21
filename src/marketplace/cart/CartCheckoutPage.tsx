@@ -10,6 +10,7 @@ import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import { summariseCart, createMarketplaceCartOrder, initializeCartPayment, type CartItemSummary, type CartOrderResult } from "./cartOrders";
 import { getCartListingIds } from "./cartStore";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import type { PaymentChannel } from "../checkout/orders";
 
 /**
  * Cart checkout (design C7). create-marketplace-cart-order creates one
@@ -112,12 +113,18 @@ export default function CartCheckoutPage() {
   // order's pre-Paystack-fee total). Fired once per visit.
 
   const [redirecting, setRedirecting] = useState(false);
+  // Which Paystack channel to open into. Card by default, matching the
+  // single-item checkout's own default (see CheckoutPage.tsx's payChannel).
+  const [payChannel, setPayChannel] = useState<PaymentChannel>("card");
 
   // Initialise the Paystack transaction for the whole cart once the pending
   // orders exist. cart_reference (not any single order id) is what makes
-  // this cover every order rather than just the first.
+  // this cover every order rather than just the first. payChannel is part
+  // of the query key so switching card <-> bank transfer re-initialises
+  // against Paystack rather than reusing a transaction opened for the
+  // other channel, same reasoning as the single-item flow.
   const payQ = useQuery({
-    queryKey: ["mkt-cart-init-pay", orderQ.data?.cart_reference],
+    queryKey: ["mkt-cart-init-pay", orderQ.data?.cart_reference, payChannel],
     enabled: !!orderQ.data?.cart_reference,
     retry: false,
     staleTime: Infinity,
@@ -125,7 +132,7 @@ export default function CartCheckoutPage() {
     queryFn: () => initializeCartPayment({
       cartReference: orderQ.data!.cart_reference,
       callbackUrl: `${window.location.origin}/marketplace/checkout/return`,
-      channel: "card",
+      channel: payChannel,
     }),
   });
   const payCode = payQ.error instanceof CheckoutError ? payQ.error.code : payQ.error ? "unknown" : null;
@@ -270,6 +277,20 @@ export default function CartCheckoutPage() {
             {sellerGroups.length > 1 && (
               <div className="pt"><span className="ic">✓</span><span>One delivery arriving fine doesn't affect the other, each stands on its own</span></div>
             )}
+          </div>
+
+          {/* Card vs. bank transfer, both via Paystack, both auto-confirmed —
+              same choice and same default as single-item checkout, just
+              missing here until now. See CheckoutPage.tsx's mkt-paymethods. */}
+          <div className="mkt-paymethods mkt-cart-paymethods">
+            <button type="button" className={payChannel === "card" ? "mkt-paymethod active" : "mkt-paymethod"} onClick={() => setPayChannel("card")}>
+              <span className="ic">💳</span>
+              <span className="t">Card</span>
+            </button>
+            <button type="button" className={payChannel === "bank_transfer" ? "mkt-paymethod active" : "mkt-paymethod"} onClick={() => setPayChannel("bank_transfer")}>
+              <span className="ic">🏦</span>
+              <span className="t">Bank transfer</span>
+            </button>
           </div>
 
           <button className="mkt-buy" disabled={!payQ.data || redirecting} onClick={handlePay}>
