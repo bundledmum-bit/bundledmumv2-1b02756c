@@ -4,6 +4,7 @@ import { Helmet } from "react-helmet-async";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import InstallPage from "./InstallPage";
 import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
+import SellerDeliveryPrompt from "./sell/SellerDeliveryPrompt";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -142,6 +143,9 @@ export default function MarketplaceApp() {
           </div>
           <MarketplaceFooter />
           <MarketplaceInstallBanner />
+          {/* One-time ask for sellers who joined before the two delivery
+              questions existed. Self-gating: hides for good once answered. */}
+          <SellerDeliveryPrompt />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

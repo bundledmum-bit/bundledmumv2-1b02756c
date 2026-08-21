@@ -35,6 +35,7 @@ import NotFoundOrGoneScreen, { type NotFoundCase } from "../components/NotFoundO
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
+import DeliveryTermsBlock from "../components/DeliveryTermsBlock";
 import ListingVideoCard from "../components/ListingVideoCard";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
@@ -668,6 +669,11 @@ export default function ListingDetailPage() {
             )
           ) : null}
         </div>
+
+        {/* How this item would actually reach the buyer. A buyer in Kano
+            looking at a Lagos item needs this before anything else, and
+            most will never think to ask. Never shows an address. */}
+        <DeliveryTermsBlock listingId={listing.id} />
 
         <div className="mkt-seller">
           <div className="mkt-seller-avatar">{sellerInitials(listing)}</div>

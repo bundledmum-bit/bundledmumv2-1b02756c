@@ -2,13 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { useSeller } from "./useSeller";
+import { useSeller, hasDeliveryPrefs } from "./useSeller";
 import {
   sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
   shouldSkipVideoCompression, VideoTooLargeError, VideoTimeoutError, withTimeout, VIDEO_UPLOAD_TIMEOUT_MS,
 } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
+import DeliveryQuestions from "./DeliveryQuestions";
+import { saveSellerDeliveryPrefs, type LocalHandover } from "./deliveryPrefs";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import MarketplaceInstallCta from "../components/MarketplaceInstallCta";
@@ -117,7 +119,7 @@ const MAX_PHOTOS = 8;
  * the dashboard), those are handled by SellerPriceEditPage.tsx instead.
  */
 export default function CreateListingPage() {
-  const { loading, isLoggedIn, seller, user } = useSeller();
+  const { loading, isLoggedIn, seller, user, refresh } = useSeller();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { id: editId } = useParams<{ id?: string }>();
@@ -171,6 +173,17 @@ export default function CreateListingPage() {
   const [contactBlocked, setContactBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+
+  // The two delivery questions, asked ONCE. Gated on the seller's prefs
+  // being unset rather than on a listing count: on a genuine first listing
+  // those are the same thing, and only this version actually guarantees
+  // "never ask again" for someone who answered, while still catching
+  // anyone who slipped past it. Answers apply to everything they list.
+  const askDelivery = !!seller && !hasDeliveryPrefs(seller) && !isEditMode;
+  const [sellsNationwide, setSellsNationwide] = useState<boolean | null>(null);
+  const [localHandover, setLocalHandover] = useState<LocalHandover | null>(null);
+  const [deliveryInvalid, setDeliveryInvalid] = useState(false);
+  const deliveryRef = useRef<HTMLDivElement | null>(null);
 
   const { data: existingListing, isLoading: existingLoading } = useQuery({
     queryKey: ["mkt-edit-listing", editId],
@@ -636,7 +649,36 @@ export default function CreateListingPage() {
     const conditionDetailTexts = conditionQuestions.map((q) => conditionAnswers[`${q.question_key}_detail`]);
     if (hasContactLeak(description, ...conditionDetailTexts)) { setContactBlocked(true); return; }
 
+    // First listing only: both delivery questions must be answered. Same
+    // shape as every other validation here — name what is missing and take
+    // them to it, never a generic failure.
+    if (askDelivery && (sellsNationwide === null || localHandover === null)) {
+      setDeliveryInvalid(true);
+      setError("Tell buyers how they would get your items, it is two taps and applies to everything you list.");
+      deliveryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+
     setBusy(true);
+
+    // Saved BEFORE the listing is written: the seller default is what every
+    // listing then inherits, so it has to exist first. A failure here stops
+    // the submit rather than quietly creating a listing that says nothing
+    // about delivery. The server's own messages are already human-readable
+    // ('Please choose where you are willing to sell'), so they surface
+    // verbatim, the same convention as the rest of this flow.
+    if (askDelivery) {
+      const res = await saveSellerDeliveryPrefs({ sellsNationwide: sellsNationwide as boolean, localHandover: localHandover as LocalHandover });
+      if (!res.ok) {
+        setBusy(false);
+        setDeliveryInvalid(true);
+        setError(res.message ?? "We could not save that just now. Please try again.");
+        deliveryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      // So the questions do not reappear if they list again in this session.
+      await refresh();
+    }
 
     // Upload only the newly added photos (blob present); an existing photo
     // carried over from the listing being edited already has a real URL,
@@ -1051,6 +1093,21 @@ export default function CreateListingPage() {
             {locationInvalid.area && <span className="mkt-field-error">This is what tells a nearby buyer the item is actually reachable.</span>}
           </div>
         </div>
+
+        {/* First listing only: the two delivery questions, straight after
+            location because that is the context they make sense in. Never
+            shown again once answered (askDelivery), and never in edit mode. */}
+        {askDelivery && (
+          <div ref={deliveryRef} className="mkt-field">
+            <DeliveryQuestions
+              sellsNationwide={sellsNationwide}
+              localHandover={localHandover}
+              onNationwide={(v) => { setSellsNationwide(v); setDeliveryInvalid(false); }}
+              onHandover={(v) => { setLocalHandover(v); setDeliveryInvalid(false); }}
+              showErrors={deliveryInvalid}
+            />
+          </div>
+        )}
 
         <div className="mkt-field">
           <span className="mkt-uplabel">Condition and description</span>

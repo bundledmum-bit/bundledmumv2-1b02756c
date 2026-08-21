@@ -2452,3 +2452,82 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   }
   .mkt-cart-page > .mkt-cart-empty { grid-column: 1 / -1; }
 }
+
+/* ---------------------------------------------------------------------
+   Delivery: where a seller sells, and how a nearby buyer gets the item.
+   Never renders an address anywhere — the furthest any of this goes is a
+   state, which is already public on every listing.
+   --------------------------------------------------------------------- */
+
+/* The two questions, shared by the first-listing form and the one-time
+   prompt for existing sellers. */
+.mkt-delivery-qs { display: flex; flex-direction: column; gap: 14px; }
+.mkt-delivery-intro { margin: 0; font: 400 12.5px/1.55 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-delivery-privacy {
+  display: block; margin-top: 6px; background: var(--mkt-green-light); border-radius: 10px;
+  padding: 9px 11px; font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark);
+}
+
+/* Buyer-facing block on listing detail. */
+.mkt-delivery-terms {
+  display: flex; gap: 11px; align-items: flex-start;
+  background: var(--mkt-green-light); border-radius: 14px; padding: 12px 13px;
+}
+.mkt-delivery-terms .ic {
+  flex: 0 0 26px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--mkt-green); color: #fff;
+  font: 700 13px/26px 'Lato', sans-serif; text-align: center;
+}
+.mkt-delivery-terms .head { font: 800 13.5px/1.3 'Nunito', sans-serif; color: var(--mkt-green-dark); }
+.mkt-delivery-terms .body { margin-top: 3px; font: 400 12.5px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
+/* Not answered: deliberately neutral, never green-tick reassurance, since
+   nothing has actually been promised. */
+.mkt-delivery-terms.unset { background: var(--mkt-cream); border: 1px solid var(--mkt-border); }
+.mkt-delivery-terms.unset .ic { background: var(--mkt-grey-chip); color: var(--mkt-muted); }
+.mkt-delivery-terms.unset .head { color: var(--mkt-black); }
+.mkt-delivery-terms.unset .body { color: var(--mkt-muted); }
+
+/* Per-listing control on the seller dashboard. */
+.mkt-listing-delivery { border-top: 1px dashed var(--mkt-border); padding-top: 9px; display: flex; flex-direction: column; gap: 9px; }
+.mkt-listing-delivery .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mkt-listing-delivery .sum { flex: 1; min-width: 0; font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-listing-delivery .chip {
+  background: var(--mkt-coral-light); color: var(--mkt-coral-dark);
+  font: 800 9.5px/1.3 'Nunito', sans-serif; padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+}
+.mkt-listing-delivery .chip.default { background: var(--mkt-grey-chip); color: var(--mkt-muted); }
+.mkt-listing-delivery .edit { display: flex; flex-direction: column; gap: 8px; }
+.mkt-listing-delivery .acts { display: flex; gap: 8px; }
+
+/* One-time prompt for sellers who joined before these questions existed.
+   Same rules as the install banner: after engagement, under 30% of the
+   viewport, one visible close. */
+.mkt-delivery-prompt {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex; justify-content: center; pointer-events: none;
+}
+.mkt-delivery-prompt-inner {
+  pointer-events: auto; position: relative; width: 100%; max-width: 520px; box-sizing: border-box;
+  background: #fff; border: 1px solid var(--mkt-border); border-radius: 18px;
+  box-shadow: 0 14px 34px rgba(26, 26, 26, 0.16);
+  padding: 15px 16px 16px; display: flex; flex-direction: column; gap: 9px;
+  max-height: 70vh; overflow-y: auto;
+}
+.mkt-delivery-prompt-close {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--mkt-grey-chip); border: none; color: var(--mkt-muted);
+  font: 400 16px/26px 'Lato', sans-serif; text-align: center; cursor: pointer; padding: 0;
+}
+.mkt-delivery-prompt-title { margin: 0; padding-right: 30px; font: 900 15.5px/1.25 'Nunito', sans-serif; letter-spacing: -0.01em; }
+.mkt-delivery-prompt-body { margin: 0; font: 400 12.5px/1.55 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-delivery-prompt-cta {
+  margin-top: 2px; width: 100%; padding: 13px; border: none; border-radius: 12px;
+  background: var(--mkt-coral); color: var(--mkt-black); font: 800 15px/1 'Nunito', sans-serif; cursor: pointer;
+}
+.mkt-delivery-prompt-cta:hover { background: var(--mkt-coral-dark); }
+.mkt-delivery-prompt-cta:disabled { background: #F0DDD2; color: #B79C8E; cursor: not-allowed; }
+
+/* These two are full questions, not short field labels, so they keep
+   sentence case rather than taking .mkt-uplabel's uppercase treatment. */
+.mkt-delivery-q { font: 800 13.5px/1.35 'Nunito', sans-serif; color: var(--mkt-black); }

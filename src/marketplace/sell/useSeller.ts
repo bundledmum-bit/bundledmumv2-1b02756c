@@ -21,6 +21,19 @@ export interface SellerRow {
   status: string | null;
   strike_count: number | null;
   outstanding_debit_naira: number | null;
+  /** Where this seller is willing to sell, and how a buyer in their own
+   * state receives the item. Both null until they answer the two delivery
+   * questions — null is genuinely "not answered", never a default, and
+   * nothing may imply they ship on the strength of it. */
+  sells_nationwide: boolean | null;
+  local_handover: "ships" | "collection" | "both" | null;
+}
+
+/** True once the seller has answered both delivery questions. The single
+ * check both the first-listing form and the one-time prompt gate on, so
+ * "ask once, never again" is one rule in one place. */
+export function hasDeliveryPrefs(seller: Pick<SellerRow, "sells_nationwide" | "local_handover"> | null): boolean {
+  return !!seller && seller.sells_nationwide !== null && seller.local_handover !== null;
 }
 
 /**
@@ -49,7 +62,7 @@ export function useSeller() {
     if (!cid) { setSeller(null); setLoading(false); return; }
     const { data: s } = await sdb
       .from("marketplace_sellers")
-      .select("id, customer_id, display_name, legal_first_name, legal_last_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira")
+      .select("id, customer_id, display_name, legal_first_name, legal_last_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira, sells_nationwide, local_handover")
       .eq("customer_id", cid)
       .maybeSingle();
     setSeller((s as unknown as SellerRow) ?? null);
