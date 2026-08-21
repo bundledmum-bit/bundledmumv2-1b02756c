@@ -992,6 +992,16 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-offer-entry { background: #fff; border: 1px solid var(--mkt-border); color: var(--mkt-green); font: 800 13.5px/1 'Nunito', sans-serif; padding: 13px; border-radius: 12px; text-align: center; cursor: pointer; width: 100%; }
 .mkt-offer-used { background: var(--mkt-grey-chip); color: var(--mkt-muted); font: 800 13px/1 'Nunito', sans-serif; padding: 12px; border-radius: 11px; text-align: center; }
 
+/* A public price cut a super admin made from our own markup — same visual
+   language as the accepted-offer discount above (struck-through old price,
+   coral "off" tag), a genuinely different mechanism and never both shown
+   at once, so kept as its own classes rather than reusing the "offer" ones
+   above. Used on both listing detail and browse cards. */
+.mkt-discount-strike { font: 400 15px/1 'Lato', sans-serif; color: var(--mkt-muted-2); text-decoration: line-through; }
+.mkt-discount-tag { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 800 10.5px/1.3 'Nunito', sans-serif; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
+.mkt-card-body .mkt-discount-strike { font-size: 11.5px; }
+.mkt-card-body .mkt-discount-tag { font-size: 9.5px; padding: 2px 6px; }
+
 /* awaiting payment (T2 / T2b) */
 .mkt-pill-sent { align-self: flex-start; background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 700 10px/1 'Lato', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 9px; border-radius: 6px; }
 .mkt-next { background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }

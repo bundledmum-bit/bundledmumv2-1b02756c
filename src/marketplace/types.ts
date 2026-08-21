@@ -45,8 +45,18 @@ export interface MarketplaceListing {
   final_price_naira: number;
   /** What it cost new, seller-entered and optional. Shown to buyers as
    * "Bought brand new at ₦X" plus the saving when present; nothing renders
-   * when absent, no empty state. */
+   * when absent, no empty state. Not the same thing as price_before_discount_naira
+   * below — this is the seller's own informational figure, that one is ours. */
   original_price_naira: number | null;
+  /** Cut from OUR OWN markup by a super admin to move a specific listing —
+   * see super_admin_set_listing_discount. 0 when none. Unlike an accepted
+   * offer (private to one buyer), this changes final_price_naira itself,
+   * so every visitor sees it, signed in or not. */
+  admin_discount_naira: number;
+  /** What final_price_naira was before the discount above — the
+   * struck-through price. Null when there is no discount. */
+  price_before_discount_naira: number | null;
+  admin_discount_at: string | null;
   location_state: string | null;
   location_city: string | null;
   status: string;

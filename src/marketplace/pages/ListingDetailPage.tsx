@@ -352,6 +352,16 @@ export default function ListingDetailPage() {
   const offerSpent = !!myOffer && !offerAccepted;
   const offerPendingOrCountered = !!myOffer && (myOffer.status === "countered" || (myOffer.status === "pending" && !isLapsed(myOffer)));
 
+  // A super admin's public price cut (see super_admin_set_listing_discount),
+  // entirely different from an accepted offer above: that one is private to
+  // one buyer and overrides final_price_naira just for them, this one IS
+  // final_price_naira for everyone, signed in or not — the RPC already
+  // updated it server side, so the price shown below needs no change at
+  // all, only the struck-through "was" price and the tag need adding. An
+  // accepted offer's own private price always wins the display when both
+  // are somehow true, since it's an even better price than the public one.
+  const hasAdminDiscount = !showAcceptedPrice && listing.admin_discount_naira > 0 && listing.price_before_discount_naira != null;
+
   function openOfferSheet() {
     if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "offer"); return; }
     setOfferSheetOpen(true);
@@ -491,6 +501,14 @@ export default function ListingDetailPage() {
               <>
                 <span style={{ font: "400 15px/1 'Lato', sans-serif", color: "var(--mkt-muted-2)", textDecoration: "line-through" }}>{formatNaira(listing.final_price_naira)}</span>
                 <span className="mkt-offer-discount-tag">{formatNaira(myDiscount)} off, just for you</span>
+              </>
+            )}
+            {/* Public price cut — never says where it came from, to a buyer
+                it's simply a reduced price. */}
+            {hasAdminDiscount && (
+              <>
+                <span className="mkt-discount-strike">{formatNaira(listing.price_before_discount_naira!)}</span>
+                <span className="mkt-discount-tag">{formatNaira(listing.admin_discount_naira)} off</span>
               </>
             )}
           </div>

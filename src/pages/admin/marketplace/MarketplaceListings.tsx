@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
+import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import { adb, formatNaira, fetchMergeTargets, mergeSplitDraft, type MergeTarget } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill, ConfirmDialog } from "./opsUi";
 import type { PillTone } from "./opsData";
@@ -11,7 +12,11 @@ interface ListingRow {
   title: string;
   status: string;
   description: string | null;
+  price_naira: number;
   final_price_naira: number;
+  admin_discount_naira: number;
+  price_before_discount_naira: number | null;
+  admin_discount_at: string | null;
   location_state: string | null;
   location_city: string | null;
   seller_id: string;
@@ -37,6 +42,7 @@ const STATUS_TONE: Record<string, PillTone> = { pending_review: "work", live: "g
 export default function MarketplaceListings() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { isSuperAdmin } = usePermissions();
   const [tab, setTab] = useState<string>("all");
   const [sellerFilter, setSellerFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -62,6 +68,15 @@ export default function MarketplaceListings() {
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeError, setMergeError] = useState<string | null>(null);
 
+  // Super admin's own price cut, straight out of our markup — separate from
+  // every other row action above, its own inline expandable row (same
+  // pattern as the draft editor below) rather than a ConfirmDialog, since
+  // it needs a live input and a live preview, not a fixed confirmation.
+  const [discountEditId, setDiscountEditId] = useState<string | null>(null);
+  const [discountInput, setDiscountInput] = useState<string>("");
+  const [discountSaving, setDiscountSaving] = useState<string | null>(null);
+  const [discountError, setDiscountError] = useState<Record<string, string>>({});
+
   // Landed here from the split-review screen after a publish (see
   // MarketplaceSplitReview.tsx's confirmPublish, which navigates here with
   // this exact state shape). Shown once, then cleared from history so a
@@ -79,7 +94,7 @@ export default function MarketplaceListings() {
     staleTime: 10000,
     queryFn: async (): Promise<ListingRow[]> => {
       const { data } = await adb.from("marketplace_listings")
-        .select("id, title, status, description, final_price_naira, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, image_url, gallery_urls, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
+        .select("id, title, status, description, price_naira, final_price_naira, admin_discount_naira, price_before_discount_naira, admin_discount_at, location_state, location_city, seller_id, quantity, quantity_sold, delisted_by, image_url, gallery_urls, category:marketplace_categories!marketplace_listings_category_id_fkey(name)")
         .order("created_at", { ascending: false });
       const rows = (data ?? []) as unknown as ListingRow[];
       const ids = Array.from(new Set(rows.map((r) => r.seller_id).filter(Boolean)));
@@ -188,6 +203,26 @@ export default function MarketplaceListings() {
     return (l.image_url ? 1 : 0) + (l.gallery_urls?.length ?? 0);
   }
 
+  function openDiscountEditor(l: ListingRow) {
+    setDiscountError((e) => { if (!e[l.id]) return e; const n = { ...e }; delete n[l.id]; return n; });
+    setDiscountInput(l.admin_discount_naira > 0 ? String(l.admin_discount_naira) : "");
+    setDiscountEditId(discountEditId === l.id ? null : l.id);
+  }
+
+  // Absolute discount, not a delta — passing 0 clears it and restores the
+  // full price, per super_admin_set_listing_discount's own contract. The
+  // "too large" error comes back from the RPC already naming the maximum,
+  // so it's surfaced verbatim rather than re-worded.
+  async function saveDiscount(l: ListingRow, amount: number) {
+    setDiscountSaving(l.id);
+    setDiscountError((e) => { const n = { ...e }; delete n[l.id]; return n; });
+    const { error: err } = await adb.rpc("super_admin_set_listing_discount", { p_listing_id: l.id, p_discount_naira: amount });
+    setDiscountSaving(null);
+    if (err) { setDiscountError((e) => ({ ...e, [l.id]: err.message })); return; }
+    setDiscountEditId(null);
+    await refetch();
+  }
+
   // Splitting no longer publishes anything, it creates drafts held for
   // review (every child previously inherited the combined title/description
   // verbatim). Navigate straight into that review rather than a "done"
@@ -257,7 +292,12 @@ export default function MarketplaceListings() {
                         <Td>{l.seller_name || "Seller"}</Td>
                         <Td>{l.category?.name || "-"}</Td>
                         <Td><span className="tabular-nums">{Number(l.quantity_sold ?? 0)}/{Number(l.quantity ?? 1)}</span></Td>
-                        <Td><span className="tabular-nums font-heading font-bold">{formatNaira(l.final_price_naira)}</span></Td>
+                        <Td>
+                          <span className="tabular-nums font-heading font-bold">{formatNaira(l.final_price_naira)}</span>
+                          {l.admin_discount_naira > 0 && l.price_before_discount_naira != null && (
+                            <span className="tabular-nums" style={{ marginLeft: 6, fontSize: 11, color: "#8A7A72", textDecoration: "line-through" }}>{formatNaira(l.price_before_discount_naira)}</span>
+                          )}
+                        </Td>
                         <Td><StatusPill tone={STATUS_TONE[l.status] || "neutral"} label={STATUS_LABEL[l.status] || l.status} /></Td>
                         <Td>{l.status === "delisted" ? (l.delisted_by === "admin" ? "BundledMum" : l.delisted_by === "seller" ? "Seller" : "-") : "-"}</Td>
                         <Td>
@@ -273,10 +313,81 @@ export default function MarketplaceListings() {
                               {l.status === "live" && <button onClick={() => { setError(null); setDelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#C0392B" }}>Delist</button>}
                               {l.status === "delisted" && <button onClick={() => { setError(null); setRelistTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#2D6A4F" }}>Relist</button>}
                               {l.status === "live" && photoCount(l) > 1 && <button onClick={() => { setError(null); setSplitTarget(l); }} className="font-heading font-extrabold text-xs" style={{ color: "#6B5B54" }}>Split</button>}
+                              {/* Super admin only — someone without the role
+                                  should never even see this control, not see
+                                  it and have it fail. */}
+                              {isSuperAdmin && (l.status === "live" || l.status === "sold") && (
+                                <button onClick={() => openDiscountEditor(l)} className="font-heading font-extrabold text-xs" style={{ color: "#D4613C" }}>
+                                  {discountEditId === l.id ? "Close" : l.admin_discount_naira > 0 ? "Edit discount" : "Discount"}
+                                </button>
+                              )}
                             </div>
                           )}
                         </Td>
                       </tr>
+
+                      {/* Super admin's own price cut. What our markup on this
+                          item currently is, an absolute discount amount
+                          (typing 0 and saving clears it), and the resulting
+                          buyer price computed live, before they confirm —
+                          all client-side from data already on the row, no
+                          extra round trip needed just to preview. */}
+                      {isSuperAdmin && discountEditId === l.id && (() => {
+                        const baseline = l.price_before_discount_naira ?? l.final_price_naira;
+                        const markup = baseline - l.price_naira;
+                        const parsed = Number(discountInput.replace(/[^\d]/g, "")) || 0;
+                        const preview = Math.max(0, baseline - parsed);
+                        return (
+                          <tr className="border-t" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+                            <td colSpan={8} className="px-3 py-3.5">
+                              <div className="flex flex-col gap-2.5 max-w-md">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Our markup on this item</div>
+                                    <div className="font-heading font-black text-base tabular-nums text-foreground">{formatNaira(markup)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Buyer will pay</div>
+                                    <div className="font-heading font-black text-base tabular-nums" style={{ color: "#D4613C" }}>{formatNaira(preview)}</div>
+                                  </div>
+                                </div>
+                                <label className="block">
+                                  <span className="text-[10px] font-heading font-extrabold uppercase tracking-wider text-text-med">Discount, in naira (0 clears it)</span>
+                                  <input
+                                    inputMode="numeric"
+                                    className="mt-0.5 w-full rounded-lg border px-2.5 py-1.5 text-sm font-heading font-bold tabular-nums"
+                                    style={{ borderColor: "#F0DDD2" }}
+                                    value={discountInput}
+                                    onChange={(e) => setDiscountInput(e.target.value)}
+                                    placeholder="0"
+                                  />
+                                </label>
+                                {discountError[l.id] && <div className="text-xs" style={{ color: "#C0392B" }}>{discountError[l.id]}</div>}
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <button
+                                    onClick={() => saveDiscount(l, parsed)}
+                                    disabled={discountSaving === l.id}
+                                    className="font-heading font-extrabold text-xs rounded-lg px-3 py-2 disabled:opacity-40"
+                                    style={{ background: "#F4845F", color: "#1A1A1A" }}
+                                  >
+                                    {discountSaving === l.id ? "Saving..." : "Save discount"}
+                                  </button>
+                                  {l.admin_discount_naira > 0 && (
+                                    <button
+                                      onClick={() => saveDiscount(l, 0)}
+                                      disabled={discountSaving === l.id}
+                                      className="font-heading font-extrabold text-xs disabled:opacity-40"
+                                      style={{ color: "#6B5B54" }}
+                                    >
+                                      Clear discount
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })()}
 
                       {/* Editable in place, exactly like the split-review screen's own
                           draft cards — a draft may end up needing attention here, from

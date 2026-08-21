@@ -39,7 +39,18 @@ export default function ListingCard({ listing }: { listing: MarketplaceListing }
         {videoEnabled && listing.video_url && <span className="mkt-card-video-ic" aria-hidden="true">▶</span>}
       </div>
       <div className="mkt-card-body">
-        <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+          <span className="mkt-price">{formatNaira(listing.final_price_naira)}</span>
+          {/* Public price cut, same treatment as listing detail — the point
+              is to stand out in the grid, so it shows on every card, no
+              sign-in needed, no mention of where the cut came from. */}
+          {listing.admin_discount_naira > 0 && listing.price_before_discount_naira != null && (
+            <span className="mkt-discount-strike">{formatNaira(listing.price_before_discount_naira)}</span>
+          )}
+        </div>
+        {listing.admin_discount_naira > 0 && listing.price_before_discount_naira != null && (
+          <span className="mkt-discount-tag" style={{ alignSelf: "flex-start" }}>{formatNaira(listing.admin_discount_naira)} off</span>
+        )}
         <span className="mkt-card-title">{listing.title}</span>
         <div className="mkt-trust">
           {verified ? <VerifiedBadge /> : null}
