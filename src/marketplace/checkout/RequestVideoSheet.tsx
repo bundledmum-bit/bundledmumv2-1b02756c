@@ -11,10 +11,14 @@ import { detectBypassAttempt } from "../questions";
  * the seller will film what's normal to show.
  */
 export default function RequestVideoSheet({
-  listingId, listingTitle, onClose, onSent,
+  listingId, listingTitle, sellerName, onClose, onSent,
 }: {
   listingId: string;
   listingTitle: string;
+  /** First name, or "the seller" when there's no public display name —
+   * resolved by the caller (ListingDetailPage's own askName), never
+   * re-derived here. */
+  sellerName: string;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -44,7 +48,7 @@ export default function RequestVideoSheet({
     <div className="mkt-sheet-overlay" onClick={() => !busy && onClose()}>
       <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="grab" />
-        <h3>Ask for a video</h3>
+        <h3>Ask {sellerName} for a video</h3>
         <p>A quick video of {listingTitle}, filmed by the seller just for you. Say what you'd like to see, or leave it blank and they'll show what's normal.</p>
 
         <div className="mkt-field">

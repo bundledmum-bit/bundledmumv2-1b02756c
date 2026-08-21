@@ -996,7 +996,12 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-offer-accepted .tick { width: 20px; height: 20px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 12px/20px 'Lato', sans-serif; text-align: center; flex: 0 0 20px; }
 .mkt-offer-accepted span:last-child { font: 800 13px/1.3 'Nunito', sans-serif; color: var(--mkt-green-dark); }
 .mkt-offer-discount-tag { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); font: 800 10.5px/1.3 'Nunito', sans-serif; padding: 3px 7px; border-radius: 6px; white-space: nowrap; }
-.mkt-offer-entry { background: #fff; border: 1px solid var(--mkt-border); color: var(--mkt-green); font: 800 13.5px/1 'Nunito', sans-serif; padding: 13px; border-radius: 12px; text-align: center; cursor: pointer; width: 100%; }
+/* line-height 1.3, not 1: the seller's first name can push "Ask {name} a
+   question"/"Ask {name} for a video" onto two lines on a narrow phone (a
+   long Nigerian first name plus a 320px viewport), and a wrapped second
+   line at line-height 1 crams into the first with no gap. Wraps
+   naturally — no nowrap, no truncation — the button just grows taller. */
+.mkt-offer-entry { background: #fff; border: 1px solid var(--mkt-border); color: var(--mkt-green); font: 800 13.5px/1.3 'Nunito', sans-serif; padding: 13px; border-radius: 12px; text-align: center; cursor: pointer; width: 100%; }
 .mkt-offer-used { background: var(--mkt-grey-chip); color: var(--mkt-muted); font: 800 13px/1 'Nunito', sans-serif; padding: 12px; border-radius: 11px; text-align: center; }
 
 /* A public price cut a super admin made from our own markup — same visual

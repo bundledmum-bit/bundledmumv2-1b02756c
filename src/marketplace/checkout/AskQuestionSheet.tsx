@@ -13,10 +13,14 @@ import { buyerAskQuestion, detectBypassAttempt } from "../questions";
  * server (buyer_ask_listing_question) still runs the real check regardless.
  */
 export default function AskQuestionSheet({
-  listingId, listingTitle, onClose, onSent,
+  listingId, listingTitle, sellerName, onClose, onSent,
 }: {
   listingId: string;
   listingTitle: string;
+  /** First name, or "the seller" when there's no public display name —
+   * resolved by the caller (ListingDetailPage's own askName), never
+   * re-derived here. */
+  sellerName: string;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -45,7 +49,7 @@ export default function AskQuestionSheet({
     <div className="mkt-sheet-overlay" onClick={() => !busy && onClose()}>
       <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="grab" />
-        <h3>Ask a question</h3>
+        <h3>Ask {sellerName} a question</h3>
         <p>You get one question on this listing, so ask what actually matters to you. The seller will answer, and it helps other buyers too.</p>
 
         <div className="mkt-field">

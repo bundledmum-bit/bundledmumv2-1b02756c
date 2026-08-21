@@ -57,6 +57,17 @@ export function sellerDisplayName(listing: MarketplaceListing): string {
   return name ? name : "BundledMum seller";
 }
 
+/** First word of the seller's display name only — "Marvellous E." becomes
+ * "Marvellous", "Seun A." becomes "Seun" — for buttons that address the
+ * seller directly ("Ask {name} a question"), where the trailing surname
+ * initial would read oddly. Null when there's no public display name at
+ * all, so a caller falls back to "the seller" rather than an empty gap. */
+export function sellerFirstName(listing: MarketplaceListing): string | null {
+  const name = listing.seller?.display_name?.trim();
+  if (!name) return null;
+  return name.split(/\s+/)[0] || null;
+}
+
 /**
  * Short tenure line from the seller's created_at, year only (e.g. "Selling
  * since 2026"). Returns null when created_at is missing or unparseable, so the

@@ -14,6 +14,7 @@ import {
   conditionLabel,
   isVerifiedSeller,
   sellerDisplayName,
+  sellerFirstName,
   sellerTenure,
   sellerInitials,
 } from "../lib/format";
@@ -378,6 +379,12 @@ export default function ListingDetailPage() {
   // are somehow true, since it's an even better price than the public one.
   const hasAdminDiscount = !showAcceptedPrice && listing.admin_discount_naira > 0 && listing.price_before_discount_naira != null;
 
+  // A stranger is exactly what makes a buyer hesitate — naming the seller
+  // turns the ask-a-question/ask-for-a-video buttons into a request to a
+  // real person instead of an anonymous account. "The seller" only when
+  // there's genuinely no public display name to use, never an empty gap.
+  const askName = sellerFirstName(listing) || "the seller";
+
   function openOfferSheet() {
     if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "offer"); return; }
     setOfferSheetOpen(true);
@@ -724,7 +731,7 @@ export default function ListingDetailPage() {
             has already asked one on this listing, the same one-ask pattern
             as the offer entry above. */}
         {!myQuestion ? (
-          <button type="button" className="mkt-offer-entry" onClick={openAskSheet}>Ask a question</button>
+          <button type="button" className="mkt-offer-entry" onClick={openAskSheet}>Ask {askName} a question</button>
         ) : myQuestion.answer ? (
           <div className="mkt-offer-used">You asked a question, see the seller's answer above</div>
         ) : (
@@ -735,7 +742,7 @@ export default function ListingDetailPage() {
             as a pair. Same hidden-once-acted-on pattern: waiting, watch it,
             or (rarely) declined, in place of the entry button. */}
         {!myVideoRequest ? (
-          <button type="button" className="mkt-offer-entry" onClick={openRequestVideoSheet}>Ask for a video</button>
+          <button type="button" className="mkt-offer-entry" onClick={openRequestVideoSheet}>Ask {askName} for a video</button>
         ) : myVideoRequest.declined_at ? (
           <div className="mkt-offer-used">The seller couldn't film this one{myVideoRequest.decline_reason ? `: ${myVideoRequest.decline_reason}` : ""}</div>
         ) : myVideoRequest.video_path ? (
@@ -772,6 +779,7 @@ export default function ListingDetailPage() {
         <AskQuestionSheet
           listingId={listing.id}
           listingTitle={listing.title}
+          sellerName={askName}
           onClose={() => setAskSheetOpen(false)}
           onSent={() => { setAskSheetOpen(false); refetchMyQuestion(); }}
         />
@@ -781,6 +789,7 @@ export default function ListingDetailPage() {
         <RequestVideoSheet
           listingId={listing.id}
           listingTitle={listing.title}
+          sellerName={askName}
           onClose={() => setRequestVideoSheetOpen(false)}
           onSent={() => { setRequestVideoSheetOpen(false); refetchMyVideoRequest(); }}
         />
