@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira, formatDateTime, STRIKE_THRESHOLD } from "./opsData";
+import { adb, formatNaira, formatDateTime, STRIKE_THRESHOLD, toIntlPhone } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, StatusPill, CopyField, ConfirmDialog } from "./opsUi";
 
 interface SellerRow {
@@ -110,6 +110,16 @@ export default function MarketplaceSellers() {
   );
 }
 
+/** whatsapp_number is already stored fully international at signup (any
+ * country, see toIntlPhone's own comment in opsData.ts), so it only needs
+ * formatting stripped, never a country code guessed onto it. Falls back to
+ * phone, which is guaranteed Nigerian, so that one goes through
+ * toIntlPhone's 0→234 conversion. Empty string when neither is on file. */
+function waDigitsFor(s: SellerRow): string {
+  const wa = String(s.whatsapp_number || "").replace(/\D/g, "");
+  return wa || toIntlPhone(s.phone);
+}
+
 type Action = "suspend" | "reinstate" | "verify";
 
 interface NudgeSuggestion { stage_key: string; label: string; urgency: number; whatsapp_link: string; }
@@ -121,6 +131,7 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
   const suspended = (s.status || "") === "suspended";
   const verified = (s.verification_tier || "") === "verified";
   const risk = s.strike_count >= STRIKE_THRESHOLD - 1;
+  const waDigits = waDigitsFor(s);
 
   // Suggested outreach: every lifecycle stage this seller currently matches
   // (zero, one, or several at once), most time-sensitive first. The function
@@ -199,6 +210,24 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
           <Stat label="WhatsApp" value={!s.whatsapp_number ? "Not on file" : s.phone_is_whatsapp ? "Same as phone" : s.whatsapp_number} />
           <Stat label="Email" value={s.customerEmail || "Not on file"} />
         </div>
+        {/* Plain contact, deliberately blank: no pre-filled text, no
+            outreach-log write. Distinct on purpose from Suggested outreach's
+            solid-green "WhatsApp" pills below — this one is outlined, reads
+            "Message on WhatsApp" rather than just "WhatsApp", and sits with
+            the raw contact details rather than next to a specific reason,
+            so which button opens a written message and which opens a blank
+            chat is obvious without reading either label closely. */}
+        {waDigits && (
+          <a
+            href={`https://wa.me/${waDigits}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 flex items-center justify-center gap-2 rounded-lg px-3.5 py-2.5 font-heading font-extrabold text-[12.5px] border"
+            style={{ borderColor: "#25D366", color: "#1A4A33" }}
+          >
+            Message on WhatsApp
+          </a>
+        )}
       </OpsCard>
 
       {/* Zero matches is this seller's actual situation, not a broken query —

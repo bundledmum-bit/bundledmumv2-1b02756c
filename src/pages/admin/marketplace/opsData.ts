@@ -24,6 +24,30 @@ export function formatDateTime(iso: string | null | undefined): string {
   return `${datePart}, ${timePart}`;
 }
 
+/** Nigerian local/international digits to wa.me digits: 08012345678,
+ * 2348012345678 and +2348012345678 all become 2348012345678. The shared
+ * home for this, so it stops drifting across screens that each wrote their
+ * own copy (MarketplaceBuyers.tsx, MarketplaceAbandonedCheckouts.tsx).
+ * marketplace/lib/phone.ts has the fuller, multi-country version, not
+ * imported here since it lives in the customer-facing marketplace tree,
+ * not admin.
+ *
+ * ONLY valid for a number guaranteed Nigerian — a seller/buyer's `phone`
+ * field, which the marketplace's own signup rules require to be Nigerian
+ * (it's what arranges delivery within Nigeria). Never apply this to a
+ * `whatsapp_number`: that field can belong to any country and is already
+ * stored fully international at signup (marketplace/lib/phone.ts's
+ * toInternationalDigits — dial code plus the trunk zero stripped), so
+ * blindly prepending "234" to it here would corrupt a non-Nigerian
+ * seller's number. */
+export function toIntlPhone(raw: string | null | undefined): string {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("234")) return digits;
+  if (digits.startsWith("0")) return "234" + digits.slice(1);
+  return digits;
+}
+
 // ─── Payout queue view row ───────────────────────────────────────────────────
 export interface PayoutRow {
   order_id: string;
