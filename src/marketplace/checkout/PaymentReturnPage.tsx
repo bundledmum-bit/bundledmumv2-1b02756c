@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useMarketplaceWhatsAppNumber, waHref, waContextHref } from "../lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import ProtectionBadge from "../components/ProtectionBadge";
 import MarketplaceInstallCta from "../components/MarketplaceInstallCta";
+import { clearCart } from "../cart/cartStore";
 
 /**
  * Payment return, where Paystack sends the buyer back with ?reference=. It
@@ -29,6 +30,12 @@ export default function PaymentReturnPage() {
 
   const status = verifyQ.data?.status;
   const orderId = verifyQ.data && "order_id" in verifyQ.data ? verifyQ.data.order_id : undefined;
+  // A cart returns one order per listing sharing a cart_reference; a
+  // single-item purchase returns exactly one. Falls back to [orderId] so
+  // older/unrelated response shapes still resolve to the single-order path.
+  const orderIds = (verifyQ.data && "order_ids" in verifyQ.data && verifyQ.data.order_ids?.length
+    ? verifyQ.data.order_ids
+    : orderId ? [orderId] : []) as string[];
 
   // VERIFYING
   if (!reference) {
@@ -47,7 +54,7 @@ export default function PaymentReturnPage() {
 
   // SUCCEEDED
   if (status === "paid") {
-    return <PaidState orderId={orderId} reference={reference} onSeeOrder={() => navigate("/")} onBrowse={() => navigate("/")} />;
+    return <PaidState orderId={orderId} orderIds={orderIds} reference={reference} onSeeOrder={() => navigate("/")} onBrowse={() => navigate("/")} />;
   }
 
   // MISMATCH, do not say failed
@@ -107,16 +114,32 @@ function FailedState({ orderId, reference, onBrowse }: { orderId?: string; refer
   );
 }
 
-function PaidState({ orderId, reference, onBrowse }: { orderId?: string; reference: string; onSeeOrder?: () => void; onBrowse: () => void }) {
+function PaidState({ orderId, orderIds, reference, onBrowse }: { orderId?: string; orderIds: string[]; reference: string; onSeeOrder?: () => void; onBrowse: () => void }) {
   const { isLoggedIn, loading: authLoading } = useCustomerAuth();
+  const isCart = orderIds.length > 1;
 
   // Seller contact needs a session (the RPC requires it), so only fetch it when
   // signed in. A guest never sees seller details here, by design.
   const { data: contact, isLoading } = useQuery({
     queryKey: ["mkt-order-contact", orderId],
-    enabled: !!orderId && isLoggedIn,
+    enabled: !!orderId && isLoggedIn && !isCart,
     queryFn: () => getOrderContact(orderId as string),
   });
+
+  // Cart: one contact fetch per order, each independently loading — a slow
+  // one seller lookup never blocks another seller's card from showing.
+  const cartContactsQ = useQueries({
+    queries: isCart && isLoggedIn
+      ? orderIds.map((id) => ({ queryKey: ["mkt-order-contact", id], queryFn: () => getOrderContact(id) }))
+      : [],
+  });
+  const cartTotal = isCart ? cartContactsQ.reduce((s, q) => s + (q.data?.amount_naira ?? 0), 0) : 0;
+
+  // A cart that reaches this paid state is exactly this cart's own listing
+  // ids, now bought — clear it so it doesn't linger and get offered again.
+  useEffect(() => {
+    if (isCart) clearCart();
+  }, [isCart]);
 
   if (authLoading) {
     return <div className="mkt-result"><MarketplaceSeo noindex title="Confirming your payment" /><div className="mkt-spinner" /><h1>Confirming your payment</h1></div>;
@@ -129,8 +152,14 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
         <div className="check">✓</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
-          <h1>Paid, and your money is safe with us</h1>
-          <p>{isLoggedIn && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}We are holding your money and will only release it to your seller once you confirm the item arrived as described.</p>
+          <h1>{isCart ? `Paid, ${orderIds.length} deliveries to arrange` : "Paid, and your money is safe with us"}</h1>
+          <p>
+            {isLoggedIn && !isCart && contact ? `${formatNaira(contact.amount_naira)} went through. ` : ""}
+            {isLoggedIn && isCart && cartTotal > 0 ? `${formatNaira(cartTotal)} went through, across ${orderIds.length} orders. ` : ""}
+            {isCart
+              ? "Message each seller below to sort delivery. Their part is held safe until you confirm each item."
+              : "We are holding your money and will only release it to your seller once you confirm the item arrived as described."}
+          </p>
         </div>
 
         {/* White, borderless, full width against this page's solid green
@@ -139,8 +168,14 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
         <ProtectionBadge style={{ background: "#fff", border: "none", width: "100%", boxSizing: "border-box" }} />
 
         {isLoggedIn
-          ? <SellerContact contact={contact} loading={isLoading} reference={reference} />
-          : <GuestPaid orderId={orderId} reference={reference} />}
+          ? isCart
+            ? <CartSellerContacts contacts={cartContactsQ} reference={reference} />
+            : <SellerContact contact={contact} loading={isLoading} reference={reference} />
+          : <GuestPaid orderId={orderId} orderIds={orderIds} reference={reference} />}
+
+        {isCart && isLoggedIn && (
+          <div className="mkt-talk-prefill" style={{ textAlign: "center" }}>{orderIds.length === 2 ? "Both orders" : `All ${orderIds.length} orders`} now sit in My orders, tracked separately.</div>
+        )}
 
         <MarketplaceInstallCta
           title="Follow this order from your phone"
@@ -159,10 +194,11 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
  * sign-in link that opens their order. The email is sent SERVER SIDE during
  * verification, never here; this only offers a rate-limited resend.
  */
-function GuestPaid({ orderId, reference }: { orderId?: string; reference: string }) {
+function GuestPaid({ orderId, orderIds, reference }: { orderId?: string; orderIds: string[]; reference: string }) {
   const [cooldown, setCooldown] = useState(0);
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const isCart = orderIds.length > 1;
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -171,11 +207,14 @@ function GuestPaid({ orderId, reference }: { orderId?: string; reference: string
   }, [cooldown]);
 
   async function resend() {
-    if (!orderId || cooldown > 0 || busy) return;
+    const ids = isCart ? orderIds : orderId ? [orderId] : [];
+    if (ids.length === 0 || cooldown > 0 || busy) return;
     setBusy(true);
-    const ok = await resendOrderConfirmation(orderId);
+    // Each order sends its own confirmation email, one per seller, matching
+    // how each order settles independently — a cart resend fires all of them.
+    const results = await Promise.all(ids.map((id) => resendOrderConfirmation(id)));
     setBusy(false);
-    setSent(ok);
+    setSent(results.some(Boolean));
     setCooldown(60); // rate limit in the UI so it cannot be spammed
   }
 
@@ -196,11 +235,52 @@ function GuestPaid({ orderId, reference }: { orderId?: string; reference: string
         <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
           {sent ? "Sent again. Give it a minute and check your spam folder too." : "Did not get the email?"}
         </span>
-        <button className="mkt-secondary" disabled={!orderId || cooldown > 0 || busy} onClick={resend}>
+        <button className="mkt-secondary" disabled={(!isCart && !orderId) || (isCart && orderIds.length === 0) || cooldown > 0 || busy} onClick={resend}>
           {busy ? "Sending..." : cooldown > 0 ? `Resend in ${cooldown}s` : "Resend the email"}
         </button>
         <Link className="mkt-talk-label" style={{ textAlign: "center", textDecoration: "none", color: "var(--mkt-green)" }} to="/login?returnTo=%2Forders">Already have an account? Sign in</Link>
       </div>
+    </div>
+  );
+}
+
+/** One card per order (design C8) — "Order 1 of 2" etc. A cart genuinely
+ * creates several independent orders sharing one payment, so this makes
+ * that structure visible rather than presenting one order with several
+ * contact cards buried inside it. Each card renders as soon as its own
+ * fetch resolves, independent of the others. */
+function CartSellerContacts({ contacts, reference }: { contacts: Array<{ data: OrderContact | null | undefined; isLoading: boolean }>; reference: string }) {
+  const waNumber = useMarketplaceWhatsAppNumber();
+  const total = contacts.length;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="mkt-talk-label">Talk to your sellers</div>
+      {contacts.map((q, i) => {
+        const contact = q.data;
+        const name = contact?.seller_display_name || "your seller";
+        const item = contact?.listing_title || "your item";
+        const whatsapp = contact?.seller_whatsapp || "";
+        const phone = contact?.seller_phone || "";
+        const canCall = !!contact?.can_call;
+        const msg = `Hello ${name},\n\nI placed an order for the ${item} you listed on BundledMum Marketplace. My order ${reference}.`;
+        return (
+          <div key={i} className="mkt-talk-card">
+            <div className="mkt-talk-head">
+              <div className="mkt-talk-name">{q.isLoading ? "Loading..." : name}</div>
+              {item && !q.isLoading ? <div className="mkt-talk-item">{item}{contact ? ` · ${formatNaira(contact.amount_naira)}` : ""}</div> : null}
+              <span style={{ background: "var(--mkt-grey-chip)", color: "var(--mkt-muted)", font: "700 9.5px/1.3 'Nunito', sans-serif", padding: "3px 6px", borderRadius: 5, whiteSpace: "nowrap" }}>Order {i + 1} of {total}</span>
+            </div>
+            {whatsapp ? (
+              <div className="mkt-talk-actions">
+                <a className="mkt-wa" style={{ flex: 1 }} href={sellerWhatsAppLink(whatsapp, msg)} target="_blank" rel="noreferrer"><span className="ic">✆</span>WhatsApp</a>
+                {canCall && <a className="mkt-call" href={sellerCallLink(phone)}>Call</a>}
+              </div>
+            ) : !q.isLoading ? (
+              <a className="mkt-wa" href={waContextHref(waNumber, "seller_contact_missing", { reference, item })} target="_blank" rel="noreferrer"><span className="ic">✆</span>Chat to BundledMum</a>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

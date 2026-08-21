@@ -20,6 +20,8 @@ import SellerPriceEditPage from "./sell/SellerPriceEditPage";
 import SellerOrderDetailPage from "./sell/SellerOrderDetailPage";
 import SellerDispatchPage from "./sell/SellerDispatchPage";
 import SellerPayoutsPage from "./sell/SellerPayoutsPage";
+import CartPage from "./cart/CartPage";
+import CartCheckoutPage from "./cart/CartCheckoutPage";
 import CheckoutPage from "./checkout/CheckoutPage";
 import PaymentReturnPage from "./checkout/PaymentReturnPage";
 import AwaitingPaymentPage from "./checkout/AwaitingPaymentPage";
@@ -110,6 +112,10 @@ export default function MarketplaceApp() {
             <Route path="/sell/offers/:offerId" element={<SellerOfferPage />} />
             <Route path="/sell/questions/:id" element={<SellerQuestionDetailPage />} />
             <Route path="/sell/video-requests/:id" element={<SellerVideoRequestDetailPage />} />
+            {/* Cart: multi-seller, one payment several deliveries (design 42a).
+                Own top-level path, no collision with /checkout/:listingId. */}
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/cart/checkout" element={<CartCheckoutPage />} />
             {/* Checkout: Paystack (primary), payment return, transfer fallback */}
             <Route path="/checkout/:listingId" element={<CheckoutPage />} />
             <Route path="/checkout/return" element={<PaymentReturnPage />} />

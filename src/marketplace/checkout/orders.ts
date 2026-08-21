@@ -146,6 +146,14 @@ export async function initializePayment(input: { orderId: string; callbackUrl: s
 export interface VerifyResult {
   status: "paid" | "failed" | "abandoned" | "mismatch";
   order_id: string;
+  /** Every order this payment covers. A single-item purchase has exactly one
+   * entry (equal to order_id); a cart has one per listing, sharing the same
+   * cart_reference. Each order still keeps its own dispatch, confirmation,
+   * dispute window and payout — only the payment was shared. */
+  order_ids?: string[];
+  /** null for a single-item order, the shared reference for a cart. */
+  cart_reference?: string | null;
+  order_count?: number;
   already?: boolean;
 }
 

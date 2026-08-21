@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
@@ -39,6 +39,7 @@ import ListingVideoCard from "../components/ListingVideoCard";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
+import { addToCart } from "../cart/cartStore";
 
 const OG_FALLBACK_IMAGE = "https://bundledmum.com/images/og-default.jpg";
 
@@ -113,6 +114,7 @@ export default function ListingDetailPage() {
   const [requestVideoSheetOpen, setRequestVideoSheetOpen] = useState(false);
   const [watchVideoSheetOpen, setWatchVideoSheetOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [cartToast, setCartToast] = useState<string | null>(null);
 
   // Not live: figure out which of the four situations this is. Ownership is
   // decided by the database (RLS on marketplace_listings), not client-side —
@@ -427,6 +429,35 @@ export default function ListingDetailPage() {
       phone,
     });
     navigate(showAcceptedPrice && myOffer ? `/checkout/${listing.id}?offer=${myOffer.id}` : `/checkout/${listing.id}`);
+  }
+
+  // Genuine cart add — sends the buyer straight to the cart after each add
+  // (per §118 follow-up), rather than staying on the listing. "Already in
+  // cart" / "cart full" are the only cases that stay put, since there's
+  // nowhere useful to send them for those.
+  function handleAddToCart() {
+    const value = showAcceptedPrice ? myPrice! : listing.final_price_naira;
+    const result = addToCart(listing.id);
+    if (!result.ok) {
+      setCartToast(result.reason === "already_in_cart" ? "Already in your cart" : "Your cart is full, 20 items is the most at once");
+      return;
+    }
+    const eventId = crypto.randomUUID();
+    const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
+    const phone = buyerPhone ?? undefined;
+    track("AddToCart", { content_ids: [listing.id], content_type: "product", content_name: listing.title, value, currency: "NGN" }, eventId);
+    sendMarketplaceConversionEvent({
+      event_name: "AddToCart",
+      event_id: eventId,
+      event_source_url: window.location.href,
+      content_id: listing.id,
+      content_type: "product",
+      content_name: listing.title,
+      value,
+      email,
+      phone,
+    });
+    navigate("/cart");
   }
 
   return (
@@ -752,14 +783,24 @@ export default function ListingDetailPage() {
         )}
       </div>
 
+      {cartToast && (
+        <div className="mkt-cart-toast">
+          <span>✓ {cartToast}</span>
+          <Link to="/cart" className="view">View cart</Link>
+          <button className="dismiss" onClick={() => setCartToast(null)} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       <div className="mkt-buybar">
         <div className="mkt-buybar-price">
           <small>{multi ? "Price each" : "Price"}</small>
           <b>{formatNaira(showAcceptedPrice ? myPrice! : listing.final_price_naira)}</b>
         </div>
-        <button className="mkt-buy" onClick={handleBuyNow}>
-          {showAcceptedPrice ? `Buy now at ${formatNaira(myPrice!)}` : multi ? "Buy one now" : "Buy now"}
-        </button>
+        <div className="mkt-buybar-actions">
+          <button className="mkt-buy" onClick={handleBuyNow}>
+            {showAcceptedPrice ? `Buy now at ${formatNaira(myPrice!)}` : multi ? "Buy one now" : "Buy now"}
+          </button>
+          <button className="mkt-cart-add" onClick={handleAddToCart}>+ Add to cart</button>
+        </div>
       </div>
       </div>
 
