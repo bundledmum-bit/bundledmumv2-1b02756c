@@ -27,7 +27,11 @@ export default function MarketplaceHeader() {
   const [open, setOpen] = useState(false);
   const waNumber = useMarketplaceWhatsAppNumber();
 
-  const reduced = pathname.startsWith("/checkout");
+  // /cart/checkout is the cart's own payment step (its URL just doesn't
+  // start with "/checkout" the way the single-item flow's does) — same
+  // "don't let a buyer mid-payment casually navigate away" reasoning
+  // applies there too, not just to /checkout/*.
+  const reduced = pathname.startsWith("/checkout") || pathname === "/cart/checkout";
 
   // Close the menu whenever the route changes.
   useEffect(() => { setOpen(false); }, [pathname]);

@@ -7476,3 +7476,14 @@ Files touched: `src/marketplace/cart/cartStore.ts`, `cartOrders.ts`, `CartPage.t
 Files touched: `src/marketplace/cart/CartCheckoutPage.tsx` (payChannel state, selector UI), `src/marketplace/marketplace.css` (`.mkt-cart-paymethods`).
 
 `npm run build` clean.
+
+## 120. Cart checkout: duplicate header, and the guest-detail form had no side padding (2026-08-21)
+
+Two real bugs surfaced by a live screenshot on the cart checkout page (`/cart/checkout`), both pre-existing since §118, not caused by §119:
+
+1. **Duplicate header on desktop and mobile.** `MarketplaceHeader.tsx`'s `reduced` check only matched `pathname.startsWith("/checkout")` — true for the single-item flow's `/checkout/:listingId`, but `/cart/checkout` doesn't start with `/checkout`, so the cart's payment step rendered the FULL header (hamburger/Browse/Sell/Log in) stacked directly above `CartCheckoutPage`'s own `.mkt-cart-header` ("‹ Checkout"), reading as two headers and the mobile hamburger sitting right on top of the page's own back arrow. Fixed by also matching `/cart/checkout` — same "don't let a buyer mid-payment casually navigate away" reasoning the single-item flow already uses.
+2. **Guest-detail form (name/email/phone) had zero side padding on mobile.** `.mkt-cart-checkout` carries no horizontal padding itself — every card below it (seller summary, price breakdown, trust card, pay button) margins itself in individually with `margin: 0 16px`. The `.mkt-field` wrapper around the guest form was never added to that convention, so its inputs ran edge to edge. Added `.mkt-cart-checkout > .mkt-field { margin: 0 16px }`, and folded it into the existing desktop margin-reset list alongside the page's other direct children.
+
+Verified live at mobile (375px): single reduced header, form fields now inset to match the cards below. `npm run build` clean.
+
+Files touched: `src/marketplace/MarketplaceHeader.tsx`, `src/marketplace/marketplace.css`.

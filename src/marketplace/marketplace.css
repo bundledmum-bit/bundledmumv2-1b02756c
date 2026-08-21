@@ -2375,6 +2375,11 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 
 .mkt-cart-checkout .mkt-buy { margin: 0 16px; width: calc(100% - 32px); }
 .mkt-cart-checkout .mkt-buy:disabled { background: #F0DDD2; color: #B79C8E; cursor: not-allowed; }
+/* The guest-detail form (name/email/phone) is the one direct child of
+   .mkt-cart-checkout that never got the same side gutter as its sibling
+   cards below — every other card margins itself in individually since the
+   page container carries no horizontal padding of its own. */
+.mkt-cart-checkout > .mkt-field { margin: 0 16px; }
 .mkt-cart-pay-note { margin: 0 16px; text-align: center; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
 .mkt-cart-paymethods { margin: 0 16px; }
 
@@ -2384,7 +2389,8 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-cart-header { padding: 0 0 8px; }
   .mkt-cart-empty, .mkt-cart-sold-alert, .mkt-cart-banner, .mkt-cart-seller-group,
   .mkt-cart-continue, .mkt-cart-seller-summary, .mkt-cart-pricebreak, .mkt-cart-trust,
-  .mkt-cart-checkout .mkt-buy, .mkt-cart-pay-note, .mkt-cart-paymethods { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+  .mkt-cart-checkout .mkt-buy, .mkt-cart-pay-note, .mkt-cart-paymethods,
+  .mkt-cart-checkout > .mkt-field { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
   .mkt-cart-checkout .mkt-buy { width: 100%; }
   .mkt-cart-footer { padding-left: 0; padding-right: 0; }
 
