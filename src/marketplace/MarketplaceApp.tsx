@@ -21,7 +21,6 @@ import SellerOrderDetailPage from "./sell/SellerOrderDetailPage";
 import SellerDispatchPage from "./sell/SellerDispatchPage";
 import SellerPayoutsPage from "./sell/SellerPayoutsPage";
 import CartPage from "./cart/CartPage";
-import CartCheckoutPage from "./cart/CartCheckoutPage";
 import CheckoutPage from "./checkout/CheckoutPage";
 import PaymentReturnPage from "./checkout/PaymentReturnPage";
 import AwaitingPaymentPage from "./checkout/AwaitingPaymentPage";
@@ -112,11 +111,18 @@ export default function MarketplaceApp() {
             <Route path="/sell/offers/:offerId" element={<SellerOfferPage />} />
             <Route path="/sell/questions/:id" element={<SellerQuestionDetailPage />} />
             <Route path="/sell/video-requests/:id" element={<SellerVideoRequestDetailPage />} />
-            {/* Cart: multi-seller, one payment several deliveries (design 42a).
-                Own top-level path, no collision with /checkout/:listingId. */}
+            {/* Cart: multi-seller, one payment several deliveries (design 42a). */}
             <Route path="/cart" element={<CartPage />} />
-            <Route path="/cart/checkout" element={<CartCheckoutPage />} />
-            {/* Checkout: Paystack (primary), payment return, transfer fallback */}
+            {/* Checkout: Paystack (primary), payment return, transfer fallback.
+                ONE checkout page for both modes — /checkout/cart is the cart's
+                own mode of the same component ("cart" is never a listing id),
+                so a fix here can never again reach one path and miss the
+                other, which is exactly how the channel selector went missing
+                (§119). React Router ranks a static segment above a dynamic
+                one regardless of declaration order, so /checkout/cart always
+                wins over /checkout/:listingId — the same way /checkout/return
+                already does. */}
+            <Route path="/checkout/cart" element={<CheckoutPage />} />
             <Route path="/checkout/:listingId" element={<CheckoutPage />} />
             <Route path="/checkout/return" element={<PaymentReturnPage />} />
             <Route path="/checkout/awaiting/:reference" element={<AwaitingPaymentPage />} />

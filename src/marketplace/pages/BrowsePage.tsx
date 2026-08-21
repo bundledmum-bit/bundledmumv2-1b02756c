@@ -23,6 +23,7 @@ import MarketplaceHero from "../components/MarketplaceHero";
 import AreaCombobox from "../sell/AreaCombobox";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import CategoryNoStockYet from "../components/CategoryNoStockYet";
+import CartCountLink from "../cart/CartCountLink";
 import { formatNaira } from "../lib/format";
 
 /**
@@ -316,6 +317,10 @@ export default function BrowsePage() {
           <nav className="mkt-topbar-nav">
             <Link to="/" className="mkt-topbar-link on">Browse</Link>
             <Link to="/sell" className="mkt-topbar-link">Sell</Link>
+            {/* Browse hides the shared header at >=1024px and renders this
+                bar instead, so the cart count has to appear here too or it
+                would vanish on the busiest page on desktop. */}
+            <CartCountLink className="mkt-topbar-link" />
             {isLoggedIn
               ? <Link to="/orders" className="mkt-topbar-link">My orders</Link>
               : <Link to="/login" className="mkt-topbar-link">Log in</Link>}

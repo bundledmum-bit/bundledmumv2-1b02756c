@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "./lib/whatsapp";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { useSeller } from "./sell/useSeller";
+import CartCountLink from "./cart/CartCountLink";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 
 /**
@@ -27,11 +28,10 @@ export default function MarketplaceHeader() {
   const [open, setOpen] = useState(false);
   const waNumber = useMarketplaceWhatsAppNumber();
 
-  // /cart/checkout is the cart's own payment step (its URL just doesn't
-  // start with "/checkout" the way the single-item flow's does) — same
-  // "don't let a buyer mid-payment casually navigate away" reasoning
-  // applies there too, not just to /checkout/*.
-  const reduced = pathname.startsWith("/checkout") || pathname === "/cart/checkout";
+  // Both checkout modes live under /checkout (single item and /checkout/cart),
+  // so one prefix covers them: a buyer mid-payment cannot casually navigate
+  // away from either.
+  const reduced = pathname.startsWith("/checkout");
 
   // Close the menu whenever the route changes.
   useEffect(() => { setOpen(false); }, [pathname]);
@@ -76,15 +76,20 @@ export default function MarketplaceHeader() {
           <Link to="/sell" className="mkt-hdr-link">Sell an item</Link>
           {isLoggedIn && <Link to="/orders" className="mkt-hdr-link">My orders</Link>}
           {seller && <Link to="/sell/dashboard" className="mkt-hdr-link">Seller dashboard</Link>}
+          <CartCountLink />
           {isLoggedIn
             ? <button className="mkt-hdr-account" onClick={() => setOpen(true)}><span className="av">{initials}</span>Account</button>
             : <Link className="mkt-hdr-link" to="/login">Log in</Link>}
         </nav>
 
-        {/* Mobile hamburger */}
-        <button className="mkt-hdr-burger" onClick={() => setOpen(true)} aria-label="Open menu">
-          <span></span><span></span><span></span>
-        </button>
+        {/* Mobile: the cart sits OUTSIDE the hamburger, since a count hidden
+            behind a menu cannot do the one job it has. */}
+        <div className="mkt-hdr-mobile-actions">
+          <CartCountLink />
+          <button className="mkt-hdr-burger" onClick={() => setOpen(true)} aria-label="Open menu">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
       </div>
 
       {open && (

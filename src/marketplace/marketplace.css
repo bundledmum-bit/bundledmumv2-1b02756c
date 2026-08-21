@@ -1202,9 +1202,20 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-hdr-account { display: inline-flex; align-items: center; gap: 8px; background: var(--mkt-green-dark); border: none; border-radius: 10px; padding: 8px 11px; color: var(--mkt-cream); font: 800 12px/1 'Nunito', sans-serif; cursor: pointer; }
 .mkt-hdr-account .av { width: 24px; height: 24px; border-radius: 50%; background: var(--mkt-green-light); color: var(--mkt-green-dark); font: 900 10px/24px 'Nunito', sans-serif; text-align: center; }
 
-.mkt-hdr-burger { margin-left: auto; display: inline-flex; flex-direction: column; gap: 4px; background: none; border: none; padding: 6px 2px; cursor: pointer; }
+.mkt-hdr-burger { display: inline-flex; flex-direction: column; gap: 4px; background: none; border: none; padding: 6px 2px; cursor: pointer; }
 .mkt-hdr-burger span { width: 20px; height: 2px; background: var(--mkt-cream); border-radius: 2px; }
-@media (min-width: 720px) { .mkt-hdr-burger { display: none; } }
+.mkt-hdr-mobile-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 14px; }
+@media (min-width: 720px) { .mkt-hdr-mobile-actions { display: none; } }
+
+/* Cart count. Never rendered at all when the cart is empty (see
+   CartCountLink.tsx), so there is no zero state to style. */
+.mkt-cart-count { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; }
+.mkt-cart-count .ic { font-size: 16px; line-height: 1; }
+.mkt-cart-count .n {
+  min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 9px; background: var(--mkt-coral); color: var(--mkt-black);
+  font: 800 11px/18px 'Nunito', sans-serif; text-align: center;
+}
 
 /* full-screen mobile menu */
 .mkt-menu { position: fixed; inset: 0; z-index: 80; background: var(--mkt-green); display: flex; flex-direction: column; }
@@ -2393,6 +2404,16 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-cart-checkout > .mkt-field { margin: 0 16px; }
 .mkt-cart-pay-note { margin: 0 16px; text-align: center; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
 .mkt-cart-paymethods { margin: 0 16px; }
+
+/* "You still have N items in your cart" on a Buy now checkout. Calm green,
+   deliberately not an error or a warning — nothing is wrong, this is simply
+   telling the buyer what this payment does and does not cover. */
+.mkt-checkout-cartnote {
+  background: var(--mkt-green-light); border-radius: 12px; padding: 11px 13px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark);
+}
+.mkt-checkout-cartnote a { font: 700 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-green); white-space: nowrap; }
 
 @media (min-width: 1024px) {
   .mkt-cart-page { max-width: 1040px; margin: 0 auto; padding: 24px 32px 60px; }

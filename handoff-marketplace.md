@@ -7501,3 +7501,33 @@ Files touched: `src/marketplace/MarketplaceHeader.tsx`, `src/marketplace/marketp
 Files touched: `src/marketplace/marketplace.css` (`.mkt-cart-checkout` panel + `width:100%` fix, `.mkt-cart-header` divider, `.mkt-cart-contacts` + `.inner.wide` desktop grid), `src/marketplace/checkout/PaymentReturnPage.tsx` (`wide`/`mkt-cart-contacts` classes, cart-only).
 
 `npm run build` clean.
+
+## 122. One checkout page, not two. Cart count in the header. Buy now tells you what's still in your cart (2026-08-21)
+
+**Before, the two checkouts**:
+- `CheckoutPage.tsx` (`/checkout/:listingId`, 841 lines) — the original, and the ONLY place with: abandoned-checkout capture, resume links, the accepted-offer price path (`offerExpired` notice + `offerPriceMismatch` stop screen), `WhatsAppHelpLink`/`WhatsAppInactivityPrompt`, `ProtectionBadge`, `TransferFallback`, `CountryCodePicker` + international WhatsApp + optional separate Nigerian number, and the listing-gone / own-listing / payments-down screens.
+- `cart/CartCheckoutPage.tsx` (`/cart/checkout`, 303 lines) — the ONLY place with: per-seller summary, `summarise_cart` recheck, service-fee-charged-once line, trust card, `create-marketplace-cart-order`/`initializeCartPayment`, and 409 `unavailable` handling.
+- Duplicated across both: profile query, need-name/email/phone logic, validation, `commitDetails`, order query, `payQ`, `handlePay`, `InitiateCheckout`, `AddPaymentInfo`, friendly-error maps, and (only after §119 fixed it) the payment channel selector. That duplication is exactly how the channel selector went missing from the cart path in the first place.
+
+**After: `CartCheckoutPage.tsx` is deleted.** `CheckoutPage.tsx` is now the only checkout, with two modes. `/checkout/cart` is its own static route (React Router ranks static above dynamic, so it wins over `/checkout/:listingId` the same way `/checkout/return` already does). Mode comes from `useLocation().pathname`, NOT from the param — a static route carries no `:listingId` at all, which was a real bug caught in live testing before commit.
+
+Everything from the deleted file survives, on the shared page: per-seller summary (`.mkt-cart-seller-summary`), the multi-seller warning banner, the service fee with its own "One fee per order today, not per item or per seller" sub-line, the multi-seller trust lines, `create-marketplace-cart-order`, `initializeCartPayment` by `cart_reference`, and named 409 `unavailable` items. Nothing was lost. Cart mode now ALSO gets what only the original had and the cart page never did: the full country-code phone picker, WhatsApp help + inactivity prompt, and `ProtectionBadge`.
+
+Deliberately single-mode only, with reasons: **abandoned-checkout capture** (`record_checkout_attempt` is keyed to ONE listing id, so a cart has no honest way through it — left untouched rather than sending a misleading single id), **resume links** (same reason), **the accepted-offer path** (offers are per listing), and **`TransferFallback`** (a manual one-reference-one-amount reconciliation cannot settle a multi-seller payment, so with Paystack off a cart honestly reports payments unavailable instead of rendering a fallback that could not work).
+
+**Buy now, and the correction that was explicitly asked for**: Buy now still checks out ONLY that item. It does not sweep in the cart — arriving at a bigger total than expected, at the payment step, is the worst possible surprise, and Buy now produced the only completed sale this marketplace has had. Instead the checkout names what is waiting, with a way back. Exact wording shown (verified live): "You still have 2 items waiting in your cart. This payment is just for Car Seat and Baby Strap Chair." plus a "View cart" link. The count EXCLUDES the item being bought (verified: with that same item also in the cart, the note says 2, not 3), and the note is hidden entirely when the cart is empty.
+
+**Cart count in the header** — new `cart/CartCountLink.tsx`, subscribing to `onCartChange` so it updates immediately in the same tab (localStorage's own `storage` event only fires in OTHER tabs). Hidden entirely at zero rather than showing a "0". Mounted in three places because the marketplace has two different navs: the shared header's desktop nav, a new `.mkt-hdr-mobile-actions` beside the hamburger (outside the menu — a count hidden behind a menu cannot do its job), and `BrowsePage`'s own `.mkt-topbar-nav`, since browse HIDES the shared header at >=1024px and would otherwise lose the badge on the busiest page. Verified only one is ever visible at a time.
+
+**Confirmation page**: already read `order_ids` as an array (§118), verified rather than rebuilt. Confirmed against all three real response shapes — `order_ids:['A']` -> single, `['A','B','C']` -> cart, and a legacy `order_id`-only body -> `['A']`. One seller: "Paid, and your money is safe with us", 560px column, one contact card. Three sellers: "Paid, 3 deliveries to arrange", 820px, per-seller cards each with their own WhatsApp/Call and an "Order N of M" tag, in a 2-up grid on desktop (measured: 380px columns at x=250/646) and stacked on mobile.
+
+**Verified live end to end** (real DB, real edge functions, fetch patched to read actual request bodies):
+- Cart path: real `create-marketplace-cart-order` with all 3 listing ids -> `cart_reference` `BMC-UCFTMULQ` -> `marketplace-initialize-payment` with `{cart_reference, channel:"card"}`, then `{..., channel:"bank_transfer"}` after switching. Both channels genuinely reach the wire.
+- Single path: `record_checkout_attempt` fired (abandoned capture intact), `create-marketplace-order` with `{listing_id}`, `marketplace-initialize-payment` with `{order_id, channel:"card"}`. Channel selector, ProtectionBadge, WhatsApp help, and the original held-money copy all present.
+- Cart badge: absent at 0, shows 3 after adding, one visible instance per breakpoint.
+
+`npx tsc --noEmit` reports the same 5 pre-existing errors before and after this change (RequestVideoSheet, WatchRequestVideoSheet, ListingDetailPage:442, SellerVideoRequestDetailPage x2) — confirmed identical by stashing; this change adds none.
+
+Files touched: `src/marketplace/checkout/CheckoutPage.tsx` (two modes), `src/marketplace/cart/CartCheckoutPage.tsx` (DELETED), `src/marketplace/cart/CartCountLink.tsx` (new), `src/marketplace/MarketplaceApp.tsx` (routes), `src/marketplace/MarketplaceHeader.tsx` (badge, simplified reduced check), `src/marketplace/pages/BrowsePage.tsx` (badge in topbar nav), `src/marketplace/cart/CartPage.tsx` (checkout link), `src/marketplace/marketplace.css`.
+
+`npm run build` clean.

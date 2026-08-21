@@ -191,7 +191,7 @@ export default function CartPage() {
                   <span>Items</span>
                   <b>{formatNaira(itemsTotal)}</b>
                 </div>
-                <button className="mkt-buy" onClick={() => navigate("/cart/checkout")}>Proceed to checkout</button>
+                <button className="mkt-buy" onClick={() => navigate("/checkout/cart")}>Proceed to checkout</button>
               </div>
             </>
           )}

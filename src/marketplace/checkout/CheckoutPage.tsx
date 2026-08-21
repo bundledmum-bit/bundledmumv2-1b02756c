@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
@@ -9,6 +9,8 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError, type PaymentChannel } from "./orders";
+import { summariseCart, createMarketplaceCartOrder, initializeCartPayment, type CartItemSummary } from "../cart/cartOrders";
+import { getCartListingIds } from "../cart/cartStore";
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
@@ -17,21 +19,44 @@ import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
 
 /**
- * Checkout. Payment is by Paystack: the order is created (or reused) on load, the
+ * THE checkout page — the only one. Two modes, one component, deliberately:
+ *
+ *  - SINGLE mode (/checkout/:listingId): Buy now's path, the one that produced
+ *    the only completed sale. One listing, create-marketplace-order,
+ *    initialize-payment with { order_id }. Untouched in behaviour.
+ *  - CART mode (/checkout/cart): every item in the browser cart,
+ *    create-marketplace-cart-order (one order per listing sharing a
+ *    cart_reference), initialize-payment with { cart_reference } for ONE
+ *    Paystack transaction covering the group.
+ *
+ * There used to be a second page (cart/CartCheckoutPage.tsx) for cart mode.
+ * It was deleted: keeping two meant every fix had to be made twice, and one
+ * was forgotten — which is exactly how the payment channel selector went
+ * missing from the cart path (§119). Everything below is shared by both
+ * modes unless a comment says otherwise. See handoff §122.
+ *
+ * Payment is by Paystack: orders are created (or reused) on load, the
  * transaction is initialised server-side (so the payment fee and total are the
  * server's figures), and one button redirects to Paystack's hosted page. The
  * older bank-transfer flow is kept but only renders when paystack is off and the
- * admin transfer toggle is on (marketplace_payment_transfer_enabled).
+ * admin transfer toggle is on (marketplace_payment_transfer_enabled), and is
+ * single-mode only.
  *
  * The buyer never sees price_naira or the seller's share.
  */
 /** Maps create-marketplace-order (v4) server errors to warm, human copy. The
- * listing-gone and own-listing codes are handled by their own screens. */
+ * listing-gone and own-listing codes are handled by their own screens. The
+ * cart function's own errors are already human-readable and surface via
+ * their own branch below, same convention as the rest of the module. */
 function friendlyCreateError(code: string): string {
   switch (code) {
     case "A valid email address is required": return "Please enter a valid email address.";
     case "Please give your name so the seller knows who to send to": return "Please enter your name so the seller knows who to send to.";
     case "A valid Nigerian phone number is required so the seller can reach you": return "Please enter a valid Nigerian phone number so the seller can reach you.";
+    case "Please give your name so the sellers know who to send to": return "Please enter your name so the sellers know who to send to.";
+    case "A valid phone number is required so the sellers can reach you": return "Please enter a valid phone number so the sellers can reach you.";
+    case "Your cart contains your own listing": return "One of these is your own listing. Remove it to check out the rest.";
+    case "Your cart is empty": return "Your cart is empty.";
     default: return "We could not start your order just now. Please check your details and try again.";
   }
 }
@@ -43,6 +68,23 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { isLoggedIn, loading: authLoading, user } = useCustomerAuth();
   const waNumber = useMarketplaceWhatsAppNumber();
+
+  // CART MODE. /checkout/cart is its own static route, so it carries NO
+  // :listingId param at all — the mode has to come from the path itself,
+  // not from the param being the string "cart".
+  const { pathname } = useLocation();
+  const isCart = pathname === "/checkout/cart";
+  // Read once per visit: the cart must not shift underneath someone who is
+  // mid-checkout (an add in another tab would otherwise silently change the
+  // total they are about to pay).
+  const cartIds = useMemo(() => (isCart ? getCartListingIds() : []), [isCart]);
+  // Single mode: how many OTHER items are sitting in the cart, so a Buy now
+  // buyer can be told plainly rather than surprised. Excludes the item being
+  // bought right now (it may well also be in the cart).
+  const cartWaiting = useMemo(
+    () => (isCart ? 0 : getCartListingIds().filter((id) => id !== listingId).length),
+    [isCart, listingId],
+  );
 
   // Resuming an abandoned checkout from a WhatsApp link (§79's outreach).
   // Two shapes, mutually exclusive: ?resume_order for someone whose order
@@ -79,7 +121,33 @@ export default function CheckoutPage() {
   // means the query hasn't resolved yet, and must not be treated the same.
   const resumeExpired = resumeQ.isFetched && resumeQ.data === null;
 
-  const { data: listing, isLoading } = useListing(listingId);
+  // Single mode only — never fetch a listing called "cart".
+  const { data: listing, isLoading } = useListing(isCart ? undefined : listingId);
+
+  // Cart mode: re-check every item against live listing state, exactly as
+  // the cart page itself does, so a since-sold item is caught here too and
+  // never silently paid for.
+  const cartSummaryQ = useQuery({
+    queryKey: ["mkt-checkout-cart-summary", cartIds],
+    enabled: isCart && cartIds.length > 0,
+    queryFn: () => summariseCart(cartIds),
+  });
+  const cartItems: CartItemSummary[] = useMemo(
+    () => (cartSummaryQ.data ?? []).filter((r) => r.is_available),
+    [cartSummaryQ.data],
+  );
+  /** Per-seller grouping, the same shape the cart page shows, so the buyer
+   * sees the identical breakdown they just agreed to. */
+  const cartSellerGroups = useMemo(() => {
+    const bySeller = new Map<string, { name: string | null; items: CartItemSummary[]; total: number }>();
+    for (const r of cartItems) {
+      const g = bySeller.get(r.seller_id);
+      if (g) { g.items.push(r); g.total += r.price; }
+      else bySeller.set(r.seller_id, { name: r.seller_name, items: [r], total: r.price });
+    }
+    return Array.from(bySeller.values());
+  }, [cartItems]);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
@@ -94,7 +162,7 @@ export default function CheckoutPage() {
   // once the order exists, rather than trusted blindly.
   const { data: offer } = useQuery({
     queryKey: ["mkt-checkout-offer", offerId],
-    enabled: !!offerId && isLoggedIn,
+    enabled: !!offerId && isLoggedIn && !isCart,
     queryFn: () => fetchBuyerOffer(offerId as string),
   });
   const negotiatedPrice = offer && (offer.status === "accepted" || offer.status === "counter_accepted")
@@ -204,8 +272,12 @@ export default function CheckoutPage() {
   // view already covers.
   const attemptId = useRef<string>(crypto.randomUUID());
   const attemptRecorded = useRef(false);
+  // Single mode only: record_checkout_attempt is keyed to ONE listing id, so
+  // there is no honest way to record a whole cart through it (a cart is
+  // several listings and several sellers). Left exactly as it was rather
+  // than sending a misleading single id for a multi-item checkout.
   useEffect(() => {
-    if (!showDetailsForm || !listingId) return;
+    if (isCart || !showDetailsForm || !listingId) return;
     const name = nameInput.trim();
     const email = emailInput.trim();
     const phone = (hasAltPhone ? altPhoneInput : phoneInput).trim();
@@ -224,7 +296,7 @@ export default function CheckoutPage() {
       }
     }, 1200);
     return () => clearTimeout(t);
-  }, [showDetailsForm, listingId, nameInput, emailInput, phoneInput, altPhoneInput, hasAltPhone]);
+  }, [isCart, showDetailsForm, listingId, nameInput, emailInput, phoneInput, altPhoneInput, hasAltPhone]);
   const attemptLinked = useRef(false);
 
   const { data: settings } = useQuery({
@@ -252,9 +324,31 @@ export default function CheckoutPage() {
   // Create (or reuse) the order once we may (logged in, or a guest who has given a
   // valid email) and a payment method is enabled. Gating on canCreateOrder is what
   // stops a logged-out page view from minting an ownerless order.
+  /** The buyer-detail fields, resolved once and sent identically by both
+   * modes — the two edge functions read the same field names. */
+  const buyerDetails = {
+    email: isLoggedIn ? undefined : emailInput.trim().toLowerCase(),
+    full_name: needName ? nameInput.trim() : undefined,
+    phone: needPhone ? (hasAltPhone ? altPhoneInput.trim() : (waDialCode === "234" && !differentWhatsapp ? phoneInput.trim() : undefined)) : undefined,
+    whatsappNumber: needPhone && !(waDialCode === "234" && !differentWhatsapp) ? toInternationalDigits(waDialCode, phoneInput) : undefined,
+    phoneIsWhatsapp: needPhone ? (waDialCode === "234" && !differentWhatsapp) : undefined,
+  };
+
+  // CART MODE order creation: one order per listing, all sharing a
+  // cart_reference. Same gate (canCreateOrder) as single mode, so a
+  // logged-out view still never mints ownerless orders.
+  const cartOrderQ = useQuery({
+    queryKey: ["mkt-create-cart-order", cartIds, isLoggedIn ? "auth" : "guest", committed],
+    enabled: isCart && cartIds.length > 0 && canCreateOrder && settingsLoaded && paystackEnabled,
+    retry: false,
+    staleTime: Infinity,
+    gcTime: 0,
+    queryFn: () => createMarketplaceCartOrder({ listingIds: cartIds, ...buyerDetails }),
+  });
+
   const orderQ = useQuery({
     queryKey: ["mkt-create-order", listingId, isLoggedIn ? "auth" : "guest", committed],
-    enabled: !!listingId && canCreateOrder && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
+    enabled: !isCart && !!listingId && canCreateOrder && !!listing && settingsLoaded && (paystackEnabled || transferEnabled),
     retry: false,
     staleTime: Infinity,
     gcTime: 0,
@@ -284,7 +378,7 @@ export default function CheckoutPage() {
   // harmlessly if nothing was ever recorded (attemptRecorded false — e.g. a
   // signed-in buyer who never saw the form at all).
   useEffect(() => {
-    if (!order || !attemptRecorded.current || attemptLinked.current) return;
+    if (isCart || !order || !attemptRecorded.current || attemptLinked.current) return;
     attemptLinked.current = true;
     try {
       cdb.rpc("link_checkout_attempt_to_order", { p_attempt_id: attemptId.current, p_order_id: order.id }).then(() => {}, () => {
@@ -293,7 +387,7 @@ export default function CheckoutPage() {
     } catch {
       /* tracking is best-effort only, must never be visible to the buyer */
     }
-  }, [order]);
+  }, [isCart, order]);
 
   // True when the server found this buyer's accepted price had passed its
   // 24-hour deadline by the time the order was actually created — a real,
@@ -313,21 +407,34 @@ export default function CheckoutPage() {
   // part of the query key: switching card <-> bank transfer re-initialises
   // against Paystack rather than reusing a transaction opened for the other
   // channel (channels is set once, at initialisation, not changeable after).
+  // ONE query for both modes — the only difference is which identifier goes
+  // to the same edge function: { order_id } for a single item,
+  // { cart_reference } for a cart (which sums every order in the group into
+  // one Paystack transaction). payChannel is in the key either way, so the
+  // channel selector works identically on both paths — the exact thing that
+  // was missing when this lived in a second file.
+  const cartReference = cartOrderQ.data?.cart_reference;
   const payQ = useQuery({
-    queryKey: ["mkt-init-pay", order?.id, payChannel],
-    enabled: !!order && paystackEnabled,
+    queryKey: ["mkt-init-pay", isCart ? cartReference : order?.id, payChannel],
+    enabled: paystackEnabled && (isCart ? !!cartReference : !!order),
     retry: false,
     staleTime: Infinity,
     gcTime: 0,
-    queryFn: () => initializePayment({
-      orderId: order!.id,
-      callbackUrl: `${window.location.origin}/marketplace/checkout/return`,
-      channel: payChannel,
-    }),
+    queryFn: () => {
+      const callbackUrl = `${window.location.origin}/marketplace/checkout/return`;
+      return isCart
+        ? initializeCartPayment({ cartReference: cartReference as string, callbackUrl, channel: payChannel })
+        : initializePayment({ orderId: order!.id, callbackUrl, channel: payChannel });
+    },
   });
 
-  const createCode = orderQ.error instanceof CheckoutError ? orderQ.error.code : orderQ.error ? "unknown" : null;
+  const activeOrderQ = isCart ? cartOrderQ : orderQ;
+  const createCode = activeOrderQ.error instanceof CheckoutError ? activeOrderQ.error.code : activeOrderQ.error ? "unknown" : null;
   const payCode = payQ.error instanceof CheckoutError ? payQ.error.code : payQ.error ? "unknown" : null;
+  /** Items that sold between the cart being shown and this checkout — the
+   * server returns them by name on a 409, so they can be named back rather
+   * than left as a vague failure. */
+  const unavailable = ((activeOrderQ.error ?? payQ.error) as (CheckoutError & { unavailable?: { id: string; title: string | null }[] }) | undefined)?.unavailable;
 
   // Already paid: jump to the return screen so it shows the paid state.
   useEffect(() => {
@@ -338,11 +445,20 @@ export default function CheckoutPage() {
 
   // Prefer the actual order's price once it exists (authoritative); before
   // that, show the negotiated price if we have one, otherwise the listing's.
-  const itemPrice = order ? Number(order.item_price_naira ?? 0) : negotiatedPrice ?? Number(listing?.final_price_naira ?? 0);
+  const singleItemPrice = order ? Number(order.item_price_naira ?? 0) : negotiatedPrice ?? Number(listing?.final_price_naira ?? 0);
+  // Cart: the server's own items_total once the orders exist, the summarised
+  // prices before that, so the figure shown never disagrees with what was
+  // actually charged.
+  const cartItemsTotal = cartOrderQ.data ? Number(cartOrderQ.data.items_total ?? 0) : cartItems.reduce((s, r) => s + r.price, 0);
+  const itemPrice = isCart ? cartItemsTotal : singleItemPrice;
   // Tiered, not flat: the same threshold logic create-marketplace-order already
   // charges from, applied here to the same itemPrice, so the line shown here
-  // never disagrees with what the server actually charged.
-  const serviceFee = itemPrice >= feeThreshold ? feeAtOrAbove : feeBelow;
+  // never disagrees with what the server actually charged. In cart mode the
+  // server has already told us the real figure — charged ONCE for the whole
+  // cart, not per item or per seller — so that is used rather than recomputed.
+  const serviceFee = isCart
+    ? Number(cartOrderQ.data?.service_fee_naira ?? 0)
+    : (itemPrice >= feeThreshold ? feeAtOrAbove : feeBelow);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
   // Whether Paystack's own fee is passed to the buyer (dashboard fee-passing
@@ -368,25 +484,29 @@ export default function CheckoutPage() {
   const checkoutTotal = paystackEnabled ? paystackTotal : transferTotal;
   const totalReady = paystackEnabled ? !!payQ.data : true;
   const checkoutIntentReady = checkoutIntent.current || !showDetailsForm;
+  // What the events describe: one listing, or every listing in the cart.
+  const eventContentIds = isCart ? cartIds : [listingId as string];
+  const eventPrimaryId = (isCart ? cartIds[0] : listingId) as string;
+  const orderExists = isCart ? !!cartOrderQ.data : !!order;
   const initiateCheckoutFired = useRef(false);
   useEffect(() => {
-    if (!order || !totalReady || !checkoutIntentReady || initiateCheckoutFired.current) return;
+    if (!orderExists || !totalReady || !checkoutIntentReady || initiateCheckoutFired.current) return;
     initiateCheckoutFired.current = true;
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
     const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
-    track("InitiateCheckout", { content_ids: [listingId], num_items: 1, value: checkoutTotal, currency: "NGN" }, eventId);
+    track("InitiateCheckout", { content_ids: eventContentIds, num_items: eventContentIds.length, value: checkoutTotal, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "InitiateCheckout",
       event_id: eventId,
       event_source_url: window.location.href,
-      content_id: listingId as string,
-      num_items: 1,
+      content_id: eventPrimaryId,
+      num_items: eventContentIds.length,
       value: checkoutTotal,
       email,
       phone,
     });
-  }, [order, totalReady, checkoutTotal, checkoutIntentReady]);
+  }, [orderExists, totalReady, checkoutTotal, checkoutIntentReady]);
 
   // AddPaymentInfo, fired on the Pay click itself, right before the redirect
   // to Paystack — same authoritative paystackTotal already shown on the
@@ -402,12 +522,12 @@ export default function CheckoutPage() {
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
     const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
-    track("AddPaymentInfo", { content_ids: [listingId], value: paystackTotal, currency: "NGN" }, eventId);
+    track("AddPaymentInfo", { content_ids: eventContentIds, value: paystackTotal, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "AddPaymentInfo",
       event_id: eventId,
       event_source_url: window.location.href,
-      content_id: listingId as string,
+      content_id: eventPrimaryId,
       value: paystackTotal,
       email,
       phone,
@@ -427,12 +547,35 @@ export default function CheckoutPage() {
   // even when Paystack is genuinely on. "Not loaded yet" must never render
   // as "loaded and unavailable" — same fix shape as the stale numeric
   // fallbacks removed in §8.
-  if (authLoading || isLoading || !settingsLoaded) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
+  if (authLoading || (isCart ? cartSummaryQ.isLoading : isLoading) || !settingsLoaded) {
+    return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
+  }
 
-  const ownListing = createCode === "You cannot buy your own listing";
-  const listingGone = !listing || createCode === "This item is no longer available" || payCode === "This item is no longer available";
-  const paymentsDown = settingsLoaded && !paystackEnabled && !transferEnabled;
+  const ownListing = createCode === "You cannot buy your own listing" || createCode === "Your cart contains your own listing";
+  // In cart mode "gone" is per item, handled by the named unavailable list
+  // below rather than by replacing the whole screen — the rest of the cart
+  // is still perfectly payable.
+  const listingGone = !isCart && (!listing || createCode === "This item is no longer available" || payCode === "This item is no longer available");
+  // The manual bank-transfer fallback is a single-order mechanism (one
+  // reference, one narration, one amount to reconcile by hand), so a cart
+  // genuinely cannot go through it. With Paystack off, a cart has no
+  // payment route at all — said honestly rather than rendering a fallback
+  // that could not settle a multi-seller payment.
+  const paymentsDown = settingsLoaded && !paystackEnabled && (isCart || !transferEnabled);
   const paymentNotConfigured = payCode === "Payment is not configured";
+
+  // An empty cart has nothing to check out — send them to the cart, which
+  // owns the empty state, rather than rendering a checkout for nothing.
+  if (isCart && cartIds.length === 0) {
+    return (
+      <div className="mkt-center">
+        <MarketplaceSeo noindex title="Your cart is empty" />
+        <div className="mkt-empty-title">Your cart is empty</div>
+        <div className="mkt-empty-sub">Add a few things you like, then check out for all of them at once.</div>
+        <button className="mkt-primary" style={{ maxWidth: 240 }} onClick={() => navigate("/")}>Start browsing</button>
+      </div>
+    );
+  }
 
   // P1b, listing gone
   if (listingGone) {
@@ -487,23 +630,86 @@ export default function CheckoutPage() {
     );
   }
 
+  // The WhatsApp help link is built around ONE item (it deep-links back to a
+  // listing). A cart has several, so it carries the first item and names the
+  // rest, rather than dropping the help link entirely from a multi-item
+  // checkout — the moment a buyer is most likely to want a human.
+  const waListingId = (isCart ? cartItems[0]?.listing_id : listing!.id) as string;
+  const waItemName = isCart
+    ? (cartItems.length > 1 ? `${cartItems[0]?.title} and ${cartItems.length - 1} other item${cartItems.length - 1 === 1 ? "" : "s"}` : (cartItems[0]?.title ?? "my cart"))
+    : listing!.title;
+
   return (
     <>
       <MarketplaceSeo noindex title="Checkout" />
       <div className="mkt-sell-head">
         <div className="inner">
-          <div className="row"><button className="mkt-sell-back" onClick={() => navigate(`/listing/${listing.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Checkout</h1></div>
+          <div className="row"><button className="mkt-sell-back" onClick={() => navigate(isCart ? "/cart" : `/listing/${listing!.id}`)} aria-label="Back">‹</button><h1 style={{ flex: 1 }}>Checkout</h1></div>
         </div>
       </div>
 
       <div className="mkt-sell-body">
-        <div className="mkt-co-summary">
-          <div className="th">{listing.image_url && <img src={listing.image_url} alt="" />}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{listing.title}</div>
-            <div className="s">Sold by {listing.seller?.display_name || "BundledMum seller"}</div>
+        {isCart ? (
+          <>
+            {/* Per-seller breakdown, the same grouping the cart itself
+                showed, so nothing about the shape of this purchase changes
+                between agreeing to it and paying for it. */}
+            <div className="mkt-cart-seller-summary">
+              {cartSellerGroups.map((g, i) => (
+                <div key={i} className="row">
+                  <span>{g.name || "Seller"} · {g.items.length} item{g.items.length === 1 ? "" : "s"}</span>
+                  <span>{formatNaira(g.total)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* The one thing this whole feature exists to make unmissable:
+                several sellers means several separate deliveries, said
+                before payment, not after. */}
+            {cartSellerGroups.length > 1 && (
+              <div className="mkt-cart-banner multi">
+                <span className="badge">{cartSellerGroups.length}</span>
+                <div>
+                  <div className="head">{cartSellerGroups.length} sellers, {cartSellerGroups.length} separate deliveries</div>
+                  <div className="body">One payment, but you'll arrange delivery with each seller yourself, on WhatsApp, after you pay.</div>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="mkt-co-summary">
+            <div className="th">{listing!.image_url && <img src={listing!.image_url} alt="" />}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{listing!.title}</div>
+              <div className="s">Sold by {listing!.seller?.display_name || "BundledMum seller"}</div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Buy now buys THIS item, never the cart as well — arriving at a
+            larger total than expected is the worst possible surprise, and
+            at the worst possible moment. So the cart is not silently added,
+            it is simply named, with a way back to it. Nothing is lost. */}
+        {!isCart && cartWaiting > 0 && (
+          <div className="mkt-checkout-cartnote">
+            <span>
+              You still have {cartWaiting} item{cartWaiting === 1 ? "" : "s"} waiting in your cart. This payment is just for {listing!.title}.
+            </span>
+            <Link to="/cart">View cart</Link>
+          </div>
+        )}
+
+        {/* Named plainly rather than left as a vague failure: the server
+            tells us exactly which items went while the buyer was here. */}
+        {isCart && unavailable && unavailable.length > 0 && (
+          <div className="mkt-errbox">
+            <span className="m">!</span>
+            <span>
+              {unavailable.map((u) => u.title || "An item").join(", ")} sold while you were checking out.{" "}
+              <Link to="/cart" style={{ color: "var(--mkt-error-ink)", fontWeight: 700 }}>Go back to your cart</Link> to remove {unavailable.length === 1 ? "it" : "them"} and try again.
+            </span>
+          </div>
+        )}
 
         {/* The agreed price's own 24-hour deadline passed between the buyer
             seeing it on the listing and the order actually being created
@@ -519,6 +725,25 @@ export default function CheckoutPage() {
 
         {paystackEnabled ? (
           <>
+            {isCart ? (
+              /* Cart breakdown (design C7): the service fee gets its own
+                 line and its own sub-line, because "charged once for the
+                 whole cart, not per item or per seller" is a genuine
+                 benefit worth stating plainly rather than burying inside a
+                 combined fee line. */
+              <div className="mkt-brk">
+                <div className="line"><span>Items, {cartItems.length}</span><b>{formatNaira(itemPrice)}</b></div>
+                <div className="line">
+                  <div><span>Service fee</span><div className="sub">One fee per order today, not per item or per seller</div></div>
+                  <b>{cartOrderQ.data ? formatNaira(serviceFee) : "..."}</b>
+                </div>
+                {payQ.data && feeAdded && (
+                  <div className="line"><span>Paystack fee</span><b>{formatNaira(paymentFee)}</b></div>
+                )}
+                <div className="rule" />
+                <div className="total"><span>Total</span><b>{payQ.data ? formatNaira(paystackTotal) : "..."}</b></div>
+              </div>
+            ) : (
             <div className="mkt-brk">
               <div className="line"><span>Item price</span><b>{formatNaira(itemPrice)}</b></div>
               {!settingsLoaded ? (
@@ -553,6 +778,7 @@ export default function CheckoutPage() {
                 </>
               )}
             </div>
+            )}
 
             {!showDetailsForm && payQ.data && feeAdded && (
               <div className="mkt-help">This fee is set by Paystack, not BundledMum, so it may change if their rates do.</div>
@@ -563,9 +789,12 @@ export default function CheckoutPage() {
             {showDetailsForm && (
               <div className="mkt-field" style={{ gap: 14 }}>
                 <div>
-                  <div style={{ font: "800 15px/1.2 'Nunito', sans-serif", marginBottom: 4 }}>{needEmail ? "Where do we send this, and how does the seller reach you?" : "One more thing before you pay"}</div>
+                  <div style={{ font: "800 15px/1.2 'Nunito', sans-serif", marginBottom: 4 }}>{needEmail ? `Where do we send this, and how ${isCart && cartSellerGroups.length > 1 ? "do your sellers" : "does the seller"} reach you?` : "One more thing before you pay"}</div>
                   <span style={{ font: "400 12px/1.5 'Lato', sans-serif", color: "var(--mkt-muted)" }}>
-                    The seller arranges delivery with you directly, so they need your name and number.{needEmail ? " Your receipt and order link go to your email." : ""} This is not an account, no password needed.
+                    {isCart && cartSellerGroups.length > 1
+                      ? "Each seller arranges their own delivery with you directly, so they need your name and number."
+                      : "The seller arranges delivery with you directly, so they need your name and number."}
+                    {needEmail ? " Your receipt and order link go to your email." : ""} This is not an account, no password needed.
                   </span>
                 </div>
 
@@ -667,9 +896,21 @@ export default function CheckoutPage() {
 
             <div className="mkt-heldbox">
               <div className="hb-title">Your money is held, not sent</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to collect it yourself or agree a send and who covers it.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
+              {isCart ? (
+                <>
+                  <div className="hb-line"><span className="hb-tick">✓</span>Each seller's share is held separately, released only once you confirm that seller's item.</div>
+                  {cartSellerGroups.length > 1 && (
+                    <div className="hb-line"><span className="hb-tick">✓</span>One delivery arriving fine doesn't affect the other, each stands on its own.</div>
+                  )}
+                  <div className="hb-line"><span className="hb-tick">✓</span>You get each seller's contact once you sign in, to arrange collection or delivery with them.</div>
+                </>
+              ) : (
+                <>
+                  <div className="hb-line"><span className="hb-tick">✓</span>We hold your money the moment you pay, the seller does not get it yet.</div>
+                  <div className="hb-line"><span className="hb-tick">✓</span>You get the seller's contact once you sign in, to collect it yourself or agree a send and who covers it.</div>
+                  <div className="hb-line"><span className="hb-tick">✓</span>They are only paid once you confirm the item arrived as described.</div>
+                </>
+              )}
             </div>
 
             {/* Card vs. bank transfer, both via Paystack, both auto-confirmed
@@ -709,16 +950,16 @@ export default function CheckoutPage() {
                 is sent rather than a wrong one. */}
             <WhatsAppHelpLink
               context={showDetailsForm ? "checkoutDetails" : "checkoutPayment"}
-              listingId={listing.id}
-              itemName={listing.title}
+              listingId={waListingId}
+              itemName={waItemName}
               price={showDetailsForm ? formatNaira(itemPrice) : (payQ.data ? formatNaira(paystackTotal) : null)}
             />
             {/* §36a: the highest-anxiety page fires soonest of all — same
                 link above, surfaced proactively. */}
             <WhatsAppInactivityPrompt
               context={showDetailsForm ? "checkoutDetails" : "checkoutPayment"}
-              listingId={listing.id}
-              itemName={listing.title}
+              listingId={waListingId}
+              itemName={waItemName}
               price={showDetailsForm ? formatNaira(itemPrice) : (payQ.data ? formatNaira(paystackTotal) : null)}
             />
 
@@ -753,7 +994,7 @@ export default function CheckoutPage() {
           <button className="mkt-primary" onClick={commitDetails}>
             Continue to payment
           </button>
-          <div className="helper">No account needed, this is so the seller can reach you</div>
+          <div className="helper">No account needed, this is so {isCart && cartSellerGroups.length > 1 ? "your sellers" : "the seller"} can reach you</div>
         </div>
       )}
 
