@@ -7487,3 +7487,17 @@ Two real bugs surfaced by a live screenshot on the cart checkout page (`/cart/ch
 Verified live at mobile (375px): single reduced header, form fields now inset to match the cards below. `npm run build` clean.
 
 Files touched: `src/marketplace/MarketplaceHeader.tsx`, `src/marketplace/marketplace.css`.
+
+## 121. Cart checkout and confirmation designed for desktop, not just centered mobile content (2026-08-21)
+
+**Report**: cart checkout on desktop looked like mobile content stretched into empty space, not a real desktop design; confirmation page needed the same treatment.
+
+**Root cause, not just cosmetic**: `.mkt-cart-checkout` sits directly inside `.mkt-main` (the route outlet), which is a `display:flex; flex-direction:column` container. A flex item with `margin: 0 auto` in the cross axis (horizontal, here) gets its stretch behavior disabled by the spec — it sizes to its own shrink-to-fit content instead of filling out to `max-width`. That's why the container was rendering at ~275px wide (roughly a single price line's natural width) regardless of its `max-width: 640px`, both before and after §119/§120 — not something either of those two changes broke, it was there from §118. Fixed with an explicit `width: 100%` alongside `max-width`, the standard fix for this exact flexbox behavior.
+
+**Redesign**: gave cart checkout the same real bordered/shadowed panel treatment already established for the desktop login page (`.mkt-login-page`, same `box-shadow: 0 18px 42px rgba(26,26,26,.10)` value) — white background, `border-radius:16px`, centered, generous 40px padding, instead of bare mobile-width content floating on the page background. Confirmation page (`PaymentReturnPage.tsx`'s `PaidState`) got the same reasoning applied to its own missing desktop treatment (it had *none* at all — full-bleed green, capped 560px, identical on every viewport): a cart confirmation now widens to 820px and its seller-contact cards (`CartSellerContacts`, new `.mkt-cart-contacts` wrapper) run in a genuine 2-up grid on desktop, per design C12's own reasoning ("the only screen that genuinely earns width from more sellers"). Single-item confirmation (`SellerContact`) is untouched — no `wide` class, stays its established narrower column.
+
+**Verified live** (DOM geometry, since this session's screenshot tool renders desktop/tablet captures cropped regardless of true viewport — noted in §119, still true): `.mkt-cart-checkout` now measures exactly 640px wide, centered (320–960 of a 1280 viewport), with the panel's white background and shadow both applying. The Card/Bank transfer selector renders correctly inside it on both checkout steps. Confirmation's `.mkt-cart-contacts` genuinely switches to `display:grid; grid-template-columns:1fr 1fr` at 1024px (verified by mounting real markup with the real classes and reading computed styles), `.inner.wide` genuinely caps at 820px. Mobile re-verified unaffected (375px) — untouched by the new `@media (min-width:1024px)` rules.
+
+Files touched: `src/marketplace/marketplace.css` (`.mkt-cart-checkout` panel + `width:100%` fix, `.mkt-cart-header` divider, `.mkt-cart-contacts` + `.inner.wide` desktop grid), `src/marketplace/checkout/PaymentReturnPage.tsx` (`wide`/`mkt-cart-contacts` classes, cart-only).
+
+`npm run build` clean.

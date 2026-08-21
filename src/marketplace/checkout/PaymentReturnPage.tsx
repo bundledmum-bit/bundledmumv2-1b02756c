@@ -148,7 +148,7 @@ function PaidState({ orderId, orderIds, reference, onBrowse }: { orderId?: strin
   return (
     <div className="mkt-success">
       <MarketplaceSeo noindex title="Payment received" />
-      <div className="inner" style={{ justifyContent: "flex-start", paddingTop: 26 }}>
+      <div className={isCart ? "inner wide" : "inner"} style={{ justifyContent: "flex-start", paddingTop: 26 }}>
         <div className="check">✓</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="mkt-pill-held">Held by us</span>
@@ -253,7 +253,7 @@ function CartSellerContacts({ contacts, reference }: { contacts: Array<{ data: O
   const waNumber = useMarketplaceWhatsAppNumber();
   const total = contacts.length;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="mkt-cart-contacts">
       <div className="mkt-talk-label">Talk to your sellers</div>
       {contacts.map((q, i) => {
         const contact = q.data;
