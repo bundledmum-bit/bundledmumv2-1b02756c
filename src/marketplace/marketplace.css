@@ -708,6 +708,13 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-errbox b { font: 800 14px/1.2 'Nunito', sans-serif; color: var(--mkt-error-ink); display: block; margin-bottom: 4px; }
 .mkt-errbox span { font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-error-ink); }
 
+/* Same shape as .mkt-errbox, calm green instead of red — a heads-up, not a
+   problem. Used for the "this is a big file, mind your data" warning
+   before playing a requested video. */
+.mkt-infobox { background: var(--mkt-green-light); border-radius: 12px; padding: 12px; display: flex; gap: 9px; align-items: flex-start; }
+.mkt-infobox .m { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 11px/18px 'Lato', sans-serif; text-align: center; }
+.mkt-infobox span { font: 400 12px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
 /* Bank card */
 .mkt-bankcard { background: #fff; border: 1px solid var(--mkt-border); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 13px; }
 .mkt-bankcard.dim { opacity: 0.55; }

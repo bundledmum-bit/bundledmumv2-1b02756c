@@ -21,8 +21,11 @@ import VerifiedBadge from "../components/VerifiedBadge";
 import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
 import AskQuestionSheet from "../checkout/AskQuestionSheet";
+import RequestVideoSheet from "../checkout/RequestVideoSheet";
+import WatchRequestVideoSheet from "../checkout/WatchRequestVideoSheet";
 import { fetchBuyerOfferForListing, fetchBuyerAcceptedOffer, getOffersEnabled, getMaxDiscountPercent, isLapsed } from "../offers";
 import { fetchBuyerQuestionForListing, fetchAnsweredQuestionsForListing } from "../questions";
+import { fetchBuyerVideoRequestForListing } from "../videoRequests";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { useSeller } from "../sell/useSeller";
 import { useMarketplaceWhatsAppNumber } from "../lib/whatsapp";
@@ -106,6 +109,8 @@ export default function ListingDetailPage() {
   const [activeImage, setActiveImage] = useState<string | null>(null);
   const [offerSheetOpen, setOfferSheetOpen] = useState(false);
   const [askSheetOpen, setAskSheetOpen] = useState(false);
+  const [requestVideoSheetOpen, setRequestVideoSheetOpen] = useState(false);
+  const [watchVideoSheetOpen, setWatchVideoSheetOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   // Not live: figure out which of the four situations this is. Ownership is
@@ -180,6 +185,17 @@ export default function ListingDetailPage() {
     queryKey: ["mkt-answered-questions", id],
     enabled: !!id,
     queryFn: () => fetchAnsweredQuestionsForListing(id as string),
+  });
+
+  // Ask for a video: this buyer's own request on this listing, if they've
+  // made one. Reading it (to know whether to show "waiting", "watch it" or
+  // "declined") is NOT the same as claiming it — buyerClaimVideoRequest,
+  // which starts the deletion clock, is only ever called from inside
+  // WatchRequestVideoSheet's own "Play video" button, never here.
+  const { data: myVideoRequest, refetch: refetchMyVideoRequest } = useQuery({
+    queryKey: ["buyer-video-request", id],
+    enabled: !!id && isLoggedIn,
+    queryFn: () => fetchBuyerVideoRequestForListing(id as string),
   });
 
   // This category's question definitions, so the seller's raw attributes jsonb
@@ -371,6 +387,12 @@ export default function ListingDetailPage() {
     if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "question"); return; }
     markContactedUs(); // she's found the door herself — see WhatsAppHelpLink.tsx
     setAskSheetOpen(true);
+  }
+
+  function openRequestVideoSheet() {
+    if (!isLoggedIn) { sendToMarketplaceLogin(`/listing/${listing.id}`, "video"); return; }
+    markContactedUs();
+    setRequestVideoSheetOpen(true);
   }
 
   // AddToCart, fired on the Buy now click itself, never on load — this is a
@@ -708,6 +730,19 @@ export default function ListingDetailPage() {
         ) : (
           <div className="mkt-offer-used">You asked a question, waiting for the seller to answer</div>
         )}
+
+        {/* Ask for a video, directly after Ask a question so the two read
+            as a pair. Same hidden-once-acted-on pattern: waiting, watch it,
+            or (rarely) declined, in place of the entry button. */}
+        {!myVideoRequest ? (
+          <button type="button" className="mkt-offer-entry" onClick={openRequestVideoSheet}>Ask for a video</button>
+        ) : myVideoRequest.declined_at ? (
+          <div className="mkt-offer-used">The seller couldn't film this one{myVideoRequest.decline_reason ? `: ${myVideoRequest.decline_reason}` : ""}</div>
+        ) : myVideoRequest.video_path ? (
+          <button type="button" className="mkt-offer-entry" onClick={() => setWatchVideoSheetOpen(true)}>Watch your video</button>
+        ) : (
+          <div className="mkt-offer-used">You asked for a video, waiting for the seller to film it</div>
+        )}
       </div>
 
       <div className="mkt-buybar">
@@ -739,6 +774,22 @@ export default function ListingDetailPage() {
           listingTitle={listing.title}
           onClose={() => setAskSheetOpen(false)}
           onSent={() => { setAskSheetOpen(false); refetchMyQuestion(); }}
+        />
+      )}
+
+      {requestVideoSheetOpen && (
+        <RequestVideoSheet
+          listingId={listing.id}
+          listingTitle={listing.title}
+          onClose={() => setRequestVideoSheetOpen(false)}
+          onSent={() => { setRequestVideoSheetOpen(false); refetchMyVideoRequest(); }}
+        />
+      )}
+
+      {watchVideoSheetOpen && myVideoRequest && (
+        <WatchRequestVideoSheet
+          requestId={myVideoRequest.id}
+          onClose={() => setWatchVideoSheetOpen(false)}
         />
       )}
     </div>

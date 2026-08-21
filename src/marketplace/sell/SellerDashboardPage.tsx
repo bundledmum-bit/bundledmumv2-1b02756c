@@ -8,6 +8,7 @@ import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch,
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import { fetchSellerOffersNeedingAttention } from "../offers";
+import { fetchSellerVideoRequestsNeedingAttention } from "../videoRequests";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import DelistToEditSheet from "./DelistToEditSheet";
 
@@ -121,6 +122,14 @@ export default function SellerDashboardPage() {
     queryFn: () => fetchSellerOffersNeedingAttention(seller!.id),
   });
 
+  // Video requests still awaiting a film (design mirror of the price
+  // requests card above) — own numbers only, RLS-scoped, same pattern.
+  const { data: videoRequestsNeedingAttention = [] } = useQuery({
+    queryKey: ["seller-video-requests-attention", seller?.id],
+    enabled: !!seller?.id,
+    queryFn: () => fetchSellerVideoRequestsNeedingAttention(seller!.id),
+  });
+
   if (loading || !seller) return <div style={{ display: "flex", justifyContent: "center", padding: "60px 0" }}><BMLoadingAnimation size={140} /></div>;
 
   const { needsAction, inProgress, complete } = groupSellerOrders(orders);
@@ -183,6 +192,22 @@ export default function SellerDashboardPage() {
                   <div className="meta">Would take {formatNaira(o.seller_amount_naira)}</div>
                 </div>
                 <span className="mkt-st pending">Respond</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {videoRequestsNeedingAttention.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            <div className="mkt-group-title">Buyers asking for a video</div>
+            {videoRequestsNeedingAttention.map((v) => (
+              <button key={v.id} className="mkt-lrow" onClick={() => navigate(`/sell/video-requests/${v.id}`)}>
+                <div className="th">{v.listing?.image_url && <img src={v.listing.image_url} alt="" />}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="title" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.listing?.title || "Item"}</div>
+                  <div className="meta" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.note || "No note, just show what's normal"}</div>
+                </div>
+                <span className="mkt-st pending">Film it</span>
               </button>
             ))}
           </div>

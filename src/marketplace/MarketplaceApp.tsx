@@ -30,6 +30,7 @@ import BuyerReturnPage from "./checkout/BuyerReturnPage";
 import BuyerOfferPage from "./checkout/BuyerOfferPage";
 import SellerOfferPage from "./sell/SellerOfferPage";
 import SellerQuestionDetailPage from "./sell/SellerQuestionDetailPage";
+import SellerVideoRequestDetailPage from "./sell/SellerVideoRequestDetailPage";
 import SellerListingSharePage from "./sell/SellerListingSharePage";
 import TermsPage from "./policy/TermsPage";
 import PrivacyPage from "./policy/PrivacyPage";
@@ -108,6 +109,7 @@ export default function MarketplaceApp() {
             <Route path="/sell/orders/:orderId/dispatch" element={<SellerDispatchPage />} />
             <Route path="/sell/offers/:offerId" element={<SellerOfferPage />} />
             <Route path="/sell/questions/:id" element={<SellerQuestionDetailPage />} />
+            <Route path="/sell/video-requests/:id" element={<SellerVideoRequestDetailPage />} />
             {/* Checkout: Paystack (primary), payment return, transfer fallback */}
             <Route path="/checkout/:listingId" element={<CheckoutPage />} />
             <Route path="/checkout/return" element={<PaymentReturnPage />} />

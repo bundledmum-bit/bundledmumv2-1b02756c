@@ -31,7 +31,7 @@ export function safeReturnTo(returnTo: string | null | undefined): string {
  * question — deliberately separate from "question" above, which is worded
  * for the buyer asking, wrong direction for a seller arriving to answer).
  */
-export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question" | "answer_question";
+export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question" | "answer_question" | "video" | "answer_video";
 
 /**
  * The copy for each reason, always leading with what the person was doing,
@@ -76,6 +76,14 @@ export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string 
     lead: "To answer their question, we need your email",
     sub: "This confirms it's really you, the seller, so your answer goes out under your name. We'll email you a code, no password to set.",
   },
+  video: {
+    lead: "To ask for a video, we need your email",
+    sub: "The seller needs to know who's asking, and we'll let you know once it's ready to watch. We'll email you a code, no password to set.",
+  },
+  answer_video: {
+    lead: "To reply to their video request, we need your email",
+    sub: "This confirms it's really you, the seller, so the upload goes out under your name. We'll email you a code, no password to set.",
+  },
 };
 
 /**
@@ -100,6 +108,8 @@ export const LOGIN_REASON_ICON: Record<LoginReason | "generic", { glyph: string;
   dispute: { glyph: "🚩", bg: "var(--mkt-error-bg)", fg: "var(--mkt-error)" },
   question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   answer_question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  video: { glyph: "▶", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  answer_video: { glyph: "▶", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   generic: { glyph: "→", bg: "var(--mkt-grey-chip)", fg: "var(--mkt-muted)" },
 };
 
