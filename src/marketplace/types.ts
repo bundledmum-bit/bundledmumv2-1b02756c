@@ -63,6 +63,12 @@ export interface MarketplaceListing {
    * keyed by field_key. Always an object (jsonb NOT NULL, defaults to {}), never null.
    * Read-only here; only create-listing writes to it. */
   attributes: Record<string, string | number | boolean>;
+  /** Whether the seller has offers switched on for this listing. The
+   * server is the real enforcement (buyer_make_offer raises "The seller
+   * has set a firm price on this item" and refuses otherwise) — this is
+   * read so the client can hide the entry point up front rather than let
+   * a buyer tap through to a request the database will just reject. */
+  is_negotiable: boolean;
   category: MarketplaceCategoryEmbed | null;
   seller: MarketplaceSellerPublic | null;
   /** One optional seller-recorded video, up to marketplace_video_max_seconds

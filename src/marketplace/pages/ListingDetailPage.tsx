@@ -661,10 +661,14 @@ export default function ListingDetailPage() {
 
         {/* Ask for a lower price (design 23a, buyer-facing copy per the
             "Ask for a lower price" pass). Hidden entirely when the feature is
-            off, or once this buyer has spent their one ask here in any
-            direction — both cases simply look like a listing that never had
-            one, per design O10, never a broken or greyed-out control. */}
-        {offersEnabled && !offerAccepted && maxDiscountNaira != null && (
+            off, when this specific listing isn't negotiable (most listings —
+            132 of 178 live ones are fixed price; the database itself refuses
+            an offer here regardless, but a buyer should never be invited to
+            tap through to a request that's already guaranteed to fail), or
+            once this buyer has spent their one ask here in any direction —
+            all cases simply look like a listing that never had one, per
+            design O10, never a broken or greyed-out control. */}
+        {offersEnabled && listing.is_negotiable && !offerAccepted && maxDiscountNaira != null && (
           offerPendingOrCountered ? (
             <button type="button" className="mkt-offer-entry" onClick={() => navigate(`/listing/${listing.id}/offer`)}>
               {myOffer?.status === "countered" ? "The seller came back with a different price, view it" : "View your request"}

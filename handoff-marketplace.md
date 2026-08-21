@@ -7333,3 +7333,21 @@ Preserved: all prompt timings unchanged (banner 10s/30%-scroll, WhatsApp prompt 
 Files touched: `src/marketplace/MarketplaceInstallBanner.tsx` (comment only), `src/marketplace/components/WhatsAppInactivityPrompt.tsx` (comment only).
 
 `npm run build` clean.
+
+## 113. "Ask for a lower price" was shown regardless of is_negotiable — fixed (2026-08-21)
+
+Asked to verify, not assume, whether the offer entry point on listing detail actually respects `is_negotiable`, given the database enforces it server side (`buyer_make_offer` raises "The seller has set a firm price on this item") and zero offers exist on fixed-price listings — meaning the client-side gap, if any, was invisible from the data alone.
+
+**Found genuinely broken, worse than the suspected "reading undefined" case**: `is_negotiable` was not selected in `LISTING_SELECT` (`src/marketplace/data/mdb.ts`) and not declared at all on the `MarketplaceListing` type (`src/marketplace/types.ts`) — so `ListingDetailPage.tsx` had no reference to it anywhere, not even an accidental one. The "Ask for a lower price" button's visibility gate was `offersEnabled && !offerAccepted && maxDiscountNaira != null` (`ListingDetailPage.tsx:667`) — a site-wide feature flag and a site-wide discount cap, entirely blind to whether *this* listing was ever marked negotiable. It was shown, not hidden-and-only-failing-on-tap as one possibility framed it — genuinely shown, tappable, opening the offer sheet, for every listing once offers are on globally, regardless of the seller's own choice. With 132 of 178 live listings fixed price, this was the majority-case failure, not an edge case.
+
+**Also checked**: browse's `ListingCard.tsx` has no negotiable indicator of any kind — not wrong, just absent, and not something this fix adds since only the listing-detail entry point was in scope.
+
+**Fix, three files, minimal**: added `is_negotiable` to `LISTING_SELECT`; added `is_negotiable: boolean` to `MarketplaceListing` with a comment noting the server is the real enforcement and this is read purely so the client can hide the entry point up front rather than let a buyer tap through to a guaranteed rejection; added `listing.is_negotiable` to the button's gate condition. `openOfferSheet` (the only thing that opens the offer sheet on this page) is wired to nothing but that one button, so this single gate closes the only entry point — checked directly, not assumed.
+
+**Live-verified against real data**, not just code review: fetched a genuinely negotiable listing (`Baby Cot`, `f244f10b-…`) and a genuinely fixed-price one (`Nuby Baby Neck Support Pillow…`, `06eacc16-…`) directly from `marketplace_listings`, with the global offers flag confirmed on (`marketplace_offers_enabled = true`). The fixed-price listing renders only "Ask a question"; the negotiable one renders both "Ask for a lower price" and "Ask a question" — confirmed via `querySelectorAll('.mkt-offer-entry')` textContent on both live pages, not a screenshot.
+
+Preserved: everything else on listing detail untouched; "Ask a question" (a separate, always-available entry point, correctly unaffected); sections 7 through 112.
+
+Files touched: `src/marketplace/data/mdb.ts` (`is_negotiable` added to `LISTING_SELECT`), `src/marketplace/types.ts` (`is_negotiable` added to `MarketplaceListing`), `src/marketplace/pages/ListingDetailPage.tsx` (gate condition + comment).
+
+`npm run build` clean.
