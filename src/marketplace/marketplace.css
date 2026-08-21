@@ -1175,67 +1175,89 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-dispatch-preview .retake { position: absolute; right: 10px; bottom: 10px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 999px; padding: 7px 14px; font: 700 12px/1 'Lato', sans-serif; cursor: pointer; }
 
 /* ── Install app banner (dismissible, device-scoped, see
-   MarketplaceInstallBanner.tsx) ── */
+   MarketplaceInstallBanner.tsx) — a prominent bottom sheet, not a thin
+   strip, but built to Google's intrusive-interstitial exemption: under 30%
+   of the viewport, always dismissible, never shown before genuine
+   engagement (see the component's own trigger logic). ── */
 .mkt-install-banner {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  bottom: 0;
   z-index: 30; /* above .mkt-buybar (20), below .mkt-menu (80) */
   display: flex;
   justify-content: center;
-  padding: 0 12px;
   pointer-events: none;
 }
 /* On listing detail the fixed Buy now bar (.mkt-buybar, ~90px incl. its own
-   padding) sits at the very bottom — lift the banner clear of it, same
-   96px clearance the footer already uses for the identical reason. */
-.mkt-install-banner.clear-bar { bottom: calc(env(safe-area-inset-bottom) + 96px); }
+   padding) sits at the very bottom — lift the sheet clear of it. */
+.mkt-install-banner.clear-bar { bottom: 84px; }
 .mkt-install-banner-inner {
   pointer-events: auto;
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
   background: #fff;
-  border: 1px solid var(--mkt-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(26,26,26,0.14);
-  padding: 12px;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -10px 30px rgba(26,26,26,0.18);
+  padding: 18px 18px calc(env(safe-area-inset-bottom) + 16px);
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
 }
-.mkt-install-banner-icon { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; }
-.mkt-install-banner-copy { flex: 1; min-width: 0; }
-.mkt-install-banner-title { margin: 0; font: 800 13px/1.3 'Nunito', sans-serif; color: var(--mkt-black); }
-.mkt-install-banner-body { margin: 2px 0 0; font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
-.mkt-install-banner-cta {
-  flex-shrink: 0;
-  background: var(--mkt-green);
-  color: #fff;
-  border: none;
-  border-radius: 999px;
-  padding: 0 14px;
-  height: 36px;
-  font: 800 13px/1 'Nunito', sans-serif;
-  cursor: pointer;
-}
-.mkt-install-banner-cta:hover { background: var(--mkt-green-dark); }
 .mkt-install-banner-close {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
   border: none;
-  background: transparent;
+  background: var(--mkt-grey-chip);
   color: var(--mkt-muted);
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
   border-radius: 50%;
 }
-.mkt-install-banner-close:hover { background: var(--mkt-grey-chip); }
-@media (max-width: 480px) {
-  .mkt-install-banner-body { display: none; } /* keep the card short on small phones */
+.mkt-install-banner-close:hover { background: var(--mkt-input-border); }
+.mkt-install-banner-row { display: flex; align-items: center; gap: 12px; padding-right: 34px; }
+.mkt-install-banner-icon { width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0; }
+.mkt-install-banner-copy { flex: 1; min-width: 0; }
+.mkt-install-banner-title { margin: 0; font: 900 16px/1.25 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-install-banner-body { margin: 4px 0 0; font: 400 13px/1.45 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-install-banner-cta {
+  width: 100%;
+  background: var(--mkt-coral);
+  color: var(--mkt-black);
+  border: none;
+  border-radius: 12px;
+  height: 46px;
+  font: 800 15px/1 'Nunito', sans-serif;
+  cursor: pointer;
 }
+.mkt-install-banner-cta:hover { background: var(--mkt-coral-dark); }
+
+/* ── Dedicated install CTA on the listing-success and order-confirmation
+   screens (MarketplaceInstallCta.tsx). NOT the banner: a card in normal
+   page flow, on the dark-green .mkt-success background, so it uses the
+   same cream-card treatment as .listing there. ── */
+.mkt-install-cta { background: var(--mkt-cream); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.mkt-install-cta-row { display: flex; align-items: center; gap: 12px; }
+.mkt-install-cta-icon { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; }
+.mkt-install-cta-copy { flex: 1; min-width: 0; }
+.mkt-install-cta-title { margin: 0; font: 800 15px/1.3 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-install-cta-body { margin: 3px 0 0; font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-install-cta-btn {
+  width: 100%;
+  background: var(--mkt-coral);
+  color: var(--mkt-black);
+  border: none;
+  border-radius: 12px;
+  height: 44px;
+  font: 800 14px/1 'Nunito', sans-serif;
+  cursor: pointer;
+}
+.mkt-install-cta-btn:hover { background: var(--mkt-coral-dark); }
 
 /* ── Shared sitewide footer (design R2/R2b, compact, grouped) ── */
 .mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 26px 16px 18px; display: flex; flex-direction: column; gap: 22px; }

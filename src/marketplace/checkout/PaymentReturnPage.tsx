@@ -6,6 +6,7 @@ import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import { cdb, formatNaira, verifyPayment, getOrderContact, resendOrderConfirmation, sellerWhatsAppLink, sellerCallLink, type OrderContact } from "./orders";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import ProtectionBadge from "../components/ProtectionBadge";
+import MarketplaceInstallCta from "../components/MarketplaceInstallCta";
 
 /**
  * Payment return, where Paystack sends the buyer back with ?reference=. It
@@ -140,6 +141,11 @@ function PaidState({ orderId, reference, onBrowse }: { orderId?: string; referen
         {isLoggedIn
           ? <SellerContact contact={contact} loading={isLoading} reference={reference} />
           : <GuestPaid orderId={orderId} reference={reference} />}
+
+        <MarketplaceInstallCta
+          title="Follow this order from your phone"
+          body="Install the app to track your order and hear from your seller as soon as they reply."
+        />
 
         <button className="mkt-primary" onClick={onBrowse}>Keep browsing</button>
       </div>

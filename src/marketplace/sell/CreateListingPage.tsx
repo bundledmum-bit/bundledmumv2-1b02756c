@@ -11,6 +11,7 @@ import {
 import AreaCombobox from "./AreaCombobox";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
+import MarketplaceInstallCta from "../components/MarketplaceInstallCta";
 import DelistToEditSheet from "./DelistToEditSheet";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
 
@@ -873,6 +874,12 @@ export default function CreateListingPage() {
             </div>
             <span className="mkt-st pending">Pending</span>
           </div>
+          {!isEditMode && (
+            <MarketplaceInstallCta
+              title="Never miss when it sells"
+              body="Install the app and we will let you know the moment someone buys this or asks you a question."
+            />
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <button className="mkt-primary" onClick={() => window.location.reload()}>List another item</button>
             <button className="mkt-outline-light" onClick={() => navigate("/sell/dashboard")}>Go to my dashboard</button>
