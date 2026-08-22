@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet-async";
 import PixelRouteListener from "@/components/PixelRouteListener";
 import InstallPage from "./InstallPage";
 import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
-import SellerDeliveryPrompt from "./sell/SellerDeliveryPrompt";
+import SellerDeliveryGate from "./sell/SellerDeliveryGate";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -143,9 +143,10 @@ export default function MarketplaceApp() {
           </div>
           <MarketplaceFooter />
           <MarketplaceInstallBanner />
-          {/* One-time ask for sellers who joined before the two delivery
-              questions existed. Self-gating: hides for good once answered. */}
-          <SellerDeliveryPrompt />
+          {/* Blocking, non-dismissible ask for a seller who already has
+              listings but has never said how same-state buyers get them.
+              Self-gating: gone for good once answered. */}
+          <SellerDeliveryGate />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

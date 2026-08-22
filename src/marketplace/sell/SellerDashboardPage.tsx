@@ -11,7 +11,6 @@ import { fetchSellerOffersNeedingAttention } from "../offers";
 import { fetchSellerVideoRequestsNeedingAttention } from "../videoRequests";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import DelistToEditSheet from "./DelistToEditSheet";
-import ListingDeliveryControl from "./ListingDeliveryControl";
 
 interface MyListing {
   id: string;
@@ -327,15 +326,6 @@ export default function SellerDashboardPage() {
                             </div>
                             <span className={`mkt-st ${g.pill}`}>{g.label}</span>
                           </div>
-                          {/* Which listings use the seller default and which
-                              are overridden, said on the row itself rather
-                              than hidden behind the edit screen. */}
-                          <ListingDeliveryControl
-                            listingId={l.id}
-                            sellsNationwide={l.sells_nationwide ?? null}
-                            localHandover={(l.local_handover as "ships" | "collection" | "both" | null) ?? null}
-                            onSaved={() => { refetchListings(); }}
-                          />
                           <div style={{ display: "flex", gap: 8 }}>
                             <button className="mkt-secondary" style={{ flex: 1 }} onClick={() => navigate(`/sell/listings/${l.id}/price`)}>Lower price</button>
                             <button className="mkt-secondary" style={{ flex: 1, borderColor: "var(--mkt-error)", color: "var(--mkt-error)" }} onClick={() => setChangesTarget(l)}>Make changes</button>

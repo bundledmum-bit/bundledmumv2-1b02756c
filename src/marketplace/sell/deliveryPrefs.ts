@@ -6,9 +6,9 @@ import { sdb } from "./sellData";
  * Two levels, and the difference matters:
  *  - the SELLER DEFAULT (seller_set_delivery_prefs) applies to everything
  *    they list, asked once and never again;
- *  - a PER LISTING OVERRIDE (seller_set_listing_delivery) wins for that one
- *    item. Passing null for both CLEARS the override and returns the listing
- *    to the seller default.
+ *  - a PER LISTING OVERRIDE may exist on the listing row, and wins for that
+ *    one item. It is READ here but never written: a database trigger owns
+ *    marketplace_listings.local_handover.
  *
  * A buyer never reads either column directly: marketplace_listings carries
  * the override columns, so a null there means "use the seller default", NOT
@@ -64,19 +64,10 @@ export async function saveSellerDeliveryPrefs(input: { sellsNationwide: boolean;
   return { ok: true };
 }
 
-/**
- * Overrides one listing, or CLEARS the override when both are null so the
- * listing goes back to following the seller default.
- */
-export async function saveListingDelivery(input: { listingId: string; sellsNationwide: boolean | null; localHandover: LocalHandover | null }): Promise<SaveResult> {
-  const { error } = await sdb.rpc("seller_set_listing_delivery", {
-    p_listing_id: input.listingId,
-    p_sells_nationwide: input.sellsNationwide,
-    p_local_handover: input.localHandover,
-  });
-  if (error) return { ok: false, message: error.message || "We could not save that just now. Please try again." };
-  return { ok: true };
-}
+/* seller_set_listing_delivery() is deliberately NOT wrapped here. A
+ * database trigger owns marketplace_listings.local_handover, so the
+ * frontend must not write that column at all — the per-listing override
+ * control that used to call it was removed for the same reason. */
 
 /**
  * The buyer-facing sentence, in one place so listing detail and anywhere
@@ -105,4 +96,28 @@ export function deliveryDetail(terms: DeliveryTerms): string {
     return `Wherever you are in Nigeria, this seller will send it to you. If you are in ${state} too, ${near}. You agree the details and who covers the cost on WhatsApp after you pay.`;
   }
   return `This seller only sells to buyers in ${state}. If you are in ${state}, ${near}. You agree the details and who covers the cost on WhatsApp after you pay.`;
+}
+
+/**
+ * Saves ONLY the same-state handover answer, writing both columns in a
+ * single update exactly as the trigger contract requires:
+ *   local_handover = <chosen>, delivery_prefs_set_at = now()
+ *
+ * Deliberately a direct table update rather than seller_set_delivery_prefs():
+ * that RPC raises 'Please choose where you are willing to sell' when
+ * p_sells_nationwide is null, so it cannot serve a single-question flow.
+ * RLS ("Seller updates own row", customer_id -> customers.auth_user_id =
+ * auth.uid()) already permits a seller to write both of these columns on
+ * their own row, so nothing is bypassed by doing it directly.
+ *
+ * marketplace_listings.local_handover is NEVER written from here. A database
+ * trigger owns that column.
+ */
+export async function saveLocalHandover(sellerId: string, value: LocalHandover): Promise<SaveResult> {
+  const { error } = await sdb
+    .from("marketplace_sellers")
+    .update({ local_handover: value, delivery_prefs_set_at: new Date().toISOString() })
+    .eq("id", sellerId);
+  if (error) return { ok: false, message: error.message || "We could not save that just now. Please try again." };
+  return { ok: true };
 }

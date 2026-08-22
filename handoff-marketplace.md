@@ -7557,3 +7557,36 @@ Files touched: `src/marketplace/checkout/CheckoutPage.tsx` (two modes), `src/mar
 Files touched: `src/marketplace/sell/deliveryPrefs.ts`, `DeliveryQuestions.tsx`, `SellerDeliveryPrompt.tsx`, `ListingDeliveryControl.tsx` (all new), `src/marketplace/components/DeliveryTermsBlock.tsx` (new), `src/marketplace/lib/deliveryPromptState.ts` (new), `src/marketplace/sell/useSeller.ts`, `CreateListingPage.tsx`, `SellerDashboardPage.tsx`, `src/marketplace/pages/ListingDetailPage.tsx`, `src/marketplace/MarketplaceApp.tsx`, `src/marketplace/marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors as before this change, none from these files.
+
+## 124. Same-state handover: a blocking ask, and one question instead of two (2026-08-21)
+
+**Design source**: Claude Design project `0afda8cc…`, section **43a "Delivery preference, blocking ask"**, screens S1–S11 (mobile modal default/selected/callout/loading/confirmed, desktop modal + hover/focus states, listing-form step at mobile/tablet/desktop). Read in full before building.
+
+**This supersedes part of §123.** That section shipped a *dismissible* bottom sheet (`SellerDeliveryPrompt`, 90-day localStorage dismissal) asking **two** questions. This spec requires a **non-dismissible** ask of **one** question, so the sheet was deleted rather than layered on — a dismissal flag for a blocking question is a contradiction, not a setting. `DeliveryQuestions.tsx` and `lib/deliveryPromptState.ts` went with it.
+
+**Labels changed** (verified before/after): `'ships'` was **"I send it to them"** → unchanged; `'collection'` was **"They collect it"** → now **"They come for it"**; `'both'` was **"Either is fine"** → now **"Either works"**. Each option now also carries the design's one-line hint ("You arrange delivery to the buyer." / "You agree a meeting point with the buyer." / "You decide with each buyer.").
+
+**Two entry points, mutually exclusive, both gated on `delivery_prefs_set_at IS NOT NULL`:**
+- **Blocking modal** (`sell/SellerDeliveryGate.tsx`) when the seller has ≥1 listing, on entering the seller area. No X, no close button, **no `onClick` on the overlay at all** (a backdrop tap is inert because there is nothing to tap), and Escape is swallowed via a capture-phase `keydown` handler. Focus moves into the card on open and Tab/Shift+Tab cycle within it; background scroll is locked. A failed save keeps the modal open with the error visible and does not let the seller through.
+- **Listing-form first step** (`CreateListingPage.tsx`) when the seller has **zero** listings. It returns early — the form itself does not render until the answer is saved — so it is unskippable by construction rather than by validation.
+`useSellerListingCount` (new, `head:true` count) is the switch, so exactly one fires.
+
+**Write order.** `saveLocalHandover(sellerId, value)` does a direct `marketplace_sellers` update setting **both** columns in one statement (`local_handover`, `delivery_prefs_set_at = now()`), then `refresh()`. In the form path this happens in `saveHandover()` **before the form is even rendered**, so `submit()` — and therefore the listing insert — is unreachable until it has succeeded. Deliberately NOT via `seller_set_delivery_prefs()`: that RPC raises when `p_sells_nationwide` is null, so it cannot serve a single-question flow. RLS ("Seller updates own row") already permits both writes.
+
+**`marketplace_listings.local_handover` is never written by the frontend.** Enforced by removal, not just intent: §123's `ListingDeliveryControl` (dashboard per-listing override) called `seller_set_listing_delivery()`, which writes that column — it and its wrapper were deleted, since a trigger owns the field. `grep` confirms the only frontend write of `local_handover` anywhere is the `marketplace_sellers` update above. `DeliveryTermsBlock` still *reads* the resolved value via `listing_delivery_terms()`, which is untouched.
+
+**Safety callout** renders for **both** `'collection'` and `'both'` (`needsSafetyCallout`), in the same view directly beneath the triggering option and above the primary button, never behind a link. Verified live at all four states: absent for nothing-selected and for `'ships'`, present for the other two. Coral-light `#FDE8DF` with a coral left rule, never error red, per the design.
+
+**Verified live** (rendered the shipped markup and classes, since this environment still has no seller session): Continue is genuinely `disabled` with the design's tan `#EDD9D2` on cream until an option is chosen, then coral `#F4845F`; selected option is a 2px coral border on coral-light; zero close affordances in the card; mobile stacks; **desktop is a fixed 560px card with three-across options** (measured `156px 156px 156px`, x=392/560/728) exactly as S6/S8 draw it; tablet ≥640px is two-up with the third spanning, per S10.
+
+**Could not build as drawn, reported rather than approximated**: S9/S10/S11 render the form step inside a **"Step 1 of 6"** wizard with a stepped progress bar. `CreateListingPage` is not a wizard — it is one long scrolling form with a *percentage* progress bar. Rendering "Step 1 of 6" would be a false claim about a form that has no six steps, and converting it into one is a rebuild well outside this task. The step ships with the form's real header and progress bar showing early progress instead; everything below the header matches S9/S11.
+
+**Integration gap worth a decision, flagged not patched**: `listing_delivery_terms.is_set` is `sells_nationwide IS NOT NULL **AND** local_handover IS NOT NULL`. This flow writes only `local_handover`, per the spec's explicit two-column instruction, so a seller who answers here still leaves `sells_nationwide` null and the buyer-facing block from §123 keeps reading **"Delivery not confirmed yet"**. Nothing was silently written to paper over it. Resolving it needs either the incoming trigger to set `sells_nationwide`, or `is_set` relaxed to depend on `delivery_prefs_set_at` — both database changes, and migrations were out of scope here.
+
+**Live data at time of writing**: 182 sellers, only **3** have answered. 72 unanswered sellers have listings (→ modal), 107 unanswered have none (→ form step). 181 live listings (the brief said 177).
+
+**Out of scope, audit only, unchanged**: Buyer Protection is `src/marketplace/policy/BuyerProtectionPage.tsx` and Seller Protection is `src/marketplace/policy/SellerProtectionPage.tsx`; both render hardcoded prose whose *amounts and timings* come from `policy/policySettings.ts` (`useMarketplacePolicySettings`, reading `site_settings`). Terms/Privacy/Cookies sit alongside them. Marketplace FAQ content is a hardcoded `FaqItem[]` inside `src/marketplace/pages/FaqPage.tsx`, also interpolating `useMarketplacePolicySettings` values. None touched.
+
+Files touched: `src/marketplace/sell/DeliveryHandoverChoice.tsx`, `SellerDeliveryGate.tsx`, `useSellerListingCount.ts` (new); `sell/deliveryPrefs.ts`, `useSeller.ts`, `CreateListingPage.tsx`, `SellerDashboardPage.tsx`, `MarketplaceApp.tsx`, `marketplace.css` (modified); `sell/SellerDeliveryPrompt.tsx`, `sell/DeliveryQuestions.tsx`, `sell/ListingDeliveryControl.tsx`, `lib/deliveryPromptState.ts` (deleted).
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors as before this change, none from these files.

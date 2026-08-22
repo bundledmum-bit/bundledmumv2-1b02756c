@@ -27,14 +27,19 @@ export interface SellerRow {
    * nothing may imply they ship on the strength of it. */
   sells_nationwide: boolean | null;
   local_handover: "ships" | "collection" | "both" | null;
+  /** Set the moment a seller answers the same-state handover question.
+   * NOT NULL is the single definition of "has answered" — a database
+   * trigger will shortly reject listing inserts from sellers where this is
+   * still null, so nothing may treat a bare local_handover as sufficient. */
+  delivery_prefs_set_at: string | null;
 }
 
-/** True once the seller has answered both delivery questions. The single
- * check both the first-listing form and the one-time prompt gate on, so
- * "ask once, never again" is one rule in one place. */
-export function hasDeliveryPrefs(seller: Pick<SellerRow, "sells_nationwide" | "local_handover"> | null): boolean {
-  return !!seller && seller.sells_nationwide !== null && seller.local_handover !== null;
+/** The one definition of "this seller has answered the handover question". */
+export function hasAnsweredHandover(seller: Pick<SellerRow, "delivery_prefs_set_at"> | null): boolean {
+  return !!seller && seller.delivery_prefs_set_at !== null;
 }
+
+
 
 /**
  * Resolves the current customer and their seller row from the shared customer
@@ -62,7 +67,7 @@ export function useSeller() {
     if (!cid) { setSeller(null); setLoading(false); return; }
     const { data: s } = await sdb
       .from("marketplace_sellers")
-      .select("id, customer_id, display_name, legal_first_name, legal_last_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira, sells_nationwide, local_handover")
+      .select("id, customer_id, display_name, legal_first_name, legal_last_name, phone, bank_name, bank_account_name, bank_account_number, bank_account_verified, verification_tier, status, strike_count, outstanding_debit_naira, sells_nationwide, local_handover, delivery_prefs_set_at")
       .eq("customer_id", cid)
       .maybeSingle();
     setSeller((s as unknown as SellerRow) ?? null);

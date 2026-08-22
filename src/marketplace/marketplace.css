@@ -2531,3 +2531,109 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 /* These two are full questions, not short field labels, so they keep
    sentence case rather than taking .mkt-uplabel's uppercase treatment. */
 .mkt-delivery-q { font: 800 13.5px/1.35 'Nunito', sans-serif; color: var(--mkt-black); }
+
+/* ---------------------------------------------------------------------
+   Same-state handover: how a buyer in the seller's own state gets the
+   item. Design 43a (S1-S11). Coral leads throughout, since green is
+   already every other piece of marketplace chrome. The safety callout is
+   care-toned coral, never error red, and there is no dismiss path.
+   --------------------------------------------------------------------- */
+
+.mkt-handover-opts { display: flex; flex-direction: column; gap: 9px; }
+.mkt-handover-opt {
+  width: 100%; box-sizing: border-box; text-align: left; cursor: pointer;
+  border: 1.5px solid var(--mkt-input-border); background: #fff; border-radius: 13px;
+  padding: 14px; display: flex; align-items: flex-start; gap: 10px;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.mkt-handover-opt:hover:not(:disabled) { border-color: var(--mkt-coral); background: #FFFBF9; }
+.mkt-handover-opt:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(244, 132, 95, 0.35); }
+.mkt-handover-opt.on { border: 2px solid var(--mkt-coral); background: var(--mkt-coral-light); padding: 13px; }
+.mkt-handover-opt:disabled { opacity: 0.45; cursor: default; }
+.mkt-handover-opt .tick {
+  flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--mkt-coral); color: var(--mkt-cream);
+  font: 700 12px/20px 'Lato', sans-serif; text-align: center;
+}
+.mkt-handover-opt .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mkt-handover-opt .lbl { font: 800 14.5px/1.2 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-handover-opt .hint { font: 400 12px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
+
+/* Tablet: two up, the third spanning both columns (design S10). Desktop:
+   three across, one decision with three equal branches (S6/S11). */
+@media (min-width: 640px) {
+  .mkt-handover-opts.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .mkt-handover-opts.grid > *:nth-child(3) { grid-column: 1 / 3; }
+}
+@media (min-width: 900px) {
+  .mkt-handover-opts.grid { grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .mkt-handover-opts.grid > *:nth-child(3) { grid-column: auto; }
+  .mkt-handover-opt { flex-direction: column; }
+}
+
+/* Attached to the choice that triggered it, above the primary button. */
+.mkt-handover-safety {
+  background: var(--mkt-coral-light); border-left: 3px solid var(--mkt-coral);
+  border-radius: 0 10px 10px 0; padding: 12px 14px; display: flex; gap: 9px;
+}
+.mkt-handover-safety .ic { flex: 0 0 auto; font: 700 13px/1.4 'Lato', sans-serif; color: var(--mkt-coral-dark); }
+.mkt-handover-safety span:last-child { font: 400 12px/1.5 'Lato', sans-serif; color: #8C4A34; }
+
+/* The blocking modal. No close affordance anywhere, by design. */
+.mkt-handover-overlay {
+  position: fixed; inset: 0; z-index: 80; background: rgba(26, 26, 26, 0.55);
+  display: flex; align-items: center; justify-content: center; padding: 22px;
+  box-sizing: border-box; overflow-y: auto;
+}
+.mkt-handover-card {
+  background: var(--mkt-cream); border-radius: 18px; padding: 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  width: 100%; max-width: 560px; box-sizing: border-box;
+  box-shadow: 0 20px 50px rgba(26, 26, 26, 0.25);
+}
+@media (min-width: 900px) { .mkt-handover-card { border-radius: 20px; padding: 34px; gap: 17px; } }
+.mkt-handover-badge {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--mkt-coral-light);
+  display: flex; align-items: center; justify-content: center; font-size: 17px; color: var(--mkt-coral-dark);
+}
+.mkt-handover-head { display: flex; flex-direction: column; gap: 5px; }
+.mkt-handover-head .h { font: 900 20px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-handover-head .p { font: 400 13px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+@media (min-width: 900px) {
+  .mkt-handover-head .h { font-size: 24px; }
+  .mkt-handover-head .p { font-size: 14.5px; }
+}
+.mkt-handover-continue {
+  width: 100%; border: none; border-radius: 12px; padding: 15px; cursor: pointer;
+  background: var(--mkt-coral); color: var(--mkt-black); font: 800 15px/1 'Nunito', sans-serif;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+}
+.mkt-handover-continue:hover:not(:disabled) { background: var(--mkt-coral-dark); color: var(--mkt-cream); }
+.mkt-handover-continue:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.35); }
+/* Visibly disabled until an option is chosen: light tan on cream, the
+   disabled treatment already used elsewhere in this system. */
+.mkt-handover-continue:disabled { background: #EDD9D2; color: #B5806E; cursor: not-allowed; }
+.mkt-handover-continue .spin {
+  width: 16px; height: 16px; border: 2.5px solid rgba(26, 26, 26, 0.3);
+  border-top-color: var(--mkt-black); border-radius: 50%; animation: mkt-handover-spin 0.7s linear infinite;
+}
+@keyframes mkt-handover-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mkt-handover-continue .spin { animation: none; } }
+
+.mkt-handover-done { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; padding: 4px 0; }
+.mkt-handover-done .tick {
+  width: 46px; height: 46px; border-radius: 50%; background: var(--mkt-green-light);
+  color: var(--mkt-green-dark); font: 700 20px/46px 'Lato', sans-serif; text-align: center;
+}
+.mkt-handover-done .h { font: 900 19px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-handover-done .p { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+
+/* The same question as the first step of the listing form (S9-S11). */
+.mkt-handover-step { gap: 15px; }
+.mkt-handover-step-head { display: flex; flex-direction: column; gap: 5px; }
+.mkt-handover-step-head .h { font: 900 21px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-handover-step-head .p { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+@media (min-width: 900px) {
+  .mkt-handover-step-head .h { font-size: 27px; }
+  .mkt-handover-step-head .p { font-size: 14.5px; }
+}
