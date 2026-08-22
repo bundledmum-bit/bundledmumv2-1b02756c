@@ -6,6 +6,28 @@ import { formatNaira } from "../checkout/orders";
 import { summariseCart, type CartItemSummary } from "./cartOrders";
 import { getCartListingIds, removeFromCart, onCartChange } from "./cartStore";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import SellerDeliveryLine, { useDeliveryTerms } from "../components/SellerDeliveryLine";
+
+/** One item row, with its seller's delivery terms underneath. The terms
+ * query is per listing, so a card renders the instant its own resolves
+ * rather than waiting on the others — and renders nothing at all when the
+ * seller has not answered, which is the common case. */
+function CartItemRow({ item, onRemove }: { item: CartItemSummary; onRemove: () => void }) {
+  const { data: terms } = useDeliveryTerms(item.listing_id);
+  // The listing's own area, never an address. "Ikeja, Lagos" -> "Ikeja".
+  const area = (item.location || "").split(",")[0]?.trim() || null;
+  return (
+    <div className="mkt-cartcard-row">
+      <div className="th">{item.image_url && <img src={item.image_url} alt="" />}</div>
+      <div className="body">
+        <div className="t">{item.title}</div>
+        <div className="price">{formatNaira(item.price)}</div>
+        <SellerDeliveryLine terms={terms} sellerName={item.seller_name} area={area} size="sm" />
+      </div>
+      <button className="rm" onClick={onRemove} aria-label={`Remove ${item.title} from cart`}>Remove</button>
+    </div>
+  );
+}
 
 /** First two initials of a seller's display name, e.g. "Amaka O." -> "AO",
  * matching the avatar-circle treatment already used on the design. */
@@ -95,9 +117,9 @@ export default function CartPage() {
           <h1>Your cart</h1>
         </div>
         <div className="mkt-cart-empty">
-          <div className="mkt-cart-empty-icon">🛍️</div>
-          <div className="mkt-cart-empty-title">Your cart is empty</div>
-          <div className="mkt-cart-empty-sub">Add a few things you like, then check out for all of them at once.</div>
+          <div className="mkt-cart-empty-icon" aria-hidden />
+          <div className="mkt-cart-empty-title">Nothing here yet</div>
+          <div className="mkt-cart-empty-sub">Find something in prams, clothing or feeding, it lands here when you add it to your cart.</div>
           <Link to="/" className="mkt-primary" style={{ display: "inline-block", textDecoration: "none", textAlign: "center", maxWidth: 260 }}>Start browsing</Link>
         </div>
       </div>
@@ -137,64 +159,48 @@ export default function CartPage() {
             </div>
           ))}
 
-          {itemCount > 0 && (
-            sellerCount <= 1 ? (
-              <div className="mkt-cart-banner single">
-                <span className="ic">✓</span>
-                <span>
-                  All from {groups[0]?.sellerName || "one seller"}, one delivery to arrange with {sellerCount === 1 ? "them" : "them"}.
-                </span>
-              </div>
-            ) : (
-              <div className="mkt-cart-banner multi">
-                <span className="badge">{sellerCount}</span>
-                <div>
-                  <div className="head">{sellerCount} sellers, {sellerCount} separate deliveries</div>
-                  <div className="body">
-                    One payment, but you'll arrange delivery with each seller yourself, on WhatsApp, after you pay
-                    {sellerCount > 3 ? `, that's ${sellerCount} separate WhatsApp conversations to arrange` : ""}.
-                  </div>
-                </div>
-              </div>
-            )
-          )}
-
-          {groups.map((g, i) => (
-            <div key={g.sellerId} className="mkt-cart-seller-group">
-              <div className="mkt-cart-seller-head">
-                <span className="avatar">{sellerInitialsFrom(g.sellerName)}</span>
-                <span className="name">{g.sellerName || "Seller"}</span>
-                {sellerCount > 1 && (
-                  <span className="meta">· {g.items.length} item{g.items.length === 1 ? "" : "s"} · delivery {i + 1} of {sellerCount}</span>
-                )}
-              </div>
-              <div className="mkt-cart-item-list">
-                {g.items.map((item) => (
-                  <div key={item.listing_id} className="mkt-cart-item-row">
-                    <div className="th">{item.image_url && <img src={item.image_url} alt={item.title} />}</div>
-                    <div className="body">
-                      <div className="t">{item.title}</div>
-                      <div className="price">{formatNaira(item.price)}</div>
-                    </div>
-                    <button className="x" onClick={() => handleRemove(item.listing_id)} aria-label={`Remove ${item.title} from cart`}>✕</button>
-                  </div>
-                ))}
-              </div>
+          {/* Deliveries banner only when there is genuinely more than one:
+              a "1 delivery" version of this would be noise. */}
+          {sellerCount > 1 && (
+            <div className="mkt-cart-deliveries">
+              {itemCount} item{itemCount === 1 ? "" : "s"} from {sellerCount} sellers, that means {sellerCount} separate deliveries once you pay.
             </div>
-          ))}
-
-          {itemCount > 0 && (
-            <>
-              <Link to="/" className="mkt-cart-continue">← Continue shopping</Link>
-              <div className="mkt-cart-footer">
-                <div className="items">
-                  <span>Items</span>
-                  <b>{formatNaira(itemsTotal)}</b>
-                </div>
-                <button className="mkt-buy" onClick={() => navigate("/checkout/cart")}>Proceed to checkout</button>
-              </div>
-            </>
           )}
+
+          {/* Two real layouts, not one reflowed: mobile stacks the cards
+              then the summary, desktop puts the cards in a column beside a
+              sticky summary rail that stays in view while scrolling. */}
+          <div className="mkt-cart-layout">
+            <div className="mkt-cart-col">
+              {groups.map((g, i) => (
+                <div key={g.sellerId} className="mkt-cartcard">
+                  <div className="mkt-cartcard-head">
+                    <span>From {g.sellerName || "a seller"}</span>
+                    {sellerCount > 1 && <span className="meta">delivery {i + 1} of {sellerCount}</span>}
+                  </div>
+                  {g.items.map((item) => (
+                    <CartItemRow key={item.listing_id} item={item} onRemove={() => handleRemove(item.listing_id)} />
+                  ))}
+                </div>
+              ))}
+              <Link to="/" className="mkt-cart-continue mobile-only">Continue shopping</Link>
+            </div>
+
+            {itemCount > 0 && (
+              <aside className="mkt-cart-summary">
+                <div className="h">Order summary</div>
+                <div className="row"><span>Items ({itemCount})</span><b>{formatNaira(itemsTotal)}</b></div>
+                {/* The fee is charged once for the whole cart, not per item
+                    and not per seller — worth stating where the number is. */}
+                <div className="row"><span>Service fee, once</span><b>Shown at checkout</b></div>
+                <div className="rule" />
+                <div className="row total"><span>Total</span><b>{formatNaira(itemsTotal)}</b></div>
+                <div className="note">Service fee and Paystack fee are added at checkout.</div>
+                <button className="mkt-buy" onClick={() => navigate("/checkout/cart")}>Proceed to checkout</button>
+                <Link to="/" className="mkt-cart-continue desktop-only">Continue shopping</Link>
+              </aside>
+            )}
+          </div>
         </>
       )}
     </div>

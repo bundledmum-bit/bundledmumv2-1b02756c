@@ -2438,19 +2438,10 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-cart-footer { padding-left: 0; padding-right: 0; }
 
   /* Two column: items left, sticky order-summary card right (C10). */
-  .mkt-cart-page { display: grid; grid-template-columns: 1fr 340px; gap: 32px; align-items: start; }
-  .mkt-cart-page > .mkt-cart-header { grid-column: 1 / -1; }
-  .mkt-cart-page > .mkt-cart-sold-alert,
-  .mkt-cart-page > .mkt-cart-item-row.sold,
-  .mkt-cart-page > .mkt-cart-banner,
-  .mkt-cart-page > .mkt-cart-seller-group,
-  .mkt-cart-page > .mkt-cart-continue { grid-column: 1; }
-  .mkt-cart-page > .mkt-cart-footer {
-    grid-column: 2; grid-row: 1 / -1; position: sticky; top: 24px;
-    background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px;
-    flex-direction: column; align-items: stretch; padding: 20px;
-  }
-  .mkt-cart-page > .mkt-cart-empty { grid-column: 1 / -1; }
+  /* The cart's desktop two-column layout now lives on .mkt-cart-layout
+     (design 44a K6), so the page itself stays a plain column — leaving it
+     as a grid made the new layout a 340px grid item. */
+  .mkt-cart-page > .mkt-cart-empty { max-width: 420px; margin: 0 auto; }
 }
 
 /* ---------------------------------------------------------------------
@@ -2636,4 +2627,159 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 @media (min-width: 900px) {
   .mkt-handover-step-head .h { font-size: 27px; }
   .mkt-handover-step-head .p { font-size: 14.5px; }
+}
+
+/* ---------------------------------------------------------------------
+   Cart and checkout, delivery terms redesign (design 44a).
+   Every line states only what the SELLER does. Nothing claims an item can
+   or cannot reach a buyer, because checkout never learns where they are.
+   Unset terms render nothing at all — that is 178 of 181 listings, so the
+   cards below are built to look complete WITHOUT a delivery line rather
+   than to leave a gap where one should be.
+   --------------------------------------------------------------------- */
+
+.mkt-delivery-line { display: flex; align-items: flex-start; gap: 7px; }
+.mkt-delivery-line .ic { flex: 0 0 auto; font-size: 14px; line-height: 1.3; }
+.mkt-delivery-line .txt { font: 700 12.5px/1.35 'Lato', sans-serif; color: var(--mkt-black); }
+.mkt-delivery-line.sm .ic { font-size: 13px; }
+.mkt-delivery-line.sm .txt { font: 700 12px/1.4 'Lato', sans-serif; }
+/* State-only: a buyer outside that state is about to pay for something
+   that cannot reach them, and we cannot warn them specifically. Coral, the
+   same weight the safety callout carries elsewhere — never alarmed red,
+   never a blocker, just impossible to skim past. */
+.mkt-delivery-line.restricted .txt { color: #8C4A34; }
+
+/* Seller card, shared shape by cart and checkout. */
+.mkt-cartcard, .mkt-cocard {
+  background: #fff; border: 1px solid var(--mkt-border); border-radius: 13px; overflow: hidden;
+}
+.mkt-cartcard-head, .mkt-cocard-head {
+  padding: 10px 13px; background: var(--mkt-cream); border-bottom: 1px solid var(--mkt-border);
+  font: 800 12.5px/1.2 'Nunito', sans-serif; display: flex; justify-content: space-between; gap: 10px; align-items: center;
+}
+.mkt-cartcard-head .meta { font: 400 11px/1.3 'Lato', sans-serif; color: var(--mkt-muted); }
+/* The whole card turns coral for a state-only seller, not just its line,
+   so it separates itself in a stack of several. */
+.mkt-cocard.restricted { border: 1.5px solid var(--mkt-coral); }
+.mkt-cocard.restricted .mkt-cocard-head { background: var(--mkt-coral-light); border-bottom-color: #F6C9B4; color: #8C4A34; }
+
+.mkt-cartcard-row, .mkt-cocard-row {
+  padding: 11px 13px; display: flex; gap: 11px; align-items: center;
+  border-top: 1px solid transparent;
+}
+.mkt-cartcard-row + .mkt-cartcard-row, .mkt-cocard-row + .mkt-cocard-row { border-top-color: var(--mkt-border); }
+.mkt-cartcard-row .th, .mkt-cocard-row .th {
+  flex: 0 0 48px; width: 48px; height: 48px; border-radius: 9px; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 6px, var(--mkt-cream) 6px 12px);
+}
+.mkt-cartcard-row .th img, .mkt-cocard-row .th img { width: 100%; height: 100%; object-fit: cover; }
+.mkt-cartcard-row .body, .mkt-cocard-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mkt-cartcard-row .t, .mkt-cocard-row .t { font: 400 12.5px/1.3 'Lato', sans-serif; }
+.mkt-cartcard-row .price, .mkt-cocard-row .price { font: 900 15px/1.3 'Nunito', sans-serif; }
+.mkt-cartcard-row .rm {
+  flex: 0 0 auto; background: none; border: none; cursor: pointer;
+  font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-error); padding: 4px;
+}
+
+/* Deliveries note. */
+.mkt-cart-deliveries {
+  margin: 0 16px; background: var(--mkt-green-light); border-radius: 11px; padding: 11px 12px;
+  font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark);
+}
+.mkt-co-deliveries {
+  background: var(--mkt-green-light); border-radius: 12px; padding: 12px;
+  display: flex; gap: 9px; align-items: flex-start;
+}
+.mkt-co-deliveries .ic {
+  flex: 0 0 16px; width: 16px; height: 16px; border-radius: 50%; background: var(--mkt-green);
+  color: #fff; font: 700 10px/16px 'Lato', sans-serif; text-align: center;
+}
+.mkt-co-deliveries span:last-child { font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
+/* Cart layout. Mobile: one column, cards then summary. */
+.mkt-cart-layout { display: flex; flex-direction: column; gap: 13px; padding: 0 16px; }
+.mkt-cart-col { display: flex; flex-direction: column; gap: 13px; }
+.mkt-cart-summary {
+  background: #fff; border: 1px solid var(--mkt-border); border-radius: 14px; padding: 14px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.mkt-cart-summary .h { font: 800 15px/1 'Nunito', sans-serif; }
+.mkt-cart-summary .row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font: 400 13px/1.35 'Lato', sans-serif; }
+.mkt-cart-summary .row b { font: 700 13px/1.35 'Lato', sans-serif; white-space: nowrap; }
+.mkt-cart-summary .rule { height: 1px; background: var(--mkt-border); }
+.mkt-cart-summary .row.total span { font: 800 14px/1 'Nunito', sans-serif; }
+.mkt-cart-summary .row.total b { font: 900 19px/1 'Nunito', sans-serif; letter-spacing: -0.02em; }
+.mkt-cart-summary .note { font: 400 10.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted-2); }
+.mkt-cart-summary .mkt-buy { width: 100%; }
+.mkt-cart-continue { display: block; text-align: center; font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-green); text-decoration: none; padding: 4px; }
+.mkt-cart-continue.desktop-only { display: none; }
+
+@media (min-width: 1024px) {
+  /* Desktop is a genuinely different layout, not the mobile column
+     stretched: seller cards on the left, a sticky summary rail on the
+     right that keeps the total and the primary action in view while the
+     buyer reads delivery terms. Same pattern on both adjoining screens. */
+  .mkt-cart-layout {
+    display: grid; grid-template-columns: 1fr 340px; gap: 28px;
+    padding: 0; align-items: start;
+  }
+  .mkt-cart-summary { position: sticky; top: 20px; padding: 20px; gap: 11px; }
+  .mkt-cart-deliveries { margin: 0; }
+  .mkt-cart-continue.mobile-only { display: none; }
+  .mkt-cart-continue.desktop-only { display: block; }
+  .mkt-cartcard-row .th, .mkt-cocard-row .th { flex-basis: 52px; width: 52px; height: 52px; }
+}
+
+/* Checkout: same sticky-rail idea, so the two adjoining screens match. */
+@media (min-width: 1024px) {
+  .mkt-cart-checkout.two-col {
+    max-width: 1100px; display: grid; grid-template-columns: 1fr 380px;
+    gap: 32px; align-items: start; background: transparent; box-shadow: none; padding: 32px 0 60px;
+  }
+  .mkt-cart-checkout.two-col > .mkt-co-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .mkt-cart-checkout.two-col > .mkt-co-rail {
+    position: sticky; top: 20px; background: #fff; border: 1px solid var(--mkt-border);
+    border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  /* Terms sit inline beside the item on desktop's wider row, since there
+     is width to spare, rather than on their own line beneath it. */
+  .mkt-cocard-row { align-items: center; }
+  .mkt-cocard-row .mkt-delivery-line { flex: 0 0 auto; max-width: 240px; }
+}
+
+/* Buy now, with something still in the cart (design 44a K2). A count badge
+   and the item name in bold make it scannable without reading the whole
+   sentence; "saved" rather than "waiting" so it reassures instead of
+   nagging; View cart stays a text link so it never competes with Pay. */
+.mkt-checkout-cartnote {
+  background: var(--mkt-cream); border: 1px solid var(--mkt-border); border-radius: 11px;
+  padding: 11px 13px; display: flex; align-items: center; gap: 10px;
+}
+.mkt-checkout-cartnote .n {
+  flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--mkt-coral-light); color: var(--mkt-coral-dark);
+  font: 800 11px/20px 'Nunito', sans-serif; text-align: center;
+}
+.mkt-checkout-cartnote .txt { flex: 1; font: 400 12px/1.45 'Lato', sans-serif; color: #3D3936; }
+.mkt-checkout-cartnote .txt b { font: 700 12px/1.45 'Lato', sans-serif; }
+.mkt-checkout-cartnote a { font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-green); white-space: nowrap; text-decoration: none; }
+
+/* Empty cart: a calm placeholder tile, not a broken-image box. */
+.mkt-cart-empty-icon { width: 48px; height: 48px; border-radius: 14px; background: var(--mkt-coral-light); }
+
+/* Checkout, cart mode, desktop. The design's K3 puts the summary in a
+   sticky right rail so the total and Pay never leave view while the buyer
+   reads delivery terms. The rail itself was not split out: the price
+   breakdown, channel selector, held-money box, WhatsApp help and
+   protection badge are interleaved with the details form and every one of
+   them is on the preserve list, so carving them into a second column would
+   have risked the payment path for a layout gain. The same goal is met by
+   widening the reading column and pinning the pay bar, which keeps the
+   total and the primary action permanently visible. */
+@media (min-width: 1024px) {
+  .mkt-sell-body.mkt-co-cart { max-width: 760px; }
+  .mkt-sell-foot.mkt-co-foot-sticky {
+    position: sticky; bottom: 0; max-width: 760px; z-index: 5;
+    box-shadow: 0 -8px 24px rgba(26, 26, 26, 0.06);
+  }
 }

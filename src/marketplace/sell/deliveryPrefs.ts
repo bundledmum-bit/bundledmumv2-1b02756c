@@ -70,32 +70,62 @@ export async function saveSellerDeliveryPrefs(input: { sellsNationwide: boolean;
  * control that used to call it was removed for the same reason. */
 
 /**
- * The buyer-facing sentence, in one place so listing detail and anywhere
- * else it is ever shown can never drift apart.
+ * The one line a buyer is shown about how a seller hands an item over.
  *
- * When nothing is set we say so plainly and hand the buyer a real next step,
- * rather than inventing a default. Implying a seller ships when they have
- * never said so is the one outcome worth avoiding here.
+ * THE CONSTRAINT THAT SHAPES ALL OF THIS: we do not know where the buyer
+ * is. Checkout collects name, email and phone only — no address, because
+ * delivery is arranged directly between the two of them. So every line
+ * below states ONLY what the seller does. Nothing here may ever say "this
+ * can reach you" or "this seller does not deliver to you", because we
+ * genuinely cannot know either way.
+ *
+ * Returns null when the seller has not answered, and null means render
+ * NOTHING — no default, no caveat, no placeholder. That is 178 of 181
+ * listings today, so blank is the common case and has to look deliberate
+ * rather than broken (see SellerDeliveryLine.tsx for how).
+ *
+ * Never an address. Area and state only, both already public on the
+ * listing itself.
  */
-export function deliveryHeadline(terms: DeliveryTerms): string {
-  if (!terms.is_set) return "Delivery not confirmed yet";
-  return terms.sells_nationwide ? "Sends anywhere in Nigeria" : `${terms.seller_state || "In-state"} buyers only`;
+export function deliveryLine(
+  terms: DeliveryTerms,
+  opts: { sellerName?: string | null; area?: string | null } = {},
+): string | null {
+  if (!terms.is_set) return null;
+  const state = terms.seller_state?.trim() || null;
+  // First name only, matching how sellers are named everywhere else.
+  const name = (opts.sellerName || "").trim().split(/\s+/)[0] || null;
+  const who = name || "This seller";
+  const area = opts.area?.trim() || null;
+  // "collect from Lekki" when we know the area, plain "collect" when we do
+  // not — never a street, never an address.
+  const collectFrom = area ? `you collect from ${area}` : "you collect";
+
+  if (terms.sells_nationwide) {
+    switch (terms.local_handover) {
+      case "ships": return `${who} sends anywhere in Nigeria`;
+      case "collection": return `${who} sends anywhere, or ${collectFrom}`;
+      // The design's own line here reads "her call to offer". Written
+      // neutrally instead: a seller's pronouns are not something we know,
+      // and guessing misgenders a real person.
+      default: return `${who} sends anywhere, or ${collectFrom}, whichever they offer`;
+    }
+  }
+  const within = state ? `only sells within ${state}` : "only sells within their own state";
+  switch (terms.local_handover) {
+    case "ships": return `${who} ${within}, and sends within it`;
+    case "collection": return `${who} ${within}, ${collectFrom}`;
+    default: return `${who} ${within}, either way works`;
+  }
 }
 
-export function deliveryDetail(terms: DeliveryTerms): string {
-  const state = terms.seller_state || "the seller's state";
-  if (!terms.is_set) {
-    return `This seller has not told us yet whether they send items or only sell to buyers nearby. The item is in ${state}. Ask them before you buy, so you know how it would reach you.`;
-  }
-  const near = terms.local_handover === "ships"
-    ? `they will send it to you`
-    : terms.local_handover === "collection"
-      ? `you would collect it from them`
-      : `they can send it to you or you can collect it, whichever suits you both`;
-  if (terms.sells_nationwide) {
-    return `Wherever you are in Nigeria, this seller will send it to you. If you are in ${state} too, ${near}. You agree the details and who covers the cost on WhatsApp after you pay.`;
-  }
-  return `This seller only sells to buyers in ${state}. If you are in ${state}, ${near}. You agree the details and who covers the cost on WhatsApp after you pay.`;
+/** True for the three state-only cases. A buyer outside that state is one
+ * tap from paying for something that cannot reach them, and since checkout
+ * never collects an address we cannot catch it or warn them by name — so
+ * these carry real payment-moment risk and earn visible weight, never a
+ * blocker (most buyers genuinely are in-state) and never alarmed red. */
+export function isStateOnly(terms: DeliveryTerms | null | undefined): boolean {
+  return !!terms && terms.is_set && terms.sells_nationwide === false;
 }
 
 /**

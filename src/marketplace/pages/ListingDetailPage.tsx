@@ -673,7 +673,7 @@ export default function ListingDetailPage() {
         {/* How this item would actually reach the buyer. A buyer in Kano
             looking at a Lagos item needs this before anything else, and
             most will never think to ask. Never shows an address. */}
-        <DeliveryTermsBlock listingId={listing.id} />
+        <DeliveryTermsBlock listingId={listing.id} sellerName={listing.seller?.display_name} area={listing.location_city} />
 
         <div className="mkt-seller">
           <div className="mkt-seller-avatar">{sellerInitials(listing)}</div>

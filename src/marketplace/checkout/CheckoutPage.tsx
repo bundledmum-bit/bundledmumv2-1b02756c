@@ -14,6 +14,7 @@ import { getCartListingIds } from "../cart/cartStore";
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import SellerDeliveryLine, { useDeliveryTerms } from "../components/SellerDeliveryLine";
 import ProtectionBadge from "../components/ProtectionBadge";
 import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
@@ -59,6 +60,39 @@ function friendlyCreateError(code: string): string {
     case "Your cart is empty": return "Your cart is empty.";
     default: return "We could not start your order just now. Please check your details and try again.";
   }
+}
+
+/** One item at checkout, carrying its seller's delivery terms. Renders
+ * nothing where the seller has not answered — the row is built to look
+ * complete without that line rather than to leave a hole. */
+function CheckoutItemRow({ item }: { item: CartItemSummary }) {
+  const { data: terms } = useDeliveryTerms(item.listing_id);
+  const area = (item.location || "").split(",")[0]?.trim() || null;
+  return (
+    <div className="mkt-cocard-row">
+      <div className="th">{item.image_url && <img src={item.image_url} alt="" />}</div>
+      <div className="body">
+        <div className="t">{item.title}</div>
+        <div className="price">{formatNaira(item.price)}</div>
+      </div>
+      <SellerDeliveryLine terms={terms} sellerName={item.seller_name} area={area} size="sm" />
+    </div>
+  );
+}
+
+/** A seller's group of items at checkout. The whole card carries the coral
+ * border and fill when that seller only sells within their own state, not
+ * just the delivery line, so it separates itself visibly in the stack at
+ * the moment of payment (design 44a K1/K3). */
+function CheckoutSellerCard({ name, items }: { name: string | null; items: CartItemSummary[] }) {
+  const { data: terms } = useDeliveryTerms(items[0]?.listing_id);
+  const restricted = !!terms?.is_set && terms.sells_nationwide === false;
+  return (
+    <div className={restricted ? "mkt-cocard restricted" : "mkt-cocard"}>
+      <div className="mkt-cocard-head">From {name || "a seller"}</div>
+      {items.map((it) => <CheckoutItemRow key={it.listing_id} item={it} />)}
+    </div>
+  );
 }
 
 export default function CheckoutPage() {
@@ -147,6 +181,9 @@ export default function CheckoutPage() {
     }
     return Array.from(bySeller.values());
   }, [cartItems]);
+
+  // Single mode's own delivery terms, for the line under the item.
+  const { data: singleTerms } = useDeliveryTerms(isCart ? undefined : listingId);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -648,31 +685,26 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      <div className="mkt-sell-body">
+      <div className={isCart ? "mkt-sell-body mkt-co-cart" : "mkt-sell-body"}>
         {isCart ? (
           <>
-            {/* Per-seller breakdown, the same grouping the cart itself
-                showed, so nothing about the shape of this purchase changes
-                between agreeing to it and paying for it. */}
-            <div className="mkt-cart-seller-summary">
-              {cartSellerGroups.map((g, i) => (
-                <div key={i} className="row">
-                  <span>{g.name || "Seller"} · {g.items.length} item{g.items.length === 1 ? "" : "s"}</span>
-                  <span>{formatNaira(g.total)}</span>
-                </div>
-              ))}
-            </div>
+            {/* One card per seller, each carrying that seller's own delivery
+                terms (design 44a K1/K3). A seller who only sells within
+                their own state gets the whole card in coral, since a buyer
+                elsewhere is one tap from paying for something that cannot
+                reach them and we cannot warn them by name — we never learn
+                where they are. */}
+            {cartSellerGroups.map((g, i) => (
+              <CheckoutSellerCard key={i} name={g.name} items={g.items} />
+            ))}
 
-            {/* The one thing this whole feature exists to make unmissable:
-                several sellers means several separate deliveries, said
-                before payment, not after. */}
             {cartSellerGroups.length > 1 && (
-              <div className="mkt-cart-banner multi">
-                <span className="badge">{cartSellerGroups.length}</span>
-                <div>
-                  <div className="head">{cartSellerGroups.length} sellers, {cartSellerGroups.length} separate deliveries</div>
-                  <div className="body">One payment, but you'll arrange delivery with each seller yourself, on WhatsApp, after you pay.</div>
-                </div>
+              <div className="mkt-co-deliveries">
+                <span className="ic" aria-hidden>✓</span>
+                <span>
+                  {cartSellerGroups.length} separate deliveries, since these come from {cartSellerGroups.length} different sellers.
+                  Each is arranged directly with you after payment.
+                </span>
               </div>
             )}
           </>
@@ -682,6 +714,14 @@ export default function CheckoutPage() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="t" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{listing!.title}</div>
               <div className="s">Sold by {listing!.seller?.display_name || "BundledMum seller"}</div>
+              {/* Same component, same sentences as the cart and listing
+                  detail, so a buyer never meets two treatments of one fact. */}
+              <SellerDeliveryLine
+                terms={singleTerms}
+                sellerName={listing!.seller?.display_name}
+                area={listing!.location_city}
+                size="sm"
+              />
             </div>
           </div>
         )}
@@ -692,8 +732,9 @@ export default function CheckoutPage() {
             it is simply named, with a way back to it. Nothing is lost. */}
         {!isCart && cartWaiting > 0 && (
           <div className="mkt-checkout-cartnote">
-            <span>
-              You still have {cartWaiting} item{cartWaiting === 1 ? "" : "s"} waiting in your cart. This payment is just for {listing!.title}.
+            <span className="n" aria-hidden>{cartWaiting}</span>
+            <span className="txt">
+              You're paying for only <b>{listing!.title}</b> right now, your other item{cartWaiting === 1 ? " is" : "s are"} still saved
             </span>
             <Link to="/cart">View cart</Link>
           </div>
@@ -1000,7 +1041,7 @@ export default function CheckoutPage() {
 
       {/* Paystack pay button */}
       {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && (
-        <div className="mkt-sell-foot">
+        <div className={isCart ? "mkt-sell-foot mkt-co-foot-sticky" : "mkt-sell-foot"}>
           {/* Same protection promise as the payment confirmation page, word
               for word — right before the money actually moves. card-row is
               the compact size variant for this tight footer. See

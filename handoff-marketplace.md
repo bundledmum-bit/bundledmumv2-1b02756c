@@ -7590,3 +7590,43 @@ Files touched: `src/marketplace/sell/deliveryPrefs.ts`, `DeliveryQuestions.tsx`,
 Files touched: `src/marketplace/sell/DeliveryHandoverChoice.tsx`, `SellerDeliveryGate.tsx`, `useSellerListingCount.ts` (new); `sell/deliveryPrefs.ts`, `useSeller.ts`, `CreateListingPage.tsx`, `SellerDashboardPage.tsx`, `MarketplaceApp.tsx`, `marketplace.css` (modified); `sell/SellerDeliveryPrompt.tsx`, `sell/DeliveryQuestions.tsx`, `sell/ListingDeliveryControl.tsx`, `lib/deliveryPromptState.ts` (deleted).
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors as before this change, none from these files.
+
+## 125. Cart and checkout redesign, and delivery terms that never guess where the buyer is (2026-08-21)
+
+**Design source**: Claude Design `0afda8cc…`, section **44a "Cart and checkout, delivery terms redesign"**, screens K1–K6 plus the seven-state reference grid.
+
+**The constraint that shaped everything**: checkout collects name, email and phone only, never an address, because delivery is arranged directly between buyer and seller. So we genuinely do not know where a buyer is, and nothing may claim an item "can reach you" or that a seller "does not deliver to you". §123's `deliveryDetail()` did exactly that ("this seller will send it to you", "you would collect it from them") and, when unset, rendered a "Delivery not confirmed yet, ask them before you buy" block. Both were right under the old brief and wrong now, so **listing detail was fixed too**, not just cart and checkout — leaving it would have contradicted the rule and broken the consistency this task asks for.
+
+**New copy, one function, all seven states** (`deliveryLine()` in `sell/deliveryPrefs.ts`), verified live across every case with a seller named Amaka in Lekki, Lagos:
+1. nationwide+ships — "Amaka sends anywhere in Nigeria"
+2. nationwide+collection — "Amaka sends anywhere, or you collect from Lekki"
+3. nationwide+both — "Amaka sends anywhere, or you collect from Lekki, whichever they offer"
+4. state-only+ships — "Amaka only sells within Lagos, and sends within it"
+5. state-only+collection — "Amaka only sells within Lagos, you collect from Lekki"
+6. state-only+both — "Amaka only sells within Lagos, either way works"
+7. unset — **nothing at all**
+Regex-checked: none contains "reach you", "deliver to you", or any address/street/house wording. Area comes from the listing's own `location_city`, state from the RPC — both already public, never an address.
+
+**Deviation from the drawn text, deliberate**: the design's case-3 line reads "her call to offer". Shipped as "whichever they offer" — a seller's pronouns are not something we know, and guessing misgenders a real person.
+
+**Blank looks deliberate, not broken.** `SellerDeliveryLine` returns null when `is_set` is false, and the seller cards are built to look complete without that line rather than to leave a hole: no skeleton, no placeholder, no reserved space. Verified live with a real two-seller cart where one seller has answered and one has not — the unanswered card reads as "nothing to say". This is the common case: 178 of 181 listings.
+
+**State-only got more weight**, per the design's reasoning that a buyer outside that state is one tap from paying for something that cannot reach them and we cannot warn them by name. The **whole seller card** turns coral at checkout, not just its line: 1.5px coral border, coral-light header fill, `#8C4A34` text (measured live: border `rgb(244,132,95)`, header `rgb(253,232,223)`, text `rgb(140,74,52)`). Never red, never a blocking modal — most buyers genuinely are in-state, and blocking would penalise them for a check we cannot actually make.
+
+**Buy now message, exact wording shipped**: *"You're paying for only **{item}** right now, your other item is still saved"* (singular) / *"…your other items are still saved"* (plural). Existing pluralisation preserved and both branches verified live. Redesigned per K2: a coral count badge, the item name bolded so it is scannable without reading the sentence, "saved" rather than "waiting", and View cart kept a plain text link so it never competes with Pay. Correctly hidden when the only cart item IS the one being bought.
+
+**Cart, nothing dropped**: seller grouping (now one card per seller with its own header), the separate-deliveries count, the service fee stated as charged once, remove, proceed to checkout, continue shopping, the empty state and the sold-while-in-cart alert — all present and grep-verified.
+
+**Genuinely different desktop vs mobile, not a reflow**:
+- *Cart*: mobile is one column, cards then summary, with Continue shopping above the summary. Desktop (`.mkt-cart-layout`) is a real `1fr 340px` grid — seller cards left, **sticky** summary rail right, so the total and Proceed never leave view; Continue shopping moves inside the rail. Verified live: `display:grid`, `position:sticky`, columns side by side (left ends 905px, rail starts 933px), and the mobile/desktop Continue links swap correctly. This also required removing §121's older `.mkt-cart-page { display: grid }`, which had silently made the new layout a 340px grid item — caught by measuring rather than by eye.
+- *Checkout*: mobile stacks seller cards then the summary; desktop widens the reading column and pins the pay bar, and delivery terms move inline beside the item row instead of onto their own line beneath it.
+
+**Not implemented as drawn, reported rather than faked**: K3 puts the checkout summary in a sticky right rail. I did not split one out. The price breakdown, channel selector, held-money box, WhatsApp help and protection badge are interleaved with the details form, and every one of them is on the preserve list — carving them into a second column risked the payment path for a layout gain. The design's stated goal ("the total and Pay button never leave view") is met instead by widening the column to 760px and making the pay footer sticky on desktop.
+
+**Design gaps found, none blocking**: desktop empty cart is not drawn (mobile K5 only); the one-seller cart is specified in prose, not drawn ("identical card, one instead of three, drops the deliveries banner" — implemented exactly, the banner only renders above one seller); and the design covers only checkout's summary portion, so the form, channel selector, WhatsApp help and protection badge came from the preserve list unchanged.
+
+**Preserved, grep-verified in `CheckoutPage.tsx`**: `payChannel` + `.mkt-paymethods` (card/bank transfer, both paths), `record_checkout_attempt` and `?resume_order`/`?resume`, `WhatsAppHelpLink` + inactivity prompt, `ProtectionBadge`, `negotiatedPrice`/`offerPriceMismatch` (accepted offer), and `AddPaymentInfo` firing synchronously immediately before `window.location.assign(...)` so the redirect is never delayed. Buy now's single-item path is untouched apart from gaining the delivery line and the reworded note.
+
+Files touched: `sell/deliveryPrefs.ts` (`deliveryLine`, `isStateOnly`, old copy removed), `components/SellerDeliveryLine.tsx` (new), `components/DeliveryTermsBlock.tsx` (rewritten), `pages/ListingDetailPage.tsx`, `cart/CartPage.tsx`, `checkout/CheckoutPage.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors as before this change, none from these files.
