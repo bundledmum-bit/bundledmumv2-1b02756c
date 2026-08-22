@@ -43,6 +43,16 @@ export default function BuyerProtectionPage() {
         </div>
       </div>
 
+      {/* Where a seller will and will not sell. Buyers meet this at
+          checkout, so it is explained here rather than left to be
+          discovered at the moment of payment. */}
+      <div className="mkt-policy-steps">
+        <div className="mkt-card2-label">Where a seller will send</div>
+        <div className="mkt-step"><div className="mkt-step-num">1</div><span>Every seller chooses where they are willing to sell. Some send anywhere in Nigeria, others only sell to buyers in their own state</span></div>
+        <div className="mkt-step"><div className="mkt-step-num">2</div><span>So a listing may be limited to one state. If you tell us your state at checkout, we tell you there and then when something cannot reach you, before you pay</span></div>
+        <div className="mkt-step"><div className="mkt-step-num final">3</div><span>Where a seller offers collection, you agree a public meeting point between you. Never a home address, and you are never expected to go to one</span></div>
+      </div>
+
       <div className="mkt-policy-steps">
         <div className="mkt-card2-label">If something's wrong when it arrives</div>
         <div className="mkt-step"><div className="mkt-step-num">1</div><span>Open your order and tap Report a problem. You have until {s.disputeWindowDays} days after dispatch, before your money would otherwise release to the seller automatically</span></div>

@@ -2807,3 +2807,55 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 }
 .mkt-handover-back:hover:not(:disabled) { color: var(--mkt-green); }
 .mkt-handover-back:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------------------------------------------------------------------
+   An item that cannot reach this buyer (design 45a B2/B3/B6). Red here,
+   unlike the coral used for a seller's own state-only terms: this is a
+   payment about to fail, not neutral information. Always contained to the
+   one item, never the whole cart.
+   --------------------------------------------------------------------- */
+.mkt-undeliv {
+  background: var(--mkt-error-bg); border: 1.5px solid var(--mkt-error);
+  border-radius: 14px; padding: 12px 13px; display: flex; flex-direction: column; gap: 9px;
+}
+.mkt-undeliv .body { display: flex; flex-direction: column; gap: 4px; }
+.mkt-undeliv .t { font: 400 12.5px/1.3 'Lato', sans-serif; }
+.mkt-undeliv .why { font: 400 12px/1.45 'Lato', sans-serif; color: var(--mkt-error-ink); }
+.mkt-undeliv .acts { display: flex; gap: 8px; }
+.mkt-undeliv .rm {
+  flex: 1; background: var(--mkt-error); color: var(--mkt-cream); border: none;
+  border-radius: 9px; padding: 9px; font: 800 12px/1 'Nunito', sans-serif; cursor: pointer;
+}
+.mkt-undeliv .alt {
+  flex: 1; border: 1.5px solid var(--mkt-error); color: var(--mkt-error);
+  border-radius: 9px; padding: 9px; text-align: center; text-decoration: none;
+  font: 800 12px/1 'Nunito', sans-serif; box-sizing: border-box;
+}
+
+/* Single-item Buy now: nothing to keep, so the category link IS the
+   primary action rather than a consolation beneath a Remove button. */
+.mkt-undeliv.full {
+  background: #fff; border: 1px solid var(--mkt-border); padding: 18px; gap: 13px;
+}
+.mkt-undeliv.full .ic {
+  width: 44px; height: 44px; border-radius: 50%; background: var(--mkt-error-bg);
+  color: var(--mkt-error); font: 700 19px/44px 'Lato', sans-serif; text-align: center;
+}
+.mkt-undeliv.full .h { font: 900 21px/1.2 'Nunito', sans-serif; letter-spacing: -0.02em; text-wrap: pretty; }
+.mkt-undeliv.full .p { margin: 0; font: 400 13px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-undeliv.full .item {
+  background: var(--mkt-cream); border: 1px solid var(--mkt-border); border-radius: 12px;
+  padding: 11px; opacity: 0.6;
+}
+.mkt-undeliv.full .item .t { font: 400 12.5px/1.3 'Lato', sans-serif; }
+.mkt-undeliv.full .back {
+  text-align: center; font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-muted); text-decoration: none;
+}
+
+.mkt-cart-blocked-note {
+  font: 700 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-error); text-align: center;
+}
+.mkt-buy:disabled { background: #EDD9D2; color: #B5806E; cursor: not-allowed; }
+
+/* Category link inside the personalised listing-detail line. */
+.mkt-delivery-catlink { font-weight: 700; color: var(--mkt-green); text-decoration: underline; }

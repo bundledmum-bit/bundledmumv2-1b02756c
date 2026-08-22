@@ -44,6 +44,15 @@ export default function SellerProtectionPage() {
         </div>
       </div>
 
+      {/* The delivery choice is the seller's, and reversible. Said here so
+          it reads as control rather than a rule imposed on them. */}
+      <div className="mkt-policy-steps">
+        <div className="mkt-card2-label">Where you sell is your choice</div>
+        <div className="mkt-step"><div className="mkt-step-num">1</div><span>You decide whether you sell anywhere in Nigeria or only to buyers in your own state, and how buyers near you receive an item</span></div>
+        <div className="mkt-step"><div className="mkt-step-num">2</div><span>That choice applies to everything you list, so you only answer it once</span></div>
+        <div className="mkt-step"><div className="mkt-step-num final">3</div><span>You can change it whenever you like, and set something different on a single item when that one is an exception</span></div>
+      </div>
+
       <div className="mkt-policy-steps">
         <div className="mkt-card2-label">What we expect from you</div>
         <div className="mkt-step"><div className="mkt-step-num">1</div><span>Describe the item honestly, marks and all, buyers can't ask you questions before they pay.</span></div>

@@ -10,11 +10,15 @@ import { track } from "@/lib/metaPixel";
 import { useListing } from "../data/useListings";
 import { cdb, formatNaira, createMarketplaceOrder, initializePayment, CheckoutError, type PaymentChannel } from "./orders";
 import { summariseCart, createMarketplaceCartOrder, initializeCartPayment, type CartItemSummary } from "../cart/cartOrders";
-import { getCartListingIds } from "../cart/cartStore";
+import { getCartListingIds, removeFromCart } from "../cart/cartStore";
 import { fetchBuyerOffer } from "../offers";
 import { sendMarketplaceConversionEvent } from "../lib/metaConversion";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import SellerDeliveryLine, { useDeliveryTerms } from "../components/SellerDeliveryLine";
+import StateSelect from "../components/StateSelect";
+import UndeliverableCard from "../components/UndeliverableCard";
+import { checkCartDeliverable, checkListingDeliverable, deliveryMessage } from "../deliverability";
+import { getBuyerState, setBuyerStateLocal } from "../lib/buyerState";
 import ProtectionBadge from "../components/ProtectionBadge";
 import WhatsAppHelpLink from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
@@ -112,6 +116,34 @@ export default function CheckoutPage() {
   // mid-checkout (an add in another tab would otherwise silently change the
   // total they are about to pay).
   const cartIds = useMemo(() => (isCart ? getCartListingIds() : []), [isCart]);
+
+  // The buyer's state. Seeded from whatever we already know (localStorage,
+  // or their account for a signed in buyer), and null is a perfectly normal
+  // value that simply means nothing can be claimed either way.
+  const [buyerState, setBuyerState] = useState<string | null>(() => getBuyerState());
+
+  // Whether every item can actually reach them. deliverable is TRUE
+  // whenever we cannot honestly say otherwise (unknown state, or a seller
+  // who never set terms), so this never costs a buyer anything in the
+  // common case.
+  const deliverIds = useMemo(
+    () => (isCart ? cartIds : listingId ? [listingId] : []),
+    [isCart, cartIds, listingId],
+  );
+  const deliverQ = useQuery({
+    queryKey: ["mkt-deliverable", deliverIds, buyerState],
+    enabled: deliverIds.length > 0,
+    staleTime: 30_000,
+    queryFn: () => (isCart
+      ? checkCartDeliverable(deliverIds, buyerState)
+      : checkListingDeliverable(deliverIds[0], buyerState).then((r) => (r ? [r] : []))),
+  });
+  const undeliverable = useMemo(
+    () => (deliverQ.data ?? []).filter((d) => !d.deliverable),
+    [deliverQ.data],
+  );
+  /** Payment is blocked while any item cannot reach them. */
+  const hasUndeliverable = undeliverable.length > 0;
   // Single mode: how many OTHER items are sitting in the cart, so a Buy now
   // buyer can be told plainly rather than surprised. Excludes the item being
   // bought right now (it may well also be in the cart).
@@ -556,6 +588,9 @@ export default function CheckoutPage() {
   // someone's payment by even one network round trip is not.
   function handlePay() {
     if (!payQ.data) return;
+    // Second guard, not just the hidden button: payment must not proceed
+    // while anything in this order cannot reach the buyer.
+    if (hasUndeliverable) return;
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : (emailInput.trim() || undefined);
     const phone = isLoggedIn ? (profileQ.data?.phone || undefined) : (phoneInput.trim() || undefined);
@@ -924,6 +959,12 @@ export default function CheckoutPage() {
                     {touched && !emailValid && <span style={{ font: "400 11px/1.4 'Lato', sans-serif", color: "var(--mkt-error-ink)" }}>Please enter a valid email address.</span>}
                   </div>
                 )}
+
+                {/* Always shown, even when every item is from a seller who
+                    has not set terms: another item in the same cart may
+                    need it, and it is the only thing that lets us say
+                    anything about whether an item reaches them. */}
+                <StateSelect value={buyerState} onChange={setBuyerState} />
               </div>
             )}
 
@@ -953,6 +994,26 @@ export default function CheckoutPage() {
                 </>
               )}
             </div>
+
+            {/* An item that cannot reach this buyer. Payment is blocked while
+                one is here (see hasUndeliverable on the pay button below);
+                this is what tells them why and gives them the two ways
+                forward: drop that item, or go to its category. */}
+            {hasUndeliverable && undeliverable.map((d) => {
+              const msg = deliveryMessage(d, buyerState);
+              return (
+                <UndeliverableCard
+                  key={d.listing_id}
+                  item={d}
+                  message={msg?.text ?? d.reason ?? ""}
+                  onRemove={isCart ? () => {
+                    removeFromCart(d.listing_id);
+                    navigate("/cart");
+                  } : undefined}
+                  variant={isCart ? "row" : "full"}
+                />
+              );
+            })}
 
             {/* Card vs. bank transfer, both via Paystack, both auto-confirmed
                 (§94). Card first and pre-selected, so a buyer who does not
@@ -1040,7 +1101,7 @@ export default function CheckoutPage() {
       )}
 
       {/* Paystack pay button */}
-      {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && (
+      {paystackEnabled && !showDetailsForm && canCreateOrder && !payCode && !hasUndeliverable && (
         <div className={isCart ? "mkt-sell-foot mkt-co-foot-sticky" : "mkt-sell-foot"}>
           {/* Same protection promise as the payment confirmation page, word
               for word — right before the money actually moves. card-row is

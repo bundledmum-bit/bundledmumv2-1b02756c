@@ -66,6 +66,22 @@ function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
       q: "Can I offer a lower price?",
       a: "Some listings accept offers, you'll see the option if so. If the seller accepts, that price is held for you for 24 hours.",
     },
+    {
+      q: "Can I buy from several sellers at once?",
+      a: "Yes. Add everything to your cart and pay once. Each seller sends their own item separately though, so things arrive at different times, and you arrange delivery with each of them.",
+    },
+    {
+      q: "Do I pay the fee more than once if I buy several things?",
+      a: `No. The service fee is charged once per day, not per item and not per seller, so buying several things together costs you the same one fee as buying one. It is ${naira(s.serviceFeeBelowNaira)} on items under ${naira(s.serviceFeeThresholdNaira)} and ${naira(s.serviceFeeAtOrAboveNaira)} at or above.`,
+    },
+    {
+      q: "Can I pay without a card?",
+      a: "Yes. Choose bank transfer at checkout and Paystack gives you an account number to send to. It confirms automatically, the same as a card, so you do not have to send us a screenshot.",
+    },
+    {
+      q: "What if a seller cannot send to my state?",
+      a: "Some sellers only sell within their own state. Tell us your state at checkout and we will say so before you pay, never after, and point you to other listings in the same category that can reach you.",
+    },
   ];
 }
 

@@ -6,6 +6,9 @@ import { formatNaira } from "../checkout/orders";
 import { summariseCart, type CartItemSummary } from "./cartOrders";
 import { getCartListingIds, removeFromCart, onCartChange } from "./cartStore";
 import MarketplaceSeo from "../components/MarketplaceSeo";
+import UndeliverableCard from "../components/UndeliverableCard";
+import { checkCartDeliverable, deliveryMessage } from "../deliverability";
+import { getBuyerState, onBuyerStateChange } from "../lib/buyerState";
 import SellerDeliveryLine, { useDeliveryTerms } from "../components/SellerDeliveryLine";
 
 /** One item row, with its seller's delivery terms underneath. The terms
@@ -58,6 +61,24 @@ export default function CartPage() {
   const [justRemoved, setJustRemoved] = useState<{ id: string; title: string | null }[]>([]);
 
   useEffect(() => onCartChange(() => setIds(getCartListingIds())), []);
+
+  // Whether each item can actually reach this buyer. Only meaningful once
+  // we know their state, and deliverable is TRUE whenever we cannot say —
+  // an unknown state or a seller who never set terms never costs anyone
+  // anything here.
+  const [buyerState, setBuyerState] = useState<string | null>(() => getBuyerState());
+  useEffect(() => onBuyerStateChange(() => setBuyerState(getBuyerState())), []);
+  const deliverQ = useQuery({
+    queryKey: ["mkt-cart-deliverable", ids, buyerState],
+    enabled: ids.length > 0 && !!buyerState,
+    staleTime: 30_000,
+    queryFn: () => checkCartDeliverable(ids, buyerState),
+  });
+  const blockedItems = useMemo(
+    () => (deliverQ.data ?? []).filter((d) => !d.deliverable),
+    [deliverQ.data],
+  );
+  const blockedIds = useMemo(() => new Set(blockedItems.map((d) => d.listing_id)), [blockedItems]);
 
   const cartQ = useQuery({
     queryKey: ["mkt-cart-summary", ids],
@@ -159,6 +180,18 @@ export default function CartPage() {
             </div>
           ))}
 
+          {/* An item that cannot reach this buyer. Kept contained to that one
+              item — the other seller cards stay completely normal, so the
+              disruption reads as one item's problem, not the whole cart's. */}
+          {blockedItems.map((d) => (
+            <UndeliverableCard
+              key={d.listing_id}
+              item={d}
+              message={deliveryMessage(d, buyerState)?.text ?? d.reason ?? ""}
+              onRemove={() => handleRemove(d.listing_id)}
+            />
+          ))}
+
           {/* Deliveries banner only when there is genuinely more than one:
               a "1 delivery" version of this would be noise. */}
           {sellerCount > 1 && (
@@ -172,13 +205,18 @@ export default function CartPage() {
               sticky summary rail that stays in view while scrolling. */}
           <div className="mkt-cart-layout">
             <div className="mkt-cart-col">
-              {groups.map((g, i) => (
+              {groups
+                // A group whose only items are undeliverable is rendered
+                // above as its own card, so skipping it here avoids an
+                // empty seller card with nothing under the heading.
+                .filter((g) => g.items.some((it) => !blockedIds.has(it.listing_id)))
+                .map((g, i) => (
                 <div key={g.sellerId} className="mkt-cartcard">
                   <div className="mkt-cartcard-head">
                     <span>From {g.sellerName || "a seller"}</span>
                     {sellerCount > 1 && <span className="meta">delivery {i + 1} of {sellerCount}</span>}
                   </div>
-                  {g.items.map((item) => (
+                  {g.items.filter((item) => !blockedIds.has(item.listing_id)).map((item) => (
                     <CartItemRow key={item.listing_id} item={item} onRemove={() => handleRemove(item.listing_id)} />
                   ))}
                 </div>
@@ -196,7 +234,22 @@ export default function CartPage() {
                 <div className="rule" />
                 <div className="row total"><span>Total</span><b>{formatNaira(itemsTotal)}</b></div>
                 <div className="note">Service fee and Paystack fee are added at checkout.</div>
-                <button className="mkt-buy" onClick={() => navigate("/checkout/cart")}>Proceed to checkout</button>
+                {/* Blocked while anything in the cart cannot reach them.
+                    Disabled rather than hidden, with the reason named, so
+                    it is obvious what to do rather than mysteriously
+                    missing. */}
+                <button
+                  className="mkt-buy"
+                  disabled={blockedItems.length > 0}
+                  onClick={() => { if (blockedItems.length === 0) navigate("/checkout/cart"); }}
+                >
+                  Proceed to checkout
+                </button>
+                {blockedItems.length > 0 && (
+                  <div className="mkt-cart-blocked-note">
+                    Remove {blockedItems.length === 1 ? "that item" : "those items"} to proceed.
+                  </div>
+                )}
                 <Link to="/" className="mkt-cart-continue desktop-only">Continue shopping</Link>
               </aside>
             )}

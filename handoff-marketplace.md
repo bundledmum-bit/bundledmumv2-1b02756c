@@ -7687,3 +7687,40 @@ The same two-step flow now also runs in `CreateListingPage`'s first-listing step
 Files touched: `sell/SellerDeliveryGate.tsx`, `sell/useSeller.ts`, `sell/CreateListingPage.tsx`, `sell/useSellerListingInfo.ts` (new, replacing `useSellerListingCount.ts`), `admin/marketplace/opsData.ts`, `admin/marketplace/MarketplaceOutreach.tsx` (via opsData), `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 128. Buyer state, personalised delivery, and blocking an item that cannot reach them (2026-08-21)
+
+**Design**: section **45a "Buyer state, undeliverable items"** — B1 state field, B2 cart with one of three undeliverable, B3 Buy-now single undeliverable, B4/B5 listing personalised (can/cannot reach), B6 desktop. All four required screens present in both breakpoints; nothing missing, so nothing was stopped on.
+
+**The five cases, verified live against real listings** (not mocked — real sellers, real RPC):
+1. `Praise will send this to you in Lagos.`
+2. `You are both in Lagos, so you collect this from Aminat in Surulere.`
+3. `You are both in Lagos. Adeyemo can send it to you, or you can collect it from Ipaja.`
+4. `Aminat cannot send this to you in Kano, she only sells within Lagos.` (blocks payment)
+5. Seller has not answered — **nothing at all**.
+Unknown buyer state also renders nothing and blocks nothing.
+
+**Deviations from the brief, both deliberate and both flagged before building:**
+- **The design uses the buyer's first name** ("Good news Chidinma, Amaka can send this to you in Lagos"). The brief forbids it, so the brief won and the name is never used.
+- **The server's `reason` is not the required case-4 wording** — it returns "…cannot send this **item** to you, she only sells within Lagos", with no buyer state. The brief's version names Kano, which is the stated point of the personalisation. So all five lines are built client-side in `deliverability.ts#deliveryMessage()` from the RPC's structured fields, with `reason` kept only as a fallback. This contradicts "show the reason as returned"; called out rather than silently resolved.
+
+**State selector** (`components/StateSelect.tsx`), on the checkout details step after email. 37 allowed states from `marketplace_states`, verified. Country is not shown at all — Nigeria is the only option, so a locked field would be one more thing to read for no decision. Caption: *"So we can tell you if a seller can reach you"*. Saved to **localStorage always** (most buyers are guests and checkout collects no address) and, for a signed in buyer, to their account via `set_my_delivery_state()` — fire and forget, since a failure there must never block checkout. **Always rendered**, even when every item is from an unanswered seller, because another item in the same cart may need it.
+
+**Blocking, enforced in three places** so it cannot be skipped by any one route: the cart's "Proceed to checkout" is `disabled` with the reason named beneath it (*"Remove that item to proceed."*); the checkout pay footer does not render at all while `hasUndeliverable`; and `handlePay()` returns early as a second guard even if that footer were somehow reached. Verified live with a Kano buyer holding a Lagos-only item: proceed disabled, card shown, category link `/marketplace?category=baby-clothing` reading "See other baby clothing".
+
+**The undeliverable card** (`components/UndeliverableCard.tsx`) always carries three things: what is wrong without blame, a Remove button, and a same-weight category link. On a single-item Buy now there is nothing to keep, so `variant="full"` drops Remove and the category link becomes the primary action, carrying the design's "nobody's done anything wrong here" line.
+
+**Nothing renders for an unanswered seller, and the layout looks complete.** 48 of the 77 sellers with listings have not set terms (the brief said 52 of 74 — same picture), so blank is the common case and is built as the default, not an empty state. Verified on a checkout where every item is from an unanswered seller: zero delivery lines, zero undeliverable cards, no "not confirmed"/"unknown"/"not set" text anywhere in the DOM, and the page reads as finished. A cart group whose only items are undeliverable is now skipped entirely rather than leaving an empty seller card with a heading and nothing under it — caught during live verification.
+
+**Listing detail** (`DeliveryTermsBlock`) now personalises when the buyer's state is known: green for reachable, coral-restricted plus a "See other {category}" link when not, since browsing is not a payment about to fail. With no state known it falls back to the seller-terms-only line from §126. State is never asked for on listing detail.
+
+**Policy and FAQ**, all reading amounts from `policySettings` as before:
+- **Buyer protection** — new "Where a seller will send" block: sellers choose where they sell; a listing may be limited to one state and you are told at checkout before you pay; collection means a public meeting point, never a home address.
+- **Seller protection** — new "Where you sell is your choice" block: the choice is yours, applies to everything you list, changeable any time and per item.
+- **FAQ** — four buyer questions added: buying from several sellers at once (yes, arriving separately), paying the fee more than once (no, once per day, with the real tiered amounts), paying without a card (bank transfer via Paystack, auto-confirmed), and what happens when a seller cannot send to your state.
+
+**Preserved and re-checked**: nothing rendering when terms are unset; green on listing detail and coral at checkout; no address anywhere (the only match in new code is a comment saying we collect none); the cart, its multi-seller deliveries banner and the fee shown once; the payment channel selector (3 refs), abandoned capture (4 refs) and resume links (3 refs) all intact in `CheckoutPage`.
+
+Files touched: `marketplace/deliverability.ts`, `lib/buyerState.ts`, `components/StateSelect.tsx`, `components/UndeliverableCard.tsx` (all new); `checkout/CheckoutPage.tsx`, `cart/CartPage.tsx`, `components/DeliveryTermsBlock.tsx`, `policy/BuyerProtectionPage.tsx`, `policy/SellerProtectionPage.tsx`, `pages/FaqPage.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
