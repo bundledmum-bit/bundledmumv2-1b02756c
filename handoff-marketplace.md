@@ -7630,3 +7630,32 @@ Regex-checked: none contains "reach you", "deliver to you", or any address/stree
 Files touched: `sell/deliveryPrefs.ts` (`deliveryLine`, `isStateOnly`, old copy removed), `components/SellerDeliveryLine.tsx` (new), `components/DeliveryTermsBlock.tsx` (rewritten), `pages/ListingDetailPage.tsx`, `cart/CartPage.tsx`, `checkout/CheckoutPage.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors as before this change, none from these files.
+
+## 126. Delivery wording rewritten to say what actually happens, and the green block restored on listing detail (2026-08-21)
+
+**Before**: §125 replaced listing detail's long-standing green block (`.mkt-delivery-terms` — `--mkt-green-light` fill, 14px radius, 26px solid `--mkt-green` icon circle, `--mkt-green-dark` head + body) with the same flat inline row used by cart and checkout, making the two pages identical. Wording was terse and, in two cases, meaningless to a buyer: case 3 said *"…whichever they offer"* and case 6 said *"…either way works"*, neither of which names a mechanism. (The design's own "her call to offer" was never in the code — §125 had already replaced it.)
+
+**New wording, both pages, verified live** (real seller Precious, area Abraham Adesanya, Lagos; shown here with the brief's Amaka/Lekki/Lagos example):
+1. Amaka will send this to you anywhere in Nigeria.
+2. Amaka will send this anywhere in Nigeria. If you are in Lagos, you collect it from her in Lekki instead.
+3. Amaka will send this to you anywhere in Nigeria. If you are in Lagos, you can collect it from Lekki instead.
+4. Amaka only sells to buyers in Lagos. If you are in Lagos, she will send it to you.
+5. Amaka only sells to buyers in Lagos, and you collect it yourself from Lekki.
+6. Amaka only sells to buyers in Lagos. She can send it to you, or you can collect it from Lekki.
+7. Not set — nothing at all, on both pages.
+
+Two rules applied throughout: state-only cases **lead with the restriction** (verified programmatically — 4, 5 and 6 all start "Amaka only sells to buyers in Lagos"), and every line names the condition ("If you are in Lagos") rather than assuming where the buyer is. Regex-checked across all seven: no "reach you", no "deliver to you", no address/street wording. Area and state only.
+
+**"she" for the seller**, as instructed — sellers here are overwhelmingly mothers and repeating the name in every clause reads badly. **One case where it breaks, flagged not silently absorbed**: `display_name` is free text, so a shop-style name ("BabyThings NG") or a male seller renders "she" wrongly. It is the minority case and there is no gender field to consult. Where there is **no name at all**, the code falls back to "This seller" + they/them rather than inventing a gender for an unnamed account.
+
+**Green restored on listing detail, for the nationwide cases only.** The judgement call was put to me and I agree with it: green is this system's reassurance colour (buyer protection, held funds), and "only sells to buyers in Lagos" is a restriction — in green it would read as good news to a buyer in Kano, the opposite of true. So:
+- cases 1-3: the original green block, unchanged (`rgb(216,239,229)` fill, `rgb(45,106,79)` icon, `rgb(26,74,51)` text — measured live);
+- cases 4-6: a neutral cream card with a **3px coral left rule** and coral-dark text (`rgb(255,248,244)` fill, `3px rgb(244,132,95)` rule, `rgb(140,74,52)` text). Not alarming, not red, visibly not the same as good news.
+
+**The two pages stay deliberately different.** `SellerDeliveryLine` gained a `variant` prop: `"block"` (listing detail's green/cream card) and `"inline"` (cart and checkout's flat line inside the coral seller card). Wording is shared, treatment is not. Verified live: checkout renders **0** green blocks and listing detail renders **0** inline lines, so neither treatment leaks onto the other page.
+
+**Preserved and re-verified**: nothing renders when unset on either page (unset listing → 0 blocks, 0 lines, no leftover "Delivery not confirmed" text anywhere); no address; no claim about what reaches a buyer; the checkout redesign, coral state-only seller card, cart, deliveries note and ProtectionBadge all intact.
+
+Files touched: `sell/deliveryPrefs.ts` (`deliveryLine` rewritten), `components/SellerDeliveryLine.tsx` (`variant` prop), `components/DeliveryTermsBlock.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

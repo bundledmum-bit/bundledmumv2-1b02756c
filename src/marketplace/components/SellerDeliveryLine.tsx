@@ -26,17 +26,35 @@ export function useDeliveryTerms(listingId: string | undefined) {
 }
 
 export default function SellerDeliveryLine({
-  terms, sellerName, area, size = "md",
+  terms, sellerName, area, size = "md", variant = "inline",
 }: {
   terms: DeliveryTerms | null | undefined;
   sellerName?: string | null;
   area?: string | null;
   size?: "sm" | "md";
+  /**
+   * The two pages are deliberately NOT the same treatment.
+   *  - "inline" (cart and checkout): a flat line, since the checkout card
+   *    around it already carries the weight, coral for state-only.
+   *  - "block" (listing detail): the green reassurance block this page has
+   *    always used. Green only for the nationwide cases — see below.
+   */
+  variant?: "inline" | "block";
 }) {
   if (!terms) return null;
   const line = deliveryLine(terms, { sellerName, area });
-  if (!line) return null; // unset: nothing at all, deliberately
+  if (!line) return null; // unset: nothing at all, on both pages, deliberately
   const restricted = isStateOnly(terms);
+
+  if (variant === "block") {
+    return (
+      <div className={restricted ? "mkt-delivery-terms restricted" : "mkt-delivery-terms"}>
+        <span className="ic" aria-hidden>{restricted ? "📍" : "🚚"}</span>
+        <div className="body">{line}</div>
+      </div>
+    );
+  }
+
   return (
     <div className={`mkt-delivery-line${restricted ? " restricted" : ""}${size === "sm" ? " sm" : ""}`}>
       <span className="ic" aria-hidden>{restricted ? "📍" : "🚚"}</span>

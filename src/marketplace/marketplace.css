@@ -2459,7 +2459,17 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   padding: 9px 11px; font: 400 11.5px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark);
 }
 
-/* Buyer-facing block on listing detail. */
+/* Buyer-facing block on LISTING DETAIL only. Checkout deliberately uses a
+   different, heavier treatment (.mkt-cocard / .mkt-delivery-line): that is
+   the moment money moves.
+
+   Green is this system's reassurance colour, used for buyer protection and
+   held-funds messaging. So it is used ONLY for the nationwide cases, which
+   genuinely are good news to any buyer. A state-only seller is a
+   RESTRICTION — in green, "only sells to buyers in Lagos" would read as
+   good news to someone in Kano, which is the opposite of true. Those get a
+   neutral cream card with a coral rule instead: clearly not reassurance,
+   clearly not an alarm either. */
 .mkt-delivery-terms {
   display: flex; gap: 11px; align-items: flex-start;
   background: var(--mkt-green-light); border-radius: 14px; padding: 12px 13px;
@@ -2469,14 +2479,13 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   background: var(--mkt-green); color: #fff;
   font: 700 13px/26px 'Lato', sans-serif; text-align: center;
 }
-.mkt-delivery-terms .head { font: 800 13.5px/1.3 'Nunito', sans-serif; color: var(--mkt-green-dark); }
-.mkt-delivery-terms .body { margin-top: 3px; font: 400 12.5px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
-/* Not answered: deliberately neutral, never green-tick reassurance, since
-   nothing has actually been promised. */
-.mkt-delivery-terms.unset { background: var(--mkt-cream); border: 1px solid var(--mkt-border); }
-.mkt-delivery-terms.unset .ic { background: var(--mkt-grey-chip); color: var(--mkt-muted); }
-.mkt-delivery-terms.unset .head { color: var(--mkt-black); }
-.mkt-delivery-terms.unset .body { color: var(--mkt-muted); }
+.mkt-delivery-terms .body { font: 400 12.5px/1.55 'Lato', sans-serif; color: var(--mkt-green-dark); }
+
+.mkt-delivery-terms.restricted {
+  background: var(--mkt-cream); border: 1px solid var(--mkt-coral); border-left-width: 3px;
+}
+.mkt-delivery-terms.restricted .ic { background: var(--mkt-coral-light); color: var(--mkt-coral-dark); }
+.mkt-delivery-terms.restricted .body { color: #8C4A34; }
 
 /* Per-listing control on the seller dashboard. */
 .mkt-listing-delivery { border-top: 1px dashed var(--mkt-border); padding-top: 9px; display: flex; flex-direction: column; gap: 9px; }

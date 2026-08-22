@@ -10,8 +10,10 @@ import SellerDeliveryLine, { useDeliveryTerms } from "./SellerDeliveryLine";
  * buy" block it used to show — an empty space reads as "nothing to say"
  * while that block read as a problem with the listing.
  *
- * Shares SellerDeliveryLine with the cart and checkout so the wording and
- * the state-only emphasis are identical everywhere a buyer meets them.
+ * Shares the WORDING with cart and checkout via SellerDeliveryLine, but not
+ * the treatment: this page uses its own green reassurance block, while
+ * checkout keeps the heavier coral seller card. Checkout is the moment
+ * money moves and warrants more weight.
  */
 export default function DeliveryTermsBlock({
   listingId, sellerName, area,
@@ -21,5 +23,5 @@ export default function DeliveryTermsBlock({
   area?: string | null;
 }) {
   const { data: terms } = useDeliveryTerms(listingId);
-  return <SellerDeliveryLine terms={terms} sellerName={sellerName} area={area} />;
+  return <SellerDeliveryLine variant="block" terms={terms} sellerName={sellerName} area={area} />;
 }

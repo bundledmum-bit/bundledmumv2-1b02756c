@@ -92,30 +92,49 @@ export function deliveryLine(
   opts: { sellerName?: string | null; area?: string | null } = {},
 ): string | null {
   if (!terms.is_set) return null;
-  const state = terms.seller_state?.trim() || null;
+
   // First name only, matching how sellers are named everywhere else.
   const name = (opts.sellerName || "").trim().split(/\s+/)[0] || null;
   const who = name || "This seller";
+  // "she" throughout: sellers here are overwhelmingly mothers, and
+  // repeating the name in every clause reads badly. With NO name on file
+  // there is nothing to base that on, so an unnamed seller stays neutral.
+  const she = name ? "she" : "they";
+  const She = name ? "She" : "They";
+  const her = name ? "her" : "them";
+
+  const state = terms.seller_state?.trim() || null;
   const area = opts.area?.trim() || null;
-  // "collect from Lekki" when we know the area, plain "collect" when we do
-  // not — never a street, never an address.
-  const collectFrom = area ? `you collect from ${area}` : "you collect";
+  // Area and state only. Never a street, never an address.
+  const inArea = area ? ` in ${area}` : "";
+  const fromArea = area ? ` from ${area}` : "";
+  // The condition is always named ("if you are in Lagos"), because we do
+  // not know where the buyer is and must never assume.
+  const ifInState = state ? `If you are in ${state}, ` : "If you are in the same state, ";
 
   if (terms.sells_nationwide) {
     switch (terms.local_handover) {
-      case "ships": return `${who} sends anywhere in Nigeria`;
-      case "collection": return `${who} sends anywhere, or ${collectFrom}`;
-      // The design's own line here reads "her call to offer". Written
-      // neutrally instead: a seller's pronouns are not something we know,
-      // and guessing misgenders a real person.
-      default: return `${who} sends anywhere, or ${collectFrom}, whichever they offer`;
+      case "ships":
+        return `${who} will send this to you anywhere in Nigeria.`;
+      case "collection":
+        return `${who} will send this anywhere in Nigeria. ${ifInState}you collect it from ${her}${inArea} instead.`;
+      default:
+        return `${who} will send this to you anywhere in Nigeria. ${ifInState}you can collect it${fromArea} instead.`;
     }
   }
-  const within = state ? `only sells within ${state}` : "only sells within their own state";
+
+  // State-only cases LEAD with the restriction: a buyer in Kano has to see
+  // that before anything about how the item travels.
+  const onlySells = state
+    ? `${who} only sells to buyers in ${state}`
+    : `${who} only sells to buyers in ${name ? "her" : "their"} own state`;
   switch (terms.local_handover) {
-    case "ships": return `${who} ${within}, and sends within it`;
-    case "collection": return `${who} ${within}, ${collectFrom}`;
-    default: return `${who} ${within}, either way works`;
+    case "ships":
+      return `${onlySells}. ${ifInState}${she} will send it to you.`;
+    case "collection":
+      return `${onlySells}, and you collect it yourself${fromArea}.`;
+    default:
+      return `${onlySells}. ${She} can send it to you, or you can collect it${fromArea}.`;
   }
 }
 
