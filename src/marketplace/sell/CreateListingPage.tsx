@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { useSeller, hasAnsweredHandover } from "./useSeller";
+import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
 import {
   sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
@@ -10,8 +10,8 @@ import {
 } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import DeliveryHandoverChoice from "./DeliveryHandoverChoice";
-import { useSellerListingCount } from "./useSellerListingCount";
-import { saveLocalHandover, type LocalHandover } from "./deliveryPrefs";
+import { useSellerListingInfo } from "./useSellerListingInfo";
+import { saveSellerDeliveryPrefs, type LocalHandover } from "./deliveryPrefs";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import MarketplaceInstallCta from "../components/MarketplaceInstallCta";
@@ -181,12 +181,24 @@ export default function CreateListingPage() {
   // instead (SellerDeliveryGate), so exactly one of the two ever fires.
   // Inline, and it cannot be skipped: the form itself does not render
   // until it is answered.
-  const { data: sellerListingCount } = useSellerListingCount(seller?.id);
+  const { data: sellerListingInfo } = useSellerListingInfo(seller?.id);
   const askDelivery = !!seller
-    && !hasAnsweredHandover(seller)
+    && !hasCompleteDeliveryPrefs(seller)
     && !isEditMode
-    && sellerListingCount === 0;
+    && sellerListingInfo?.count === 0;
+  const [handoverStep, setHandoverStep] = useState<1 | 2>(1);
+  const [handoverNationwide, setHandoverNationwide] = useState<boolean | null>(null);
+  // Pre-seeded below from anything already answered, so a seller re-asked
+  // only because sells_nationwide is missing never re-picks a handover
+  // they already gave us.
   const [localHandover, setLocalHandover] = useState<LocalHandover | null>(null);
+  const handoverSeeded = useRef(false);
+  useEffect(() => {
+    if (handoverSeeded.current || !seller) return;
+    handoverSeeded.current = true;
+    if (seller.local_handover) setLocalHandover(seller.local_handover as LocalHandover);
+    if (seller.sells_nationwide !== null) setHandoverNationwide(seller.sells_nationwide);
+  }, [seller]);
   const [handoverBusy, setHandoverBusy] = useState(false);
   const [handoverError, setHandoverError] = useState<string | null>(null);
 
@@ -913,24 +925,29 @@ export default function CreateListingPage() {
     );
   }
 
-  // ENTRY POINT 2 (design 43a, S9-S11). A first-time seller answers the
-  // handover question before the form itself exists on screen — that is
-  // what makes it genuinely unskippable, rather than a field they could
-  // scroll past. Saved and confirmed here, so by the time the form can be
-  // submitted at all, delivery_prefs_set_at is already set and the listing
-  // insert cannot be rejected by the trigger that requires it.
+  // ENTRY POINT 2 (design 43a, S9-S11). A first-time seller answers BOTH
+  // delivery questions before the form itself exists on screen — that is
+  // what makes them genuinely unskippable, rather than fields they could
+  // scroll past. Both are needed: seller_needs_delivery_prefs() and
+  // listing_delivery_terms.is_set each require sells_nationwide AND
+  // local_handover, so answering one leaves the seller still flagged and
+  // every listing still blank to buyers. Saved and confirmed here, so by
+  // the time the form can be submitted, delivery_prefs_set_at is set and
+  // the listing insert cannot be rejected by the trigger requiring it.
   if (askDelivery) {
-    async function saveHandover() {
-      if (!localHandover || !seller) return;
+    async function saveBothPrefs() {
+      if (handoverNationwide === null || localHandover === null || !seller) return;
       setHandoverBusy(true); setHandoverError(null);
-      const res = await saveLocalHandover(seller.id, localHandover);
+      // One write, both answers. seller_set_delivery_prefs stamps
+      // delivery_prefs_set_at itself.
+      const res = await saveSellerDeliveryPrefs({ sellsNationwide: handoverNationwide, localHandover });
       setHandoverBusy(false);
       if (!res.ok) {
         setHandoverError(res.message ?? "We could not save that just now. Please try again.");
         return;
       }
-      // Flips delivery_prefs_set_at, which drops askDelivery and reveals
-      // the form. Nothing is inserted until after this has succeeded.
+      // Drops askDelivery and reveals the form. Nothing is inserted until
+      // after this has succeeded.
       await refresh();
     }
     return (
@@ -942,25 +959,77 @@ export default function CreateListingPage() {
               <button className="mkt-sell-back" onClick={() => navigate("/sell/dashboard")} aria-label="Back">‹</button>
               <h1 style={{ flex: 1 }}>List an item</h1>
             </div>
-            <div className="mkt-prog"><i style={{ width: "8%" }} /></div>
-            <p className="sub">First, one question about how buyers near you get your items.</p>
+            <div className="mkt-prog"><i style={{ width: handoverStep === 1 ? "5%" : "10%" }} /></div>
+            <p className="sub">First, two quick questions about how buyers get your items.</p>
           </div>
         </div>
         <div className="mkt-sell-body mkt-handover-step">
           <div className="mkt-handover-step-head">
-            <div className="h">For buyers in your state, how do they get it?</div>
-            <div className="p">This only covers same-state buyers, anyone further away always gets it shipped.</div>
+            <div className="h">
+              {handoverStep === 1
+                ? "Would you sell only in your own state, or anywhere in Nigeria?"
+                : "For buyers in your state, how do they get it?"}
+            </div>
+            <div className="p">
+              {handoverStep === 1
+                ? "Buyers further away need to know before they pay whether you would send to them."
+                : "This only covers same-state buyers, anyone further away always gets it shipped."}
+            </div>
+            <div className="mkt-handover-steps" aria-label={`Step ${handoverStep} of 2`}>
+              <span className="on" />
+              <span className={handoverStep === 2 ? "on" : ""} />
+            </div>
           </div>
-          <DeliveryHandoverChoice value={localHandover} onChange={setLocalHandover} disabled={handoverBusy} layout="grid" />
+
+          {handoverStep === 1 ? (
+            /* Choosing advances on its own, same as the modal — two taps
+               total, and a Continue per step would double that for no gain. */
+            <div className="mkt-handover-opts grid">
+              <button
+                type="button"
+                className={handoverNationwide === false ? "mkt-handover-opt on" : "mkt-handover-opt"}
+                onClick={() => { setHandoverNationwide(false); setHandoverStep(2); }}
+                aria-pressed={handoverNationwide === false}
+              >
+                {handoverNationwide === false && <span className="tick" aria-hidden>✓</span>}
+                <span className="body">
+                  <span className="lbl">Only in my state</span>
+                  <span className="hint">You sell to buyers near you.</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className={handoverNationwide === true ? "mkt-handover-opt on" : "mkt-handover-opt"}
+                onClick={() => { setHandoverNationwide(true); setHandoverStep(2); }}
+                aria-pressed={handoverNationwide === true}
+              >
+                {handoverNationwide === true && <span className="tick" aria-hidden>✓</span>}
+                <span className="body">
+                  <span className="lbl">Anywhere in Nigeria</span>
+                  <span className="hint">You send to buyers in any state.</span>
+                </span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <DeliveryHandoverChoice value={localHandover} onChange={setLocalHandover} disabled={handoverBusy} layout="grid" />
+              <button type="button" className="mkt-handover-back" onClick={() => setHandoverStep(1)} disabled={handoverBusy}>
+                ‹ Back
+              </button>
+            </>
+          )}
+
           {handoverError && (
             <div className="mkt-errbox"><span className="m">!</span><span>{handoverError}</span></div>
           )}
         </div>
-        <div className="mkt-sell-foot">
-          <button className="mkt-primary" onClick={saveHandover} disabled={!localHandover || handoverBusy}>
-            {handoverBusy ? "Saving..." : "Continue"}
-          </button>
-        </div>
+        {handoverStep === 2 && (
+          <div className="mkt-sell-foot">
+            <button className="mkt-primary" onClick={saveBothPrefs} disabled={handoverNationwide === null || localHandover === null || handoverBusy}>
+              {handoverBusy ? "Saving..." : "Continue"}
+            </button>
+          </div>
+        )}
       </>
     );
   }

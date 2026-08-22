@@ -1,55 +1,77 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { useSeller, hasAnsweredHandover } from "./useSeller";
-import { useSellerListingCount } from "./useSellerListingCount";
-import { saveLocalHandover, type LocalHandover } from "./deliveryPrefs";
+import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
+import { useSellerListingInfo } from "./useSellerListingInfo";
+import { saveSellerDeliveryPrefs, type LocalHandover } from "./deliveryPrefs";
 import DeliveryHandoverChoice from "./DeliveryHandoverChoice";
+import { subscribeToWaPromptVisible } from "../components/WhatsAppInactivityPrompt";
 
 /**
- * ENTRY POINT 1 — the blocking ask (design 43a, S1-S8).
+ * The blocking ask, in TWO steps.
  *
- * Shows on entering the seller area when the seller has NOT answered
- * (delivery_prefs_set_at is null) AND already has at least one listing.
- * A seller with zero listings gets the same question as the first step of
- * the listing form instead (see CreateListingPage), so the two never both
- * fire.
+ * Step 1 is the question buyers most need answered: will she sell only in
+ * her own state, or anywhere in Nigeria. Step 2 is how a same-state buyer
+ * receives it. Both are needed — seller_needs_delivery_prefs() and
+ * listing_delivery_terms.is_set BOTH require sells_nationwide AND
+ * local_handover to be non-null, so answering only one leaves the seller
+ * still flagged and every listing still blank to buyers.
  *
- * NON-DISMISSIBLE, deliberately and completely: no close button, no X, no
- * backdrop click handler, and Escape is swallowed. There is no dismissal
- * flag anywhere — this replaced an earlier dismissible bottom sheet, whose
- * 90-day localStorage dismissal directly contradicted the requirement. The
- * only way out is to answer.
+ * Saved ONCE at the end via seller_set_delivery_prefs(), which takes both
+ * together, rather than a write per step. Nothing is written until both
+ * answers exist.
  *
- * Focus is trapped: focus moves into the card on open, Tab and Shift+Tab
- * cycle within it, and nothing outside is reachable by keyboard while it is
- * up. Background scroll is locked for the same reason.
+ * SHOWS IMMEDIATELY, with no engagement delay. The install banner delays
+ * because Google penalises interstitials shown to visitors arriving from
+ * search; that reasoning does not apply here, because this only ever
+ * renders for a SIGNED IN SELLER and Googlebot is never signed in.
  *
- * On a failed save the modal STAYS OPEN with the error shown. It never
- * fails silently and never lets the seller through.
+ * NON-DISMISSIBLE: no close button, no backdrop click handler, Escape
+ * swallowed, no dismissal flag anywhere. Focus is trapped and background
+ * scroll locked while it is open. A failed save keeps it open with the
+ * error visible and never lets the seller through.
  */
 export default function SellerDeliveryGate() {
   const { pathname } = useLocation();
   const { seller, loading, refresh } = useSeller();
-  const { data: listingCount } = useSellerListingCount(seller?.id);
+  const { data: info } = useSellerListingInfo(seller?.id);
 
-  const [value, setValue] = useState<LocalHandover | null>(null);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [nationwide, setNationwide] = useState<boolean | null>(null);
+  // Pre-seeded from whatever they already answered. Someone re-asked
+  // because only sells_nationwide is missing answered the handover question
+  // once already, and it was recorded correctly — making them pick it again
+  // would imply we lost it.
+  const [handover, setHandover] = useState<LocalHandover | null>(null);
+  const seededRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  // The whole seller area, which is where this is required to appear. The
-  // create-listing routes are excluded only because a zero-listing seller
-  // is answering the identical question inline there; a seller WITH
-  // listings is still gated the moment they touch any other seller screen.
-  const inSellerArea = pathname === "/sell"
-    || (pathname.startsWith("/sell/") && !pathname.startsWith("/sell/new") && !pathname.startsWith("/sell/listings/"));
+  // Still yields to the WhatsApp inactivity prompt: that fires because
+  // someone is hesitating over a real purchase, and two overlays at once
+  // reads as broken.
+  const [waPromptVisible, setWaPromptVisible] = useState(false);
+  useEffect(() => subscribeToWaPromptVisible(setWaPromptVisible), []);
+
+  // Anywhere on the marketplace, not just the seller area — a seller who
+  // has not answered should meet this as soon as they arrive. Excluded:
+  // create-listing (which asks the same two questions inline, and is the
+  // entry point for a seller with nothing listed yet) and checkout
+  // (nothing may compete with a payment in progress).
+  //
+  // Deliberately NOT gated on having listings: a seller who started
+  // answering and stopped is incomplete whether or not anything is live,
+  // which is exactly what seller_needs_delivery_prefs() now reports.
+  const onExcludedRoute = pathname.startsWith("/sell/new")
+    || pathname.startsWith("/sell/listings/")
+    || pathname.startsWith("/checkout");
 
   const shouldShow = !loading
     && !!seller
-    && !hasAnsweredHandover(seller)
-    && (listingCount ?? 0) > 0
-    && inSellerArea;
+    && !hasCompleteDeliveryPrefs(seller)
+    && !waPromptVisible
+    && !onExcludedRoute;
 
   // Escape must not close this, and the page behind must not scroll. Both
   // are part of "non-dismissible" rather than decoration.
@@ -58,7 +80,6 @@ export default function SellerDeliveryGate() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return; }
       if (e.key !== "Tab") return;
-      // Focus trap: cycle within the card, never past it.
       const root = cardRef.current;
       if (!root) return;
       const focusable = Array.from(
@@ -77,11 +98,8 @@ export default function SellerDeliveryGate() {
     document.addEventListener("keydown", onKeyDown, true);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Move focus in, so a keyboard user is inside the trap immediately.
     const t = setTimeout(() => {
-      const root = cardRef.current;
-      const firstBtn = root?.querySelector<HTMLElement>("button:not([disabled])");
-      firstBtn?.focus();
+      cardRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
     }, 0);
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
@@ -90,8 +108,24 @@ export default function SellerDeliveryGate() {
     };
   }, [shouldShow]);
 
-  // Confirmation fades out on its own, then the gate is gone for good —
-  // refresh() makes hasAnsweredHandover true, which is the real gate.
+  // Seeds once, the moment the seller row arrives, and never again, so it
+  // can not stomp on a choice they have since made themselves.
+  useEffect(() => {
+    if (seededRef.current || !seller) return;
+    seededRef.current = true;
+    if (seller.local_handover) setHandover(seller.local_handover as LocalHandover);
+    if (seller.sells_nationwide !== null) setNationwide(seller.sells_nationwide);
+  }, [seller]);
+
+  // A dismissal record for this prompt has not existed since it became
+  // non-dismissible, but sellers who saw the older dismissible version
+  // still carry its key in localStorage. Nothing reads it any more, so it
+  // cannot suppress anything — cleared anyway so no stale flag is left
+  // behind on a device that was asked before this correction.
+  useEffect(() => {
+    try { localStorage.removeItem("bm-mkt-delivery-prompt-dismissed"); } catch { /* best-effort */ }
+  }, []);
+
   useEffect(() => {
     if (!confirmed) return;
     const t = setTimeout(() => { refresh(); }, 1600);
@@ -100,13 +134,20 @@ export default function SellerDeliveryGate() {
 
   if (!shouldShow) return null;
 
+  // Their real state, from their listings. Falls back to the generic phrase
+  // only when no listing carries one, rather than inventing a place.
+  const stateName = info?.state || null;
+  const onlyHere = stateName ? `only in ${stateName}` : "only in your own state";
+  const buyersHere = stateName ? `buyers in ${stateName}` : "buyers in your state";
+
   async function submit() {
-    if (!value || !seller) return;
+    if (nationwide === null || handover === null || !seller) return;
     setBusy(true); setError(null);
-    const res = await saveLocalHandover(seller.id, value);
+    // One write, both answers. seller_set_delivery_prefs sets
+    // delivery_prefs_set_at itself.
+    const res = await saveSellerDeliveryPrefs({ sellsNationwide: nationwide, localHandover: handover });
     setBusy(false);
     if (!res.ok) {
-      // Stays open, error visible. The seller is not let through.
       setError(res.message ?? "We could not save that just now. Please try again.");
       return;
     }
@@ -122,9 +163,9 @@ export default function SellerDeliveryGate() {
             <div className="tick">✓</div>
             <div className="h">Got it, thank you</div>
             <div className="p">
-              {value === "ships"
-                ? "Buyers in your state will see that you send it to them."
-                : "Buyers in your state will see collection as an option from now on."}
+              {nationwide
+                ? "Buyers anywhere in Nigeria can now see how they would get your items."
+                : `Buyers can now see that you sell ${onlyHere}, and how they would get your items.`}
             </div>
           </div>
         ) : (
@@ -132,23 +173,71 @@ export default function SellerDeliveryGate() {
             <div className="mkt-handover-badge" aria-hidden>📦</div>
             <div className="mkt-handover-head">
               <div className="h" id="mkt-handover-title">One quick thing before you carry on</div>
-              <div className="p">For buyers in your state, how do they get it?</div>
+              <div className="p">
+                {step === 1
+                  ? `Would you sell ${onlyHere}, or anywhere in Nigeria?`
+                  : `For ${buyersHere}, how do they get it?`}
+              </div>
+              <div className="mkt-handover-steps" aria-label={`Step ${step} of 2`}>
+                <span className="on" />
+                <span className={step === 2 ? "on" : ""} />
+              </div>
             </div>
 
-            <DeliveryHandoverChoice value={value} onChange={setValue} disabled={busy} layout="grid" />
+            {step === 1 ? (
+              /* Choosing advances on its own — this is two taps total, and
+                 a Continue on each step would double that for no gain. */
+              <div className="mkt-handover-opts grid">
+                <button
+                  type="button"
+                  className={nationwide === false ? "mkt-handover-opt on" : "mkt-handover-opt"}
+                  onClick={() => { setNationwide(false); setStep(2); }}
+                  aria-pressed={nationwide === false}
+                >
+                  {nationwide === false && <span className="tick" aria-hidden>✓</span>}
+                  <span className="body">
+                    <span className="lbl">{stateName ? `Only in ${stateName}` : "Only in my state"}</span>
+                    <span className="hint">You sell to buyers near you.</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={nationwide === true ? "mkt-handover-opt on" : "mkt-handover-opt"}
+                  onClick={() => { setNationwide(true); setStep(2); }}
+                  aria-pressed={nationwide === true}
+                >
+                  {nationwide === true && <span className="tick" aria-hidden>✓</span>}
+                  <span className="body">
+                    <span className="lbl">Anywhere in Nigeria</span>
+                    <span className="hint">You send to buyers in any state.</span>
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <>
+                <DeliveryHandoverChoice value={handover} onChange={setHandover} disabled={busy} layout="grid" />
+                <button type="button" className="mkt-handover-back" onClick={() => setStep(1)} disabled={busy}>
+                  ‹ Back
+                </button>
+              </>
+            )}
 
             {error && (
               <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>
             )}
 
-            <button
-              type="button"
-              className="mkt-handover-continue"
-              onClick={submit}
-              disabled={!value || busy}
-            >
-              {busy ? <><span className="spin" aria-hidden />Saving...</> : "Continue"}
-            </button>
+            {/* Only on step 2, and only once both answers exist: nothing is
+                saved until the seller has answered both. */}
+            {step === 2 && (
+              <button
+                type="button"
+                className="mkt-handover-continue"
+                onClick={submit}
+                disabled={nationwide === null || handover === null || busy}
+              >
+                {busy ? <><span className="spin" aria-hidden />Saving...</> : "Continue"}
+              </button>
+            )}
           </>
         )}
       </div>

@@ -7659,3 +7659,31 @@ Two rules applied throughout: state-only cases **lead with the restriction** (ve
 Files touched: `sell/deliveryPrefs.ts` (`deliveryLine` rewritten), `components/SellerDeliveryLine.tsx` (`variant` prop), `components/DeliveryTermsBlock.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 127. Delivery gate asks both questions, shows immediately, and re-asks the partial answerers. Outreach chip restored (2026-08-21)
+
+**Before**: `SellerDeliveryGate` asked **one** question (handover only), saved via a direct `local_handover` write, gated on `delivery_prefs_set_at` and on having ≥1 listing, and only rendered inside the seller area. The outreach queue had no `missing_delivery_prefs` chip.
+
+**Bug one, both questions.** The gate is now two steps: *"Would you sell only in {their state}, or anywhere in Nigeria?"* then *"For buyers in {their state}, how do they get it?"*. **The seller's real state is named** — taken from their listings via the new `useSellerListingInfo` (the same source `outreach_context()` uses server side), falling back to "your own state" only when no listing carries one, rather than inventing a place. Step 1 **advances on selection**, no Continue of its own: two taps total, and a button per step would double that for nothing. Saved **once at the end** through `seller_set_delivery_prefs()`, which takes both together; nothing is written until both answers exist. This also closes §124's flagged integration gap — `is_set` and `seller_needs_delivery_prefs()` both require *both* columns, so single-question answers left every listing blank to buyers.
+
+The same two-step flow now also runs in `CreateListingPage`'s first-listing step, which was still asking only the handover question despite the brief listing it as already correct. Both entry points now genuinely ask both.
+
+**Bug two, timing.** There was **no delay to remove** — the 10s/30%-scroll gate belonged to `SellerDeliveryPrompt`, deleted in §124. What was actually limiting it was *place*, not time: it only rendered inside `/sell/*`. It now shows anywhere on the marketplace, excluding create-listing (which asks inline) and `/checkout/*` (nothing competes with a payment). Kept: never for a complete seller, still yields to the WhatsApp prompt, still non-dismissible. The install banner keeps its delay — Google's interstitial penalty targets visitors arriving from search, and this only ever renders for a signed-in seller, whom Googlebot never is.
+
+**Re-asking the partial answerers.** The gate now keys on `hasCompleteDeliveryPrefs()` — **both columns non-null** — not on `delivery_prefs_set_at` and not on the handover answer. Verified against all seven sellers with any answer on file; the frontend gate agrees with `seller_needs_delivery_prefs()` on every row: **Amina H., Eseosa E. and Katty M. are re-asked; Barakat A., Precious U., Oyindamola O. and Marvellous E. are not.** The listing-count condition was dropped too, since the backend now flags a partial answerer with nothing live (Amina, 0 listings) — being half-answered is incomplete regardless of what is listed.
+
+**Their previous handover answer is pre-selected** on step 2, seeded once from the seller row and never re-applied, so it cannot stomp a later change. They answered it correctly once; making them pick again would imply we lost it. Verified live: step 2 renders with "I send it to them" already ticked for a seller whose stored value is `ships`.
+
+**Local dismissal record.** There is none to clear — dismissal was removed in §124 when the prompt became non-dismissible, and no code reads any flag. The old `bm-mkt-delivery-prompt-dismissed` key from §123 can still sit in localStorage on a device that saw the older sheet, so the gate now removes it on mount. It was already inert; this is hygiene, not a fix, and is reported as such rather than dressed up as one.
+
+**Bug three, the outreach queue — actual cause found, not guessed.** The backend was never the problem: `get_seller_nudge_suggestions` returns `'missing_delivery_prefs'` with label *"Buyers cannot tell if they will send"* and urgency 2, and `get_outreach_queue` passes it through. The cause was **one missing line in `SELLER_OUTREACH_STAGES`** (`opsData.ts`). Chips are rendered by mapping that array, so the stage had no chip and no count — though rows *did* still appear under "All" via the `|| person.primary.label` fallback, so it was unfilterable and uncounted rather than absent. Added with urgency 2 to match the RPC. **Count verified at exactly 70.**
+
+**Context**: `get_outreach_queue` builds context in a SQL `CASE` whose `else` arm returns null for this stage, and Supabase changes were out of scope. So `fetchOutreachQueue` now calls `outreach_context('missing_delivery_prefs', seller_id)` client-side for those rows only, in parallel, merging the result in. A failure on any one row leaves that row's context null and still delivers the row and its WhatsApp link.
+
+**Second instance of the same bug, reported not fixed**: `seller_no_review` is also returned by the RPC and also absent from `SELLER_OUTREACH_STAGES`, so it has no chip either. Left alone as it was not in scope.
+
+**Preserved**: first-listing questions (now asking both), per-listing overrides, delivery terms on listing detail and checkout with nothing rendering when unset, the install banner and WhatsApp prompt and the coordination between all three, sections 7-30.
+
+Files touched: `sell/SellerDeliveryGate.tsx`, `sell/useSeller.ts`, `sell/CreateListingPage.tsx`, `sell/useSellerListingInfo.ts` (new, replacing `useSellerListingCount.ts`), `admin/marketplace/opsData.ts`, `admin/marketplace/MarketplaceOutreach.tsx` (via opsData), `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

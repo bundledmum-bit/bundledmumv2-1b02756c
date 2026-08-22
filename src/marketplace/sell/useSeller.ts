@@ -34,9 +34,20 @@ export interface SellerRow {
   delivery_prefs_set_at: string | null;
 }
 
-/** The one definition of "this seller has answered the handover question". */
-export function hasAnsweredHandover(seller: Pick<SellerRow, "delivery_prefs_set_at"> | null): boolean {
-  return !!seller && seller.delivery_prefs_set_at !== null;
+/**
+ * The one definition of "this seller's delivery preferences are COMPLETE".
+ *
+ * Both columns, deliberately — NOT delivery_prefs_set_at, and NOT the
+ * handover answer alone. Three sellers answered the single-question version
+ * and ended up with local_handover set but sells_nationwide null; their
+ * preferences are incomplete and they must be asked again. This mirrors
+ * seller_needs_delivery_prefs() server side, which flags exactly that case,
+ * so the prompt and the outreach queue agree on who still needs asking.
+ */
+export function hasCompleteDeliveryPrefs(
+  seller: Pick<SellerRow, "sells_nationwide" | "local_handover"> | null,
+): boolean {
+  return !!seller && seller.sells_nationwide !== null && seller.local_handover !== null;
 }
 
 

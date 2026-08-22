@@ -2792,3 +2792,18 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
     box-shadow: 0 -8px 24px rgba(26, 26, 26, 0.06);
   }
 }
+
+/* Two-step progress inside the delivery gate. Deliberately a pair of small
+   bars rather than "Step 1 of 2" text: two taps does not warrant a
+   sentence, but a seller should still see there is a second question. */
+.mkt-handover-steps { display: flex; gap: 5px; margin-top: 9px; }
+.mkt-handover-steps span {
+  height: 4px; width: 22px; border-radius: 2px; background: var(--mkt-input-border);
+}
+.mkt-handover-steps span.on { background: var(--mkt-coral); }
+.mkt-handover-back {
+  align-self: flex-start; background: none; border: none; padding: 2px 0; cursor: pointer;
+  font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-muted);
+}
+.mkt-handover-back:hover:not(:disabled) { color: var(--mkt-green); }
+.mkt-handover-back:disabled { opacity: 0.5; cursor: default; }

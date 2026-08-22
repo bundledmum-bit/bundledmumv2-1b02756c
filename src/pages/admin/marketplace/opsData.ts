@@ -363,7 +363,34 @@ export interface OutreachRow {
 export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
   const { data, error } = await adb.rpc("get_outreach_queue");
   if (error) throw error;
-  return (data ?? []) as unknown as OutreachRow[];
+  const rows = (data ?? []) as unknown as OutreachRow[];
+
+  // get_outreach_queue builds its `context` in a SQL CASE that has no arm
+  // for missing_delivery_prefs, so those rows arrive with context null.
+  // outreach_context() exists for exactly this and returns the line an
+  // operator needs ("4 listings in Lagos, buyers cannot tell if she would
+  // send to them"), so it is filled in here rather than left blank.
+  // Fetched only for the rows that need it, in parallel, and a failure on
+  // any one of them just leaves that row's context null — an operator
+  // still gets the row and the WhatsApp link, which is the part that
+  // matters.
+  const needContext = rows.filter((r) => r.stage_key === "missing_delivery_prefs" && !r.context);
+  if (needContext.length === 0) return rows;
+  const contexts = await Promise.all(
+    needContext.map(async (r) => {
+      const { data: ctx } = await adb.rpc("outreach_context", {
+        p_stage: "missing_delivery_prefs",
+        p_seller_id: r.person_id,
+      });
+      return [r.person_id, (ctx as string | null) ?? null] as const;
+    }),
+  );
+  const byPerson = new Map(contexts);
+  return rows.map((r) =>
+    r.stage_key === "missing_delivery_prefs" && !r.context
+      ? { ...r, context: byPerson.get(r.person_id) ?? r.context }
+      : r,
+  );
 }
 
 /** stage_key → how many times that stage's sequence can be sent before it
@@ -482,6 +509,11 @@ export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urg
   { key: "no_listings", chipLabel: "Never listed", urgency: 1 },
   { key: "rejected_not_resubmitted", chipLabel: "Rejected, unfixed", urgency: 2 },
   { key: "incomplete_setup", chipLabel: "Bank incomplete", urgency: 2 },
+  // Returned by get_seller_nudge_suggestions with urgency 2. It was
+  // reaching the queue all along and rendering under "All" via the label
+  // fallback, but with no entry here it had no chip and no count, so it
+  // could not be filtered to or measured. Urgency matches the RPC's own.
+  { key: "missing_delivery_prefs", chipLabel: "Buyers cannot tell if they will send", urgency: 2 },
   { key: "listed_no_sales", chipLabel: "Live, no sale", urgency: 3 },
 ];
 
