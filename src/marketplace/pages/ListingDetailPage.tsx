@@ -20,6 +20,7 @@ import {
 } from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
 import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
+import HowThisWorksSheet from "../components/HowThisWorksSheet";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
 import AskQuestionSheet from "../checkout/AskQuestionSheet";
 import RequestVideoSheet from "../checkout/RequestVideoSheet";
@@ -114,6 +115,7 @@ export default function ListingDetailPage() {
   const [askSheetOpen, setAskSheetOpen] = useState(false);
   const [requestVideoSheetOpen, setRequestVideoSheetOpen] = useState(false);
   const [watchVideoSheetOpen, setWatchVideoSheetOpen] = useState(false);
+  const [howWorksOpen, setHowWorksOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [cartToast, setCartToast] = useState<string | null>(null);
 
@@ -597,6 +599,20 @@ export default function ListingDetailPage() {
             the decision, not after paying. See ProtectionBadge.tsx. */}
         <ProtectionBadge />
 
+        {/* "How this works" (design 45a). A plain underlined text link
+            directly under the protection badge, in the same quiet green as
+            this system's other asides — deliberately NOT a button. The page
+            already carries Buy now, Add to cart, Ask for a lower price, Ask
+            a question and Ask for a video; a sixth control here would fight
+            all of them. Placed beside the badge rather than near Buy now
+            because it reads as "explain that badge", which is exactly the
+            doubt it answers, and it is found by someone already hesitating
+            over the protection promise. */}
+        <button type="button" className="mkt-htw-trigger" onClick={() => setHowWorksOpen(true)}>
+          <span className="i" aria-hidden>i</span>
+          <span className="t">How this works</span>
+        </button>
+
         {/* Message BundledMum (design 35a). Sits directly under the
             protection card exactly as the mockup arranges it, at the point
             of hesitation right below the price and in the same glance as
@@ -806,6 +822,13 @@ export default function ListingDetailPage() {
         </div>
       </div>
       </div>
+
+      {/* Opened deliberately, so unlike the install banner / WhatsApp
+          prompt / delivery gate it is NOT part of their mutual suppression
+          and opens even while one of those is showing. */}
+      {howWorksOpen && (
+        <HowThisWorksSheet sellerName={askName} onClose={() => setHowWorksOpen(false)} />
+      )}
 
       {offerSheetOpen && maxDiscountNaira != null && (
         <MakeOfferSheet

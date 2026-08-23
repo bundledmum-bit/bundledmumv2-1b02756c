@@ -2859,3 +2859,109 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 
 /* Category link inside the personalised listing-detail line. */
 .mkt-delivery-catlink { font-weight: 700; color: var(--mkt-green); text-decoration: underline; }
+
+/* ---------------------------------------------------------------------
+   "How this works", opened from the listing (design 45a, W1-W3).
+   Mobile: a bottom sheet, the pattern already used by every other sheet
+   here. Desktop: a centred dialog, since there is no bottom-sheet
+   convention at that width anywhere in this system — the same reasoning
+   that made MakeOfferSheet centre on desktop.
+   --------------------------------------------------------------------- */
+
+/* The trigger. A quiet underlined text link, never a button: the listing
+   already carries Buy now, Add to cart, Ask for a lower price, Ask a
+   question and Ask for a video, and a sixth control would fight them all. */
+.mkt-htw-trigger {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: none; padding: 3px 2px; cursor: pointer;
+}
+.mkt-htw-trigger .i {
+  flex: 0 0 15px; width: 15px; height: 15px; border-radius: 50%;
+  border: 1.5px solid var(--mkt-green); color: var(--mkt-green);
+  font: 700 9.5px/15px 'Lato', sans-serif; text-align: center;
+}
+.mkt-htw-trigger .t {
+  font: 700 12.5px/1 'Lato', sans-serif; color: var(--mkt-green);
+  text-decoration: underline; text-decoration-color: #8FB6A2;
+}
+.mkt-htw-trigger:hover .t { text-decoration-color: var(--mkt-green); }
+
+.mkt-htw-overlay {
+  position: fixed; inset: 0; z-index: 60; background: rgba(26, 26, 26, 0.45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.mkt-htw {
+  width: 100%; max-width: 560px; box-sizing: border-box;
+  background: var(--mkt-cream); border-radius: 26px 26px 0 0;
+  padding: 20px 18px 26px; display: flex; flex-direction: column; gap: 12px;
+  max-height: 88vh; overflow-y: auto;
+}
+.mkt-htw .grab { width: 44px; height: 4px; border-radius: 2px; background: #E3D4CB; align-self: center; }
+.mkt-htw-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mkt-htw-head h3 { margin: 0; font: 900 22px/1.15 'Nunito', sans-serif; letter-spacing: -0.03em; }
+.mkt-htw-head .x {
+  flex: 0 0 auto; background: none; border: none; cursor: pointer; padding: 2px 4px;
+  font: 700 20px/1 'Lato', sans-serif; color: var(--mkt-muted-2);
+}
+.mkt-htw-head .x:hover { color: var(--mkt-black); }
+
+.mkt-htw-pair { display: flex; flex-direction: column; gap: 12px; }
+.mkt-htw-step { display: flex; gap: 11px; align-items: flex-start; }
+.mkt-htw-step .n {
+  flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--mkt-coral-light); color: var(--mkt-coral-dark);
+  font: 900 11px/22px 'Nunito', sans-serif; text-align: center;
+}
+.mkt-htw-step .t { font: 400 13.5px/1.5 'Lato', sans-serif; padding-top: 1px; }
+
+/* Step 3 carries the whole argument, so it is the one card in solid green
+   with white text and a coral badge. The other three stay plain rows —
+   weighting them equally would bury the only line that answers the doubt. */
+.mkt-htw-step.hero {
+  background: var(--mkt-green); border-radius: 13px; padding: 13px; align-items: flex-start;
+}
+.mkt-htw-step.hero .n {
+  flex: 0 0 24px; width: 24px; height: 24px;
+  background: var(--mkt-coral); color: var(--mkt-black);
+  font: 900 12px/24px 'Nunito', sans-serif;
+}
+.mkt-htw-step.hero .t { font: 800 14px/1.4 'Nunito', sans-serif; color: var(--mkt-cream); padding-top: 2px; }
+
+.mkt-htw-done {
+  margin-top: 2px; background: none; border: none; cursor: pointer;
+  text-align: center; font: 800 14px/1 'Nunito', sans-serif; color: var(--mkt-muted); padding: 6px;
+}
+.mkt-htw-done:hover { color: var(--mkt-black); }
+
+@media (min-width: 1024px) {
+  .mkt-htw-overlay { align-items: center; }
+  .mkt-htw {
+    max-width: 560px; border-radius: 18px; padding: 30px; gap: 16px;
+    box-shadow: 0 24px 60px rgba(26, 26, 26, 0.3);
+  }
+  .mkt-htw .grab { display: none; }
+  .mkt-htw-head h3 { font-size: 25px; }
+  /* Steps 1 and 2 pair up so step 3 below dominates the dialog the moment
+     it opens, rather than being third in a list. */
+  .mkt-htw-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mkt-htw-pair .mkt-htw-step {
+    flex-direction: column; gap: 8px;
+    background: #fff; border: 1px solid var(--mkt-border); border-radius: 13px; padding: 15px;
+  }
+  .mkt-htw-pair .mkt-htw-step .n { flex: 0 0 26px; width: 26px; height: 26px; font-size: 13px; line-height: 26px; }
+  .mkt-htw-pair .mkt-htw-step .t { font-size: 13px; }
+  /* Step 4 matches the pair's card treatment so only step 3 stands out. */
+  .mkt-htw > .mkt-htw-step:not(.hero) {
+    flex-direction: column; gap: 8px;
+    background: #fff; border: 1px solid var(--mkt-border); border-radius: 13px; padding: 15px;
+  }
+  .mkt-htw > .mkt-htw-step:not(.hero) .n { flex: 0 0 26px; width: 26px; height: 26px; font-size: 13px; line-height: 26px; }
+  .mkt-htw-step.hero { flex-direction: column; gap: 8px; border-radius: 14px; padding: 18px; }
+  .mkt-htw-step.hero .n { flex: 0 0 28px; width: 28px; height: 28px; font-size: 14px; line-height: 28px; }
+  .mkt-htw-step.hero .t { font-size: 16px; }
+  /* Plain bordered button at desktop, matching secondary-action sizing. */
+  .mkt-htw-done {
+    align-self: flex-end; border: 1.5px solid var(--mkt-input-border); color: #3D3936;
+    border-radius: 11px; padding: 11px 22px; font: 800 13.5px/1 'Nunito', sans-serif;
+  }
+}

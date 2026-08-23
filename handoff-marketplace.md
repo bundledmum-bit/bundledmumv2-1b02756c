@@ -7724,3 +7724,39 @@ Unknown buyer state also renders nothing and blocks nothing.
 Files touched: `marketplace/deliverability.ts`, `lib/buyerState.ts`, `components/StateSelect.tsx`, `components/UndeliverableCard.tsx` (all new); `checkout/CheckoutPage.tsx`, `cart/CartPage.tsx`, `components/DeliveryTermsBlock.tsx`, `policy/BuyerProtectionPage.tsx`, `policy/SellerProtectionPage.tsx`, `pages/FaqPage.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 129. "How this works", opened from the listing itself (2026-08-21)
+
+**Design**: section **45a "How this works popup, on the listing itself"** (a second block sharing the `45a` id, distinct from the buyer-state one). Covers all four required states — **W1** mobile closed with trigger in context, **W2** mobile sheet open, **W3** desktop closed *and* open. Nothing missing, so nothing was stopped on.
+
+**Why**: 1,700 listing views, two genuine checkout attempts, one sale. The doubt is always the same, and it is felt on the listing, so this answers it there rather than sending anyone to a page.
+
+**The four steps as shipped** (real seller, Precious, verified live):
+1. `When you buy this item, we connect you with the seller, Precious.`
+2. `You can ask her for more details about the item and agree how it reaches you.`
+3. `Precious is not paid until the item reaches you and you confirm it is as described.`
+4. `If it is not as described, send it back and we refund you the same day Precious confirms it arrived back.`
+
+**Step 3 carries the weight**, as the design intends: the only card in solid green (`#2D6A4F`) with cream text and a coral number badge, in 800 Nunito, while 1, 2 and 4 stay plain rows. Measured live. Equal weighting would bury the one line that actually separates this from Jiji.
+
+**Step 4 never says "immediately"**, verified by regex against the rendered sheet. Four steps only, and **zero onward links** (`.mkt-htw a` = 0) — the full how-it-works page and FAQ already exist and are linked in the footer.
+
+**On `marketplace_return_confirm_days`, stated plainly rather than fudged**: the setting exists and is already read as `returnConfirmDays` (default 4) in `policySettings.ts`. But the required step-4 wording is qualitative — "the same day she confirms it arrived back" — and never prints a number. So the sheet does **not** fetch it: wiring a settings read whose value is never rendered would be decoration, not accuracy. The accuracy the brief asks for comes from the wording itself, which matches `BuyerReturnPage`, `BuyerOrderDetailPage` and `SellerOrderDetailPage` verbatim.
+
+**The trigger** sits directly under the `ProtectionBadge` (measured 14px below it), as a plain underlined green text link with a small `i` glyph — transparent background, no border, confirmed by computed style. It reads as "explain that badge", which is precisely the doubt it answers. It is deliberately **not** a button: the page already carries Buy now, Add to cart, Ask for a lower price, Ask a question, Ask for a video and Watch your video, and a sixth control would fight all of them. All of those, plus the fixed mobile buy bar, are untouched.
+
+**Easy to leave, all four paths verified live** (with awaits, since React re-renders asynchronously): the ✕ closes, a tap on the dimmed backdrop closes, Escape closes, and "Got it" closes. Clicking *inside* the sheet does not close it (`stopPropagation`).
+
+**Scroll position is kept, and the reason matters**: the listing stays mounted underneath and nothing navigates, so there is nothing to save or restore. What *would* break it is locking body scroll — `position:fixed` on `body` jumps to the top on release — so that is deliberately not done. Verified: scrolled to y=900, opened, closed via every path, still y=900 each time.
+
+**Not wired into the prompt suppression system, deliberately.** The install banner, WhatsApp hesitation prompt and seller delivery gate suppress each other because they appear uninvited; this appears because someone asked for it. `HowThisWorksSheet` subscribes to nothing (`subscribeTo` = 0 occurrences) and none of the three participants were modified. Confirmed visually on desktop: the sheet and the WhatsApp prompt render together, which is the intended behaviour.
+
+**Pattern reused, not invented**: mobile is the house bottom sheet (cream, `26px 26px 0 0`, grab handle, backdrop close) matching the 12 existing `.mkt-sheet` call sites; desktop centres into a 560px dialog with an 18px radius, no grab handle, steps 1 and 2 in a 2-up grid so step 3 dominates on open, and "Got it" as a right-aligned bordered button. That desktop-centring follows the existing `MakeOfferSheet` precedent rather than adding a third overlay family. All measured live.
+
+**Known redundancy, flagged not resolved**: `HowThisWorksExplainer` (design 19a) already sits further down the same page — an inline collapsible with **seven** steps, all weighted equally. This new sheet is four steps, modal, with step 3 dominant. Both now answer the same question on one page. The brief did not mention the existing component, so it was left untouched rather than removed unasked, but it is a real duplication worth a decision.
+
+**Preserved**: every existing action and the fixed mobile buy bar, the delivery terms block and its personalised wording, the protection badge, sections 7-30.
+
+Files touched: `components/HowThisWorksSheet.tsx` (new), `pages/ListingDetailPage.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
