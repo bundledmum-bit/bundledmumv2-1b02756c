@@ -1,5 +1,33 @@
 # Handoff
 
+## Renamed product slugs — old-URL redirect fallback (DONE, this turn)
+17 product slugs were renamed in the DB to remove clinical wording from URLs
+(`catheter` → `delivery-kit-tube-set`, `sterile-urinary-drainage-bag` →
+`delivery-kit-collection-bag`, etc.; NAMES unchanged). Old URLs would 404. A public
+RPC `resolve_product_slug(p_slug)` returns the current slug (or null).
+
+**Fix (one file — [src/pages/ProductPage.tsx](src/pages/ProductPage.tsx)):** in
+`useProduct`, when the slug AND id lookups both miss, call `resolve_product_slug`. If it
+returns a slug that DIFFERS from the requested one, `useProduct` returns `{ redirectTo }`;
+ProductPage then `navigate('/products/<current>', { replace: true })` (broken URL leaves
+history). Guarded on `resolved !== slug` in BOTH `useProduct` and the effect → no loop.
+While redirecting it holds the skeleton instead of flashing not-found. Unknown slug → RPC
+null → existing not-found unchanged.
+
+**Only ProductPage needed it.** Audited the other slug routes: `/package/:slug`
+(landing_pages, not products), `/quote/:shareToken` + `/list/:token` (products by
+`product_id`), `/hospital-list` (products by id), `/p/:slug` (CMS). None resolves a product
+by slug, and all product links they render point at `/products/<current-slug>` and flow
+through ProductPage's fallback anyway — so every entry point (bookmarks, shared quiz lists,
+WhatsApp, Google) is covered by the single change.
+
+**Verified (RPC + DB):** `catheter` → `delivery-kit-tube-set` (name still "Catheter",
+active) → redirect lands on the Catheter page, not 404. `delivery-kit-tube-set` (current)
+is found directly, no RPC/redirect. `hospital-list-tube-set` (an interim old slug) also
+resolves to `delivery-kit-tube-set`. Unknown slug → null → not-found, no loop. NOTE: the
+prompt's example targets (`hospital-list-*`) were an interim name; actual current slugs are
+`delivery-kit-*` — the fix is RPC-driven so it lands correctly regardless.
+
 ## Meta pixel — clinical-signal removal (DONE, this turn)
 Meta restricted the storefront pixel as "associated with medical conditions". Root
 cause (from the prior audit): clinical product names reached Meta via (a) `content_name`

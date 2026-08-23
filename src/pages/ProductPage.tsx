@@ -59,7 +59,19 @@ function useProduct(slug: string) {
       }
 
       if (error) throw error;
-      if (!data) return null;
+      if (!data) {
+        // Slug (or id) matched no active product. It may be an OLD slug that was
+        // renamed (clinical wording removed from URLs) — resolve it to the
+        // CURRENT slug and signal a redirect so bookmarks, shared quiz lists,
+        // WhatsApp links and Google results keep working. Only redirect when the
+        // resolved slug DIFFERS from the requested one (never loop); an unknown
+        // slug resolves to null and falls through to the normal not-found state.
+        try {
+          const { data: resolved } = await (supabase as any).rpc("resolve_product_slug", { p_slug: slug });
+          if (resolved && resolved !== slug) return { redirectTo: resolved as string };
+        } catch { /* resolver is best-effort; fall through to not-found */ }
+        return null;
+      }
       return { adapted: adaptProduct(data), raw: data };
     },
     staleTime: 5 * 60 * 1000,
@@ -70,9 +82,21 @@ function useProduct(slug: string) {
 /* ── Image Zoom Modal ── */
 export default function ProductPage() {
   const { slug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const { data, isLoading } = useProduct(slug || "");
   const product = data?.adapted || null;
   const raw = data?.raw;
+  // If the requested slug was renamed, useProduct returns a redirect target
+  // (the current slug) instead of a product.
+  const redirectTo = (data as any)?.redirectTo as string | undefined;
+
+  // Old-slug -> current-slug redirect. REPLACE so the broken URL does not stay
+  // in history. Guarded on !== slug so it can never loop.
+  useEffect(() => {
+    if (redirectTo && redirectTo !== slug) {
+      navigate(`/products/${redirectTo}`, { replace: true });
+    }
+  }, [redirectTo, slug, navigate]);
 
 
 
@@ -99,6 +123,9 @@ export default function ProductPage() {
   }, [product?.id]);
 
   if (isLoading) return <ProductPageSkeleton />;
+  // While a rename redirect is in flight, hold the skeleton rather than flash
+  // the not-found screen; the effect above swaps the URL to the current slug.
+  if (redirectTo && redirectTo !== slug) return <ProductPageSkeleton />;
   if (!product) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
       <h1 className="pf text-2xl font-bold">Product not found</h1>
