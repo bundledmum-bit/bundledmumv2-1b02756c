@@ -19,7 +19,6 @@ import {
   sellerInitials,
 } from "../lib/format";
 import VerifiedBadge from "../components/VerifiedBadge";
-import HowThisWorksExplainer from "../components/HowThisWorksExplainer";
 import HowThisWorksSheet from "../components/HowThisWorksSheet";
 import MakeOfferSheet from "../checkout/MakeOfferSheet";
 import AskQuestionSheet from "../checkout/AskQuestionSheet";
@@ -753,8 +752,6 @@ export default function ListingDetailPage() {
             ))}
           </div>
         )}
-
-        <HowThisWorksExplainer sellerName={sellerDisplayName(listing)} />
 
         {/* Ask for a lower price (design 23a, buyer-facing copy per the
             "Ask for a lower price" pass). Hidden entirely when the feature is

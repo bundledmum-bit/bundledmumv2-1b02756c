@@ -553,56 +553,6 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-thumbs { grid-template-columns: repeat(5, 1fr); }
 }
 
-/* ── How this works, listing detail (design 19a) ──
-   Replaces the old single green reassurance line. Collapsed by default; the
-   headline + tick are always visible with no interaction, tapping opens six
-   numbered steps in place. Same accordion mechanics as the browse category
-   groups (chevron rotate, fade-in, reduced-motion respected). Renders two
-   step lists (long single-column, short 2-column) and toggles which is
-   visible by breakpoint, mobile default / desktop override, matching every
-   other desktop reflow on this page. */
-.mkt-howworks { background: var(--mkt-green-light); border-radius: 13px; padding: 13px; display: flex; flex-direction: column; gap: 2px; }
-.mkt-howworks-head { width: 100%; box-sizing: border-box; background: none; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left; }
-.mkt-howworks-icon { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 13px/24px 'Lato', sans-serif; text-align: center; }
-.mkt-howworks-title { flex: 1; font: 800 14.5px/1.3 'Nunito', sans-serif; color: var(--mkt-green-dark); }
-.mkt-howworks-title .short { display: none; }
-.mkt-howworks-chev { flex: 0 0 22px; width: 22px; height: 22px; border-radius: 50%; background: #fff; color: var(--mkt-green); font: 700 12px/22px 'Lato', sans-serif; text-align: center; transition: transform 0.2s ease; }
-.mkt-howworks-chev.open { transform: rotate(180deg); }
-.mkt-howworks-caption { padding-left: 34px; margin-top: 4px; font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); }
-.mkt-howworks-caption .short { display: none; }
-.mkt-howworks-body { display: flex; flex-direction: column; gap: 11px; margin-top: 9px; animation: mkt-howworks-in 0.18s ease; }
-@keyframes mkt-howworks-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.mkt-howworks-divider { height: 1px; background: #BFDECB; }
-.mkt-howworks-steps { display: flex; flex-direction: column; gap: 9px; }
-.mkt-howworks-steps.short { display: none; }
-.mkt-howworks-step { display: flex; gap: 10px; align-items: flex-start; }
-.mkt-howworks-step .num { flex: 0 0 19px; width: 19px; height: 19px; border-radius: 50%; background: #fff; color: var(--mkt-green-dark); font: 800 10.5px/19px 'Nunito', sans-serif; text-align: center; }
-.mkt-howworks-step span:last-child { font: 400 12.5px/1.45 'Lato', sans-serif; color: var(--mkt-black); }
-.mkt-howworks-step.final .num { background: var(--mkt-green); color: #fff; }
-.mkt-howworks-step.final span:last-child { font-weight: 700; }
-.mkt-howworks-trust { display: flex; align-items: center; gap: 7px; border-top: 1px solid #BFDECB; padding-top: 9px; }
-.mkt-howworks-trust .tick { flex: 0 0 15px; width: 15px; height: 15px; border-radius: 50%; background: var(--mkt-green); color: #fff; font: 700 9px/15px 'Lato', sans-serif; text-align: center; }
-.mkt-howworks-trust span:last-child { font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-green-dark); }
-@media (prefers-reduced-motion: reduce) {
-  .mkt-howworks-chev { transition: none; }
-  .mkt-howworks-body { animation: none; }
-}
-@media (min-width: 1024px) {
-  .mkt-howworks-icon { flex-basis: 22px; width: 22px; height: 22px; }
-  .mkt-howworks-title { font-size: 13.5px; }
-  .mkt-howworks-title .long { display: none; }
-  .mkt-howworks-title .short { display: inline; }
-  .mkt-howworks-chev { flex-basis: 20px; width: 20px; height: 20px; font-size: 11px; line-height: 20px; }
-  .mkt-howworks-caption { padding-left: 31px; font-size: 11.5px; }
-  .mkt-howworks-caption .long { display: none; }
-  .mkt-howworks-caption .short { display: inline; }
-  .mkt-howworks-steps.long { display: none; }
-  .mkt-howworks-steps.short { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 10px; }
-  .mkt-howworks-step .num { flex-basis: 16px; width: 16px; height: 16px; font-size: 9px; line-height: 16px; }
-  .mkt-howworks-step span:last-child { font-size: 11px; line-height: 1.4; }
-  .mkt-howworks-trust .tick { flex-basis: 14px; width: 14px; height: 14px; font-size: 8px; line-height: 14px; }
-  .mkt-howworks-trust span:last-child { font-size: 10.5px; }
-}
 
 /* ==================== SELL SIDE ==================== */
 /* Semantic error red, used only for validation and rejected states (the

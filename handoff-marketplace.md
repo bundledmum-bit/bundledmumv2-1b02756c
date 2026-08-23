@@ -7760,3 +7760,30 @@ Files touched: `marketplace/deliverability.ts`, `lib/buyerState.ts`, `components
 Files touched: `components/HowThisWorksSheet.tsx` (new), `pages/ListingDetailPage.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 130. Removed HowThisWorksExplainer, the four-step sheet replaces it (2026-08-21)
+
+**Why**: §129 shipped the four-step "How this works" sheet and flagged that `HowThisWorksExplainer` (design 19a) already answered the same question a few rows below it — an inline collapsible with seven equally weighted steps. Confirmed as a genuine duplication rather than an intentional pairing, so the old one goes.
+
+**Check 1, used anywhere else: no.** Exactly three references existed — its own definition, plus the import and single render on `ListingDetailPage`. No other page used it and no other component used its `.mkt-howworks*` classes, so the component file was deleted outright rather than merely unmounted. Its 38 CSS rules and their comment block (50 lines) were removed with it; brace balance re-verified at 0. The standalone `/how-it-works` page is a different component (`HowItWorksPage`) and is untouched.
+
+**Check 2, what the seven said that the four do not.** Old 3 maps to new 1, old 4 partially to new 2, old 6 to new 3, old 7 to new 4, and old 2 is absorbed into new 3. Four things actually went, not three — the old block also carried a trust line beneath its steps:
+
+| Dropped | Survives elsewhere? | Call |
+|---|---|---|
+| "You pay BundledMum, never {seller} directly" | **No** | **Flagged as genuinely lost** |
+| "cost agreed between you" (who covers delivery) | **No** — §126's `deliveryLine` rewrite dropped the cost clause | **Flagged as genuinely lost** |
+| "They ship and upload a photo of the parcel" | No, but it is post-purchase dispatch mechanics | Fine to drop |
+| "Every seller is checked and every listing reviewed before it goes live" | Partly — `VerifiedBadge` covers the seller half, only for verified sellers | Fine to drop |
+
+**Two were reported to the user rather than dropped silently**, per the instruction. The first matters most: new step 3 says "{seller} is not paid until you confirm", but a buyer who believes their money went straight to the seller has no reason to find that credible, and `ProtectionBadge` states an outcome ("We refund you if it's not as described") not the mechanism. Recommended folding it into the sheet's step 1 rather than adding a fifth step. **The sheet was NOT changed** — the brief explicitly ruled that out, so this is left for a decision.
+
+**The page reads well where it sat.** Measured live: the gap between the spec block and the first ask button is 102px, which is exactly `19px` (why-they're-selling note) + `41px` (description) + `3 × 14px` (the flex parent's uniform row gap). No orphaned space, no collapsed margin, nothing brought together awkwardly — the description now flows into "Ask {seller} a question" at the same rhythm as every other pair on the page. Confirmed visually.
+
+**The new sheet still works**, re-verified after removal: opens from the trigger, four steps, step 3 the hero card, and all four close paths (✕, backdrop, Escape, "Got it") pass, with scroll position held at y=700 throughout.
+
+**Preserved**: the sheet and its trigger, the protection badge the trigger sits under, the delivery terms block and its personalised wording, every other listing action, sections 7-30. `sellerDisplayName` was the removed call's only argument but is still used twice elsewhere on the page, so no orphaned import.
+
+Files touched: `components/HowThisWorksExplainer.tsx` (deleted), `pages/ListingDetailPage.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
