@@ -52,7 +52,13 @@ export default function HowThisWorksSheet({
   }, [onClose]);
 
   const steps = [
-    `When you buy this item, we connect you with the seller, ${sellerName}.`,
+    // Carries the MECHANISM, not just the outcome. Step 3 asserts she is
+    // not paid until you confirm, which a buyer has no reason to believe
+    // if they think their money went straight to her — so "you pay
+    // BundledMum, never her directly" belongs here. Recovered from the old
+    // inline explainer removed in §130, which was the only place that said
+    // it; the protection badge states the outcome, never the mechanism.
+    `When you buy this item you pay BundledMum, never ${sellerName} directly, and we connect you with her.`,
     `You can ask her for more details about the item and agree how it reaches you.`,
     `${sellerName} is not paid until the item reaches you and you confirm it is as described.`,
     `If it is not as described, send it back and we refund you the same day ${sellerName} confirms it arrived back.`,

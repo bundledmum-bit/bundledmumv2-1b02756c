@@ -7787,3 +7787,21 @@ Files touched: `components/HowThisWorksSheet.tsx` (new), `pages/ListingDetailPag
 Files touched: `components/HowThisWorksExplainer.tsx` (deleted), `pages/ListingDetailPage.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 131. Step 1 of the how-it-works sheet carries the mechanism, not just the outcome (2026-08-21)
+
+**Why**: §130 removed `HowThisWorksExplainer`, and the audit flagged that "you pay BundledMum, never {seller} directly" survived nowhere. Step 3 asserts *"{seller} is not paid until you confirm"*, but a buyer who believes their money went straight to the seller has no reason to find that credible, and `ProtectionBadge` states the outcome ("We refund you if it's not as described") never the mechanism. Recommendation accepted, folded into step 1 rather than added as a fifth step.
+
+**Step 1 as shipped** (real seller): `When you buy this item you pay BundledMum, never Precious directly, and we connect you with her.`
+
+**Steps 2, 3 and 4 unchanged**, verified word for word against the previous commit. Still four steps, no fifth. Step 3 remains the hero card in solid green (`rgb(45,106,79)`).
+
+**The length question, measured rather than assumed.** Step 1 grew from one line to 62px tall. At **320x568** (iPhone SE, the smallest realistic device): the sheet is 427px tall in a 568px viewport, step 3's card runs 341-428px, so it is **fully visible with 140px of clearance below**, and the sheet does not scroll at all (`overflowPx: 0`) — even "Got it" is on screen. Desktop is unaffected: 560px dialog, steps 1-2 still a `244px 244px` grid, hero still full width at 500px, 544px tall in a 900px viewport, no scrolling.
+
+**Preserved and re-verified**: all four close paths (✕, backdrop, Escape, "Got it"), scroll position held at y=600 across every one of them, and the trigger still 14px under the protection badge.
+
+**Deliberately still out**, per the agreed reasoning: delivery cost (negotiated per item, a blanket line would over-promise in the other direction), the dispatch photo (post-purchase mechanics, not a pre-purchase concern), and seller checking (covered by `VerifiedBadge`).
+
+Files touched: `components/HowThisWorksSheet.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from this file.
