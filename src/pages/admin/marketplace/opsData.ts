@@ -503,6 +503,11 @@ export function relativeTimeAgo(iso: string): string {
  * itself returns, not this one. */
 export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urgency: number }> = [
   { key: "unanswered_question", chipLabel: "Waiting on answer", urgency: -1 },
+  // Urgency 0, and the RPC emits it second, directly after the unanswered
+  // question — so it sits high here too. A buyer asking to see an item
+  // working is the strongest buying signal on the marketplace, which is
+  // why it outranks an unanswered offer.
+  { key: "video_request_pending", chipLabel: "A buyer asked for a video", urgency: 0 },
   { key: "sale_awaiting_dispatch", chipLabel: "Awaiting dispatch", urgency: 0 },
   { key: "return_awaiting_confirmation", chipLabel: "Return unconfirmed", urgency: 0 },
   { key: "offer_awaiting_response", chipLabel: "Offer unanswered", urgency: 1 },
@@ -515,6 +520,11 @@ export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urg
   // could not be filtered to or measured. Urgency matches the RPC's own.
   { key: "missing_delivery_prefs", chipLabel: "Buyers cannot tell if they will send", urgency: 2 },
   { key: "listed_no_sales", chipLabel: "Live, no sale", urgency: 3 },
+  // Urgency 4, the RPC's lowest, so it sits last. Same bug as
+  // missing_delivery_prefs had: returned by the RPC all along and visible
+  // under "All" via the label fallback, but with no entry here it had no
+  // chip and no count, so it could not be filtered to or measured.
+  { key: "seller_no_review", chipLabel: "Has not left feedback", urgency: 4 },
 ];
 
 /** Two types now, not the one the source design was built against (its own
