@@ -56,12 +56,14 @@ export default function BundleDetailPage() {
   }, [bundle]);
 
   useEffect(() => {
-    if (bundle) {
+    // Skip ALL Meta tracking for ad-excluded bundles. They stay fully
+    // shoppable; only ad-platform signal is withheld. No content_name is sent
+    // either, keeping product names out of Meta; content_ids still suffice.
+    if (bundle && !bundle.excludeFromAds) {
       // Title is owned by <Seo> (Helmet) in the render below; a second writer
       // here would race it, same trap HomePage had.
       pixelTrack("ViewContent", pixelMoney(Number((bundle as any).price ?? (bundle as any).total_price ?? 0), {
         content_ids: [bundle.id],
-        content_name: bundle.name,
         content_type: "product_group",
       }));
     }

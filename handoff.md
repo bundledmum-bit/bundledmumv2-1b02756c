@@ -1,5 +1,50 @@
 # Handoff
 
+## Meta pixel — clinical-signal removal (DONE, this turn)
+Meta restricted the storefront pixel as "associated with medical conditions". Root
+cause (from the prior audit): clinical product names reached Meta via (a) `content_name`
+on ViewContent/AddToCart, (b) name-based product URLs on PageView, (c) `meta-catalog-feed`
+shipping the whole clinical inventory. Two new admin-controllable DB flags now gate
+ad-platform exposure only (items stay fully shoppable): `products.exclude_from_ad_platforms`
+(54 active TRUE) and `bundles.exclude_from_ad_platforms` (9 TRUE).
+
+**Four changes made:**
+1. **Catalog feeds** — `meta-catalog-feed`: added `exclude_from_ad_platforms` to the embedded
+   products select + an in-loop skip (`skippedAdExcluded` counter + `X-Skipped-Ad-Excluded`
+   header). **727 feed rows before → 92 dropped (the 54 flagged products' brand/SKU rows) →
+   635 remain.** `marketplace-meta-catalog-feed` **left unchanged** — it draws only from
+   `marketplace_listings` (user-generated), never the `products` table, so 0 rows dropped.
+2. **Storefront pixel — names removed**: dropped `content_name` from ViewContent
+   ([ProductPage.tsx](src/pages/ProductPage.tsx), [BundleDetailPage.tsx](src/pages/BundleDetailPage.tsx))
+   and AddToCart ([cart.tsx](src/lib/cart.tsx)). Events now send content_ids/content_type/value/
+   currency only (matching Purchase). Applied to ALL products.
+3. **Storefront pixel — suppressed for flagged items**: `adaptProduct`/`adaptBundle`
+   ([supabaseAdapters.ts](src/lib/supabaseAdapters.ts)) now carry `excludeFromAds` (from the DB
+   flag). ProductPage/BundleDetailPage fire NO ViewContent, and cart.tsx fires NO AddToCart,
+   when the flag is true. Read from data already fetched (`products.*` / `bundles.*`).
+4. **Marketplace pixel + CAPI — titles removed**: dropped `content_name` from ViewContent +
+   both AddToCart pixel calls ([ListingDetailPage.tsx](src/marketplace/pages/ListingDetailPage.tsx)),
+   from the 3 CAPI bodies, from the [metaConversion.ts](src/marketplace/lib/metaConversion.ts)
+   type, and from `custom_data` in `send-meta-conversion-event`. Kept content_id, value,
+   currency, and all hashed user-data matching (fbp/fbc/IP/UA/SHA-256 email+phone).
+
+**Untouched (as required):** no slugs/URLs changed; quiz untouched (still clean — no
+stage/hospital/delivery/c-section reaches Meta); Search `search_string` left as-is (could be
+dropped safely but Meta still captures `?q=` from the URL, so it's only partial). Flagged
+items remain fully visible and purchasable — the flag governs ad-platform data only.
+
+**Residual clinical signal still reaching Meta (flagged for a follow-up, NOT in scope here):**
+the **name-based product URLs** (`/products/catheter`, `/products/surgical-gloves`, …) are still
+captured by PageView for flagged AND unflagged clinical items — suppressing events on flagged
+PDPs stops ViewContent/AddToCart but not the PageView URL. De-clinicalising those slugs (a
+separate task, explicitly out of scope) is the remaining lever.
+
+**Edge-function deploy note:** repo copies of `meta-catalog-feed` + `send-meta-conversion-event`
+are updated and byte-correct; MCP `deploy_edge_function` hit a harness serialization bug this
+turn (verify_jwt/files coerced to strings), so they were deployed via the Lovable git-sync on
+push to main (same mechanism that redeployed test-smtp→v27 in the gateway sweep). Verify with
+`get_edge_function` that both reflect the changes; MCP-redeploy if git-sync lags.
+
 ## Lovable connector gateway is DEAD project-wide — ALL email fns migrated to direct Resend (COMPLETE)
 - **Finding**: the Lovable connector gateway `https://connector-gateway.lovable.dev/resend/emails`
   (auth `Bearer ${LOVABLE_API_KEY}` + `X-Connection-Api-Key: ${RESEND_API_KEY}`) returns

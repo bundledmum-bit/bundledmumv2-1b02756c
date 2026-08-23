@@ -50,7 +50,6 @@ Deno.serve(async (req) => {
       event_source_url,
       value,
       content_id,
-      content_name,
       content_type,     // 'product', needed for dynamic catalog ads to resolve
       num_items,        // context on checkout events
       email,
@@ -85,7 +84,9 @@ Deno.serve(async (req) => {
     const customData: Record<string, unknown> = {};
     if (value != null) { customData.value = Number(value); customData.currency = 'NGN'; }
     if (content_id) customData.content_ids = [content_id];
-    if (content_name) customData.content_name = content_name;
+    // content_name is intentionally NOT forwarded to Meta: listing/product
+    // names are kept out of the ad data stream. content_ids still resolve
+    // catalog matching for dynamic ads.
     // content_ids alone is not enough for dynamic ads, Meta needs to know these
     // ids refer to catalog products rather than something else
     if (content_type) customData.content_type = content_type;

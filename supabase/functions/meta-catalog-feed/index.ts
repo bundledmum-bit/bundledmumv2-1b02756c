@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
           id, name, slug, description, why_included, long_description,
           image_url, category, subcategory,
           is_active, is_consumable, is_convenience, is_gift_box,
-          bundle_label, deleted_at
+          bundle_label, deleted_at, exclude_from_ad_platforms
         )
       `)
       .eq('products.is_active', true)
@@ -110,10 +110,15 @@ Deno.serve(async (req) => {
     const rows: string[] = [headers.join(',')];
     let skippedNoImage = 0;
     let skippedNoSlug = 0;
+    let skippedAdExcluded = 0;
 
     for (const b of data ?? []) {
       const p = (b as any).products;
       if (!p) continue;
+      // Ad-platform exclusion: products flagged exclude_from_ad_platforms stay
+      // fully shoppable on the site but must NOT be shipped to Meta's catalog
+      // (clinical/hospital-list items that read as medical to Meta's classifier).
+      if (p.exclude_from_ad_platforms === true) { skippedAdExcluded++; continue; }
       if (!p.slug) { skippedNoSlug++; continue; }
 
       const imageLink = b.image_url || p.image_url || null;
@@ -209,6 +214,7 @@ Deno.serve(async (req) => {
         'X-Row-Count': String(rows.length - 1),
         'X-Skipped-No-Image': String(skippedNoImage),
         'X-Skipped-No-Slug': String(skippedNoSlug),
+        'X-Skipped-Ad-Excluded': String(skippedAdExcluded),
       },
     });
   } catch (err) {

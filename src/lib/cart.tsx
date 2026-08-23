@@ -287,12 +287,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       console.warn("[ga] add_to_cart failed:", e);
     }
     // Meta Pixel AddToCart — one event per click (qty increment adds one item).
-    pixelTrack("AddToCart", pixelMoney(Number(product.selectedBrand?.price ?? product.price ?? 0), {
-      content_ids: [product.id],
-      content_name: product.name,
-      content_type: "product",
-      contents: [{ id: product.id, quantity: 1 }],
-    }));
+    // Skipped entirely for ad-excluded items (clinical/hospital-list products
+    // and flagged bundles); they stay fully shoppable, only ad signal is held
+    // back. No content_name is ever sent — content_ids drive optimisation.
+    if (product?.excludeFromAds !== true) {
+      pixelTrack("AddToCart", pixelMoney(Number(product.selectedBrand?.price ?? product.price ?? 0), {
+        content_ids: [product.id],
+        content_type: "product",
+        contents: [{ id: product.id, quantity: 1 }],
+      }));
+    }
     setJustAdded(true);
     setTimeout(() => setJustAdded(false), 400);
     return true;

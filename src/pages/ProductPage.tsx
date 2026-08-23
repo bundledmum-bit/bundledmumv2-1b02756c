@@ -83,13 +83,16 @@ export default function ProductPage() {
   const { data: settings } = useSiteSettings();
 
   useEffect(() => {
-    if (product) {
+    // Skip ALL Meta tracking for ad-excluded products (clinical/hospital-list
+    // items). They stay fully shoppable; only ad-platform signal is withheld.
+    if (product && !product.excludeFromAds) {
       // product_page_viewed removed: no analytics view/function reads it and it
       // duplicated product_viewed. Meta Pixel ViewContent below is unaffected.
+      // No content_name is sent — a name-free event stream keeps clinical
+      // product names out of Meta; content_ids still drive optimisation.
       const defaultBrand = product.brands?.[0];
       pixelTrack("ViewContent", pixelMoney(Number(defaultBrand?.price ?? 0), {
         content_ids: [product.id],
-        content_name: product.name,
         content_type: "product",
       }));
     }

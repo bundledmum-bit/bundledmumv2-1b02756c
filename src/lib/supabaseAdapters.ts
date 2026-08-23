@@ -78,6 +78,11 @@ export interface Product {
   safetyInfo?: string;
   /** True when the product-level OOS flag is set, regardless of brand stock. */
   isOutOfStock: boolean;
+  /** DB flag products.exclude_from_ad_platforms. When true, the product is
+   * fully shoppable but MUST NOT be sent to ad platforms (Meta) — the
+   * storefront skips its ViewContent/AddToCart pixel events and the catalog
+   * feed drops it. Customer-facing behaviour is unaffected. */
+  excludeFromAds: boolean;
 }
 
 // ─── OOS helper ───────────────────────────────────────────────
@@ -158,6 +163,11 @@ export interface Bundle {
   itemCount?: number;
   discountPercent?: number;
   priceMode?: string;
+  /** DB flag bundles.exclude_from_ad_platforms. When true, the bundle is
+   * fully shoppable but MUST NOT be sent to ad platforms (Meta) — the bundle
+   * detail page skips its ViewContent pixel event. Customer-facing behaviour
+   * is unaffected. */
+  excludeFromAds?: boolean;
 }
 
 // ─── Tier mapping ──────────────────────────────────────────────
@@ -291,6 +301,7 @@ export function adaptProduct(row: any): Product {
     stock: undefined,
     slug: row.slug,
     isOutOfStock: row.is_out_of_stock ?? false,
+    excludeFromAds: row.exclude_from_ad_platforms === true,
   };
 }
 
@@ -418,6 +429,7 @@ export function adaptBundle(row: any): Bundle {
     itemCount: row.item_count || items.length,
     discountPercent,
     priceMode,
+    excludeFromAds: row.exclude_from_ad_platforms === true,
   };
 }
 

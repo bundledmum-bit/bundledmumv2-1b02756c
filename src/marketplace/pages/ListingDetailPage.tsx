@@ -259,14 +259,13 @@ export default function ListingDetailPage() {
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
     const phone = buyerPhone ?? undefined;
-    track("ViewContent", { content_ids: [listing.id], content_type: "product", content_name: listing.title, value: listing.final_price_naira, currency: "NGN" }, eventId);
+    track("ViewContent", { content_ids: [listing.id], content_type: "product", value: listing.final_price_naira, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "ViewContent",
       event_id: eventId,
       event_source_url: window.location.href,
       content_id: listing.id,
       content_type: "product",
-      content_name: listing.title,
       value: listing.final_price_naira,
       email,
       phone,
@@ -417,14 +416,13 @@ export default function ListingDetailPage() {
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
     const phone = buyerPhone ?? undefined;
-    track("AddToCart", { content_ids: [listing.id], content_type: "product", content_name: listing.title, value, currency: "NGN" }, eventId);
+    track("AddToCart", { content_ids: [listing.id], content_type: "product", value, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "AddToCart",
       event_id: eventId,
       event_source_url: window.location.href,
       content_id: listing.id,
       content_type: "product",
-      content_name: listing.title,
       value,
       email,
       phone,
@@ -446,14 +444,13 @@ export default function ListingDetailPage() {
     const eventId = crypto.randomUUID();
     const email = isLoggedIn ? (user?.email ?? undefined) : undefined;
     const phone = buyerPhone ?? undefined;
-    track("AddToCart", { content_ids: [listing.id], content_type: "product", content_name: listing.title, value, currency: "NGN" }, eventId);
+    track("AddToCart", { content_ids: [listing.id], content_type: "product", value, currency: "NGN" }, eventId);
     sendMarketplaceConversionEvent({
       event_name: "AddToCart",
       event_id: eventId,
       event_source_url: window.location.href,
       content_id: listing.id,
       content_type: "product",
-      content_name: listing.title,
       value,
       email,
       phone,

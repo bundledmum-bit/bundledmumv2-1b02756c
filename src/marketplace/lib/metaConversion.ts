@@ -5,7 +5,8 @@ interface MarketplaceConversionEvent {
   event_id: string;
   event_source_url: string;
   content_id?: string;
-  content_name?: string;
+  // content_name is intentionally NOT sent to Meta — listing titles are kept
+  // out of the ad data stream. content_id still resolves catalog matching.
   /** Meta's dynamic-ads catalog matching needs this on ViewContent/AddToCart
    * to resolve content_id against the product catalog — always "product"
    * here, there is no other content type in this catalog. */
