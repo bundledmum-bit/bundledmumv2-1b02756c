@@ -46,7 +46,12 @@ function useProduct(slug: string) {
         .is("deleted_at", null)
         .maybeSingle();
 
-      if (!data) {
+      // The id-fallback query targets a uuid column, so Postgres 400s ("invalid
+      // input syntax for uuid") on a non-uuid slug. Only run it for uuid-shaped
+      // params — otherwise a renamed slug like "catheter" would throw here and
+      // never reach the resolve_product_slug fallback below.
+      const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
+      if (!data && looksLikeUuid) {
         const res = await supabase
           .from("products")
           .select("*, brands:brands_public!brands_product_id_fkey(id, product_id, brand_name, price, tier, is_default_for_tier, size_variant, in_stock, stock_quantity, display_order, image_url, stored_image_url, thumbnail_url, logo_url, compare_at_price, weight_range_kg, pack_count, diaper_type, sku, variant_type, description), product_sizes(*), product_colors(*), product_tags(*), product_images(*)")
