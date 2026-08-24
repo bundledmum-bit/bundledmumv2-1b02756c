@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { logUploadFailure } from "../lib/uploadFailureLog";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -45,19 +46,82 @@ export async function fetchListingPhotoAsFile(url: string, filename = "listing-p
  */
 export class UnsupportedImageError extends Error {}
 
+/** A step in the photo pipeline never came back. Distinct from
+ * UnsupportedImageError (a genuinely undecodable file) because the seller
+ * advice differs: retry versus choose a different photo. */
+export class ImageTimeoutError extends Error {}
+/** Still over the bucket's cap after every compression attempt. */
+export class ImageTooLargeError extends Error {}
+
+/**
+ * Timeouts for the photo path. Both wrap browser calls that are documented
+ * to hang rather than reject on some devices — createImageBitmap and
+ * canvas.toBlob — which is exactly how a seller ends up watching a spinner
+ * that never ends. Generous enough for a slow mid-range phone decoding a
+ * 12MP photo, finite so nothing waits forever.
+ */
+export const IMAGE_DECODE_TIMEOUT_MS = 15_000;
+export const IMAGE_ENCODE_TIMEOUT_MS = 15_000;
+/** Matches the marketplace-listings bucket's own 5MB file_size_limit. */
+export const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** Storage upload for a photo. Generous for a normal Nigerian mobile
+ * connection, finite for a genuinely stalled one. Matches the video
+ * upload's own ceiling (section 90). */
+export const IMAGE_UPLOAD_TIMEOUT_MS = 25_000;
+
 /** Decodes a file to a bitmap, trying the orientation-aware path first, then
  * a plain retry. Throws UnsupportedImageError only when BOTH attempts fail,
  * meaning the file is not a decodable image at all. */
 async function decodeBitmap(file: File): Promise<ImageBitmap> {
+  // Both attempts are raced against a timer. createImageBitmap can hang
+  // indefinitely rather than reject on some devices (the same class of iOS
+  // failure documented in sections 90 and 91 for video), and an
+  // un-timed-out hang here is precisely what leaves a seller staring at a
+  // spinner with no error and nothing logged.
+  const attempt = (opts?: ImageBitmapOptions) =>
+    withTimeout(
+      opts ? createImageBitmap(file, opts) : createImageBitmap(file),
+      IMAGE_DECODE_TIMEOUT_MS,
+      "That photo took too long to open. Please try again, or choose a different photo.",
+      ImageTimeoutError,
+    );
   try {
-    return await createImageBitmap(file, { imageOrientation: "from-image" } as ImageBitmapOptions);
-  } catch {
+    return await attempt({ imageOrientation: "from-image" } as ImageBitmapOptions);
+  } catch (first) {
+    // A timeout is NOT a decode failure — retrying the same hang just
+    // doubles the wait, so it surfaces immediately.
+    if (first instanceof ImageTimeoutError) {
+      logUploadFailure("decode_timeout", `createImageBitmap hung after ${IMAGE_DECODE_TIMEOUT_MS}ms`, file);
+      throw first;
+    }
     try {
-      return await createImageBitmap(file);
-    } catch {
-      throw new UnsupportedImageError(`"${file.name || "That file"}" does not look like a photo.`);
+      return await attempt();
+    } catch (second) {
+      if (second instanceof ImageTimeoutError) {
+        logUploadFailure("decode_timeout", `createImageBitmap hung after ${IMAGE_DECODE_TIMEOUT_MS}ms (retry)`, file);
+        throw second;
+      }
+      // Genuinely undecodable. HEIC is the common real cause: Chrome and
+      // Firefox cannot decode it at all, on any platform.
+      logUploadFailure("decode_unsupported", String((second as Error)?.message || second), file);
+      throw new UnsupportedImageError(
+        /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name || "")
+          ? `"${file.name || "That photo"}" is an iPhone HEIC photo, which this browser cannot open. In your iPhone Settings, choose Camera then Formats then Most Compatible, retake it, and it will upload fine.`
+          : `"${file.name || "That file"}" does not look like a photo.`,
+      );
     }
   }
+}
+
+/** canvas.toBlob, raced against a timer. It can fail to call back at all
+ * on a memory-pressured device, which is a silent hang, not an error. */
+function toBlobWithTimeout(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return withTimeout(
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality)),
+    IMAGE_ENCODE_TIMEOUT_MS,
+    "That photo took too long to process. Please try again, or choose a smaller photo.",
+    ImageTimeoutError,
+  );
 }
 
 /**
@@ -109,14 +173,27 @@ export async function compressImage(file: File, maxEdge = 1600, quality = 0.8): 
  * UnsupportedImageError, see decodeBitmap.
  */
 export async function processListingImage(file: File, size = 1200, quality = 0.82): Promise<Blob> {
-  if (typeof createImageBitmap !== "function") return compressImage(file);
+  if (typeof createImageBitmap !== "function") {
+    logUploadFailure("canvas_context", "createImageBitmap unavailable in this browser", file);
+    throw new UnsupportedImageError(
+      "This browser cannot process photos. Please try Chrome or Safari, or use a different device.",
+    );
+  }
   const bitmap = await decodeBitmap(file);
+
+  let canvas: HTMLCanvasElement;
+  let blob: Blob | null = null;
   try {
-    const canvas = document.createElement("canvas");
+    canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return compressImage(file);
+    if (!ctx) {
+      logUploadFailure("canvas_context", "getContext('2d') returned null", file);
+      throw new UnsupportedImageError(
+        "This device could not prepare that photo. Please close some other apps or tabs and try again.",
+      );
+    }
 
     // Cream backdrop, then square crop-to-fill, centre-weighted.
     ctx.fillStyle = "#FFF8F4";
@@ -129,11 +206,46 @@ export async function processListingImage(file: File, size = 1200, quality = 0.8
 
     drawWatermark(ctx, size);
 
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    return blob && blob.size > 0 ? blob : compressImage(file);
-  } catch {
-    return compressImage(file);
+    blob = await toBlobWithTimeout(canvas, quality);
+  } catch (e) {
+    // A timeout, or a failure already explained above, surfaces as-is. Only
+    // a genuinely unexpected canvas error becomes advice here — and it is
+    // NEVER swallowed into "upload the original untouched", which is what
+    // used to hand an un-compressed, un-watermarked 9MB HEIC to a 5MB bucket.
+    if (e instanceof ImageTimeoutError || e instanceof UnsupportedImageError) throw e;
+    logUploadFailure("canvas_draw", String((e as Error)?.message || e), file);
+    throw new UnsupportedImageError(
+      "Something went wrong preparing that photo. Please try again, or choose a different one.",
+    );
   }
+
+  if (!blob || blob.size === 0) {
+    logUploadFailure("compress", "canvas.toBlob returned empty", file);
+    throw new UnsupportedImageError(
+      "That photo could not be saved. Please try again, or choose a different one.",
+    );
+  }
+
+  // The check that never existed: is the RESULT actually small enough to
+  // upload? Previously nothing compared the output against the bucket's cap,
+  // so an oversized blob was only rejected later, by storage, as a generic
+  // "too large" at submit time. The canvas still holds the drawn pixels, so
+  // one lower-quality re-encode is cheap and rescues the common case of a
+  // 12MP photo landing just over the line.
+  if (blob.size > IMAGE_MAX_BYTES) {
+    const retry = await toBlobWithTimeout(canvas, 0.6).catch(() => null);
+    if (retry && retry.size > 0 && retry.size <= IMAGE_MAX_BYTES) return retry;
+    logUploadFailure(
+      "size_after_compress",
+      `${blob.size} bytes at q${quality}, ${retry ? `${retry.size} bytes at q0.6` : "retry failed"}`,
+      file,
+    );
+    throw new ImageTooLargeError(
+      "That photo is too large even after compressing. Please take it again at a lower quality, or choose a different photo.",
+    );
+  }
+
+  return blob;
 }
 
 /** Public bucket for the one optional listing video + its poster frame. */
@@ -231,9 +343,18 @@ const VIDEO_FPS = 24;
  * "Adding your video" forever, no error, nothing landing in storage,
  * because the code is still awaiting an event that was never coming. This
  * guarantees every step either finishes or gives up and says so. */
-export function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+  /** Which error to reject with. Defaults to VideoTimeoutError so every
+   * existing video call site behaves exactly as before; the photo path
+   * passes ImageTimeoutError so its own catch blocks can tell a hang from
+   * a genuinely undecodable file. */
+  ErrorClass: new (message: string) => Error = VideoTimeoutError,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new VideoTimeoutError(message)), ms);
+    const timer = setTimeout(() => reject(new ErrorClass(message)), ms);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
       (err) => { clearTimeout(timer); reject(err); },

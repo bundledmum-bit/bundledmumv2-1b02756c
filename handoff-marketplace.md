@@ -7805,3 +7805,52 @@ Files touched: `components/HowThisWorksExplainer.tsx` (deleted), `pages/ListingD
 Files touched: `components/HowThisWorksSheet.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from this file.
+
+## 132. Every photo failure is now visible and logged, and the silent fallback that caused it is gone (2026-08-21)
+
+**The report**: one seller cannot add images, while uploads demonstrably work for others (two listings completed in 24 hours, four photos each). Nothing was recorded, so nothing could be diagnosed.
+
+**Audit, every failure point and what the seller saw BEFORE**:
+
+| Stage | On failure | Seller saw |
+|---|---|---|
+| File selection | files past `MAX_PHOTOS` sliced off silently | **nothing** |
+| Decode (`createImageBitmap`) | both attempts fail → `UnsupportedImageError` | an error, correctly |
+| Decode **hang** | no timeout anywhere; `photoBusy` never clears | **spinner forever** |
+| Canvas context / draw | bare `catch {}` → fell through to `compressImage` | **nothing** |
+| Square crop / watermark | same bare `catch {}` | **nothing** |
+| `canvas.toBlob` returns null | fell through to `compressImage` | **nothing** |
+| `canvas.toBlob` **never calls back** | promise never settles, no timeout | **spinner forever** |
+| `compressImage` own catch | **returned the ORIGINAL file untouched** | **nothing** |
+| Size after compression | **no check existed at all** | nothing until storage rejected it |
+| Storage upload error | thrown → `describeUploadError` | an error, correctly |
+| Storage upload **hang** | no timeout | **spinner forever** |
+
+**The actual bug**: four separate paths swallowed into `compressImage(file)`, whose own `catch` returned the **raw original file**. So a 9MB HEIC that failed canvas processing was handed to the uploader unchanged, un-compressed and un-watermarked, and rejected later by the 5MB bucket as a generic "too large" at submit time. If instead `createImageBitmap` or `toBlob` simply never called back, `photoBusy` stayed `true` and the "+" button showed "…" forever. That is the literal reported symptom.
+
+**After — nothing fails silently.** `processListingImage` no longer falls back to the original file on any path; every branch either returns a processed blob or throws a typed error carrying its own message. Messages as shipped, all verified live:
+- HEIC this browser cannot decode: *"IMG_4821.HEIC is an iPhone HEIC photo, which this browser cannot open. In your iPhone Settings, choose Camera then Formats then Most Compatible, retake it, and it will upload fine."*
+- Not an image: *"invoice.pdf does not look like a photo."*
+- Decode hang: *"That photo took too long to open. Please try again, or choose a different photo."*
+- Encode hang: *"That photo took too long to process. Please try again, or choose a smaller photo."*
+- No canvas context: *"This device could not prepare that photo. Please close some other apps or tabs and try again."*
+- Unexpected canvas error: *"Something went wrong preparing that photo. Please try again, or choose a different one."*
+- Empty blob: *"That photo could not be saved. Please try again, or choose a different one."*
+- Still too large: *"That photo is too large even after compressing. Please take it again at a lower quality, or choose a different photo."* — stated in terms of the photo, not megabytes, as asked.
+- Upload stalled: *"The upload is taking too long. Please check your connection and try again."*
+
+`addPhotos` no longer flattens every cause into one "did not look like a photo" line; each error's own message is shown, deduplicated so three photos failing the same way read as one piece of advice.
+
+**Stage names logged** via `log_upload_failure`: `decode_timeout`, `decode_unsupported`, `canvas_context`, `canvas_draw`, `compress`, `size_after_compress`, `storage_upload`, `storage_upload_timeout`. Each carries the real file size, the real MIME type and `navigator.userAgent`. **Verified live end to end**: rows landed in `marketplace_upload_failures` with all four fields populated, including rows written automatically by the failure paths during testing (`decode_unsupported` on a HEIC, `size_after_compress` with both quality attempts recorded). Test rows were deleted afterwards; the table is back to 0. `logUploadFailure` is fire-and-forget, double-wrapped in try/catch, never awaited — logging cannot break an upload.
+
+**Timeouts chosen**: decode **15s**, encode **15s**, storage upload **25s**. The first two wrap `createImageBitmap` and `canvas.toBlob`, both documented to hang rather than reject on memory-pressured devices — the same class of failure as sections 90 and 91. 15s is a floor, not an expectation: a 12MP photo on a mid-range phone decodes in well under a second. 25s for upload matches the video path's own ceiling. A decode timeout is deliberately **not** retried, since retrying the same hang only doubles the wait. Verified live: a promise that never settles rejected with `ImageTimeoutError` at 402ms against a 400ms bound.
+
+**`withTimeout` reused, not duplicated** — it gained an optional error-class parameter defaulting to `VideoTimeoutError`, so every existing video call site behaves exactly as before while the photo path gets `ImageTimeoutError` and can distinguish a hang from an undecodable file.
+
+**HEIC: NOT reliably handled, stated plainly.** `createImageBitmap` is the only decode path, and **Chrome and Firefox cannot decode HEIC on any platform**. Safari can, via the OS codec. iOS normally transcodes to JPEG when picking from the camera roll, which is why most iPhone uploads work — but picking the same photo through the Files app keeps it HEIC, and an Android seller, or an iPhone user on Chrome, will fail. Worse, the bucket *accepts* `image/heic`, so before this change an un-decodable HEIC could be uploaded raw via the fallback and then fail to render anywhere. That path is now closed, and HEIC failures get their own specific, actionable message rather than a generic one. **Genuinely fixing HEIC would need a decoder library (heic2any or similar) — a real dependency decision, not something to paper over here.**
+
+**Preserved**: 4 photo minimum, square crop, watermark and compression all verified still working on a real image (2000x1200 in → 1200x1200 square JPEG out, 72KB → 32KB); the one-item notice, condition and category questions, location validation, and the first-listing delivery questions all untouched; sections 7-30.
+
+Files touched: `lib/uploadFailureLog.ts` (new), `sell/sellData.ts`, `sell/CreateListingPage.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

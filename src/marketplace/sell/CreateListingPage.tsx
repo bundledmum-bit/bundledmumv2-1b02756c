@@ -4,12 +4,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
 import {
-  sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError,
+  sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError, ImageTimeoutError, ImageTooLargeError, IMAGE_UPLOAD_TIMEOUT_MS,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
   shouldSkipVideoCompression, VideoTooLargeError, VideoTimeoutError, withTimeout, VIDEO_UPLOAD_TIMEOUT_MS,
 } from "./sellData";
 import AreaCombobox from "./AreaCombobox";
 import DeliveryHandoverChoice from "./DeliveryHandoverChoice";
+import { logUploadFailure } from "../lib/uploadFailureLog";
 import { useSellerListingInfo } from "./useSellerListingInfo";
 import { saveSellerDeliveryPrefs, type LocalHandover } from "./deliveryPrefs";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
@@ -516,19 +517,30 @@ export default function CreateListingPage() {
       // instance) is skipped with a clear message rather than added as a broken
       // tile or silently carried through to the upload step.
       const next: PhotoDraft[] = [];
-      const failed: string[] = [];
+      // Every failure now carries its OWN message, written for the actual
+      // cause, rather than being flattened into one "did not look like a
+      // photo" line that was wrong for most of them. Nothing here can fail
+      // silently: each branch either adds a photo or sets an error.
+      const problems: string[] = [];
       for (const file of chosen) {
         try {
           const blob = await processListingImage(file);
           next.push({ blob, url: URL.createObjectURL(blob) });
         } catch (e) {
-          if (e instanceof UnsupportedImageError) failed.push(file.name || "one file");
-          else throw e;
+          if (e instanceof UnsupportedImageError || e instanceof ImageTimeoutError || e instanceof ImageTooLargeError) {
+            problems.push(e.message);
+          } else {
+            // Genuinely unexpected: still shown, still logged, never swallowed.
+            logUploadFailure("compress", String((e as Error)?.message || e), file);
+            problems.push(`"${file.name || "That photo"}" could not be added. Please try again, or choose a different photo.`);
+          }
         }
       }
       setPhotos((p) => [...p, ...next]);
-      if (failed.length) {
-        setPhotoError(`${failed.length === 1 ? failed[0] : `${failed.length} files`} did not look like a photo and ${failed.length === 1 ? "was" : "were"} skipped. Please choose a JPEG, PNG, WEBP or HEIC image.`);
+      if (problems.length) {
+        // Deduplicated: three photos hitting the same cause should read as
+        // one piece of advice, not the same sentence three times.
+        setPhotoError(Array.from(new Set(problems)).join(" "));
       }
     } finally {
       setPhotoBusy(false);
@@ -684,14 +696,29 @@ export default function CreateListingPage() {
         const draft = photos[i];
         if (!draft.blob) { urls.push(draft.url); continue; }
         const path = `${user.id}/${Date.now()}-${i}.jpg`;
-        const { error: upErr } = await sdb.storage.from(LISTING_BUCKET).upload(path, draft.blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" });
-        if (upErr) throw upErr;
+        // Bounded, so a stalled connection surfaces as a message rather
+        // than a submit button that never comes back.
+        const { error: upErr } = await withTimeout(
+          sdb.storage.from(LISTING_BUCKET).upload(path, draft.blob, { cacheControl: "3600", upsert: false, contentType: "image/jpeg" }),
+          IMAGE_UPLOAD_TIMEOUT_MS,
+          "The upload is taking too long. Please check your connection and try again.",
+          ImageTimeoutError,
+        );
+        if (upErr) {
+          logUploadFailure("storage_upload", String(upErr.message || upErr), { size: draft.blob.size, type: "image/jpeg" });
+          throw upErr;
+        }
         const { data: pub } = sdb.storage.from(LISTING_BUCKET).getPublicUrl(path);
         urls.push(pub.publicUrl);
       }
     } catch (e) {
       setBusy(false);
-      setError(describeUploadError(e));
+      if (e instanceof ImageTimeoutError) {
+        logUploadFailure("storage_upload_timeout", `upload exceeded ${IMAGE_UPLOAD_TIMEOUT_MS}ms`, null);
+        setError(e.message);
+      } else {
+        setError(describeUploadError(e));
+      }
       return;
     }
 
