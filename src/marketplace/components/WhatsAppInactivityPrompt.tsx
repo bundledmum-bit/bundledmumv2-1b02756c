@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMarketplaceWhatsAppNumber, waHref } from "../lib/whatsapp";
 import { buildMessage, listingUrlFor, markContactedUs, hasContactedUs, type WhatsAppHelpContext } from "./WhatsAppHelpLink";
+import { deliveryGateChannel, pendingActionChannel } from "../lib/promptVisibility";
 
 /**
  * The floating WhatsApp prompt from the Claude Design mobile marketplace
@@ -115,6 +116,17 @@ export default function WhatsAppInactivityPrompt({ context, listingId, itemName,
   const isMobile = useIsMobile();
   const number = useMarketplaceWhatsAppNumber();
   const [risen, setRisen] = useState(false);
+  // Yields to the two prompts above it: the blocking delivery gate, and a
+  // pending action where a real person is waiting. A hesitation nudge can
+  // always wait for either.
+  const [outrankedVisible, setOutrankedVisible] = useState(false);
+  useEffect(() => {
+    let gate = false, pending = false;
+    const push = () => setOutrankedVisible(gate || pending);
+    const offGate = deliveryGateChannel.subscribe((v) => { gate = v; push(); });
+    const offPending = pendingActionChannel.subscribe((v) => { pending = v; push(); });
+    return () => { offGate(); offPending(); };
+  }, []);
   const [dismissed, setDismissed] = useState(false);
   const firedRef = useRef(false);
 
@@ -184,11 +196,11 @@ export default function WhatsAppInactivityPrompt({ context, listingId, itemName,
   // away from this page mid-prompt must not leave the banner suppressed
   // forever for a card that no longer exists.
   useEffect(() => {
-    setPromptVisible(risen && !dismissed);
+    setPromptVisible(risen && !dismissed && !outrankedVisible);
     return () => setPromptVisible(false);
-  }, [risen, dismissed]);
+  }, [risen, dismissed, outrankedVisible]);
 
-  if (!risen || dismissed) return null;
+  if (!risen || dismissed || outrankedVisible) return null;
 
   const message = buildMessage(context, itemName, price, listingUrlFor(listingId));
   const copy = PROMPT_COPY[context];

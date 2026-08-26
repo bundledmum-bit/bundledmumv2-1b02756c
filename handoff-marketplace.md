@@ -7854,3 +7854,31 @@ Files touched: `components/HowThisWorksSheet.tsx`.
 Files touched: `lib/uploadFailureLog.ts` (new), `sell/sellData.ts`, `sell/CreateListingPage.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 133. Pending action prompt: telling people someone is waiting on them (2026-08-21)
+
+**Why**: four sellers right now have a buyer waiting, two on a video and two on a question, and none of them know unless they check email. The same in reverse for a buyer whose video arrived, question was answered, or offer was accepted.
+
+**Built**: `components/PendingActionPrompt.tsx`, mounted once in `MarketplaceApp` beside the gate and the banner. Reads `my_pending_action()`, which returns at most one row and already decides priority across both roles in one call. **Its ordering is used exactly as returned and is not re-ranked**, since the same person is often both buyer and seller and should see whichever matters more rather than two competing prompts.
+
+**Appears immediately** for a signed in person with something pending, no engagement delay. Not the intrusive-interstitial problem: the query is gated `enabled: isLoggedIn && !authLoading`, so it never runs for a guest, and Googlebot is never signed in. Same reasoning as the delivery gate.
+
+**What a seller with a video request sees**, verbatim from the deployed function: headline **"A buyer wants to see it working"**, detail **"They asked for a short video before buying. About thirty seconds is plenty."**, the item name, and a coral **"Send the video"** button going to `/sell/dashboard` (the RPC's `/marketplace` prefix is stripped, since that is the router's own basename). Measured at 183px, 22.6% of a 812px viewport, with a 26px close.
+
+**Dismissal is keyed per item**: `kind + link + listing_title`, 14-day expiry, in `lib/pendingActionDismissed.ts`. `my_pending_action` returns **no stable row id**, and `link` is identical for every video (`/marketplace/orders` for a buyer, `/marketplace/sell/dashboard` for a seller), so the title is what separates items. Verified live: dismissing "your video is ready" leaves a different KIND showing and a different ITEM showing. **Known limitation, stated rather than hidden**: two video requests on the *same* listing share a key, because nothing in the payload distinguishes them. Dismissing also happens on the CTA, so acting on it does not leave the prompt waiting on the way back.
+
+**Precedence, and a cycle that had to be resolved.** The required order is gate > pending > whatsapp > install, which transitively means **gate > whatsapp**. But the gate previously *yielded to* the whatsapp prompt, so wiring the new order naively gave gate -> whatsapp -> pending -> gate and would have oscillated. Resolved by making the order a strict total order: the gate no longer yields to anything and is strictly highest. That is a deliberate behaviour change to the gate, made because the stated hierarchy requires it.
+
+New `lib/promptVisibility.ts` holds the shared channel factory plus `deliveryGateChannel` and `pendingActionChannel`, so the pub/sub boilerplate is not hand-rolled a fourth time. Each prompt now subscribes only to strictly higher ones, which makes cycles impossible by construction.
+
+**Verified by measurement, not screenshots**, driving the real channels and evaluating each consumer's actual suppression expression: gate active -> only the gate; gate resolved with something pending -> only pending; nothing pending -> only whatsapp; nothing else -> only install. **Exactly one visible in all four scenarios.** Separately, with all three force-mounted, `getBoundingClientRect` and `elementFromPoint` confirm z-order 80 / 40 / 30 and that the gate owns the pixel at both viewport centre and bottom centre.
+
+**Never during checkout or listing creation**: suppressed on `/checkout/*` (including `/checkout/cart` and `/checkout/return`), `/sell/new` and `/sell/listings/*`; allowed on browse, listing detail, cart, dashboard and orders. Verified against the shipped expression.
+
+**A real bug found in the deployed RPC, reported not fixed** (backend changes are a non-goal): the `question_answered` arm selects `q.id` then builds `'/marketplace/listing/' || r.id` — the **question** id in a **listing** URL. Compare `offer_accepted`, which correctly selects `l.id as lid`. A buyer tapping "See the answer" will land on a not-found page. Needs a one-line fix in `my_pending_action`.
+
+**Preserved**: the delivery gate's own gating, timing, focus trap and non-dismissibility (only its suppression input changed); the install banner and whatsapp prompt, both still working and now correctly yielding; the install CTA channel, untouched; sections 7-30.
+
+Files touched: `components/PendingActionPrompt.tsx`, `lib/promptVisibility.ts`, `lib/pendingActionDismissed.ts` (all new); `MarketplaceApp.tsx`, `sell/SellerDeliveryGate.tsx`, `MarketplaceInstallBanner.tsx`, `components/WhatsAppInactivityPrompt.tsx`, `marketplace.css`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

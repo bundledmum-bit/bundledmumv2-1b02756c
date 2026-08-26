@@ -4,7 +4,7 @@ import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
 import { useSellerListingInfo } from "./useSellerListingInfo";
 import { saveSellerDeliveryPrefs, type LocalHandover } from "./deliveryPrefs";
 import DeliveryHandoverChoice from "./DeliveryHandoverChoice";
-import { subscribeToWaPromptVisible } from "../components/WhatsAppInactivityPrompt";
+import { deliveryGateChannel } from "../lib/promptVisibility";
 
 /**
  * The blocking ask, in TWO steps.
@@ -51,8 +51,6 @@ export default function SellerDeliveryGate() {
   // Still yields to the WhatsApp inactivity prompt: that fires because
   // someone is hesitating over a real purchase, and two overlays at once
   // reads as broken.
-  const [waPromptVisible, setWaPromptVisible] = useState(false);
-  useEffect(() => subscribeToWaPromptVisible(setWaPromptVisible), []);
 
   // Anywhere on the marketplace, not just the seller area — a seller who
   // has not answered should meet this as soon as they arrive. Excluded:
@@ -70,8 +68,16 @@ export default function SellerDeliveryGate() {
   const shouldShow = !loading
     && !!seller
     && !hasCompleteDeliveryPrefs(seller)
-    && !waPromptVisible
     && !onExcludedRoute;
+
+  // Published so every lower-priority prompt can stand down. This gate is
+  // now strictly highest: it used to yield to the WhatsApp prompt, but
+  // keeping that alongside gate > pending > whatsapp would have formed a
+  // cycle and oscillated. See lib/promptVisibility.ts.
+  useEffect(() => {
+    deliveryGateChannel.set(shouldShow);
+    return () => deliveryGateChannel.set(false);
+  }, [shouldShow]);
 
   // Escape must not close this, and the page behind must not scroll. Both
   // are part of "non-dismissible" rather than decoration.

@@ -5,6 +5,7 @@ import PixelRouteListener from "@/components/PixelRouteListener";
 import InstallPage from "./InstallPage";
 import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
 import SellerDeliveryGate from "./sell/SellerDeliveryGate";
+import PendingActionPrompt from "./components/PendingActionPrompt";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -147,6 +148,9 @@ export default function MarketplaceApp() {
               listings but has never said how same-state buyers get them.
               Self-gating: gone for good once answered. */}
           <SellerDeliveryGate />
+          {/* Someone is waiting on this person. Outranks the install banner
+              and the WhatsApp nudge, yields to the blocking gate above. */}
+          <PendingActionPrompt />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

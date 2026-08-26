@@ -2915,3 +2915,49 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
     border-radius: 11px; padding: 11px 22px; font: 800 13.5px/1 'Nunito', sans-serif;
   }
 }
+
+/* ---------------------------------------------------------------------
+   Pending action: someone is waiting on this person. A floating card, not
+   a modal — it is dismissible and must never block. Sits above the install
+   banner and the WhatsApp nudge in both z-order and priority; the blocking
+   delivery gate (z-index 80) still sits over everything.
+   --------------------------------------------------------------------- */
+.mkt-pending {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  padding: 0 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex; justify-content: center; pointer-events: none;
+}
+.mkt-pending-card {
+  pointer-events: auto; position: relative; width: 100%; max-width: 520px; box-sizing: border-box;
+  background: var(--mkt-cream); border: 1.5px solid var(--mkt-coral); border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(26, 26, 26, 0.18);
+  padding: 14px 15px 15px; display: flex; flex-direction: column; gap: 11px;
+}
+.mkt-pending-card .x {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--mkt-grey-chip); border: none; color: var(--mkt-muted);
+  font: 700 13px/26px 'Lato', sans-serif; text-align: center; cursor: pointer; padding: 0;
+}
+.mkt-pending-card .row { display: flex; gap: 11px; align-items: flex-start; padding-right: 26px; }
+.mkt-pending-card .th {
+  flex: 0 0 48px; width: 48px; height: 48px; border-radius: 10px; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--mkt-coral-light) 0 6px, var(--mkt-cream) 6px 12px);
+}
+.mkt-pending-card .th img { width: 100%; height: 100%; object-fit: cover; }
+.mkt-pending-card .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mkt-pending-card .h { font: 900 15.5px/1.25 'Nunito', sans-serif; letter-spacing: -0.01em; }
+.mkt-pending-card .p { font: 400 12.5px/1.5 'Lato', sans-serif; color: var(--mkt-muted); }
+.mkt-pending-card .item {
+  margin-top: 2px; font: 400 11.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mkt-pending-card .cta {
+  width: 100%; border: none; border-radius: 12px; padding: 13px; cursor: pointer;
+  background: var(--mkt-coral); color: var(--mkt-black); font: 800 15px/1 'Nunito', sans-serif;
+}
+.mkt-pending-card .cta:hover { background: var(--mkt-coral-dark); color: var(--mkt-cream); }
+
+@media (min-width: 1024px) {
+  .mkt-pending { justify-content: flex-end; padding-right: 20px; }
+  .mkt-pending-card { max-width: 380px; }
+}

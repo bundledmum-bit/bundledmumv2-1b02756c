@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { isStandalone, isIos } from "@/lib/pwa";
 import { subscribeToWaPromptVisible } from "./components/WhatsAppInactivityPrompt";
 import { subscribeToInstallCtaVisible } from "./components/MarketplaceInstallCta";
+import { deliveryGateChannel, pendingActionChannel } from "./lib/promptVisibility";
 import {
   isMarketplacePwaInstalled,
   markMarketplacePwaInstalled,
@@ -106,6 +107,18 @@ export default function MarketplaceInstallBanner() {
   const [installCtaVisible, setInstallCtaVisible] = useState(false);
   useEffect(() => subscribeToInstallCtaVisible(setInstallCtaVisible), []);
 
+  // Lowest priority of the four: a standing convenience offer waits for
+  // the blocking gate, for a real person waiting, and for a hesitation
+  // nudge alike.
+  const [outrankedVisible, setOutrankedVisible] = useState(false);
+  useEffect(() => {
+    let gate = false, pending = false;
+    const push = () => setOutrankedVisible(gate || pending);
+    const offGate = deliveryGateChannel.subscribe((v) => { gate = v; push(); });
+    const offPending = pendingActionChannel.subscribe((v) => { pending = v; push(); });
+    return () => { offGate(); offPending(); };
+  }, []);
+
   // Genuine engagement, not a first-paint interstitial: whichever comes
   // first, 10 seconds on the page or scrolling 30% of the way down it.
   // Google's own intrusive-interstitial exemption requires exactly this —
@@ -154,7 +167,7 @@ export default function MarketplaceInstallBanner() {
   const onListingDetail = pathname.startsWith("/listing/");
   const onInstallPage = pathname === "/install";
 
-  if (installed || dismissed || !ready || onInstallPage || isStandalone() || waPromptVisible || installCtaVisible) return null;
+  if (installed || dismissed || !ready || onInstallPage || isStandalone() || waPromptVisible || installCtaVisible || outrankedVisible) return null;
 
   const dismiss = () => {
     setDismissed(true);
