@@ -23,11 +23,14 @@ import { isPendingActionDismissed, dismissPendingAction } from "../lib/pendingAc
  *
  * DISMISSIBLE, unlike the gate. The gate asks a ten second question and
  * then never returns; this one could reappear on every visit for days, so
- * it needs an obvious close and a per-item memory. See
- * lib/pendingActionDismissed.ts for how the key is built.
+ * it needs an obvious close and a per-item memory, keyed on ref_id + kind.
+ * See lib/pendingActionDismissed.ts.
  */
 
 interface PendingAction {
+  /** The row id of the thing actually waiting: the video request, the
+   * question, the offer, the order. Used to key dismissal per item. */
+  ref_id: string;
   kind: string;
   headline: string;
   detail: string;

@@ -7882,3 +7882,24 @@ New `lib/promptVisibility.ts` holds the shared channel factory plus `deliveryGat
 Files touched: `components/PendingActionPrompt.tsx`, `lib/promptVisibility.ts`, `lib/pendingActionDismissed.ts` (all new); `MarketplaceApp.tsx`, `sell/SellerDeliveryGate.tsx`, `MarketplaceInstallBanner.tsx`, `components/WhatsAppInactivityPrompt.tsx`, `marketplace.css`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 134. Pending action dismissal keyed on ref_id, closing the same-listing collision (2026-08-21)
+
+**Backend changed under us, verified before trusting it**: `my_pending_action()` now returns `ref_id uuid` as its first column (confirmed against `pg_get_function_result`), and the three buyer arms (`video_ready`, `question_answered`, `offer_accepted`) all now build their link from `r.lid`, the listing id, rather than the row id — confirmed by reading each arm's deployed text. That fixes the not-found bug reported in §133; **no client change was needed for it**, since the component only strips the `/marketplace` basename and navigates to whatever the RPC returns.
+
+**New dismissal key: `ref_id + kind`** (was `kind + link + listing_title`). `ref_id` is the actual row id of the thing waiting — the video request, the question, the offer, the order — so items are now distinguished by identity rather than by their display text.
+
+`kind` is deliberately kept alongside it rather than dropped. `ref_id` alone would be sufficient today, but the same underlying row can legitimately surface as different kinds at different moments: an offer is `offer_pending` to the seller and later `offer_accepted` to the buyer. Dismissing one of those must not silence the other. Verified: same `ref_id`, different kind, still shows.
+
+**The collision flagged in §133 is closed**, verified with the exact case that used to fail — two video requests on the SAME listing, identical link and identical title, differing only by `ref_id`:
+- `11111111-…|video_requested` and `22222222-…|video_requested` are distinct keys
+- dismissing the first leaves the second showing
+- a different kind on a different row still shows
+
+Also re-verified against a full current-shape payload that the key ignores `link` and `listing_title` entirely, so a link or title change can never silently resurface something already dismissed.
+
+**Unchanged**: the precedence resolution from §133 stands — strict total order, gate above pending above WhatsApp above install, with the gate no longer yielding to anything. Everything else in the prompt is untouched.
+
+Files touched: `lib/pendingActionDismissed.ts`, `components/PendingActionPrompt.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
