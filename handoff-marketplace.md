@@ -7955,3 +7955,29 @@ Files touched: `MarketplacePendingPayments.tsx` (new), `opsData.ts`, `Storefront
 Files touched: `opsData.ts`, `MarketplacePendingPayments.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 137. Undo returns a meaningful boolean again, so both call sites check it (2026-08-21)
+
+**Both source fixes verified before changing anything**, rather than taken on trust:
+- `undo_outreach_contact` now has **exactly one** version: `(p_person_id uuid, p_stage_key text, p_subject_id uuid DEFAULT NULL) -> boolean`. Confirmed by counting `pg_proc` rows for that name: 1.
+- `super_admin_mark_order_paid`'s body now reads `-- BLOCKS, deliberately. Releasing an item to a seller while recording less than they are owed is not something to wave through with a warning.` above the raise, and the string `warn rather than block` is **no longer present anywhere** in the deployed source. The earlier attempt set the database COMMENT rather than the body, which is why it looked fixed while the misleading line stayed.
+
+**Restored `data === true` at both call sites.** §136 had removed that check because the interim overload returned void, where asserting `true` would have failed every successful undo. With a boolean back, the opposite risk applied: both helpers were returning `true` unconditionally, so an undo that found nothing to remove would have reported success and left the row looking un-messaged. The boolean is genuinely meaningful, not a formality: the body returns `false` when no matching log row exists and `true` only after a real delete.
+
+**Both call sites verified against Azunna Peace's three real orders**, replicating the deployed body exactly:
+
+| Scenario | Returned | Rows left |
+|---|---|---|
+| Pending payments, subject = the OLDEST order | `true` | o2, o3 |
+| Pending payments, same order again, nothing to undo | `false` | o2, o3 |
+| Outreach queue, subject = null, takes the most recent | `true` | o2 |
+
+The first row is the case that matters: a subject-blind undo would have taken o3, the newest. The second proves `false` is reachable and now surfaces as "Could not undo, try again" instead of a false success. The probe cleaned up after itself to zero rows.
+
+**REST resolution re-checked** now that only one version exists: the outreach shape (`p_subject_id: null`), the pending-payments shape (`p_subject_id: order_id`) and even the legacy two-argument shape all return `42501` (resolved to one function, refused on permissions for anon). No `PGRST203` from any of them, so the ambiguity is gone at the source and cannot recur however a caller writes it.
+
+**Kept**: both call sites still name all three parameters. Unnecessary now, but it costs nothing and is what made the ambiguity unhittable.
+
+Files touched: `opsData.ts`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from this file.

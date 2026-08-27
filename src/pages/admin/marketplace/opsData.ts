@@ -422,27 +422,24 @@ export async function logOutreachContact(personType: "seller" | "buyer", personI
  * Reverses a mis-tap of "mark as sent": removes the most recent contact
  * record for this exact (person, outreach type).
  *
- * p_subject_id is passed EXPLICITLY as null, and that is not optional
- * styling. undo_outreach_contact now has two overloads, a 2-argument one
- * and a 3-argument one whose third parameter defaults to null, so a
- * 2-argument call is genuinely ambiguous: PostgREST answers HTTP 300
- * PGRST203 "could not choose the best candidate function" and the undo
- * silently fails. Naming all three parameters selects the 3-argument
- * overload unambiguously.
+ * p_subject_id is passed explicitly as null rather than omitted. There is
+ * only one version of this function now, so omitting it would resolve
+ * fine, but naming every parameter is what made the earlier overload
+ * ambiguity impossible to hit and costs nothing to keep.
  *
- * Behaviour is unchanged for this screen: the function's own guard is
- * `(p_subject_id is null or subject_id = p_subject_id)`, so null still
- * means "the most recent one, whatever it was about".
+ * Null means "the most recent one, whatever it was about", which is this
+ * screen's intended behaviour: the function's own guard is
+ * `(p_subject_id is null or subject_id = p_subject_id)`.
  *
- * That overload RETURNS VOID, unlike the old boolean one, so success is
- * the absence of an error rather than a `true` payload.
+ * The boolean is meaningful, not a formality: false means there was
+ * nothing to undo, so it must be checked rather than assumed.
  */
 export async function undoOutreachContact(personId: string, stageKey: string): Promise<boolean> {
-  const { error } = await adb.rpc("undo_outreach_contact", {
+  const { data, error } = await adb.rpc("undo_outreach_contact", {
     p_person_id: personId, p_stage_key: stageKey, p_subject_id: null,
   });
   if (error) throw error;
-  return true;
+  return data === true;
 }
 
 /** Same idea as logOutreachContact/undoOutreachContact, deliberately a
@@ -681,14 +678,15 @@ export async function logPendingPaymentContact(buyerId: string, orderId: string)
  * orders right now, and without it the undo removed whichever message was
  * most recent for her, which was frequently the wrong one.
  *
- * Returns void, so success is the absence of an error.
+ * Returns false when there was nothing to undo for this order, which the
+ * caller surfaces rather than reporting a success that did not happen.
  */
 export async function undoPendingPaymentContact(buyerId: string, orderId: string): Promise<boolean> {
-  const { error } = await adb.rpc("undo_outreach_contact", {
+  const { data, error } = await adb.rpc("undo_outreach_contact", {
     p_person_id: buyerId, p_stage_key: "payment_not_completed", p_subject_id: orderId,
   });
   if (error) throw error;
-  return true;
+  return data === true;
 }
 
 /** Super admin only. Deliberately takes every field the function demands
