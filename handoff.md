@@ -1,5 +1,41 @@
 # Handoff
 
+## Audience chooser — direct/organic homepage entry splitter (DONE, this turn)
+A one-screen overlay asking direct/organic homepage visitors which of three
+things they came for, routing them to the right place. **New file
+[src/components/AudienceChooser.tsx](src/components/AudienceChooser.tsx)**; mounted
+once in [src/StorefrontApp.tsx](src/StorefrontApp.tsx) inside `<BrowserRouter>` beside
+the other listeners. No DB changes, no marketplace changes, no homepage content
+changes, no pixel events.
+
+**Where mounted / how it detects entry.** Global mount, self-gating. A module-level
+`ENTRY = { path, search, referrer }` is snapshotted ONCE at import = the true landing
+state, so later internal SPA navigation (logo/Home) can never trigger it. Shows only
+when ALL are true: `ENTRY.path === "/"`; landing URL has none of
+`fbclid/gclid/utm_source/utm_medium/utm_campaign/ref`; `document.referrer` is empty
+(typed/bookmark) OR a search host (google/bing/yahoo/duckduckgo/ecosia); and not
+already chosen. Guests paint instantly (sync gate, no fetch). Signed-in visitors:
+reads `customers.audience_preference` (keyed `auth_user_id = auth.uid()`); renders null
+while resolving (no flash), shows only if null.
+
+**Options / memory.** Shop new → dismiss, stay on `/`. Buy used →
+`window.location.assign('/marketplace')`. Sell → `.../marketplace/sell'` (BecomeSellerPage
+onboarding). A "Just browsing →" link = choose 'new'. Cross-app links MUST be full-page
+navigations — the marketplace is a separate app tree chosen from `window.location` at
+mount (isMarketplace()), unreachable via the client router. On any choice: write
+`sessionStorage['bm_audience_choice']` (guests, resets on browser close) AND, if signed
+in, `supabase.rpc('set_audience_preference', { p_choice })` (validates new|used|sell,
+updates the customer row) so it's skipped on future sessions.
+
+**NOTE:** the RPC `set_audience_preference` and `customers.audience_preference` column
+ALREADY existed (prompt called them "new") — nothing was created.
+
+**Verified live (dev server, mobile):** direct `/` (empty referrer) → chooser shows
+(screenshot); `/?fbclid=test` → NOT shown, session untouched; `/products/<slug>` → NOT
+shown; logo click (client-side nav) to `/` → NOT shown; click "Shop new" → session='new',
+overlay closes, stays on `/`; reload → does not reappear; click "Buy used" → session='used'
+→ full-page nav to `/marketplace`.
+
 ## Renamed product slugs — old-URL redirect fallback (DONE, this turn)
 17 product slugs were renamed in the DB to remove clinical wording from URLs
 (`catheter` → `delivery-kit-tube-set`, `sterile-urinary-drainage-bag` →

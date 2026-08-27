@@ -12,6 +12,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/lib/cart";
 import ScrollToTop from "@/components/ScrollToTop";
+import AudienceChooser from "@/components/AudienceChooser";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
 import PushOptInCard from "@/components/PushOptInCard";
 import InstallApp from "@/pages/InstallApp";
@@ -514,6 +515,7 @@ const StorefrontApp = () => (
             <WhatsAppClickListener />
             <PasswordRecoveryListener />
             <ReferralCaptureListener />
+            <AudienceChooser />
             <Routes>
               {/* Admin routes */}
               <Route path="/admin/set-password" element={<AdminSetPassword />} />
