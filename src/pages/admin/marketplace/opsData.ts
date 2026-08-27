@@ -716,3 +716,60 @@ export async function superAdminMarkOrderPaid(input: {
   if (error) return { ok: false, message: error.message || "Could not record that. Please try again." };
   return { ok: true };
 }
+
+/* ── Awaiting buyer confirmation ──────────────────────────────────────── */
+
+export interface AwaitingConfirmationRow {
+  order_id: string;
+  amount_naira: number | null;
+  /** What the seller actually receives, and the figure at stake here. Not
+   * the order total, which includes our fee. */
+  seller_share_naira: number | null;
+  dispatch_confirmed_at: string;
+  days_since_sent: number;
+  buyer_name: string | null;
+  buyer_phone: string | null;
+  buyer_email: string | null;
+  seller_name: string | null;
+  seller_phone: string | null;
+  listing_title: string | null;
+  image_url: string | null;
+  nudged_once: boolean;
+  nudged_twice: boolean;
+  /** A dispute is the opposite of being happy. The RPC refuses outright
+   * when this is true; the UI hides the control entirely so nobody tries. */
+  has_open_dispute: boolean;
+}
+
+export async function fetchAwaitingConfirmation(): Promise<AwaitingConfirmationRow[]> {
+  const { data, error } = await adb.from("marketplace_awaiting_confirmation").select("*");
+  if (error) throw error;
+  return (data ?? []) as AwaitingConfirmationRow[];
+}
+
+/**
+ * Records that the buyer confirmed receipt, when they told us some other
+ * way and never tapped confirm.
+ *
+ * This does NOT release a payout and is deliberately not a second route to
+ * one. It fills in the MISSING CONFIRMATION; the payout then follows the
+ * normal path entirely unchanged, proof screenshot and all. Two routes to
+ * money leaving the business would drift apart and one would end up with
+ * weaker guards.
+ *
+ * Writing confirmed_on_behalf_by also fires trg_z_confirmed_on_behalf_emails,
+ * which emails the buyer and the seller immediately. That is a database
+ * trigger, not something the caller opts into, so the form says so plainly.
+ *
+ * The function's own messages are written for a person and already say what
+ * to do, so they surface verbatim rather than being reworded.
+ */
+export async function superAdminConfirmReceiptOnBehalf(input: {
+  orderId: string; reason: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await adb.rpc("super_admin_confirm_receipt_on_behalf", {
+    p_order_id: input.orderId, p_reason: input.reason,
+  });
+  if (error) return { ok: false, message: error.message || "Could not record that. Please try again." };
+  return { ok: true };
+}

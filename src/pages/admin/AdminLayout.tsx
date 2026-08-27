@@ -89,6 +89,7 @@ function AdminLayoutInner() {
     { label: "Review queue", to: "/admin/marketplace/review", icon: ClipboardCheck, badge: mktPendingCount },
     { label: "Follow up", to: "/admin/marketplace/outreach", icon: Megaphone },
     { label: "Did not finish paying", to: "/admin/marketplace/pending-payments", icon: ShoppingCart },
+    { label: "Waiting on the buyer", to: "/admin/marketplace/awaiting-confirmation", icon: ShoppingCart },
     { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
     { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
     { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },

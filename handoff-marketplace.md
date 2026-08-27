@@ -8002,3 +8002,58 @@ Threshold verified at every boundary: 10 and 8 days quiet, 7 days flips to urgen
 Files touched: `opsData.ts`, `MarketplacePendingPayments.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 139. Waiting on the buyer: recording a confirmation that never came (2026-08-27)
+
+A buyer receives an item, says on WhatsApp that they are happy, and never taps
+confirm. The seller waits on money for something already delivered. One live
+order is in exactly that state.
+
+**The design decision.** This does NOT add a second way to release a payout. It
+records the MISSING BUYER CONFIRMATION and nothing else. The payout then follows
+the normal path entirely unchanged: same proof screenshot, same emails, same
+three step release on the payout queue. Two routes to money leaving the business
+would eventually drift apart and one of them would end up with weaker guards.
+There is one route.
+
+**New screen** `MarketplaceAwaitingConfirmation.tsx`, at
+`/admin/marketplace/awaiting-confirmation`, behind
+`PermissionGate module="marketplace" action="manage"`, nav label "Waiting on the
+buyer". Reads the view `marketplace_awaiting_confirmation`. Sorted longest wait
+first: the seller who has waited most is the one most owed an answer. A header
+summary gives the count and the total held but not yet payable.
+
+**The form.** The reason is the substance, not a box under a button. The label
+is "How do you know they received it and are happy?", a four row textarea with a
+placeholder asking what they actually said and where. Minimum fifteen
+characters, matching the RPC's own guard; the submit button is dead until then.
+Under the field: "This is the only record of why their protection was set
+aside."
+
+Before it can be submitted, what it costs is stated: the seller share becomes
+payable to the named seller, the buyer's protection on this order ends and they
+will no longer be able to report a problem, and both of them are emailed the
+moment the button is pressed. That last line matters because
+`trg_z_confirmed_on_behalf_emails` fires on `confirmed_on_behalf_by` going null
+to non null, so this is not a quiet internal note.
+
+**Too early is discouraged, not prevented.** Under three days, or with no nudge
+sent, a red panel opens above the reason field naming how long it has actually
+been and whether they have even been reminded. It does not block: a buyer can
+genuinely tell you on the same day, and only the person holding that
+conversation knows. The warning makes it a judgement rather than a reflex. The
+one live row today is at 0.3 days with no nudges, so this is the state that
+actually renders.
+
+**Nothing is paid.** The success state and a permanent footnote both say the
+order joins the payout queue and still needs its proof screenshot before the
+transfer can be marked sent.
+
+**Gating.** `usePermissions().isSuperAdmin` wraps the whole control, the same
+shape the pending payments screen uses. A non super admin sees the row and its
+waiting time and no action at all, rather than a control that fails. An order
+with an open dispute hides the control for everyone and says so: a dispute is
+the opposite of being happy.
+
+`opsData.ts` gains `AwaitingConfirmationRow`, `fetchAwaitingConfirmation()` and
+`superAdminConfirmReceiptOnBehalf()`.
