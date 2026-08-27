@@ -1459,6 +1459,7 @@ export type Database = {
           display_name: string | null
           display_order: number | null
           emoji: string | null
+          exclude_from_ad_platforms: boolean
           hospital_type: string
           id: string
           image_url: string | null
@@ -1485,6 +1486,7 @@ export type Database = {
           display_name?: string | null
           display_order?: number | null
           emoji?: string | null
+          exclude_from_ad_platforms?: boolean
           hospital_type: string
           id?: string
           image_url?: string | null
@@ -1511,6 +1513,7 @@ export type Database = {
           display_name?: string | null
           display_order?: number | null
           emoji?: string | null
+          exclude_from_ad_platforms?: boolean
           hospital_type?: string
           id?: string
           image_url?: string | null
@@ -2349,6 +2352,13 @@ export type Database = {
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
           },
+          {
+            foreignKeyName: "customer_addresses_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
         ]
       }
       customer_login_events: {
@@ -2405,12 +2415,20 @@ export type Database = {
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
           },
+          {
+            foreignKeyName: "customer_login_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
         ]
       }
       customers: {
         Row: {
           account_created_at: string | null
           acquisition_channel: string | null
+          audience_preference: string | null
           auth_user_id: string | null
           created_at: string | null
           customer_ref: string | null
@@ -2439,6 +2457,7 @@ export type Database = {
         Insert: {
           account_created_at?: string | null
           acquisition_channel?: string | null
+          audience_preference?: string | null
           auth_user_id?: string | null
           created_at?: string | null
           customer_ref?: string | null
@@ -2467,6 +2486,7 @@ export type Database = {
         Update: {
           account_created_at?: string | null
           acquisition_channel?: string | null
+          audience_preference?: string | null
           auth_user_id?: string | null
           created_at?: string | null
           customer_ref?: string | null
@@ -5724,11 +5744,25 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_checkout_attempts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "marketplace_checkout_attempts_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_checkout_attempts_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
           },
           {
             foreignKeyName: "marketplace_checkout_attempts_order_id_fkey"
@@ -5741,8 +5775,22 @@ export type Database = {
             foreignKeyName: "marketplace_checkout_attempts_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_checkout_attempts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "marketplace_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_checkout_attempts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -5879,8 +5927,22 @@ export type Database = {
             foreignKeyName: "marketplace_disputes_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "marketplace_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "marketplace_disputes_raised_by_fkey"
@@ -5909,6 +5971,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_disputes_raised_by_fkey"
+            columns: ["raised_by"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
           },
           {
             foreignKeyName: "marketplace_disputes_refund_paid_by_fkey"
@@ -6001,6 +6070,13 @@ export type Database = {
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "marketplace_listing_edits_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
+          },
         ]
       }
       marketplace_listing_questions: {
@@ -6064,11 +6140,25 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_listing_questions_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "marketplace_listing_questions_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_listing_questions_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
           },
           {
             foreignKeyName: "marketplace_listing_questions_seller_id_fkey"
@@ -6088,6 +6178,9 @@ export type Database = {
       }
       marketplace_listings: {
         Row: {
+          admin_discount_at: string | null
+          admin_discount_by: string | null
+          admin_discount_naira: number
           attributes: Json
           category_id: string
           compressed_at: string | null
@@ -6106,10 +6199,12 @@ export type Database = {
           image_url: string | null
           images_purged_at: string | null
           is_negotiable: boolean
+          local_handover: string | null
           location_city: string | null
           location_state: string | null
           markup_percent: number
           original_price_naira: number | null
+          price_before_discount_naira: number | null
           price_naira: number
           quantity: number
           quantity_sold: number
@@ -6117,6 +6212,7 @@ export type Database = {
           reviewed_at: string | null
           reviewed_by: string | null
           seller_id: string
+          sells_nationwide: boolean | null
           sold_at: string | null
           split_from_listing_id: string | null
           status: string
@@ -6128,6 +6224,9 @@ export type Database = {
           view_count: number
         }
         Insert: {
+          admin_discount_at?: string | null
+          admin_discount_by?: string | null
+          admin_discount_naira?: number
           attributes?: Json
           category_id: string
           compressed_at?: string | null
@@ -6146,10 +6245,12 @@ export type Database = {
           image_url?: string | null
           images_purged_at?: string | null
           is_negotiable?: boolean
+          local_handover?: string | null
           location_city?: string | null
           location_state?: string | null
           markup_percent: number
           original_price_naira?: number | null
+          price_before_discount_naira?: number | null
           price_naira: number
           quantity?: number
           quantity_sold?: number
@@ -6157,6 +6258,7 @@ export type Database = {
           reviewed_at?: string | null
           reviewed_by?: string | null
           seller_id: string
+          sells_nationwide?: boolean | null
           sold_at?: string | null
           split_from_listing_id?: string | null
           status?: string
@@ -6168,6 +6270,9 @@ export type Database = {
           view_count?: number
         }
         Update: {
+          admin_discount_at?: string | null
+          admin_discount_by?: string | null
+          admin_discount_naira?: number
           attributes?: Json
           category_id?: string
           compressed_at?: string | null
@@ -6186,10 +6291,12 @@ export type Database = {
           image_url?: string | null
           images_purged_at?: string | null
           is_negotiable?: boolean
+          local_handover?: string | null
           location_city?: string | null
           location_state?: string | null
           markup_percent?: number
           original_price_naira?: number | null
+          price_before_discount_naira?: number | null
           price_naira?: number
           quantity?: number
           quantity_sold?: number
@@ -6197,6 +6304,7 @@ export type Database = {
           reviewed_at?: string | null
           reviewed_by?: string | null
           seller_id?: string
+          sells_nationwide?: boolean | null
           sold_at?: string | null
           split_from_listing_id?: string | null
           status?: string
@@ -6208,6 +6316,13 @@ export type Database = {
           view_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "marketplace_listings_admin_discount_by_fkey"
+            columns: ["admin_discount_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "marketplace_listings_category_id_fkey"
             columns: ["category_id"]
@@ -6242,6 +6357,79 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_listings_split_from_listing_id_fkey"
+            columns: ["split_from_listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
+          },
+        ]
+      }
+      marketplace_manual_payments: {
+        Row: {
+          amount_received_naira: number
+          created_at: string
+          id: string
+          marked_by: string | null
+          method: string
+          order_id: string
+          reason: string
+        }
+        Insert: {
+          amount_received_naira: number
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          method: string
+          order_id: string
+          reason: string
+        }
+        Update: {
+          amount_received_naira?: number
+          created_at?: string
+          id?: string
+          marked_by?: string | null
+          method?: string
+          order_id?: string
+          reason?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_manual_payments_marked_by_fkey"
+            columns: ["marked_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_manual_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_admin_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_manual_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_manual_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_manual_payments_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -6399,11 +6587,25 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_offers_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "marketplace_offers_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_offers_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
           },
           {
             foreignKeyName: "marketplace_offers_seller_id_fkey"
@@ -6433,8 +6635,11 @@ export type Database = {
           buyer_confirmed_at: string | null
           buyer_id: string
           buyer_review_asked_at: string | null
+          cart_reference: string | null
           confirm_nudge_1_sent_at: string | null
           confirm_nudge_2_sent_at: string | null
+          confirmed_on_behalf_by: string | null
+          confirmed_on_behalf_reason: string | null
           created_at: string
           dispatch_confirmed_at: string | null
           dispatch_photo_url: string | null
@@ -6447,6 +6652,7 @@ export type Database = {
           order_status: string
           payment_attempt_count: number
           payment_attempt_reference: string | null
+          payment_references: string[]
           payment_status: string
           payout_failed_at: string | null
           payout_failed_reason: string | null
@@ -6475,8 +6681,11 @@ export type Database = {
           buyer_confirmed_at?: string | null
           buyer_id: string
           buyer_review_asked_at?: string | null
+          cart_reference?: string | null
           confirm_nudge_1_sent_at?: string | null
           confirm_nudge_2_sent_at?: string | null
+          confirmed_on_behalf_by?: string | null
+          confirmed_on_behalf_reason?: string | null
           created_at?: string
           dispatch_confirmed_at?: string | null
           dispatch_photo_url?: string | null
@@ -6489,6 +6698,7 @@ export type Database = {
           order_status?: string
           payment_attempt_count?: number
           payment_attempt_reference?: string | null
+          payment_references?: string[]
           payment_status?: string
           payout_failed_at?: string | null
           payout_failed_reason?: string | null
@@ -6517,8 +6727,11 @@ export type Database = {
           buyer_confirmed_at?: string | null
           buyer_id?: string
           buyer_review_asked_at?: string | null
+          cart_reference?: string | null
           confirm_nudge_1_sent_at?: string | null
           confirm_nudge_2_sent_at?: string | null
+          confirmed_on_behalf_by?: string | null
+          confirmed_on_behalf_reason?: string | null
           created_at?: string
           dispatch_confirmed_at?: string | null
           dispatch_photo_url?: string | null
@@ -6531,6 +6744,7 @@ export type Database = {
           order_status?: string
           payment_attempt_count?: number
           payment_attempt_reference?: string | null
+          payment_references?: string[]
           payment_status?: string
           payout_failed_at?: string | null
           payout_failed_reason?: string | null
@@ -6578,11 +6792,32 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_confirmed_on_behalf_by_fkey"
+            columns: ["confirmed_on_behalf_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "marketplace_orders_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
           },
           {
             foreignKeyName: "marketplace_orders_offer_id_fkey"
@@ -6622,6 +6857,7 @@ export type Database = {
           person_id: string
           person_type: string
           stage_key: string
+          subject_id: string | null
         }
         Insert: {
           contacted_at?: string
@@ -6630,6 +6866,7 @@ export type Database = {
           person_id: string
           person_type: string
           stage_key: string
+          subject_id?: string | null
         }
         Update: {
           contacted_at?: string
@@ -6638,6 +6875,7 @@ export type Database = {
           person_id?: string
           person_type?: string
           stage_key?: string
+          subject_id?: string | null
         }
         Relationships: [
           {
@@ -6752,6 +6990,13 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_reviews_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "marketplace_reviews_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
@@ -6762,8 +7007,22 @@ export type Database = {
             foreignKeyName: "marketplace_reviews_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_reviews_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "marketplace_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_reviews_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "marketplace_reviews_seller_id_fkey"
@@ -6838,8 +7097,22 @@ export type Database = {
             foreignKeyName: "marketplace_seller_debits_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_seller_debits_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "marketplace_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_seller_debits_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
           {
             foreignKeyName: "marketplace_seller_debits_seller_id_fkey"
@@ -6865,15 +7138,18 @@ export type Database = {
           bank_name: string | null
           created_at: string
           customer_id: string
+          delivery_prefs_set_at: string | null
           display_name: string | null
           first_listing_guide_sent_at: string | null
           id: string
           legal_first_name: string | null
           legal_last_name: string | null
+          local_handover: string | null
           outstanding_debit_naira: number
           paystack_subaccount_code: string | null
           phone: string | null
           phone_is_whatsapp: boolean
+          sells_nationwide: boolean | null
           status: string
           strike_count: number
           suspended_at: string | null
@@ -6888,15 +7164,18 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           customer_id: string
+          delivery_prefs_set_at?: string | null
           display_name?: string | null
           first_listing_guide_sent_at?: string | null
           id?: string
           legal_first_name?: string | null
           legal_last_name?: string | null
+          local_handover?: string | null
           outstanding_debit_naira?: number
           paystack_subaccount_code?: string | null
           phone?: string | null
           phone_is_whatsapp?: boolean
+          sells_nationwide?: boolean | null
           status?: string
           strike_count?: number
           suspended_at?: string | null
@@ -6911,15 +7190,18 @@ export type Database = {
           bank_name?: string | null
           created_at?: string
           customer_id?: string
+          delivery_prefs_set_at?: string | null
           display_name?: string | null
           first_listing_guide_sent_at?: string | null
           id?: string
           legal_first_name?: string | null
           legal_last_name?: string | null
+          local_handover?: string | null
           outstanding_debit_naira?: number
           paystack_subaccount_code?: string | null
           phone?: string | null
           phone_is_whatsapp?: boolean
+          sells_nationwide?: boolean | null
           status?: string
           strike_count?: number
           suspended_at?: string | null
@@ -6955,6 +7237,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_sellers_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
           },
         ]
       }
@@ -7022,6 +7311,13 @@ export type Database = {
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
           },
+          {
+            foreignKeyName: "marketplace_signin_assistance_log_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
         ]
       }
       marketplace_states: {
@@ -7047,6 +7343,160 @@ export type Database = {
           sort_order?: number
         }
         Relationships: []
+      }
+      marketplace_upload_failures: {
+        Row: {
+          created_at: string
+          file_size_bytes: number | null
+          file_type: string | null
+          id: string
+          reason: string | null
+          seller_id: string | null
+          stage: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_size_bytes?: number | null
+          file_type?: string | null
+          id?: string
+          reason?: string | null
+          seller_id?: string | null
+          stage: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_size_bytes?: number | null
+          file_type?: string | null
+          id?: string
+          reason?: string | null
+          seller_id?: string | null
+          stage?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_upload_failures_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_sellers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_upload_failures_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_sellers_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_video_requests: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          decline_reason: string | null
+          declined_at: string | null
+          id: string
+          listing_id: string
+          note: string | null
+          seller_id: string
+          uploaded_at: string | null
+          video_path: string | null
+          watched_at: string | null
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          listing_id: string
+          note?: string | null
+          seller_id: string
+          uploaded_at?: string | null
+          video_path?: string | null
+          watched_at?: string | null
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          decline_reason?: string | null
+          declined_at?: string | null
+          id?: string
+          listing_id?: string
+          note?: string | null
+          seller_id?: string
+          uploaded_at?: string | null
+          video_path?: string | null
+          watched_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_video_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "admin_customer_accounts"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_account_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_buyers"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_listings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_sellers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_video_requests_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_sellers_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       marketplace_view_throttle: {
         Row: {
@@ -9263,6 +9713,45 @@ export type Database = {
           },
         ]
       }
+      product_slug_history: {
+        Row: {
+          changed_at: string
+          id: string
+          old_slug: string
+          product_id: string
+          reason: string | null
+        }
+        Insert: {
+          changed_at?: string
+          id?: string
+          old_slug: string
+          product_id: string
+          reason?: string | null
+        }
+        Update: {
+          changed_at?: string
+          id?: string
+          old_slug?: string
+          product_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_slug_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_slug_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_manager_view"
+            referencedColumns: ["product_id"]
+          },
+        ]
+      }
       product_tags: {
         Row: {
           id: string
@@ -9319,6 +9808,7 @@ export type Database = {
           description: string
           display_order: number | null
           emoji: string | null
+          exclude_from_ad_platforms: boolean
           featured_order: number | null
           first_baby: boolean | null
           fixed_gender: string | null
@@ -9389,6 +9879,7 @@ export type Database = {
           description: string
           display_order?: number | null
           emoji?: string | null
+          exclude_from_ad_platforms?: boolean
           featured_order?: number | null
           first_baby?: boolean | null
           fixed_gender?: string | null
@@ -9459,6 +9950,7 @@ export type Database = {
           description?: string
           display_order?: number | null
           emoji?: string | null
+          exclude_from_ad_platforms?: boolean
           featured_order?: number | null
           first_baby?: boolean | null
           fixed_gender?: string | null
@@ -11531,6 +12023,13 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "referral_partners_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "referral_partners_seller_id_fkey"
             columns: ["seller_id"]
             isOneToOne: false
@@ -12886,6 +13385,13 @@ export type Database = {
             referencedRelation: "marketplace_buyers"
             referencedColumns: ["customer_id"]
           },
+          {
+            foreignKeyName: "subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
         ]
       }
       tax_settings: {
@@ -14081,10 +14587,12 @@ export type Database = {
         Row: {
           amount_naira: number | null
           buyer_name: string | null
+          cart_reference: string | null
           contacted_at: string | null
           customer_id: string | null
           email: string | null
           image_url: string | null
+          item_count: number | null
           last_activity_at: string | null
           listing_id: string | null
           listing_title: string | null
@@ -14092,6 +14600,7 @@ export type Database = {
           phone: string | null
           reached_payment_step: boolean | null
           ref_id: string | null
+          seller_count: number | null
           source: string | null
           started_at: string | null
           status: string | null
@@ -14179,11 +14688,25 @@ export type Database = {
             referencedColumns: ["customer_id"]
           },
           {
+            foreignKeyName: "marketplace_orders_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["buyer_id"]
+          },
+          {
             foreignKeyName: "marketplace_orders_listing_id_fkey"
             columns: ["listing_id"]
             isOneToOne: false
             referencedRelation: "marketplace_listings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_listing_id_fkey"
+            columns: ["listing_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["listing_id"]
           },
           {
             foreignKeyName: "marketplace_orders_offer_id_fkey"
@@ -14214,6 +14737,26 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      marketplace_awaiting_confirmation: {
+        Row: {
+          amount_naira: number | null
+          buyer_email: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          days_since_sent: number | null
+          dispatch_confirmed_at: string | null
+          has_open_dispute: boolean | null
+          image_url: string | null
+          listing_title: string | null
+          nudged_once: boolean | null
+          nudged_twice: boolean | null
+          order_id: string | null
+          seller_name: string | null
+          seller_phone: string | null
+          seller_share_naira: number | null
+        }
+        Relationships: []
       }
       marketplace_buyers: {
         Row: {
@@ -14292,6 +14835,33 @@ export type Database = {
         }
         Relationships: []
       }
+      marketplace_pending_payments: {
+        Row: {
+          amount_naira: number | null
+          buyer_email: string | null
+          buyer_id: string | null
+          buyer_name: string | null
+          buyer_phone: string | null
+          cart_reference: string | null
+          contacted_at: string | null
+          created_at: string | null
+          days_until_removed: number | null
+          hours_since: number | null
+          image_url: string | null
+          latest_reference: string | null
+          listing_id: string | null
+          listing_status: string | null
+          listing_title: string | null
+          order_id: string | null
+          payment_attempt_count: number | null
+          reference: string | null
+          seller_name: string | null
+          struggled: boolean | null
+          times_contacted: number | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
       marketplace_returns_awaiting_confirmation: {
         Row: {
           amount_naira: number | null
@@ -14319,8 +14889,22 @@ export type Database = {
             foreignKeyName: "marketplace_disputes_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
+            referencedRelation: "marketplace_awaiting_confirmation"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "marketplace_disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
             referencedRelation: "marketplace_orders"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_disputes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_pending_payments"
+            referencedColumns: ["order_id"]
           },
         ]
       }
@@ -15308,6 +15892,13 @@ export type Database = {
         Args: { p_listing_id: string; p_question: string }
         Returns: string
       }
+      buyer_claim_request_video: {
+        Args: { p_request_id: string }
+        Returns: {
+          first_watch: boolean
+          video_path: string
+        }[]
+      }
       buyer_make_offer: {
         Args: { p_discount_naira: number; p_listing_id: string }
         Returns: string
@@ -15322,6 +15913,10 @@ export type Database = {
           p_return_shipping_cost_naira?: number
         }
         Returns: boolean
+      }
+      buyer_request_video: {
+        Args: { p_listing_id: string; p_note?: string }
+        Returns: string
       }
       buyer_respond_to_counter: {
         Args: { p_accept: boolean; p_offer_id: string }
@@ -15343,9 +15938,37 @@ export type Database = {
         Args: { p_month?: number; p_year?: number }
         Returns: Json
       }
+      check_cart_deliverable: {
+        Args: { p_buyer_state: string; p_listing_ids: string[] }
+        Returns: {
+          category_name: string
+          category_slug: string
+          deliverable: boolean
+          listing_id: string
+          local_handover: string
+          reason: string
+          seller_first_name: string
+          seller_state: string
+          title: string
+        }[]
+      }
       check_email_rate_limit: {
         Args: { p_recipient: string; p_template: string }
         Returns: Json
+      }
+      check_listing_deliverable: {
+        Args: { p_buyer_state: string; p_listing_id: string }
+        Returns: {
+          category_name: string
+          category_slug: string
+          deliverable: boolean
+          listing_id: string
+          local_handover: string
+          reason: string
+          seller_first_name: string
+          seller_state: string
+          title: string
+        }[]
       }
       check_markup_floor: {
         Args: { p_cost_price: number; p_price: number }
@@ -15468,6 +16091,14 @@ export type Database = {
           out_box_number: number
           out_scheduled_date: string
         }[]
+      }
+      current_outreach_subject: {
+        Args: { p_person_id: string; p_stage: string }
+        Returns: string
+      }
+      delivery_prefs_question: {
+        Args: { p_attempt: number; p_seller_id: string }
+        Returns: string
       }
       duplicate_landing_page: { Args: { p_source_id: string }; Returns: string }
       duplicate_quote: {
@@ -15642,6 +16273,13 @@ export type Database = {
           largest_order_value: number
           paid_orders: number
           total_revenue: number
+        }[]
+      }
+      find_order_by_reference: {
+        Args: { p_reference: string }
+        Returns: {
+          cart_reference: string
+          order_id: string
         }[]
       }
       fire_push_trigger: {
@@ -16391,6 +17029,15 @@ export type Database = {
         Args: { p_order_id: string; p_share_token: string }
         Returns: Json
       }
+      listing_delivery_terms: {
+        Args: { p_listing_id: string }
+        Returns: {
+          is_set: boolean
+          local_handover: string
+          seller_state: string
+          sells_nationwide: boolean
+        }[]
+      }
       log_abandoned_contact: {
         Args: { p_ref_id: string; p_source: string }
         Returns: boolean
@@ -16414,14 +17061,24 @@ export type Database = {
         Args: { p_action: string; p_by?: string; p_quote_id: string }
         Returns: Json
       }
-      log_outreach_contact: {
-        Args: {
-          p_person_id: string
-          p_person_type: string
-          p_stage_key: string
-        }
-        Returns: boolean
-      }
+      log_outreach_contact:
+        | {
+            Args: {
+              p_person_id: string
+              p_person_type: string
+              p_stage_key: string
+            }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_person_id: string
+              p_person_type: string
+              p_stage_key: string
+              p_subject_id?: string
+            }
+            Returns: undefined
+          }
       log_quote_followup: {
         Args: {
           p_by?: string
@@ -16432,6 +17089,16 @@ export type Database = {
           p_stage: string
         }
         Returns: string
+      }
+      log_upload_failure: {
+        Args: {
+          p_file_size_bytes?: number
+          p_file_type?: string
+          p_reason?: string
+          p_stage: string
+          p_user_agent?: string
+        }
+        Returns: undefined
       }
       mark_box_topup_emailed: { Args: { p_box_id: string }; Returns: undefined }
       mark_checkout_error_whatsapp_clicked: {
@@ -16480,6 +17147,19 @@ export type Database = {
           via: string
         }[]
       }
+      my_pending_action: {
+        Args: never
+        Returns: {
+          cta: string
+          detail: string
+          headline: string
+          image_url: string
+          kind: string
+          link: string
+          listing_title: string
+          ref_id: string
+        }[]
+      }
       next_delivery_date: {
         Args: {
           p_delivery_day: string
@@ -16518,6 +17198,11 @@ export type Database = {
         }[]
       }
       orders_paid_only_restricted: { Args: never; Returns: boolean }
+      outreach_context: {
+        Args: { p_seller_id: string; p_stage: string }
+        Returns: string
+      }
+      payment_failure_context: { Args: { p_order_id: string }; Returns: string }
       pick_size_for_stage: {
         Args: { p_product_id: string; p_stage: string }
         Returns: Json
@@ -16562,6 +17247,8 @@ export type Database = {
         Returns: Json
       }
       purge_old_payout_proofs: { Args: never; Returns: number }
+      purge_old_pending_orders: { Args: never; Returns: number }
+      purge_request_videos: { Args: never; Returns: number }
       purge_sold_listing_videos: { Args: never; Returns: number }
       queue_image_improvements:
         | {
@@ -16673,6 +17360,10 @@ export type Database = {
         Args: { p_listing_id: string }
         Returns: undefined
       }
+      record_payment_reference: {
+        Args: { p_order_ids: string[]; p_reference: string }
+        Returns: undefined
+      }
       record_quote_download: {
         Args: { p_share_token: string }
         Returns: undefined
@@ -16734,6 +17425,10 @@ export type Database = {
         }
         Returns: string
       }
+      resolve_delivery_prefs_link: {
+        Args: { p_name: string; p_seller_id: string; p_wa: string }
+        Returns: string
+      }
       resolve_outreach_message: {
         Args: {
           p_extra: string
@@ -16742,6 +17437,19 @@ export type Database = {
           p_name: string
           p_person_id: string
           p_stage_key: string
+          p_wa: string
+        }
+        Returns: string
+      }
+      resolve_outreach_message_for: {
+        Args: {
+          p_extra?: string
+          p_item: string
+          p_link: string
+          p_name: string
+          p_person_id: string
+          p_stage: string
+          p_subject_id: string
           p_wa: string
         }
         Returns: string
@@ -16758,6 +17466,7 @@ export type Database = {
           section: string
         }[]
       }
+      resolve_product_slug: { Args: { p_slug: string }; Returns: string }
       resolve_scope_priority: {
         Args: {
           p_fallback: string
@@ -16902,11 +17611,23 @@ export type Database = {
         Args: { p_answer: string; p_question_id: string }
         Returns: boolean
       }
+      seller_attach_request_video: {
+        Args: { p_request_id: string; p_video_path: string }
+        Returns: boolean
+      }
       seller_confirm_return_received: {
         Args: { p_dispute_id: string }
         Returns: boolean
       }
+      seller_decline_video_request: {
+        Args: { p_reason?: string; p_request_id: string }
+        Returns: boolean
+      }
       seller_meets_verification_criteria: {
+        Args: { p_seller_id: string }
+        Returns: boolean
+      }
+      seller_needs_delivery_prefs: {
         Args: { p_seller_id: string }
         Returns: boolean
       }
@@ -16919,6 +17640,18 @@ export type Database = {
           p_action: string
           p_counter_seller_amount?: number
           p_offer_id: string
+        }
+        Returns: boolean
+      }
+      seller_set_delivery_prefs: {
+        Args: { p_local_handover: string; p_sells_nationwide: boolean }
+        Returns: boolean
+      }
+      seller_set_listing_delivery: {
+        Args: {
+          p_listing_id: string
+          p_local_handover?: string
+          p_sells_nationwide?: boolean
         }
         Returns: boolean
       }
@@ -16935,6 +17668,8 @@ export type Database = {
         Args: { p_admin_user_id: string; p_new_role: string }
         Returns: Json
       }
+      set_audience_preference: { Args: { p_choice: string }; Returns: boolean }
+      set_my_delivery_state: { Args: { p_state: string }; Returns: boolean }
       set_order_item_cost: {
         Args: { p_cost_price: number; p_item_id: string }
         Returns: Json
@@ -17058,9 +17793,44 @@ export type Database = {
         }
         Returns: number
       }
+      summarise_cart: {
+        Args: { p_listing_ids: string[] }
+        Returns: {
+          image_url: string
+          is_available: boolean
+          listing_id: string
+          location: string
+          price: number
+          seller_id: string
+          seller_name: string
+          title: string
+        }[]
+      }
+      super_admin_confirm_receipt_on_behalf: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: Json
+      }
+      super_admin_mark_order_paid: {
+        Args: {
+          p_amount_received_naira: number
+          p_method: string
+          p_order_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
       super_admin_permanent_delete: {
         Args: { p_record_id: string; p_target_table: string }
         Returns: Json
+      }
+      super_admin_set_listing_discount: {
+        Args: { p_discount_naira: number; p_listing_id: string }
+        Returns: {
+          discount: number
+          new_buyer_price: number
+          remaining_markup: number
+          was_price: number
+        }[]
       }
       tidy_seller_detail: { Args: { p_text: string }; Returns: string }
       to_listing_sentence_case: { Args: { p_text: string }; Returns: string }
@@ -17085,7 +17855,11 @@ export type Database = {
         Returns: boolean
       }
       undo_outreach_contact: {
-        Args: { p_person_id: string; p_stage_key: string }
+        Args: {
+          p_person_id: string
+          p_stage_key: string
+          p_subject_id?: string
+        }
         Returns: boolean
       }
       update_hospital_list_config: { Args: { p_patch: Json }; Returns: Json }

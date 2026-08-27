@@ -8057,3 +8057,33 @@ the opposite of being happy.
 
 `opsData.ts` gains `AwaitingConfirmationRow`, `fetchAwaitingConfirmation()` and
 `superAdminConfirmReceiptOnBehalf()`.
+
+## 140. Regenerated Supabase types, and what the remaining 5 errors actually are (2026-08-27)
+
+`src/integrations/supabase/types.ts` regenerated against project
+`rbtyprmkolqfylcbmgrk`. This cleared the three errors in `AudienceChooser.tsx`
+(`customers.audience_preference` and the `set_audience_preference` RPC), which
+were stale types rather than wrong code: both exist in the database.
+
+The file had drifted a long way, 814 lines added. It now also types
+`marketplace_awaiting_confirmation` and `super_admin_confirm_receipt_on_behalf`
+from section 139, so the untyped-client cast in `opsData.ts` is no longer
+strictly needed there. Left in place, since the cast is still what lets that
+file survive the next round of drift.
+
+**The remaining 5 errors are one cause, not five, and none of them is a bug.**
+All five are the same shape: a `{ ok: true; ... } | { ok: false; message }`
+result that fails to narrow after `if (!res.ok)`. That is not the code's fault.
+`tsconfig.app.json` sets `"strict": false`, so `strictNullChecks` is off, and
+with it off TypeScript cannot narrow a discriminated union on a boolean literal
+discriminant. Proved directly: the same three line union narrows cleanly under
+`--strictNullChecks true` and fails under `--strictNullChecks false`.
+
+So the long carried baseline of 5 is a compiler configuration artefact, not five
+real issues. The runtime behaviour is correct in every one of them. They would
+all disappear together if `strictNullChecks` were turned on, which is a much
+larger change than it sounds and is not attempted here.
+
+Affected, for the record: `RequestVideoSheet.tsx:40`,
+`WatchRequestVideoSheet.tsx:28`, `ListingDetailPage.tsx:442`,
+`SellerVideoRequestDetailPage.tsx:78` and `:89`.
