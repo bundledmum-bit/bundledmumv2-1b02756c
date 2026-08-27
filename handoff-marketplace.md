@@ -7903,3 +7903,33 @@ Also re-verified against a full current-shape payload that the key ignores `link
 Files touched: `lib/pendingActionDismissed.ts`, `components/PendingActionPrompt.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 135. Did not finish paying: the nine people who reached Paystack and stopped (2026-08-21)
+
+**Before**: `MarketplaceAbandonedCheckouts` reads `marketplace_abandoned_checkouts` ordered by `last_activity_at desc`, splits into abandoned / in progress / contacted, and renders each person as a bordered card (56px thumb, name, item, amount, relative time, status pill, contact details) with `ContactActions`: "Not yet contacted" in coral-dark or "Contacted {relative}" plus an underlined Undo, then a green WhatsApp button and a bordered Mark as sent side by side, deliberately separate because tapping a link is not proof a message went. `isSuperAdmin` comes from `usePermissions()`, i.e. `adminUser?.role === "super_admin"`, the same gate `MarketplaceListings` already uses.
+
+**Built**: `MarketplacePendingPayments.tsx`, a deliberate sibling of that screen, reusing the same card, the same `ContactActions` shape and the same `opsUi` shell rather than inventing a second visual language. Route `admin/marketplace/pending-payments` behind the existing `PermissionGate module="marketplace" action="manage"`, nav entry "Did not finish paying" directly above "Abandoned checkouts".
+
+**Sort order, verified against the real rows**: `struggled` first, then `payment_attempt_count` descending, then `hours_since` ascending. Confirmed with a shuffled fixture of the live data: 9, 7, 4 attempts lead, then the three 2-attempt rows with Azunna at 29h placed ahead of Gladys and Onyinye at 149h, then the single-attempt rows. Every struggled row precedes every non-struggled one. The attempt count is stated plainly as "Tried 9 times", and a struggled row carries a red border and a negative pill so it reads differently at a glance.
+
+**Mark as paid by hand requires all three fields.** Verified against the shipped readiness expression: nothing filled in, amount only, amount + method with no reason, a reason under ten characters, a missing method, and a zero amount **all leave the button disabled**; only amount + method + a reason of at least ten characters enables it. The amount field is placeholdered with the order total but never pre-filled, since the point is recording what actually landed rather than assuming. The submit is red, not coral, and reads "Record this payment".
+
+**A non super admin sees nothing at all** rather than a control that fails: the whole `MarkPaidByHand` block is behind `{isSuperAdmin && ...}`, so there is no button, no disabled state and no explanatory text. Verified server side too, from a non-super-admin context: `super_admin_mark_order_paid` returned **"Not permitted"** and nothing changed (0 rows in `marketplace_manual_payments`, all 16 orders still pending).
+
+**The Paystack warning, as shipped**: *"Paystack has no successful payment for this, so only mark it paid if money reached you another way. This releases the item to {seller} and commits us to paying them."* Shown inside the form, above the fields, in error-red on `#FCEBE9`.
+
+**Mark as sent and undo work**, following the abandoned screen exactly, with one required difference: `times_contacted` in the view counts `marketplace_outreach_log` on **`subject_id = order_id`**, so this screen calls the **four-argument** `log_outreach_contact` overload. The three-argument version used elsewhere writes no subject and would have left the count stuck at zero. A row leaves the working list once messaged and lands in a toggled "already messaged" group, never deleted.
+
+**Four mismatches found and reported rather than worked around:**
+1. **`payment_not_completed` is NOT in the outreach queue**, contrary to the brief. Checked all four functions: `get_buyer_nudge_suggestions`, `get_seller_nudge_suggestions`, `get_outreach_queue` and `resolve_outreach_message` none reference it. What exists is the stage config (`max_attempts: 3`), the three templates, and the subject-aware `resolve_outreach_message_for`. So this screen resolves the message itself per order; it will not arrive via the queue. Message two does offer bank transfer, as stated.
+2. **`undo_outreach_contact` takes no subject**, so undo removes the most recent `payment_not_completed` row for that BUYER, which for someone with two stalled orders may not be the one just marked. Used as-is since backend changes were out of scope.
+3. **The shortfall rule blocks, it does not warn.** The function's own comment says "warn rather than block" while the code raises. The behaviour matches the brief; the comment is stale. The shortfall guard itself is verified by reading the deployed function, not by execution, because the super-admin check runs first and this environment has no super-admin session.
+4. **The nine-attempt row is the operator's own test account**, not an external buyer. Of the 16 rows, the genuinely external people are Azunna Peace (three times in one day, exactly as described), Gladys, Onyinye Peace, Ayomidepetera Owolabi, Stephen Blessing, Olawunmi Afolabi and Adewale Adewale. No structural test flag exists to filter on, the same honest limitation `MarketplaceBuyers` and the abandoned screen already note.
+
+**`payment_failure_context` verified live**: nine and four attempts both return *"I can see you tried several times, so something on our payment page was clearly not working for you. That is on us, not you."*; two attempts returns the gentler *"It looks like you tried twice, so something went wrong on the payment page rather than with you."* It is shown on the card in coral-light and injected into both the WhatsApp and email messages as `{{extra}}`.
+
+**Preserved**: the abandoned checkouts screen, untouched; the outreach queue and its per-subject attempt counting, untouched (a new subject-aware helper was added alongside rather than changing the existing one); sections 7-30.
+
+Files touched: `MarketplacePendingPayments.tsx` (new), `opsData.ts`, `StorefrontApp.tsx`, `AdminLayout.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

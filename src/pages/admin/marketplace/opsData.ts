@@ -578,3 +578,111 @@ export async function mergeSplitDraft(draftId: string, targetListingId: string):
   if (data !== true) return { ok: false, message: "This could not be merged. Refresh and try again." };
   return { ok: true };
 }
+
+/* ── Pending payments (reached Paystack, never completed) ─────────────── */
+
+export interface PendingPaymentRow {
+  order_id: string;
+  cart_reference: string | null;
+  reference: string | null;
+  latest_reference: string | null;
+  payment_attempt_count: number;
+  amount_naira: number | null;
+  created_at: string;
+  updated_at: string;
+  buyer_id: string | null;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  seller_name: string | null;
+  listing_id: string | null;
+  listing_title: string | null;
+  image_url: string | null;
+  listing_status: string | null;
+  /** True at two or more attempts: something stopped them rather than them
+   * wandering off. This is the field that decides the sort. */
+  struggled: boolean;
+  hours_since: number;
+  times_contacted: number;
+}
+
+export async function fetchPendingPayments(): Promise<PendingPaymentRow[]> {
+  const { data, error } = await adb.from("marketplace_pending_payments").select("*");
+  if (error) throw error;
+  return (data ?? []) as PendingPaymentRow[];
+}
+
+/** The sentence to open with, already matched to how many times they tried:
+ * nine attempts gets "That is on us, not you", two gets a gentler version. */
+export async function fetchPaymentFailureContext(orderId: string): Promise<string | null> {
+  const { data, error } = await adb.rpc("payment_failure_context", { p_order_id: orderId });
+  if (error) return null;
+  return (data as string | null) || null;
+}
+
+/** The next message in the three-message sequence for THIS order. Subject
+ * aware, unlike resolve_outreach_message: a buyer with two stalled orders
+ * gets message one for each, not message one then message two. Returns null
+ * once the sequence for that order is exhausted. */
+export async function resolvePendingPaymentMessage(input: {
+  orderId: string; buyerId: string; wa: string; name: string; item: string; link: string; extra: string | null;
+}): Promise<string | null> {
+  const { data, error } = await adb.rpc("resolve_outreach_message_for", {
+    p_stage: "payment_not_completed",
+    p_person_id: input.buyerId,
+    p_subject_id: input.orderId,
+    p_wa: input.wa,
+    p_name: input.name,
+    p_item: input.item,
+    p_link: input.link,
+    p_extra: input.extra,
+  });
+  if (error) return null;
+  return (data as string | null) || null;
+}
+
+/** Marks this ORDER contacted, not just this person. The pending-payments
+ * view counts times_contacted on subject_id, so the 4-argument overload is
+ * required — the 3-argument one used elsewhere writes no subject and would
+ * leave the count stuck at zero. */
+export async function logPendingPaymentContact(buyerId: string, orderId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("log_outreach_contact", {
+    p_person_type: "buyer",
+    p_person_id: buyerId,
+    p_stage_key: "payment_not_completed",
+    p_subject_id: orderId,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Reverses a mis-tap. NOTE: undo_outreach_contact takes no subject, so it
+ * removes the most recent payment_not_completed row for this BUYER, which
+ * for someone with two stalled orders may not be the one just marked.
+ * Accepted rather than worked around, since backend changes were out of
+ * scope; flagged in handoff section 135. */
+export async function undoPendingPaymentContact(buyerId: string): Promise<boolean> {
+  const { data, error } = await adb.rpc("undo_outreach_contact", {
+    p_person_id: buyerId, p_stage_key: "payment_not_completed",
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+/** Super admin only. Deliberately takes every field the function demands
+ * rather than defaulting any of them: the amount ACTUALLY received (never
+ * assumed from the order), how it arrived, and why. */
+export async function superAdminMarkOrderPaid(input: {
+  orderId: string; amountReceivedNaira: number; method: string; reason: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await adb.rpc("super_admin_mark_order_paid", {
+    p_order_id: input.orderId,
+    p_amount_received_naira: input.amountReceivedNaira,
+    p_method: input.method,
+    p_reason: input.reason,
+  });
+  // The function's own messages are written for a person and already say
+  // what to do, so they surface verbatim rather than being reworded.
+  if (error) return { ok: false, message: error.message || "Could not record that. Please try again." };
+  return { ok: true };
+}
