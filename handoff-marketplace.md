@@ -7933,3 +7933,25 @@ Files touched: `lib/pendingActionDismissed.ts`, `components/PendingActionPrompt.
 Files touched: `MarketplacePendingPayments.tsx` (new), `opsData.ts`, `StorefrontApp.tsx`, `AdminLayout.tsx`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
+
+## 136. Subject-aware undo, and the overload ambiguity it introduced (2026-08-21)
+
+**Asked for**: pass `order_id` to `undo_outreach_contact` so undo targets the message about that specific order, closing the imprecision flagged in §135.
+
+**Done, and verified against Azunna Peace's three real orders** (`5db2d476…`, `b02e4b39…`, `fe519b87…`, all one `buyer_id`). Inserted one log row per order, oldest first, then ran the function's exact predicate targeting the OLDEST order — the one a subject-blind undo could never pick, since it takes the most recent. Result: exactly that row went, the other two remained, and the probe cleaned up after itself to zero rows. So the fix is real on her actual data, not just in principle.
+
+**A live regression came with the new overload, found and fixed.** `undo_outreach_contact` now exists twice: the original 2-argument version, and a 3-argument one whose `p_subject_id` defaults to null. That makes a 2-argument call genuinely ambiguous. Confirmed both ways:
+- raw SQL: `function undo_outreach_contact(uuid, unknown) is not unique`
+- PostgREST, which is what the app actually uses: **HTTP 300, `PGRST203`, "Could not choose the best candidate function"**
+
+`MarketplaceOutreach`'s Undo button calls exactly that 2-argument shape, so **the outreach queue's undo was broken in production the moment the overload was deployed**. Fixed by naming all three parameters at both call sites: the outreach screen passes `p_subject_id: null`, which selects the 3-argument overload unambiguously while preserving its old behaviour exactly, since the function's own guard is `(p_subject_id is null or subject_id = p_subject_id)`. Re-verified over REST: both call shapes now return `42501` (resolved to one function, then refused on permissions for anon) rather than `PGRST203`.
+
+**Second consequence of the overload**: the 3-argument version `RETURNS void`, while the 2-argument one returned `boolean`. Both helpers previously asserted `data === true`, which against a void function is always false, so every undo would have reported "Could not undo, try again" even on success. Both now treat the absence of an error as success.
+
+**The stale comment was NOT corrected.** `super_admin_mark_order_paid` still reads `-- warn rather than block on a shortfall` directly above a `raise exception`. The behaviour is right and matches the brief, only the comment is wrong. Re-read the deployed function to check rather than taking it on trust; reporting rather than fixing, since backend changes remain a non-goal.
+
+**Preserved**: `MarketplaceOutreach`'s undo semantics are byte-for-byte what they were, now that it passes an explicit null; mark-as-sent on both screens untouched; sections 7-30.
+
+Files touched: `opsData.ts`, `MarketplacePendingPayments.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.

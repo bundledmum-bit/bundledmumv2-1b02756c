@@ -229,7 +229,7 @@ function ContactActions({ r, waHref, mailHref }: { r: PendingPaymentRow; waHref:
     if (!r.buyer_id) return;
     setBusy(true); setError(null);
     try {
-      const ok = await undoPendingPaymentContact(r.buyer_id);
+      const ok = await undoPendingPaymentContact(r.buyer_id, r.order_id);
       if (!ok) throw new Error("not saved");
       await qc.invalidateQueries({ queryKey: QUERY_KEY });
     } catch { setError("Could not undo, try again."); } finally { setBusy(false); }

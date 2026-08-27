@@ -418,12 +418,31 @@ export async function logOutreachContact(personType: "seller" | "buyer", personI
   return data === true;
 }
 
-/** Reverses a mis-tap of "mark as sent": removes the most recent contact
- * record for this exact (person, outreach type). */
+/**
+ * Reverses a mis-tap of "mark as sent": removes the most recent contact
+ * record for this exact (person, outreach type).
+ *
+ * p_subject_id is passed EXPLICITLY as null, and that is not optional
+ * styling. undo_outreach_contact now has two overloads, a 2-argument one
+ * and a 3-argument one whose third parameter defaults to null, so a
+ * 2-argument call is genuinely ambiguous: PostgREST answers HTTP 300
+ * PGRST203 "could not choose the best candidate function" and the undo
+ * silently fails. Naming all three parameters selects the 3-argument
+ * overload unambiguously.
+ *
+ * Behaviour is unchanged for this screen: the function's own guard is
+ * `(p_subject_id is null or subject_id = p_subject_id)`, so null still
+ * means "the most recent one, whatever it was about".
+ *
+ * That overload RETURNS VOID, unlike the old boolean one, so success is
+ * the absence of an error rather than a `true` payload.
+ */
 export async function undoOutreachContact(personId: string, stageKey: string): Promise<boolean> {
-  const { data, error } = await adb.rpc("undo_outreach_contact", { p_person_id: personId, p_stage_key: stageKey });
+  const { error } = await adb.rpc("undo_outreach_contact", {
+    p_person_id: personId, p_stage_key: stageKey, p_subject_id: null,
+  });
   if (error) throw error;
-  return data === true;
+  return true;
 }
 
 /** Same idea as logOutreachContact/undoOutreachContact, deliberately a
@@ -656,17 +675,20 @@ export async function logPendingPaymentContact(buyerId: string, orderId: string)
   return data === true;
 }
 
-/** Reverses a mis-tap. NOTE: undo_outreach_contact takes no subject, so it
- * removes the most recent payment_not_completed row for this BUYER, which
- * for someone with two stalled orders may not be the one just marked.
- * Accepted rather than worked around, since backend changes were out of
- * scope; flagged in handoff section 135. */
-export async function undoPendingPaymentContact(buyerId: string): Promise<boolean> {
-  const { data, error } = await adb.rpc("undo_outreach_contact", {
-    p_person_id: buyerId, p_stage_key: "payment_not_completed",
+/**
+ * Reverses a mis-tap, for THIS order specifically. Passing the order id as
+ * the subject is what makes that precise: Azunna Peace has three stalled
+ * orders right now, and without it the undo removed whichever message was
+ * most recent for her, which was frequently the wrong one.
+ *
+ * Returns void, so success is the absence of an error.
+ */
+export async function undoPendingPaymentContact(buyerId: string, orderId: string): Promise<boolean> {
+  const { error } = await adb.rpc("undo_outreach_contact", {
+    p_person_id: buyerId, p_stage_key: "payment_not_completed", p_subject_id: orderId,
   });
   if (error) throw error;
-  return data === true;
+  return true;
 }
 
 /** Super admin only. Deliberately takes every field the function demands
