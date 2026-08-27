@@ -54,8 +54,11 @@ export default function MarketplacePendingPayments() {
       if (a.payment_attempt_count !== b.payment_attempt_count) return b.payment_attempt_count - a.payment_attempt_count;
       return a.hours_since - b.hours_since;
     };
-    const w = all.filter((r) => r.times_contacted === 0).sort(sort);
-    const c = all.filter((r) => r.times_contacted > 0).sort(sort);
+    // Split on contacted_at, the same signal MarketplaceAbandonedCheckouts
+    // uses, rather than on times_contacted. Marking someone sent moves them
+    // across into the toggled group; it never hides or deletes them.
+    const w = all.filter((r) => !r.contacted_at).sort(sort);
+    const c = all.filter((r) => !!r.contacted_at).sort(sort);
     return {
       working: w,
       contacted: c,
@@ -108,6 +111,33 @@ export default function MarketplacePendingPayments() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * When this record disappears. Quiet by default, since it is background
+ * information rather than a task: an unpaid order is deleted 60 days after
+ * it was created by a scheduled job, and nothing paid is ever deleted at
+ * any age.
+ *
+ * Under a week it stops being background and becomes the last chance to
+ * speak to that buyer, so it turns red and says so.
+ */
+const REMOVAL_SOON_DAYS = 7;
+
+function RemovalNotice({ days }: { days: number | null }) {
+  if (days == null) return null;
+  if (days <= 0) {
+    return <div className="text-[10.5px] font-heading font-extrabold" style={{ color: "#C0392B" }}>Removed any time now</div>;
+  }
+  const soon = days <= REMOVAL_SOON_DAYS;
+  return (
+    <div className={soon ? "text-[10.5px] font-heading font-extrabold" : "text-[10.5px]"}
+      style={{ color: soon ? "#C0392B" : "#8A7A72" }}>
+      {soon
+        ? `Removed in ${days} ${days === 1 ? "day" : "days"}, last chance`
+        : `Removed in ${days} days`}
     </div>
   );
 }
@@ -171,6 +201,7 @@ function Row({ r }: { r: PendingPaymentRow }) {
               {r.amount_naira != null ? formatNaira(r.amount_naira) : "—"}
             </div>
             <div className="text-[10.5px] text-text-med">{relativeTimeAgo(r.updated_at)}</div>
+            <RemovalNotice days={r.days_until_removed} />
           </div>
         </div>
 

@@ -620,6 +620,16 @@ export interface PendingPaymentRow {
   struggled: boolean;
   hours_since: number;
   times_contacted: number;
+  /** When this specific ORDER was last messaged, null if never. The split
+   * between the working list and the already-messaged group keys on this,
+   * not on times_contacted, so it matches the abandoned-checkouts screen. */
+  contacted_at: string | null;
+  /** An unpaid order is deleted this many days from now, by the scheduled
+   * purge_old_pending_orders job (60 days from creation, from
+   * site_settings.marketplace_pending_payment_purge_days). Nothing paid is
+   * ever deleted at any age: that job filters on payment_status='pending'
+   * and additionally refuses anything settled, paid out, or disputed. */
+  days_until_removed: number | null;
 }
 
 export async function fetchPendingPayments(): Promise<PendingPaymentRow[]> {

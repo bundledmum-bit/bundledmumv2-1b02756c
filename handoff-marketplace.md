@@ -7981,3 +7981,24 @@ The first row is the case that matters: a subject-blind undo would have taken o3
 Files touched: `opsData.ts`.
 
 `npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from this file.
+
+## 138. Pending payments: contacted rows move out, and each row says when it disappears (2026-08-21)
+
+**Both new columns verified on the view before use**: `contacted_at timestamptz` and `days_until_removed integer`.
+
+**The split now keys on `contacted_at`**, exactly as `MarketplaceAbandonedCheckouts` does, rather than on `times_contacted` as §135 had it. The two agree on today's data, but `contacted_at` is the explicit signal and keeps the two sibling screens honestly identical. Working list is `!r.contacted_at`; everything else falls into the toggled "already messaged" group. Marking someone sent moves them across, it never hides or deletes them, and the toggle is always there to look at them again. Verified against the live 16: **14 working, 2 already messaged**, all 16 accounted for, which matches the two contacted rows described.
+
+**The removal notice**, a new `RemovalNotice` on each row directly under the relative time:
+- normal: **"Removed in 48 days"**, in muted `#8A7A72` at 10.5px, deliberately quiet since it is background rather than a task
+- within a week: **"Removed in 5 days, last chance"**, switching to error red and extra-bold, because at that point it stops being background and becomes the last chance to speak to that buyer
+- already past: **"Removed any time now"**, same red treatment
+
+Threshold verified at every boundary: 10 and 8 days quiet, 7 days flips to urgent, 1 day reads "1 day" not "1 days", and 0 or negative reads "Removed any time now". **Nothing is urgent today** — the live range is 48 to 56 days — so the red state is correct but unexercised by real data, which is stated rather than implied.
+
+**The 60-day rule checked at source rather than taken on trust.** `purge_old_pending_orders` reads `site_settings.marketplace_pending_payment_purge_days` (default 60) and deletes only where `payment_status = 'pending'`, with three further guards: `settlement_status = 'unsettled'`, `payout_released_at is null`, and no row in `marketplace_disputes`. So nothing paid is deletable at any age, and the notice's implicit promise holds. It also clears orphaned `payment_not_completed` outreach rows afterwards, so a deleted order leaves no dangling history.
+
+**Nothing else changed**: the sort (struggled, then attempts, then recency), the mark-as-paid form and its three required fields, the super admin gate, and all outreach behaviour are untouched.
+
+Files touched: `opsData.ts`, `MarketplacePendingPayments.tsx`.
+
+`npm run build` clean. `npx tsc --noEmit` shows the same 5 pre-existing errors, none from these files.
