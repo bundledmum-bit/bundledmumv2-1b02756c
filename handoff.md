@@ -1,5 +1,22 @@
 # Handoff
 
+## meta-catalog-feed availability — AUDITED, already correct (NO CHANGE, this turn)
+Asked to set `availability` per row from `brands.in_stock` and keep OOS rows. **The
+deployed feed (v31) already does exactly this** — no code change was needed or made.
+- **availability (before == after):** `csv(b.in_stock ? 'in stock' : 'out of stock')`
+  — Meta's lowercase CSV tokens. OOS rows are KEPT and marked `out of stock`, not dropped
+  (preserves Meta history / ad learning; resumes instantly on restock).
+- **No `in_stock` filter** in the query; the only filters are
+  `products.is_active = true`, `products.deleted_at IS NULL`, `brand_name NOT ILIKE
+  'Brand TBD%'`, `price > 0` (plus in-loop skips: `exclude_from_ad_platforms`, no slug,
+  no image). Inactive/deleted products ARE excluded — verified, still true.
+- **Live feed counts (fetched from the deployed function, CSV-parsed):** X-Row-Count
+  **598** total served — **590 "in stock", 8 "out of stock"**; X-Skipped-Ad-Excluded 127,
+  X-Skipped-No-Image 2. (The task's "22 OOS rows" was an earlier stock state; now 8, and
+  they are already correctly marked out of stock.)
+- **repo == deployed:** repo `supabase/functions/meta-catalog-feed/index.ts` is
+  byte-identical to deployed v31 (ezbr_sha256 5a897057…). Nothing to deploy; cron untouched.
+
 ## Audience chooser — direct/organic homepage entry splitter (DONE, this turn)
 A one-screen overlay asking direct/organic homepage visitors which of three
 things they came for, routing them to the right place. **New file
