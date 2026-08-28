@@ -630,12 +630,54 @@ export interface PendingPaymentRow {
    * ever deleted at any age: that job filters on payment_status='pending'
    * and additionally refuses anything settled, paid out, or disputed. */
   days_until_removed: number | null;
+  /** Paystack's own word for what happened. 'failed' means they entered
+   * details and were declined. NULL means the reconcile sweep has not
+   * labelled it yet, which is NOT the same as a failure and must never be
+   * shown as one. The view admits only these two: anything Paystack calls
+   * 'abandoned' belongs to marketplace_stopped_at_payment instead. */
+  paystack_status: string | null;
 }
 
 export async function fetchPendingPayments(): Promise<PendingPaymentRow[]> {
   const { data, error } = await adb.from("marketplace_pending_payments").select("*");
   if (error) throw error;
   return (data ?? []) as PendingPaymentRow[];
+}
+
+/* ── Stopped at the payment page (Paystack "abandoned") ───────────────── */
+
+/**
+ * People who saw the payment page and left without entering anything.
+ *
+ * A different person from the one in PendingPaymentRow, and the distinction
+ * is the point: nothing was attempted and nothing was declined, so no
+ * message to these people may say their payment failed or did not go
+ * through. Saying so could make them think money moved.
+ *
+ * The view deliberately carries no buyer_id and no listing_id, so the
+ * sequenced outreach message, mark as sent, undo and the resume deep link
+ * are all unavailable for this group. Contacting them directly is not.
+ */
+export interface StoppedAtPaymentRow {
+  order_id: string;
+  amount_naira: number | null;
+  payment_attempt_count: number;
+  updated_at: string;
+  hours_since: number;
+  buyer_name: string | null;
+  buyer_email: string | null;
+  buyer_phone: string | null;
+  seller_name: string | null;
+  listing_title: string | null;
+  image_url: string | null;
+  listing_status: string | null;
+  contacted_at: string | null;
+}
+
+export async function fetchStoppedAtPayment(): Promise<StoppedAtPaymentRow[]> {
+  const { data, error } = await adb.from("marketplace_stopped_at_payment").select("*");
+  if (error) throw error;
+  return (data ?? []) as StoppedAtPaymentRow[];
 }
 
 /** The sentence to open with, already matched to how many times they tried:

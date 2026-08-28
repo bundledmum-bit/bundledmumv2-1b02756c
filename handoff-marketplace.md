@@ -8087,3 +8087,56 @@ larger change than it sounds and is not attempted here.
 Affected, for the record: `RequestVideoSheet.tsx:40`,
 `WatchRequestVideoSheet.tsx:28`, `ListingDetailPage.tsx:442`,
 `SellerVideoRequestDetailPage.tsx:78` and `:89`.
+
+## 141. Declined is not the same as stopped (2026-08-28)
+
+The pending payments screen was showing everyone who reached Paystack, which
+conflated two completely different people. Paystack distinguishes ABANDONED,
+meaning the payment page was seen and left without anything entered, from
+FAILED, meaning details were entered and refused. The screen was calling
+fifteen people a failed payment when nothing had failed, and the outreach
+message would have told them their payment did not go through when they never
+attempted one. That could make someone think money had moved.
+
+**Two views, one screen.** `marketplace_pending_payments` now returns only
+`paystack_status = 'failed'` or NULL, and gained the `paystack_status` column.
+`marketplace_stopped_at_payment` is new and holds the abandoned ones.
+
+Both groups are on the one screen in two sections, rather than a new screen.
+They only make sense next to each other: a near empty declined list above a long
+stopped list reads as one true picture, whereas a declined screen on its own
+would just look broken, and the distinction that caused this whole change would
+be invisible again the next time someone reads it.
+
+**Live at the time of writing**, which is not what the brief said: the declined
+view returns ONE row, Gladys, and the stopped view holds SIXTEEN. The brief said
+two and fourteen. Azunna was unlabelled when it was written and has since been
+labelled abandoned by the reconcile sweep, moving across on its own. The sweep
+working, not a discrepancy to fix.
+
+**Unchecked is not a failure.** A row with `paystack_status` NULL is shown as
+"Checking with Paystack", never as a decline. These rows are deliberately not
+hidden, since hiding a possible real failure is worse than showing an extra row.
+The email body was also wrong here and is fixed: it hardcoded "the payment did
+not go through" for every row, which asserts a decline that has not been
+established, and now says "it was never completed" until the label arrives.
+`payment_failure_context` was checked and is safe as it stands, since it only
+ever talks about coming back to it, never about failing.
+
+**Wording for the stopped group.** Section body: "They opened the payment page
+and left without entering anything. No payment was attempted, nothing was
+declined and no money moved. Do not tell these people a payment failed." Their
+pill reads "Stopped, never attempted", and their WhatsApp and email both open
+with "you got as far as the payment page ... and stopped", matching the
+corrected outreach messages.
+
+**What the stopped group cannot have, and why.** The view carries no `buyer_id`
+and no `listing_id`, so mark as sent, undo, the sequenced three message outreach
+(`resolve_outreach_message_for` needs `p_person_id`), the resume deep link,
+`times_contacted` and `days_until_removed` are all unavailable for them. They
+get `contacted_at` as a plain note and a hand written message instead. Adding
+`buyer_id` to the view would restore the sequence, but that is a backend change
+and was out of scope here.
+
+Untouched: the mark as paid form and its super admin gate, the sort order, mark
+as sent, undo, the removal notice, and the awaiting confirmation screen.

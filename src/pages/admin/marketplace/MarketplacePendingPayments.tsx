@@ -5,12 +5,24 @@ import { usePermissions } from "@/hooks/useAdminPermissionsContext";
 import {
   formatNaira, relativeTimeAgo, fetchPendingPayments, fetchPaymentFailureContext,
   resolvePendingPaymentMessage, logPendingPaymentContact, undoPendingPaymentContact,
-  superAdminMarkOrderPaid, type PendingPaymentRow,
+  superAdminMarkOrderPaid, fetchStoppedAtPayment,
+  type PendingPaymentRow, type StoppedAtPaymentRow,
 } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
 
 /**
- * People who reached the payment page and did not finish.
+ * People whose payment was genuinely declined, and the separate, much
+ * larger group who reached the payment page and stopped without attempting
+ * anything.
+ *
+ * Paystack distinguishes these two and so must we. FAILED means details
+ * were entered and refused. ABANDONED means the page was seen and left.
+ * Conflating them told fifteen people their payment did not go through when
+ * not one of them had attempted a payment, which could have made them think
+ * money had moved. The two groups are on one screen, in two sections, with
+ * deliberately different wording — kept side by side precisely so the
+ * difference is visible rather than something a future reader has to
+ * rediscover.
  *
  * A sibling of MarketplaceAbandonedCheckouts, deliberately built to the same
  * shape (same card, same ContactActions layout, same mark-as-sent-with-undo)
@@ -24,6 +36,7 @@ import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
  */
 
 const QUERY_KEY = ["mkt-pending-payments"];
+const STOPPED_QUERY_KEY = ["mkt-stopped-at-payment"];
 const MKT_SITE = "https://bundledmum.com/marketplace";
 
 /** digits-only, Nigerian-number-aware — same helper the abandoned screen
@@ -44,7 +57,7 @@ export default function MarketplacePendingPayments() {
     queryFn: fetchPendingPayments,
   });
 
-  const { working, contacted, totalNaira, struggledCount } = useMemo(() => {
+  const { working, contacted, totalNaira, struggledCount, uncheckedCount } = useMemo(() => {
     const all = rows ?? [];
     // Struggled first, then by attempts, then by how recent. Someone who
     // tried three times today matters more than someone who half-started a
@@ -64,6 +77,7 @@ export default function MarketplacePendingPayments() {
       contacted: c,
       totalNaira: all.reduce((s, r) => s + (r.amount_naira || 0), 0),
       struggledCount: all.filter((r) => r.struggled).length,
+      uncheckedCount: all.filter((r) => !r.paystack_status).length,
     };
   }, [rows]);
 
@@ -71,46 +85,207 @@ export default function MarketplacePendingPayments() {
 
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
-  if (!rows || rows.length === 0) {
-    return (
-      <div>
-        <OpsHeader title="Did not finish paying" subtitle="Everyone who reached the payment page and stopped." />
-        <OpsEmpty title="Nobody is stuck right now" body="Someone who opens Paystack and does not complete appears here, with how many times they tried." />
-      </div>
-    );
-  }
+  const none = !rows || rows.length === 0;
 
   return (
     <div>
       <OpsHeader
-        title="Did not finish paying"
-        subtitle="Everyone who reached the payment page and stopped. They had already decided to buy."
+        title="Payments that were declined"
+        subtitle="Only people whose card or transfer was actually refused. Almost everyone who does not finish never attempted a payment at all, and they are further down."
       />
 
-      <div className="rounded-2xl border p-3.5 mb-4 flex flex-wrap gap-x-6 gap-y-2"
-        style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
-        <Stat label="Waiting on a message" value={String(working.length)} />
-        <Stat label="Something stopped them" value={String(struggledCount)} tone="warn" />
-        <Stat label="Sitting there" value={formatNaira(totalNaira)} />
-      </div>
+      {/* Near empty is the correct state here, not a broken one. Before
+          Paystack's own status was read, this list held everyone who opened
+          the payment page and it looked alarmingly long. Saying so keeps a
+          short list from reading as a bug. */}
+      {none ? (
+        <OpsEmpty
+          title="Nothing was declined"
+          body="Nobody has had a payment refused. This list is meant to be short or empty: anyone who reached the payment page and simply stopped is counted below instead."
+        />
+      ) : (
+        <>
+          <div className="rounded-2xl border p-3.5 mb-4 flex flex-wrap gap-x-6 gap-y-2"
+            style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+            <Stat label="Waiting on a message" value={String(working.length)} />
+            <Stat label="Something stopped them" value={String(struggledCount)} tone="warn" />
+            {uncheckedCount > 0 && <Stat label="Not checked yet" value={String(uncheckedCount)} />}
+            <Stat label="Sitting there" value={formatNaira(totalNaira)} />
+          </div>
 
-      <div className="flex flex-col gap-2.5">
-        {working.map((r) => <Row key={r.order_id} r={r} />)}
-      </div>
+          <div className="flex flex-col gap-2.5">
+            {working.map((r) => <Row key={r.order_id} r={r} />)}
+          </div>
 
-      {contacted.length > 0 && (
-        <div className="mt-5">
-          <button onClick={() => setShowContacted((v) => !v)}
-            className="font-heading font-extrabold text-[12px] underline" style={{ color: "#6B5B54" }}>
-            {showContacted ? "Hide" : "Show"} {contacted.length} already messaged
-          </button>
-          {showContacted && (
-            <div className="flex flex-col gap-2.5 mt-2.5">
-              {contacted.map((r) => <Row key={r.order_id} r={r} />)}
+          {contacted.length > 0 && (
+            <div className="mt-5">
+              <button onClick={() => setShowContacted((v) => !v)}
+                className="font-heading font-extrabold text-[12px] underline" style={{ color: "#6B5B54" }}>
+                {showContacted ? "Hide" : "Show"} {contacted.length} already messaged
+              </button>
+              {showContacted && (
+                <div className="flex flex-col gap-2.5 mt-2.5">
+                  {contacted.map((r) => <Row key={r.order_id} r={r} />)}
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
+
+      <StoppedSection />
+    </div>
+  );
+}
+
+/**
+ * The other group, and much the bigger one: they saw the payment page and
+ * left without entering anything.
+ *
+ * Kept on this screen rather than given its own, because the two lists only
+ * make sense next to each other. A near empty declined list above and a long
+ * stopped list below reads as one true picture; split across two screens,
+ * the declined screen would just look broken and the distinction that caused
+ * this whole change would be invisible again.
+ *
+ * Every word here avoids failure language. Nothing was attempted, nothing
+ * was declined, and no money moved.
+ */
+function StoppedSection() {
+  const { data: rows, isLoading } = useQuery({
+    queryKey: STOPPED_QUERY_KEY, staleTime: 15000, queryFn: fetchStoppedAtPayment,
+  });
+  const [open, setOpen] = useState(true);
+
+  const { working, contacted, totalNaira } = useMemo(() => {
+    const all = rows ?? [];
+    // Most recent first. There is no "struggled" here by definition, since
+    // nobody attempted anything.
+    const sort = (a: StoppedAtPaymentRow, b: StoppedAtPaymentRow) => a.hours_since - b.hours_since;
+    return {
+      working: all.filter((r) => !r.contacted_at).sort(sort),
+      contacted: all.filter((r) => !!r.contacted_at).sort(sort),
+      totalNaira: all.reduce((s, r) => s + (r.amount_naira || 0), 0),
+    };
+  }, [rows]);
+
+  if (isLoading || !rows || rows.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <div className="border-t pt-5" style={{ borderColor: "#F0DDD2" }}>
+        <h2 className="font-heading font-black text-[15px] text-foreground">Stopped at the payment page</h2>
+        <p className="text-[12px] text-text-med mt-0.5 max-w-[62ch]">
+          They opened the payment page and left without entering anything. No payment was attempted,
+          nothing was declined and no money moved. Do not tell these people a payment failed.
+        </p>
+
+        <div className="rounded-2xl border p-3.5 mt-3.5 mb-4 flex flex-wrap gap-x-6 gap-y-2"
+          style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+          <Stat label="Waiting on a message" value={String(working.length)} />
+          <Stat label="Never got that far" value={String(rows.length)} />
+          <Stat label="Sitting there" value={formatNaira(totalNaira)} />
+        </div>
+
+        <button onClick={() => setOpen((v) => !v)}
+          className="font-heading font-extrabold text-[12px] underline mb-2.5" style={{ color: "#6B5B54" }}>
+          {open ? "Hide" : "Show"} these {rows.length}
+        </button>
+
+        {open && (
+          <>
+            <div className="flex flex-col gap-2.5">
+              {working.map((r) => <StoppedRow key={r.order_id} r={r} />)}
+            </div>
+            {contacted.length > 0 && (
+              <div className="flex flex-col gap-2.5 mt-2.5">
+                {contacted.map((r) => <StoppedRow key={r.order_id} r={r} />)}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StoppedRow({ r }: { r: StoppedAtPaymentRow }) {
+  const intlPhone = toIntlPhone(r.buyer_phone);
+  const name = r.buyer_name || "Someone";
+  const item = r.listing_title || "an item";
+
+  // Written here rather than fetched from resolve_outreach_message_for,
+  // which needs a buyer_id the view does not carry. Same wording the
+  // corrected outreach messages use: got as far as the page, and stopped.
+  const text =
+    `Hello ${name}, you got as far as the payment page for the ${item} on BundledMum and stopped. ` +
+    `Nothing was charged and it is still yours to buy if you want it: ${MKT_SITE}`;
+  const waHref = intlPhone ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(text)}` : null;
+  const mailHref = r.buyer_email
+    ? `mailto:${r.buyer_email}?subject=${encodeURIComponent(`Your ${item} on BundledMum`)}&body=${encodeURIComponent(
+        `Hello ${name},\n\nYou got as far as the payment page for the ${item} and stopped. ` +
+        `Nothing was charged and nothing went wrong.\n\nIf you would still like it, you can pick up where you left off here:\n${MKT_SITE}`)}`
+    : null;
+
+  return (
+    <div className="rounded-2xl border p-3.5 flex gap-3 items-start" style={{ borderColor: "#F0DDD2", background: "#fff" }}>
+      <div className="w-14 h-14 rounded-lg flex-none overflow-hidden"
+        style={{ background: "repeating-linear-gradient(135deg,#FDE8DF 0 6px,#FFF8F4 6px 12px)" }}>
+        {r.image_url && <img src={r.image_url} alt="" className="w-full h-full object-cover" />}
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <div className="font-heading font-black text-sm text-foreground truncate">{name}</div>
+            <div className="text-[11.5px] text-text-med truncate">{item}</div>
+          </div>
+          <div className="text-right flex-none">
+            <div className="font-heading font-black text-sm text-foreground tabular-nums">
+              {r.amount_naira != null ? formatNaira(r.amount_naira) : "—"}
+            </div>
+            <div className="text-[10.5px] text-text-med">{relativeTimeAgo(r.updated_at)}</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <StatusPill tone="neutral" label="Stopped, never attempted" />
+          {r.listing_status && r.listing_status !== "live" && (
+            <StatusPill tone="neutral" label={`Listing ${r.listing_status}`} />
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-3 text-[11.5px] text-text-med">
+          {r.buyer_email && <span className="truncate">{r.buyer_email}</span>}
+          {r.buyer_phone && <span>{r.buyer_phone}</span>}
+          {!r.buyer_email && !r.buyer_phone && <span>No contact details captured</span>}
+        </div>
+
+        {/* contacted_at is all this view carries, so this is a note rather
+            than the mark as sent control the declined rows get: logging a
+            contact needs a buyer_id the view does not expose. */}
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+          {r.contacted_at
+            ? <span className="text-[11px] text-text-med">Messaged {relativeTimeAgo(r.contacted_at)}</span>
+            : <span className="font-heading font-extrabold text-[11px]" style={{ color: "#D4613C" }}>Not yet contacted</span>}
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          {waHref ? (
+            <a href={waHref} target="_blank" rel="noreferrer"
+              className="flex-1 min-w-[140px] flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]"
+              style={{ background: "#25D366", color: "#fff" }}>Message on WhatsApp</a>
+          ) : (
+            <span className="flex-1 min-w-[140px] flex items-center justify-center rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]"
+              style={{ background: "#EDE6E1", color: "#8A7A72" }}>No number on file</span>
+          )}
+          {mailHref && (
+            <a href={mailHref}
+              className="flex-none flex items-center justify-center rounded-lg py-2.5 px-3 font-heading font-extrabold text-[12.5px] border"
+              style={{ borderColor: "#E3D4CB", color: "#3D3936", background: "#fff" }}>Email</a>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -175,9 +350,16 @@ function Row({ r }: { r: PendingPaymentRow }) {
     }),
   });
 
+  // "Did not go through" is a claim about a payment that was attempted and
+  // refused. On a row Paystack has not labelled yet that claim is not
+  // established, so the neutral wording is used until it is.
+  const declined = r.paystack_status === "failed";
   const mailHref = r.buyer_email
     ? `mailto:${r.buyer_email}?subject=${encodeURIComponent(`Your ${item} on BundledMum`)}&body=${encodeURIComponent(
-        `Hello ${name},\n\nYou started buying the ${item} but the payment did not go through.` +
+        `Hello ${name},\n\n` +
+        (declined
+          ? `You started buying the ${item} but the payment did not go through.`
+          : `You started buying the ${item} but it was never completed.`) +
         (failureContext ? `\n\n${failureContext}` : "") +
         `\n\nNothing has been taken from you. If you would still like it, you can finish here:\n${resumeLink}`)}`
     : null;
@@ -206,6 +388,13 @@ function Row({ r }: { r: PendingPaymentRow }) {
         </div>
 
         <div className="flex flex-wrap gap-1.5 items-center">
+          {/* Which of the two this is. An unlabelled row is shown as still
+              being checked, never as a confirmed decline: the reconcile
+              sweep usually settles it within five minutes, and until it
+              does we do not know. */}
+          {declined
+            ? <StatusPill tone="negative" label="Payment declined" />
+            : <StatusPill tone="neutral" label="Checking with Paystack" />}
           {/* The attempt count says the whole story at a glance. */}
           <StatusPill
             tone={r.struggled ? "negative" : "neutral"}
