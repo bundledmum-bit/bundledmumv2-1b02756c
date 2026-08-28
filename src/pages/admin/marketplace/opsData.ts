@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { uploadWithProgress } from "@/marketplace/lib/uploadWithProgress";
 import { adb, formatNaira } from "./data";
 
 /**
@@ -830,4 +832,129 @@ export async function superAdminConfirmReceiptOnBehalf(input: {
   });
   if (error) return { ok: false, message: error.message || "Could not record that. Please try again." };
   return { ok: true };
+}
+
+/* ── Answering in the seller's name ───────────────────────────────────────
+ *
+ * Sellers answer WhatsApp far more readily than they open the app, so a
+ * buyer can sit waiting while a seller who has ALREADY replied to us
+ * ignores a notification. These let an operator record that reply where the
+ * nudge for the same person already lives.
+ *
+ * The buyer is never told an admin typed it, because the seller genuinely
+ * said it. That is exactly why every one of these demands a note saying
+ * where, stored permanently beside who did it, and why the UI insists on
+ * the seller's ACTUAL words rather than a tidied up version.
+ *
+ * get_outreach_queue returns no subject id, only (person_id, stage_key), so
+ * a seller with three unanswered questions cannot be resolved from the
+ * queue row alone. These fetchers resolve the pending items for that seller
+ * directly from tables an admin can already read.
+ */
+
+export interface PendingQuestion {
+  id: string; listing_id: string; question: string; created_at: string;
+}
+export interface PendingVideoRequest {
+  id: string; listing_id: string; note: string | null; created_at: string;
+}
+export interface PendingOffer {
+  id: string; listing_id: string; buyer_price_naira: number | null;
+  seller_amount_naira: number | null; status: string; created_at: string;
+}
+
+export async function fetchSellerPendingQuestions(sellerId: string): Promise<PendingQuestion[]> {
+  const { data, error } = await adb.from("marketplace_listing_questions")
+    .select("id, listing_id, question, created_at")
+    .eq("seller_id", sellerId).is("answer", null)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PendingQuestion[];
+}
+
+export async function fetchSellerPendingVideoRequests(sellerId: string): Promise<PendingVideoRequest[]> {
+  const { data, error } = await adb.from("marketplace_video_requests")
+    .select("id, listing_id, note, created_at")
+    .eq("seller_id", sellerId).is("video_path", null).is("declined_at", null)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PendingVideoRequest[];
+}
+
+export async function fetchSellerPendingOffers(sellerId: string): Promise<PendingOffer[]> {
+  const { data, error } = await adb.from("marketplace_offers")
+    .select("id, listing_id, buyer_price_naira, seller_amount_naira, status, created_at")
+    .eq("seller_id", sellerId).eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as PendingOffer[];
+}
+
+/** All three RPCs return jsonb. A `false`/`error` shape becomes a message
+ * the operator can act on rather than a silent no-op. */
+function readRpcResult(data: unknown): { ok: boolean; message?: string } {
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (d.ok === true) return { ok: true };
+  const msg = typeof d.error === "string" ? d.error
+    : typeof d.message === "string" ? d.message : undefined;
+  return { ok: false, message: msg || "That could not be saved. Refresh and check it is still unanswered." };
+}
+
+export async function adminAnswerQuestionForSeller(input: {
+  questionId: string; answer: string; note: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await adb.rpc("admin_answer_question_for_seller", {
+    p_question_id: input.questionId, p_answer: input.answer, p_note: input.note,
+  });
+  if (error) return { ok: false, message: error.message };
+  return readRpcResult(data);
+}
+
+export async function adminAttachVideoForSeller(input: {
+  requestId: string; videoPath: string; note: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await adb.rpc("admin_attach_video_for_seller", {
+    p_request_id: input.requestId, p_video_path: input.videoPath, p_note: input.note,
+  });
+  if (error) return { ok: false, message: error.message };
+  return readRpcResult(data);
+}
+
+export async function adminAnswerOfferForSeller(input: {
+  offerId: string; decision: "accepted" | "declined" | "countered";
+  counterPriceNaira: number | null; note: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await adb.rpc("admin_answer_offer_for_seller", {
+    p_offer_id: input.offerId, p_decision: input.decision,
+    p_counter_price_naira: input.counterPriceNaira, p_note: input.note,
+  });
+  if (error) return { ok: false, message: error.message };
+  return readRpcResult(data);
+}
+
+/**
+ * Upload a video an admin was sent on WhatsApp, then attach it.
+ *
+ * SIZE ONLY, exactly as the seller's own path does. No compression, no
+ * canvas, no <video> element, nothing that reads the file beyond
+ * `file.size`. Reading a video hangs on iPhone and that is what killed the
+ * public video feature (handoff sections 87 to 92), so this follows
+ * sellerUploadVideoForRequest byte for byte and differs only in the client
+ * and the path prefix.
+ *
+ * The bucket's admin INSERT policy checks the bucket and the permission
+ * only, with no path prefix rule, so `admin/` is a provenance convention
+ * rather than a requirement.
+ */
+export async function adminUploadVideoForSeller(input: {
+  requestId: string; file: File; note: string; onProgress: (pct: number) => void;
+}): Promise<{ ok: boolean; message?: string }> {
+  const ext = (input.file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const path = `admin/request-${input.requestId}-${Date.now()}.${ext}`;
+  try {
+    await uploadWithProgress(adb as unknown as SupabaseClient, "marketplace-request-videos", path, input.file, input.onProgress);
+  } catch {
+    return { ok: false, message: "The upload did not finish. Check the connection and try again." };
+  }
+  return adminAttachVideoForSeller({ requestId: input.requestId, videoPath: path, note: input.note });
 }

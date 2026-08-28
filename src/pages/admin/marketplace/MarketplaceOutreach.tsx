@@ -8,6 +8,7 @@ import {
   type OutreachRow,
 } from "./opsData";
 import { OpsHeader, OpsEmpty } from "./opsUi";
+import AnswerForSeller, { canAnswerForSeller } from "./AnswerForSeller";
 
 type Side = "seller" | "buyer";
 const QUEUE_KEY = ["mkt-outreach-queue"];
@@ -378,6 +379,11 @@ function PersonRow({ person, ceilings, selected, onSelect }: { person: GroupedPe
         )}
         {preview && <div className="rounded-lg border p-2.5 text-[11.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#fff", color: "#3D3936" }}>{preview}</div>}
         <ContactActions row={person.primary} ceilings={ceilings} />
+        {/* Answering happens where the nudge is. A seller who already told
+            us on WhatsApp should not need a second screen. */}
+        {person.primary.person_type === "seller" && canAnswerForSeller(person.primary.stage_key) && (
+          <AnswerForSeller sellerId={person.primary.person_id} stageKey={person.primary.stage_key} />
+        )}
       </div>
     </div>
   );
@@ -405,6 +411,9 @@ function PersonDetail({ person, ceilings, onBack }: { person: GroupedPerson; cei
               <div className="text-xs text-text-med">{r.label}{r.context ? ` · ${r.context}` : ""}</div>
               {preview && <div className="rounded-lg border p-3 text-[12.5px] whitespace-pre-wrap" style={{ borderColor: "#F0DDD2", background: "#FFF8F4", color: "#3D3936" }}>{preview}</div>}
               <ContactActions row={r} ceilings={ceilings} />
+              {r.person_type === "seller" && canAnswerForSeller(r.stage_key) && (
+                <AnswerForSeller sellerId={r.person_id} stageKey={r.stage_key} />
+              )}
             </div>
           );
         })}

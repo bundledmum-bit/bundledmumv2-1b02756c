@@ -8348,3 +8348,60 @@ counter is never even created. Card measured at 375px: 351 wide, on screen,
 Files: `lib/push.ts`, `hooks/usePush.ts`, `components/PushOptInCard.tsx`,
 `marketplace/components/MarketplacePushPrompt.tsx` (new),
 `marketplace/MarketplaceApp.tsx`, `marketplace/marketplace.css`.
+
+## 146. Answering in the seller's name, from the outreach queue (2026-08-28)
+
+Sellers answer WhatsApp far more readily than they open the app, so a buyer
+sits waiting while a seller who has already replied to us ignores a
+notification. Two video requests sat for days before the seller was even
+emailed.
+
+**Where each one went.** All three sit on the outreach queue, directly under
+`ContactActions` on the row for that person, on both the primary row and each
+extra stage row. Someone looking at "a buyer is waiting on an answer" answers it
+there. They appear only for `person_type === "seller"` and only on the three
+stages they belong to: `unanswered_question`, `video_request_pending` and
+`offer_awaiting_response`.
+
+**The queue could not say WHICH.** `get_outreach_queue` returns
+`(person_type, person_id, stage_key, ...)` and no subject id, so a seller with
+three unanswered questions cannot be resolved from the row alone. Rather than
+change the RPC, the pending items are fetched per seller on demand from tables
+an admin can already read: `marketplace_listing_questions` ("Admin reads all
+questions"), `marketplace_video_requests` ("Admin reads all video requests") and
+`marketplace_offers` ("Admin manage offers"). Note the questions table is
+`marketplace_listing_questions`, not `marketplace_questions`.
+
+**The note is mandatory on all three**, minimum 5 characters, matching the RPCs'
+own guard. Labelled "Where did the seller tell you this?" with the placeholder
+"For example: she sent it on WhatsApp this morning", and under it either
+"Kept forever, with your name against it." or "Needed. This is the record of
+where it came from." The submit button is inert until the note and the answer
+are both there.
+
+**Every panel says whose words these are:** "The buyer is told straight away and
+sees this as the seller's own words, so use what they actually said, not a
+tidied up version." The question field is labelled "What the seller said", not
+"Answer".
+
+**The bypass filter still applies.** `detectBypassAttempt` runs on an
+admin-typed answer before the RPC is called, the same call the seller's own
+screen makes, so an admin cannot type something past a rule the seller could not
+have got past. The RPC runs it server side as well.
+
+**Video upload follows the seller's path exactly.** `file.size` against the live
+`marketplace_video_request_max_mb` from site_settings is the ONLY thing read
+from the file. No duration, no decoding, no `<video>` element, no canvas, no
+compression; the File goes straight to `uploadWithProgress`. This is the lesson
+of handoff 87 to 92, where reading a video hung on iPhone. The admin INSERT
+policy on `marketplace-request-videos` checks bucket and permission only with no
+path prefix rule, so `admin/` is a provenance convention rather than a
+requirement.
+
+Files: `opsData.ts` (three fetchers, three RPC wrappers, the upload),
+`AnswerForSeller.tsx` (new), `MarketplaceOutreach.tsx` (mounted twice).
+
+Noted in passing, not changed: the comment above `sellerUploadVideoForRequest`
+says the storage policy requires the seller's auth uid as the path prefix. The
+deployed seller INSERT policy checks only `bucket_id`, so the prefix is
+convention there too.
