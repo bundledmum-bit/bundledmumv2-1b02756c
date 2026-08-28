@@ -7,6 +7,7 @@ import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
 import SellerDeliveryGate from "./sell/SellerDeliveryGate";
 import PendingActionPrompt from "./components/PendingActionPrompt";
 import MarketplacePushPrompt from "./components/MarketplacePushPrompt";
+import ListingVideoUploadDock from "./components/ListingVideoUploadDock";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -155,6 +156,9 @@ export default function MarketplaceApp() {
           {/* Installed app only, signed in only, never on first launch.
               Yields to the gate and the pending prompt above it. */}
           <MarketplacePushPrompt />
+          {/* OUTSIDE <Routes> on purpose: a listing video keeps sending
+              while the seller moves on to list another item. */}
+          <ListingVideoUploadDock />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

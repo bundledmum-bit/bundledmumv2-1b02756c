@@ -8735,3 +8735,54 @@ Edit form unchanged: the listing already exists, so it uploads immediately.
 Files: `sell/ListingVideoPicker.tsx` (new), `sell/ListingVideoField.tsx`
 (accepts `initialFile`, auto sends, handles a lost file),
 `sell/CreateListingPage.tsx`.
+
+## 155. The upload survives navigation, resumes after a drop, and the success screen is readable (2026-08-28)
+
+**The install card was invisible, and so was my own progress line.** Measured
+rather than eyeballed: title and body computed to `rgb(216,239,229)` on
+`rgb(255,248,244)`, about 1.1:1. The cause is `.mkt-success p` at specificity
+(0,1,1) beating `.mkt-install-cta-title` at (0,1,0). It hit every `<p>` inside a
+cream card on that green screen, which is the install card's heading and body
+AND the video field's `.mkt-help` lines, including "Sending your video, 15.5MB
+of 42.0MB". The `.listing` card escaped only because it uses `<div>`s.
+
+Fixed with scoped rules at (0,2,0) and (0,2,1). The title needed
+`p.mkt-install-cta-title` specifically, because a first attempt at (0,2,0) still
+lost to the `p` rule. Now: title #1A1A1A at 16.56:1, body and help #6B5B54 at
+6.15:1, and the intro paragraph on the green background is untouched.
+
+**"List another item" was a full page reload.** `window.location.reload()`
+destroys the whole JS context, so lifting the upload above the router would have
+achieved nothing for the exact case the work was for. That was the one thing in
+the brief that did not match the code. It is now a keyed remount of the form,
+which discards all 38 pieces of state reliably and leaves everything outside the
+component running.
+
+**The upload now lives in `listingVideoUploads.ts`**, a module above the router,
+with `ListingVideoUploadDock` mounted outside `<Routes>`. Proved by driving the
+store, changing route, and re-reading both: path went `/marketplace` to
+`/marketplace/how-it-works`, and the state and the dock both survived with the
+same listingId and fileName.
+
+**Resumable via TUS**, tus-js-client 4.3.1, a new dependency. The endpoint is
+`/storage/v1/upload/resumable` with 6MB chunks as Supabase requires,
+`findPreviousUploads`/`resumeFromPreviousUpload` on start, and backoff retries.
+The no-dependency alternative is hand rolling TUS over the XHR already here; it
+is possible, but it is exactly the protocol code whose bugs only surface on the
+flaky connections it exists for.
+
+**The dock** sits top centre, 355px wide at 375px, 44px tap targets. It cannot
+collide with the other prompts: the install banner (bottom 0), WhatsApp prompt
+(bottom 96px) and push prompt (bottom 12px) are all bottom anchored, and it
+hides entirely while the delivery gate or pending action prompt is up. It is not
+in the precedence order because it asks for nothing.
+
+**The copy is honest about the limit**, in the dock and the full bar:
+"Keep this tab open while it sends, but you can carry on listing." No Background
+Sync, deliberately, because Safari does not implement it and iPhone is where
+video has broken twice.
+
+**Not exercised**: a real resumed transfer needs a seller session, which does
+not exist in this environment. The wiring is verified and the store's state
+machine is tested, but a genuine interrupt-and-resume against Supabase has not
+been run.

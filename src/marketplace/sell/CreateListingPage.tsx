@@ -122,7 +122,7 @@ const MAX_PHOTOS = 8;
  * never reach this form for a 'live' or 'sold' listing (redirected back to
  * the dashboard), those are handled by SellerPriceEditPage.tsx instead.
  */
-export default function CreateListingPage() {
+function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   const { loading, isLoggedIn, seller, user, refresh } = useSeller();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -970,7 +970,7 @@ export default function CreateListingPage() {
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <button className="mkt-primary" onClick={() => window.location.reload()}>List another item</button>
+            <button className="mkt-primary" onClick={onListAnother}>List another item</button>
             <button className="mkt-outline-light" onClick={() => navigate("/sell/dashboard")}>Go to my dashboard</button>
           </div>
         </div>
@@ -1612,5 +1612,27 @@ function ConditionQuestionField({ question, value, detail, invalid, onChange, on
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * "List another item" used to call window.location.reload(), which throws
+ * away the whole JS context and with it any video still uploading. Lifting
+ * the upload above the router would have achieved nothing while that stayed.
+ *
+ * Remounting with a changing key resets all 38 pieces of form state at once,
+ * which is both reliable and impossible to get half right, and leaves
+ * everything outside this component, the upload included, running.
+ */
+export default function CreateListingPage() {
+  const [formNonce, setFormNonce] = useState(0);
+  return (
+    <CreateListingForm
+      key={formNonce}
+      onListAnother={() => {
+        setFormNonce((n) => n + 1);
+        window.scrollTo({ top: 0 });
+      }}
+    />
   );
 }

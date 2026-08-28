@@ -1,30 +1,34 @@
 import { useEffect, useRef, useState } from "react";
+import { useListingVideoNotice, useListingVideo, useListingVideoMaxMb } from "../listingVideo";
 import {
-  stageListingVideo, useListingVideoNotice, useListingVideo, useListingVideoMaxMb,
-  mbSent, mbTotal,
-} from "../listingVideo";
+  startListingVideoUpload, subscribeToListingVideoUpload, retryListingVideoUpload,
+  setUploadDetailShown, type UploadState,
+} from "../listingVideoUploads";
 
 /**
  * The seller's "Add a video" field, design 37a, reused exactly as the paused
  * feature had it: same .mkt-field .mkt-video-field block, same head, same
  * .mkt-video-add resting control, same footnote.
  *
- * THE ONLY CHANGE IS WHAT HAPPENS TO THE FILE. It goes up raw and YouTube
- * transcodes it, so NONE of the old pipeline comes back: no
- * processListingVideo, no readVideoMetadata, no MediaRecorder, no canvas,
- * no duration read. `file.size` against marketplace_listing_video_max_mb is
- * the only thing read from the file. Reading a video hangs indefinitely on
- * iPhone and that is what killed this feature twice.
+ * A VIEW OVER THE SHARED UPLOAD, not an uploader itself. The transfer lives
+ * in listingVideoUploads.ts above the router, so it survives the seller
+ * navigating away, and it resumes rather than restarts after a drop. This
+ * renders the detailed bar and claims the display while it is mounted, so
+ * the dock does not show the same upload twice.
  *
- * Gone with the pipeline: the 15 second limit and the extracted poster
- * frame, both of which required reading the video. YouTube supplies the
- * thumbnail instead.
+ * NONE of the old pipeline comes back: no processListingVideo, no
+ * readVideoMetadata, no MediaRecorder, no canvas, no duration read.
+ * `file.size` against marketplace_listing_video_max_mb is the only thing
+ * read from the file. Reading a video hangs indefinitely on iPhone and that
+ * is what killed this feature twice. Gone with the pipeline: the 15 second
+ * limit and the extracted poster, both of which required reading the video.
+ * YouTube supplies the thumbnail.
  */
 export default function ListingVideoField({ listingId, sellerAuthUid, initialFile }: {
   listingId: string;
   sellerAuthUid: string;
-  /** A file chosen on the create form BEFORE this listing existed. Sent as
-   * soon as this mounts, which is after the listing is safely created. */
+  /** Chosen on the create form BEFORE this listing existed. Sent as soon as
+   * this mounts, which is after the listing is safely created. */
   initialFile?: File | null;
 }) {
   const notice = useListingVideoNotice();
@@ -32,102 +36,79 @@ export default function ListingVideoField({ listingId, sellerAuthUid, initialFil
   const { data: existing } = useListingVideo(listingId);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [staged, setStaged] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Held so a drop at 80% is a resend, not a restart.
-  const [file, setFile] = useState<File | null>(initialFile ?? null);
-  // The file was picked on the previous screen and is gone from the page it
-  // was picked on, so it cannot be re-picked here without starting over.
-  const [lost, setLost] = useState(false);
-  const autoStartedRef = useRef(false);
+  const [up, setUp] = useState<UploadState | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const startedRef = useRef(false);
 
-  // Sends a file handed over from the create form. Runs only after the
-  // listing exists, because this component is not mounted until then.
+  useEffect(() => subscribeToListingVideoUpload(setUp), []);
+
+  // While this is on screen it owns the display, so the dock stays hidden.
   useEffect(() => {
-    if (!initialFile || autoStartedRef.current) return;
-    autoStartedRef.current = true;
-    // A File held across a long form can have its underlying blob evicted
-    // by the OS on a low end device. Size 0 is what that looks like from
-    // here, and it is checked BEFORE any upload so the seller gets the
-    // honest message rather than a failed transfer.
-    if (initialFile.size === 0) { setLost(true); setFile(null); return; }
-    void send(initialFile);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialFile]);
+    setUploadDetailShown(true);
+    return () => setUploadDetailShown(false);
+  });
+
+  // A file handed over from the create form. Runs only after the listing
+  // exists, because this component is not mounted until then.
+  useEffect(() => {
+    if (!initialFile || startedRef.current) return;
+    startedRef.current = true;
+    startListingVideoUpload({ listingId, file: initialFile, sellerAuthUid });
+  }, [initialFile, listingId, sellerAuthUid]);
 
   function pick(files: FileList | null) {
     const f = files?.[0];
     if (!f) return;
     // file.size is the ONLY thing read from the file.
     if (f.size > maxMb * 1024 * 1024) {
-      setFile(null);
-      setError(`That file is larger than ${maxMb}MB. Please record a shorter clip.`);
+      setPickError(`That file is larger than ${maxMb}MB. Please record a shorter clip.`);
       return;
     }
-    setFile(f);
-    setError(null);
-    void send(f);
+    setPickError(null);
+    startListingVideoUpload({ listingId, file: f, sellerAuthUid });
   }
 
-  async function send(f: File) {
-    setBusy(true); setError(null); setProgress(0);
-    const res = await stageListingVideo({ listingId, sellerAuthUid, file: f, onProgress: setProgress });
-    setBusy(false);
-    if (!res.ok) {
-      // The browser reports an unreadable file as a failed read rather than
-      // a network error. Either way the seller keeps the listing.
-      if (f.size === 0) { setLost(true); setFile(null); return; }
-      setError(res.message ?? "That could not be saved.");
-      return;
-    }
-    setStaged(true);
-    setFile(null);
-  }
+  const mine = up && up.listingId === listingId ? up : null;
+  const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)}MB`;
 
   return (
     <div className="mkt-field mkt-video-field">
       <div className="mkt-field-head">
-        <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
+        <span className="lbl">Upload a video of the item <span className="mkt-video-optional">optional</span></span>
       </div>
       <p className="mkt-help">A few seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
 
-      {lost ? (
+      {mine?.status === "lost" ? (
         /* NOTHING here touches the listing. It is created, it is with the
            review team, and only the video is missing. */
         <div className="mkt-errbox">
           <span className="m">!</span>
           <span>Your listing is saved and with our team, but the video did not make it across. Nothing else was lost. You can add one any time by editing this listing.</span>
         </div>
-      ) : existing ? (
-        <div className="mkt-video-preparing"><span>✓</span><span>Your video is on this listing.</span></div>
-      ) : staged ? (
+      ) : mine?.status === "done" || existing ? (
         <div className="mkt-video-preparing">
-          <span className="sp" aria-hidden />
+          <span>✓</span>
           <span>We are getting your video ready. It shows on your listing shortly, and buyers see nothing until it is.</span>
         </div>
-      ) : busy ? (
-        /* Real byte-level progress, never a bare spinner. The megabytes
-           move even when the percentage looks stuck, which is what tells a
-           seller on a slow line that it has not frozen. */
+      ) : mine?.status === "uploading" ? (
+        /* Real byte-level progress, never a bare spinner. The megabytes move
+           even when the percentage looks stuck, which is what tells a seller
+           on a slow line that it has not frozen. */
         <div className="mkt-video-processing">
           <div className="bar-row">
-            <div className="bar"><i style={{ width: `${progress}%` }} /></div>
-            <span>{progress}%</span>
+            <div className="bar"><i style={{ width: `${mine.progress}%` }} /></div>
+            <span>{mine.progress}%</span>
           </div>
           <p className="mkt-help">
-            Sending your video, {mbSent(file, progress)} of {mbTotal(file)}. It is going up exactly as you filmed it, so it can take a few minutes.
+            Sending your video, {mb(mine.bytesSent)} of {mb(mine.bytesTotal)}. Keep this tab open while it sends, but you can carry on listing.
           </p>
         </div>
-      ) : file && error ? (
-        /* The file is still held, so this is a resend: no re-picking, and
-           no re-reading the notice for a dropped connection. */
+      ) : mine?.status === "error" ? (
+        /* Resumable, so this continues from where it stopped. */
         <div className="mkt-video-processing">
-          <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>
-          <p className="mkt-help">{file.name} is still here, nothing was lost.</p>
-          <button type="button" className="mkt-primary" onClick={() => void send(file)}>Try again</button>
-          <button type="button" className="mkt-secondary" onClick={() => { setFile(null); setError(null); }}>Choose a different video</button>
+          <div className="mkt-errbox"><span className="m">!</span><span>{mine.message}</span></div>
+          <p className="mkt-help">It picks up from {mb(mine.bytesSent)} of {mb(mine.bytesTotal)}, nothing starts again.</p>
+          <button type="button" className="mkt-primary" onClick={retryListingVideoUpload}>Carry on sending</button>
         </div>
       ) : (
         <>
@@ -143,7 +124,7 @@ export default function ListingVideoField({ listingId, sellerAuthUid, initialFil
 
       <input ref={fileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden
         onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      {error && !file && <div className="mkt-errbox"><span className="m">!</span><span>{error}</span></div>}
+      {pickError && <div className="mkt-errbox"><span className="m">!</span><span>{pickError}</span></div>}
       <p className="mkt-help mkt-video-footnote">One video per listing. Photos are still required either way, this is extra, not a substitute.</p>
     </div>
   );

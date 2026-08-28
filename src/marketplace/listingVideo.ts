@@ -93,6 +93,20 @@ export function useListingVideoNotice(): string {
  * `file.name` for an extension. The storage policy requires the seller's
  * own auth uid as the first path segment.
  */
+/** Records an already-staged path against the listing. Split out of
+ * stageListingVideo so the resumable path (listingVideoUploads.ts), which
+ * does its own transfer via TUS, can share the exact same RPC call and its
+ * exact same success test. */
+export async function attachStagedListingVideo(input: {
+  listingId: string; storagePath: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await sdb.rpc("seller_stage_listing_video", {
+    p_listing_id: input.listingId, p_storage_path: input.storagePath,
+  });
+  if (error) return { ok: false, message: error.message || "That could not be saved. Please try again." };
+  return { ok: true };
+}
+
 export async function stageListingVideo(input: {
   listingId: string;
   sellerAuthUid: string;
