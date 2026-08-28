@@ -157,15 +157,22 @@ function StoppedSection() {
   });
   const [open, setOpen] = useState(true);
 
-  const { working, contacted, totalNaira } = useMemo(() => {
+  const { working, contacted, totalNaira, struggledCount } = useMemo(() => {
     const all = rows ?? [];
     // Most recent first. There is no "struggled" here by definition, since
     // nobody attempted anything.
-    const sort = (a: StoppedAtPaymentRow, b: StoppedAtPaymentRow) => a.hours_since - b.hours_since;
+    // Same ordering as the declined list: whoever kept coming back leads,
+    // then by how many times, then by how recent.
+    const sort = (a: StoppedAtPaymentRow, b: StoppedAtPaymentRow) => {
+      if (a.struggled !== b.struggled) return a.struggled ? -1 : 1;
+      if (a.payment_attempt_count !== b.payment_attempt_count) return b.payment_attempt_count - a.payment_attempt_count;
+      return a.hours_since - b.hours_since;
+    };
     return {
       working: all.filter((r) => !r.contacted_at).sort(sort),
       contacted: all.filter((r) => !!r.contacted_at).sort(sort),
       totalNaira: all.reduce((s, r) => s + (r.amount_naira || 0), 0),
+      struggledCount: all.filter((r) => r.struggled).length,
     };
   }, [rows]);
 
@@ -184,6 +191,7 @@ function StoppedSection() {
           style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
           <Stat label="Waiting on a message" value={String(working.length)} />
           <Stat label="Never got that far" value={String(rows.length)} />
+          <Stat label="Kept coming back" value={String(struggledCount)} />
           <Stat label="Sitting there" value={formatNaira(totalNaira)} />
         </div>
 
@@ -214,21 +222,36 @@ function StoppedRow({ r }: { r: StoppedAtPaymentRow }) {
   const name = r.buyer_name || "Someone";
   const item = r.listing_title || "an item";
 
-  // Written here rather than fetched from resolve_outreach_message_for,
-  // which needs a buyer_id the view does not carry. Same wording the
-  // corrected outreach messages use: got as far as the page, and stopped.
-  const text =
-    `Hello ${name}, you got as far as the payment page for the ${item} on BundledMum and stopped. ` +
-    `Nothing was charged and it is still yours to buy if you want it: ${MKT_SITE}`;
-  const waHref = intlPhone ? `https://wa.me/${intlPhone}?text=${encodeURIComponent(text)}` : null;
+  // Same stage as the declined list, and correct for these people as it
+  // stands: message one opens "You got as far as the payment page for the
+  // {item} and stopped." No template in this stage says anything failed.
+  const { data: failureContext } = useQuery({
+    queryKey: ["mkt-pp-context", r.order_id],
+    staleTime: 60000,
+    queryFn: () => fetchPaymentFailureContext(r.order_id),
+  });
+  const resumeLink = r.listing_id ? `${MKT_SITE}/checkout/${r.listing_id}?resume_order=${r.order_id}` : MKT_SITE;
+  const { data: waHref } = useQuery({
+    queryKey: ["mkt-stopped-msg", r.order_id, r.buyer_id, r.times_contacted, failureContext],
+    enabled: !!r.buyer_id && !!intlPhone,
+    staleTime: 30000,
+    queryFn: () => resolvePendingPaymentMessage({
+      orderId: r.order_id, buyerId: r.buyer_id as string, wa: intlPhone,
+      name, item, link: resumeLink, extra: failureContext ?? null,
+    }),
+  });
+
   const mailHref = r.buyer_email
     ? `mailto:${r.buyer_email}?subject=${encodeURIComponent(`Your ${item} on BundledMum`)}&body=${encodeURIComponent(
         `Hello ${name},\n\nYou got as far as the payment page for the ${item} and stopped. ` +
-        `Nothing was charged and nothing went wrong.\n\nIf you would still like it, you can pick up where you left off here:\n${MKT_SITE}`)}`
+        `Nothing was charged and nothing went wrong.` +
+        (failureContext ? `\n\n${failureContext}` : "") +
+        `\n\nIf you would still like it, you can pick up where you left off here:\n${resumeLink}`)}`
     : null;
 
   return (
-    <div className="rounded-2xl border p-3.5 flex gap-3 items-start" style={{ borderColor: "#F0DDD2", background: "#fff" }}>
+    <div className="rounded-2xl border p-3.5 flex gap-3 items-start"
+      style={{ borderColor: r.struggled ? "#D4613C" : "#F0DDD2", background: "#fff" }}>
       <div className="w-14 h-14 rounded-lg flex-none overflow-hidden"
         style={{ background: "repeating-linear-gradient(135deg,#FDE8DF 0 6px,#FFF8F4 6px 12px)" }}>
         {r.image_url && <img src={r.image_url} alt="" className="w-full h-full object-cover" />}
@@ -245,15 +268,30 @@ function StoppedRow({ r }: { r: StoppedAtPaymentRow }) {
               {r.amount_naira != null ? formatNaira(r.amount_naira) : "—"}
             </div>
             <div className="text-[10.5px] text-text-med">{relativeTimeAgo(r.updated_at)}</div>
+            <RemovalNotice days={r.days_until_removed} />
           </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5 items-center">
           <StatusPill tone="neutral" label="Stopped, never attempted" />
+          {/* Deliberately not "tried". payment_attempt_count here counts
+              openings of the payment page, and not one of these people
+              entered anything, so "tried 6 times" would say six payments
+              were made and refused. They came back; they never tried. */}
+          <StatusPill
+            tone={r.struggled ? "work" : "neutral"}
+            label={r.payment_attempt_count <= 1 ? "Opened it once" : `Came back ${r.payment_attempt_count} times`}
+          />
           {r.listing_status && r.listing_status !== "live" && (
             <StatusPill tone="neutral" label={`Listing ${r.listing_status}`} />
           )}
+          {r.latest_reference && <span className="text-[10.5px] text-text-med">{r.latest_reference}</span>}
         </div>
+
+        {failureContext && (
+          <div className="rounded-lg px-2.5 py-2 text-[11.5px]"
+            style={{ background: "#FDE8DF", color: "#8C4A34" }}>{failureContext}</div>
+        )}
 
         <div className="flex flex-wrap gap-3 text-[11.5px] text-text-med">
           {r.buyer_email && <span className="truncate">{r.buyer_email}</span>}
@@ -261,30 +299,7 @@ function StoppedRow({ r }: { r: StoppedAtPaymentRow }) {
           {!r.buyer_email && !r.buyer_phone && <span>No contact details captured</span>}
         </div>
 
-        {/* contacted_at is all this view carries, so this is a note rather
-            than the mark as sent control the declined rows get: logging a
-            contact needs a buyer_id the view does not expose. */}
-        <div className="flex items-center gap-2 flex-wrap mt-0.5">
-          {r.contacted_at
-            ? <span className="text-[11px] text-text-med">Messaged {relativeTimeAgo(r.contacted_at)}</span>
-            : <span className="font-heading font-extrabold text-[11px]" style={{ color: "#D4613C" }}>Not yet contacted</span>}
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          {waHref ? (
-            <a href={waHref} target="_blank" rel="noreferrer"
-              className="flex-1 min-w-[140px] flex items-center justify-center gap-2 rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]"
-              style={{ background: "#25D366", color: "#fff" }}>Message on WhatsApp</a>
-          ) : (
-            <span className="flex-1 min-w-[140px] flex items-center justify-center rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]"
-              style={{ background: "#EDE6E1", color: "#8A7A72" }}>No number on file</span>
-          )}
-          {mailHref && (
-            <a href={mailHref}
-              className="flex-none flex items-center justify-center rounded-lg py-2.5 px-3 font-heading font-extrabold text-[12.5px] border"
-              style={{ borderColor: "#E3D4CB", color: "#3D3936", background: "#fff" }}>Email</a>
-          )}
-        </div>
+        <ContactActions r={r} waHref={waHref ?? null} mailHref={mailHref} queryKey={STOPPED_QUERY_KEY} />
       </div>
     </div>
   );
@@ -417,7 +432,7 @@ function Row({ r }: { r: PendingPaymentRow }) {
           {!r.buyer_email && !r.buyer_phone && <span>No contact details captured</span>}
         </div>
 
-        <ContactActions r={r} waHref={waHref ?? null} mailHref={mailHref} />
+        <ContactActions r={r} waHref={waHref ?? null} mailHref={mailHref} queryKey={QUERY_KEY} />
 
         {/* Super admin only. A non super admin sees nothing here at all,
             rather than a control that would fail when tapped. */}
@@ -430,7 +445,13 @@ function Row({ r }: { r: PendingPaymentRow }) {
 /** Contacted line + Mark as sent/Undo, matching the abandoned-checkouts and
  * outreach layouts exactly: WhatsApp and Mark as sent are two separate
  * actions on purpose, since opening a chat is not proof a message went. */
-function ContactActions({ r, waHref, mailHref }: { r: PendingPaymentRow; waHref: string | null; mailHref: string | null }) {
+function ContactActions({ r, waHref, mailHref, queryKey }: {
+  /* Structural, so the declined and stopped lists share one implementation:
+     both carry the order, the buyer and the count, and both log against the
+     same payment_not_completed stage. */
+  r: { order_id: string; buyer_id: string | null; times_contacted: number };
+  waHref: string | null; mailHref: string | null; queryKey: readonly string[];
+}) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -441,7 +462,7 @@ function ContactActions({ r, waHref, mailHref }: { r: PendingPaymentRow; waHref:
     try {
       const ok = await logPendingPaymentContact(r.buyer_id, r.order_id);
       if (!ok) throw new Error("not saved");
-      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+      await qc.invalidateQueries({ queryKey });
     } catch { setError("Could not save, try again."); } finally { setBusy(false); }
   }
 
@@ -451,7 +472,7 @@ function ContactActions({ r, waHref, mailHref }: { r: PendingPaymentRow; waHref:
     try {
       const ok = await undoPendingPaymentContact(r.buyer_id, r.order_id);
       if (!ok) throw new Error("not saved");
-      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+      await qc.invalidateQueries({ queryKey });
     } catch { setError("Could not undo, try again."); } finally { setBusy(false); }
   }
 

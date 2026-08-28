@@ -654,24 +654,40 @@ export async function fetchPendingPayments(): Promise<PendingPaymentRow[]> {
  * message to these people may say their payment failed or did not go
  * through. Saying so could make them think money moved.
  *
- * The view deliberately carries no buyer_id and no listing_id, so the
- * sequenced outreach message, mark as sent, undo and the resume deep link
- * are all unavailable for this group. Contacting them directly is not.
+ * They share the payment_not_completed outreach stage with the declined
+ * list, and its three messages already open with "you got as far as the
+ * payment page and stopped", so the sequence is correct for them as it
+ * stands. Every action the declined list has works here.
  */
 export interface StoppedAtPaymentRow {
   order_id: string;
+  cart_reference: string | null;
+  reference: string | null;
+  latest_reference: string | null;
   amount_naira: number | null;
+  /** How many times the payment page was OPENED, not how many payments were
+   * attempted. Nobody in this list attempted one, so this never reads as
+   * "tried" anywhere in the UI. */
   payment_attempt_count: number;
+  created_at: string;
   updated_at: string;
   hours_since: number;
+  buyer_id: string | null;
   buyer_name: string | null;
   buyer_email: string | null;
   buyer_phone: string | null;
   seller_name: string | null;
+  listing_id: string | null;
   listing_title: string | null;
   image_url: string | null;
   listing_status: string | null;
+  /** Two or more openings of the payment page. They kept coming back and
+   * still never entered anything, so something about paying was putting
+   * them off. Leads the sort, exactly as it does for the declined list. */
+  struggled: boolean;
+  times_contacted: number;
   contacted_at: string | null;
+  days_until_removed: number | null;
 }
 
 export async function fetchStoppedAtPayment(): Promise<StoppedAtPaymentRow[]> {

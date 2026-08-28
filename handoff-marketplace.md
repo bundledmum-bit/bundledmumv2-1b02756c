@@ -8140,3 +8140,43 @@ and was out of scope here.
 
 Untouched: the mark as paid form and its super admin gate, the sort order, mark
 as sent, undo, the removal notice, and the awaiting confirmation screen.
+
+## 142. The stopped group gets the full toolkit (2026-08-28)
+
+`marketplace_stopped_at_payment` gained the columns section 141 reported
+missing: `buyer_id`, `listing_id`, `cart_reference`, `reference`,
+`latest_reference`, `created_at`, `struggled`, `times_contacted` and
+`days_until_removed`. All verified live and populated before anything was wired
+to them.
+
+The sixteen now have exactly what the declined list has: the sequenced three
+message outreach through `resolve_outreach_message_for`, mark as sent, undo, a
+resume link, the removal countdown, the reference, and the struggled ordering.
+
+`ContactActions` is now shared by both lists rather than duplicated. It takes a
+structural type, `{ order_id, buyer_id, times_contacted }`, which both rows
+satisfy, plus the query key to invalidate. Both log against the same
+`payment_not_completed` stage, so mark as sent and undo behave identically and
+stay per order rather than per person.
+
+**One wording difference that must hold.** `payment_attempt_count` on this view
+counts openings of the payment page, not payments attempted, because nobody here
+attempted one. The declined list says "Tried 6 times"; saying that here would
+claim six payments were made and refused. The stopped list says "Came back 6
+times", or "Opened it once" at one. `struggled` is presented the same way, as
+"Kept coming back", and it leads the sort exactly as it does above.
+
+**Confirmed no failure language reaches this group.** All three
+`payment_not_completed` templates were read directly: message one opens "You got
+as far as the payment page for the {item} and stopped", and none of the three
+says anything failed or did not go through. `payment_failure_context`, which
+fills `{{extra}}`, only ever talks about coming back to it. The one failure
+sentence in the component is behind the `declined` guard in `Row`, and the only
+such words rendered in the stopped section are the warning telling whoever is
+reading not to use them.
+
+The struggled border here is coral-dark rather than the declined list's error
+red: they are worth attention, but nothing went wrong for them.
+
+Not extended to this group: the super admin mark as paid form. It stays on the
+declined list only, since the brief did not ask for it here.
