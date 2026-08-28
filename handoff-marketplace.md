@@ -8180,3 +8180,46 @@ red: they are worth attention, but nothing went wrong for them.
 
 Not extended to this group: the super admin mark as paid form. It stays on the
 declined list only, since the brief did not ask for it here.
+
+## 143. Mark as sent stops lying, and both lists move a marked row out (2026-08-28)
+
+**The overload again.** `log_outreach_contact` had two versions, the 3 argument
+original returning boolean and a 4 argument one returning void. The client
+asserted a boolean, received void, and reported "could not save, try again"
+while the row had in fact been written. Worse than a plain failure, because
+pressing again logged a duplicate: Temmy was logged twice. There is now ONE
+version, `log_outreach_contact(p_person_type, p_person_id, p_stage_key,
+p_subject_id default null)` returning boolean, so `data === true` is a valid
+success check again. Exactly the shape of the `undo_outreach_contact` bug in
+section 136.
+
+No client change was needed for this. Both call sites already passed named
+parameters and already checked `data === true`: the outreach queue passes three
+and lets `p_subject_id` default, the pending payments screen passes four. The
+function body was read to confirm it returns true unconditionally after the
+insert rather than, say, returning false on a duplicate, which would have put
+the same lie back in a new place.
+
+Worth knowing: the function does not dedupe. Nothing stops a second press
+recording a second contact, which is correct for a three message sequence but is
+also how the duplicate happened.
+
+**Both lists now split on contacted_at.** The declined list already did. The
+stopped list sorted the two groups apart but rendered them back to back,
+unlabelled, so a marked row moved to the bottom and stayed in view rather than
+moving out. It now matches the declined list and MarketplaceAbandonedCheckouts
+exactly: working is `contacted_at` null, and everyone else sits behind a "Show N
+already messaged" toggle, collapsed by default. Marking someone sent moves them
+across; nothing is hidden or deleted. The section's own outer collapse was
+dropped, since a toggle inside a toggle helped nobody.
+
+**Live counts, which differ from the brief's three.** Eight rows carry
+`contacted_at`: the declined list is 0 working and 1 contacted, the stopped list
+9 working and 7 contacted. Because the declined list has no working rows at all
+today, both lists gained a plain "Everyone here has been messaged." line for
+that state. Without it the stats read non zero above an empty space, which looks
+like something failing to load rather than a list that is genuinely done.
+
+Also noted: the generated types still describe two `log_outreach_contact`
+overloads where the database now has one. Harmless, since both call shapes still
+type check and PostgREST resolves on what is sent, so they were left alone.

@@ -117,6 +117,15 @@ export default function MarketplacePendingPayments() {
             {working.map((r) => <Row key={r.order_id} r={r} />)}
           </div>
 
+          {/* Everyone declined has already been messaged. Said plainly,
+              because the stats above are non zero and an empty space under
+              them otherwise reads as something failing to load. */}
+          {working.length === 0 && (
+            <div className="text-[12px] text-text-med">
+              Everyone here has been messaged.
+            </div>
+          )}
+
           {contacted.length > 0 && (
             <div className="mt-5">
               <button onClick={() => setShowContacted((v) => !v)}
@@ -155,7 +164,7 @@ function StoppedSection() {
   const { data: rows, isLoading } = useQuery({
     queryKey: STOPPED_QUERY_KEY, staleTime: 15000, queryFn: fetchStoppedAtPayment,
   });
-  const [open, setOpen] = useState(true);
+  const [showContacted, setShowContacted] = useState(false);
 
   const { working, contacted, totalNaira, struggledCount } = useMemo(() => {
     const all = rows ?? [];
@@ -195,22 +204,32 @@ function StoppedSection() {
           <Stat label="Sitting there" value={formatNaira(totalNaira)} />
         </div>
 
-        <button onClick={() => setOpen((v) => !v)}
-          className="font-heading font-extrabold text-[12px] underline mb-2.5" style={{ color: "#6B5B54" }}>
-          {open ? "Hide" : "Show"} these {rows.length}
-        </button>
+        {/* Identical to the declined list above and to the abandoned
+            checkouts screen: the working list is contacted_at null, and
+            marking someone sent moves them across into the toggled group
+            rather than hiding or deleting them. */}
+        <div className="flex flex-col gap-2.5">
+          {working.map((r) => <StoppedRow key={r.order_id} r={r} />)}
+        </div>
 
-        {open && (
-          <>
-            <div className="flex flex-col gap-2.5">
-              {working.map((r) => <StoppedRow key={r.order_id} r={r} />)}
-            </div>
-            {contacted.length > 0 && (
+        {working.length === 0 && (
+          <div className="text-[12px] text-text-med">
+            Everyone here has been messaged.
+          </div>
+        )}
+
+        {contacted.length > 0 && (
+          <div className="mt-5">
+            <button onClick={() => setShowContacted((v) => !v)}
+              className="font-heading font-extrabold text-[12px] underline" style={{ color: "#6B5B54" }}>
+              {showContacted ? "Hide" : "Show"} {contacted.length} already messaged
+            </button>
+            {showContacted && (
               <div className="flex flex-col gap-2.5 mt-2.5">
                 {contacted.map((r) => <StoppedRow key={r.order_id} r={r} />)}
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
