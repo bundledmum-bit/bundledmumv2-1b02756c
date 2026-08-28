@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ListingVideoField from "./ListingVideoField";
 import ListingVideoPicker from "./ListingVideoPicker";
+import { useCategoryVideoRule } from "../listingVideo";
+import { attachUploadToListing, getListingVideoUpload, uploadIsComplete } from "../listingVideoUploads";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -134,7 +136,13 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   // Chosen on the form, uploaded only after the listing exists. Held here
   // and never touched by the submit itself, so nothing about the video can
   // reach the listing write.
-  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  // Whether a video has been PICKED. The bytes are already on their way;
+  // this only tracks whether the requirement is satisfied.
+  const [hasVideo, setHasVideo] = useState(false);
+  // The seller said they cannot film right now. A listing that exists is
+  // worth more than a seller who gives up, and admin review is still a
+  // second gate.
+  const [videoSkipped, setVideoSkipped] = useState(false);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
@@ -247,6 +255,9 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
 
   function changeCategory(id: string) {
     setCategoryId(id);
+    // The requirement belongs to the NEW category, so a previous decision
+    // not to film does not carry across to it.
+    setVideoSkipped(false);
     setAnswers({});
     setInvalidKeys(new Set());
     setRecovery(null);
@@ -423,6 +434,11 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
     staleTime: 60000,
   });
   const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
+  // NEW LISTINGS ONLY. 56 live listings sit in these categories with no
+  // video; editing one to fix a typo must never demand one.
+  const { data: videoRule } = useCategoryVideoRule(isEditMode ? undefined : categoryId);
+  const videoRequired = !isEditMode && !!videoRule?.video_required;
+  const videoBlocking = videoRequired && !hasVideo && !videoSkipped;
 
   // A generic reason, always, never the field's own help_text: that now
   // renders on its own right above this (see QuestionField), so reusing it
@@ -636,6 +652,11 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
     }
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
+    // Same treatment as a missing photo, said in terms of the buyer.
+    if (videoBlocking) {
+      setError(`Buyers cannot tell if ${(videoRule?.category_name || "this").toLowerCase()} still works from a photo. A few seconds of video is what sells it.`);
+      return;
+    }
 
     // Required client side even though the database only blocks this at
     // status='live' (this form always writes 'pending_review') — a buyer
@@ -820,7 +841,14 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
       if (writeErr) throw writeErr;
       if (!isEditMode) {
         const newId = (writeRow as { id?: string } | null)?.id;
-        if (newId) setCreatedId(newId);
+        if (newId) {
+          setCreatedId(newId);
+          // The bytes went up while they were typing. This only records
+          // WHICH file belongs to the listing, and is deliberately not
+          // awaited or thrown from: the listing is already saved and a
+          // video problem must never reach it.
+          void attachUploadToListing(newId);
+        }
       }
       setBusy(false); setDone(true);
     } catch (e) {
@@ -966,7 +994,7 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
               just done the work, and it avoids holding a 40MB file through
               a submission that might fail. */}
           {createdId && user?.id && (
-            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} initialFile={pendingVideo} />
+            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} categoryId={categoryId} />
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1147,9 +1175,10 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
               affect whether the listing is created. */}
           {!isEditMode && (
             <ListingVideoPicker
-              file={pendingVideo}
-              onPick={setPendingVideo}
-              onClear={() => setPendingVideo(null)}
+              categoryId={categoryId}
+              required={videoRequired}
+              sellerAuthUid={user?.id ?? ""}
+              onFileChosen={setHasVideo}
             />
           )}
 
@@ -1173,7 +1202,7 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
             seller_stage_listing_video needs one, so that case is offered on
             the success screen instead, immediately after submitting. */}
         {isEditMode && editId && user?.id && (
-          <ListingVideoField listingId={editId} sellerAuthUid={user.id} />
+          <ListingVideoField listingId={editId} sellerAuthUid={user.id} categoryId={categoryId} />
         )}
 
         {/* One optional video, design 37a, sits right after photos in the
@@ -1471,6 +1500,25 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
 
       <div className="mkt-sell-foot">
         <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : isEditMode ? "Resend for review" : "Send for review"}</button>
+
+        {/* NOT A DEAD END. A listing that exists without a video is worth
+            more than a seller who gives up, and admin review is still a
+            second gate. Deliberately a plain link rather than a second
+            button, so it is available without competing with filming. */}
+        {videoBlocking && (
+          <button
+            type="button"
+            className="mkt-video-skip"
+            onClick={() => setVideoSkipped(true)}
+          >
+            I cannot film this right now
+          </button>
+        )}
+        {videoSkipped && videoRequired && (
+          <p className="mkt-help mkt-video-skip-note">
+            You can send this without a video. It will sell better with one, so add it any time by editing this listing.
+          </p>
+        )}
         <div className={contactBlocked ? "helper err" : "helper"}>{contactBlocked ? "Contact details must come out first" : isEditMode ? "Goes back to our review queue, not straight live" : "Our team checks every listing before it goes live"}</div>
       </div>
 

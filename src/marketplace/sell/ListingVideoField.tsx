@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useListingVideoNotice, useListingVideo, useListingVideoMaxMb } from "../listingVideo";
+import { useListingVideoNotice, useListingVideo, useListingVideoGuidance, useCategoryVideoRule } from "../listingVideo";
 import {
   startListingVideoUpload, subscribeToListingVideoUpload, retryListingVideoUpload,
   setUploadDetailShown, type UploadState,
@@ -24,20 +24,19 @@ import {
  * limit and the extracted poster, both of which required reading the video.
  * YouTube supplies the thumbnail.
  */
-export default function ListingVideoField({ listingId, sellerAuthUid, initialFile }: {
+export default function ListingVideoField({ listingId, sellerAuthUid, categoryId }: {
   listingId: string;
   sellerAuthUid: string;
-  /** Chosen on the create form BEFORE this listing existed. Sent as soon as
-   * this mounts, which is after the listing is safely created. */
-  initialFile?: File | null;
+  /** So the seller reads what to film for THIS kind of item. */
+  categoryId?: string;
 }) {
   const notice = useListingVideoNotice();
-  const maxMb = useListingVideoMaxMb();
+  const guidance = useListingVideoGuidance();
+  const { data: rule } = useCategoryVideoRule(categoryId);
   const { data: existing } = useListingVideo(listingId);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [up, setUp] = useState<UploadState | null>(null);
-  const [pickError, setPickError] = useState<string | null>(null);
   const startedRef = useRef(false);
 
   useEffect(() => subscribeToListingVideoUpload(setUp), []);
@@ -48,23 +47,12 @@ export default function ListingVideoField({ listingId, sellerAuthUid, initialFil
     return () => setUploadDetailShown(false);
   });
 
-  // A file handed over from the create form. Runs only after the listing
-  // exists, because this component is not mounted until then.
-  useEffect(() => {
-    if (!initialFile || startedRef.current) return;
-    startedRef.current = true;
-    startListingVideoUpload({ listingId, file: initialFile, sellerAuthUid });
-  }, [initialFile, listingId, sellerAuthUid]);
-
   function pick(files: FileList | null) {
     const f = files?.[0];
     if (!f) return;
-    // file.size is the ONLY thing read from the file.
-    if (f.size > maxMb * 1024 * 1024) {
-      setPickError(`That file is larger than ${maxMb}MB. Please record a shorter clip.`);
-      return;
-    }
-    setPickError(null);
+    // NOTHING is rejected. A longer video is a better video; the only
+    // ceiling is the bucket's own, enforced by Supabase, and reported
+    // honestly if it fires. Nothing is read from the file here at all.
     startListingVideoUpload({ listingId, file: f, sellerAuthUid });
   }
 
@@ -76,7 +64,14 @@ export default function ListingVideoField({ listingId, sellerAuthUid, initialFil
       <div className="mkt-field-head">
         <span className="lbl">Upload a video of the item <span className="mkt-video-optional">optional</span></span>
       </div>
-      <p className="mkt-help">A few seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
+      {/* The CATEGORY'S OWN guidance, never generic advice. */}
+      {rule?.video_guidance && (
+        <div className="mkt-video-guidance">
+          <span className="ic" aria-hidden>🎬</span>
+          <span>{rule.video_guidance}</span>
+        </div>
+      )}
+      {guidance && <p className="mkt-help">{guidance}</p>}
 
       {mine?.status === "lost" ? (
         /* NOTHING here touches the listing. It is created, it is with the
@@ -117,14 +112,13 @@ export default function ListingVideoField({ listingId, sellerAuthUid, initialFil
           <button type="button" className="mkt-video-add" onClick={() => fileRef.current?.click()}>
             <span className="ic">▶</span>
             <span className="t">Record or upload a video</span>
-            <span className="s">Up to {maxMb}MB. Send it exactly as you filmed it, we do the rest.</span>
+            <span className="s">It starts sending straight away. Send it exactly as you filmed it, we do the rest.</span>
           </button>
         </>
       )}
 
       <input ref={fileRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/*" hidden
         onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      {pickError && <div className="mkt-errbox"><span className="m">!</span><span>{pickError}</span></div>}
       <p className="mkt-help mkt-video-footnote">One video per listing. Photos are still required either way, this is extra, not a substitute.</p>
     </div>
   );

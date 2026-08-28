@@ -26,16 +26,27 @@ import { attachStagedListingVideo, LISTING_VIDEO_STAGING_BUCKET } from "./listin
  * `file.size` is the only thing ever read from the file.
  */
 
-export type UploadStatus = "uploading" | "done" | "error" | "lost";
+export type UploadStatus =
+  | "uploading"
+  /** Sent, but no listing to attach it to yet. */
+  | "uploaded"
+  | "done"
+  | "error"
+  | "lost";
 
 export interface UploadState {
-  listingId: string;
+  /** Null until the listing exists. The transfer does not need it: a video
+   * only needs a listing id to be ATTACHED, not to be UPLOADED, and
+   * conflating the two is what made the seller wait. */
+  listingId: string | null;
   fileName: string;
   bytesTotal: number;
   bytesSent: number;
   progress: number;
   status: UploadStatus;
   message?: string;
+  /** Where it landed. Held so it can be attached once the listing exists. */
+  objectPath?: string;
   /** True while a screen is showing the full bar, so the dock stays out of
    * the way rather than duplicating it. */
   detailShown: boolean;
@@ -76,15 +87,41 @@ export function retryListingVideoUpload(): void {
   void begin(state.listingId, currentFile, sellerAuthUid, state.fileName);
 }
 
+/** True once the bytes are safely up, whether or not a listing exists. */
+export function uploadIsComplete(s: UploadState | null): boolean {
+  return !!s && (s.status === "uploaded" || s.status === "done");
+}
+
 export function startListingVideoUpload(input: {
-  listingId: string; file: File; sellerAuthUid: string;
+  file: File; sellerAuthUid: string; listingId?: string | null;
 }): void {
   currentFile = input.file;
   sellerAuthUid = input.sellerAuthUid;
-  void begin(input.listingId, input.file, input.sellerAuthUid, input.file.name);
+  void begin(input.listingId ?? null, input.file, input.sellerAuthUid, input.file.name);
 }
 
-async function begin(listingId: string, file: File, authUid: string, fileName: string) {
+/**
+ * The listing now exists, so attach whatever has been uploaded.
+ *
+ * Called after the listing is created. If the transfer already finished
+ * while the seller was typing, which is the whole point of starting at pick
+ * time, this attaches immediately. If it is still going, the id is
+ * remembered and onSuccess attaches it.
+ */
+export async function attachUploadToListing(listingId: string): Promise<void> {
+  if (!state) return;
+  state = { ...state, listingId };
+  emit();
+  if (state.status === "uploaded" && state.objectPath) {
+    const res = await attachStagedListingVideo({ listingId, storagePath: state.objectPath });
+    if (!res.ok) { fail(res.message ?? "That could not be saved."); return; }
+    if (!state) return;
+    state = { ...state, status: "done" };
+    emit();
+  }
+}
+
+async function begin(listingId: string | null, file: File, authUid: string, fileName: string) {
   // A File held across a long form can have its blob evicted by the OS on a
   // low end device. Checked before anything is attempted so the seller gets
   // the honest message rather than a failed transfer.
@@ -107,7 +144,12 @@ async function begin(listingId: string, file: File, authUid: string, fileName: s
   }
 
   const ext = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
-  const objectName = `${authUid}/listing-${listingId}.${ext}`;
+  // A path the SELLER owns, with no listing id in it, because the upload
+  // starts before the listing exists. An unattached file is cleared by the
+  // nightly orphan job after 24 hours.
+  const objectName = state.objectPath ?? `${authUid}/pending-${Date.now()}.${ext}`;
+  state = { ...state, objectPath: objectName };
+  emit();
   // The SAME expression client.ts uses, fallback included. Reading the env
   // var alone would give "undefined/storage/v1/..." in any build where it
   // is not set, which is exactly where the client still works fine.
@@ -138,7 +180,15 @@ async function begin(listingId: string, file: File, authUid: string, fileName: s
       fail("The connection dropped. Your listing is safe, tap to carry on sending.");
     },
     async onSuccess() {
-      const res = await attachStagedListingVideo({ listingId, storagePath: objectName });
+      if (!state) return;
+      const target = state.listingId;
+      if (!target) {
+        // Sent, waiting for a listing to belong to.
+        state = { ...state, progress: 100, bytesSent: state.bytesTotal, status: "uploaded" };
+        emit();
+        return;
+      }
+      const res = await attachStagedListingVideo({ listingId: target, storagePath: objectName });
       if (!res.ok) { fail(res.message ?? "That could not be saved."); return; }
       if (!state) return;
       state = { ...state, progress: 100, bytesSent: state.bytesTotal, status: "done" };

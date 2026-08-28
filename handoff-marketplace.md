@@ -8786,3 +8786,55 @@ video has broken twice.
 not exist in this environment. The wiring is verified and the store's state
 machine is tested, but a genuine interrupt-and-resume against Supabase has not
 been run.
+
+## 156. Upload while they type, never reject a video, require one where a photo cannot answer (2026-08-28)
+
+**The upload starts at pick time.** A video needs a listing id to be ATTACHED,
+not to be UPLOADED. `startListingVideoUpload` now takes no listing id and writes
+to `${authUid}/pending-${timestamp}.${ext}`, a path the seller owns. On success
+with no listing yet it rests in a new `uploaded` state; `attachUploadToListing`
+is called immediately after the insert returns the id and either attaches at
+once, which is the usual case after two or three minutes of typing, or hands the
+id to `onSuccess`. Unattached files are cleared by the nightly orphan job.
+
+That call is deliberately not awaited and cannot throw into the submit path, so
+section 154's guarantee holds: the listing is still created independently of the
+video.
+
+**Nothing is rejected for size, anywhere.** Both the picker and the edit field
+had a size gate; both are gone. `file.size` survives in exactly three places and
+none of them rejects: a zero-size check for a blob the OS evicted, the progress
+total, and an estimate that says "That is 46MB, so it may take around 6 minutes
+to send" for files over 12MB. The only ceiling left is the bucket's own 200MB,
+enforced by Supabase, reported honestly if it fires. Someone filming 40 seconds
+of a pram folding has made a better video.
+
+**Guidance is the category's own.** `useCategoryVideoRule` calls the deployed
+`category_video_rule`, verified anon callable: Strollers and prams returns
+required true with "Fold it down and open it again, spin each wheel, and press
+the brake on and off"; Baby clothing returns required false with its own line.
+All 50 categories have guidance and 15 require a video, confirmed against the
+table. The guidance renders in a green-light panel at 8.4:1 and changes with the
+category, because the hook is keyed on `categoryId`.
+
+**Required blocks NEW listings only.** `useCategoryVideoRule(isEditMode ?
+undefined : categoryId)` and `videoRequired = !isEditMode && ...`, so the 56
+existing live listings in those categories can be edited freely. A seller fixing
+a typo is never asked for a video.
+
+Blocked, the seller reads, in the same place a missing photo speaks:
+
+  "Buyers cannot tell if strollers and prams still works from a photo. A few
+  seconds of video is what sells it."
+
+**The way out.** Not a dead end: a plain underlined "I cannot film this right
+now" under the submit button releases the block, and a note then says "You can
+send this without a video. It will sell better with one, so add it any time by
+editing this listing." A link rather than a second button, so it is available
+without competing with filming. A listing that exists is worth more than a
+seller who gives up, and admin review is still a second gate. Changing category
+clears the skip, so switching into a required category asks again.
+
+Files: `listingVideo.ts` (two hooks), `listingVideoUploads.ts` (listing-free
+upload, `uploaded` state, `attachUploadToListing`), `sell/ListingVideoPicker.tsx`,
+`sell/ListingVideoField.tsx`, `sell/CreateListingPage.tsx`, `marketplace.css`.

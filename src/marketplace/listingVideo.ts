@@ -40,6 +40,50 @@ export function useListingVideoMaxMb(): number {
   return data ?? LISTING_VIDEO_MAX_MB;
 }
 
+/** The general guidance, live from site_settings. Shown boldly wherever a
+ * seller adds a video. */
+export function useListingVideoGuidance(): string {
+  const { data } = useQuery({
+    queryKey: ["mkt-listing-video-guidance"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async (): Promise<string> => {
+      const { data } = await mdb.from("site_settings").select("value")
+        .eq("key", "marketplace_listing_video_guidance").maybeSingle();
+      const v = (data as { value?: unknown } | null)?.value;
+      return typeof v === "string" && v.trim() ? v : "About 15 seconds is plenty. A longer video is fine, it just takes longer to send.";
+    },
+  });
+  return data ?? "";
+}
+
+export interface CategoryVideoRule {
+  video_required: boolean;
+  video_guidance: string | null;
+  category_name: string | null;
+}
+
+/**
+ * Whether this category needs a video, and what to film for THIS item.
+ *
+ * Generic advice produces generic videos, so a seller listing a pram reads
+ * "Fold it down and open it again, spin each wheel, and press the brake on
+ * and off" rather than anything about videos in general. Every one of the
+ * 50 categories has its own guidance; only the requirement varies.
+ */
+export function useCategoryVideoRule(categoryId: string | undefined) {
+  return useQuery({
+    queryKey: ["mkt-category-video-rule", categoryId],
+    enabled: !!categoryId,
+    staleTime: 10 * 60 * 1000,
+    queryFn: async (): Promise<CategoryVideoRule | null> => {
+      const { data, error } = await mdb.rpc("category_video_rule", { p_category_id: categoryId });
+      if (error) return null;
+      const row = Array.isArray(data) ? data[0] : data;
+      return (row as CategoryVideoRule) ?? null;
+    },
+  });
+}
+
 export interface ListingVideo {
   youtube_video_id: string;
   status: string;
