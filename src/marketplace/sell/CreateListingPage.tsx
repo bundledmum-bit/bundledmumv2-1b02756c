@@ -652,9 +652,13 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
     }
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
-    // Same treatment as a missing photo, said in terms of the buyer.
+    // Same treatment as a missing photo, said in terms of the buyer. The
+    // sentence comes from the category VERBATIM rather than being built
+    // here, because a category name is a label rather than a noun that fits
+    // a sentence.
     if (videoBlocking) {
-      setError(`Buyers cannot tell if ${(videoRule?.category_name || "this").toLowerCase()} still works from a photo. A few seconds of video is what sells it.`);
+      setError(videoRule?.video_block_reason
+        || "Buyers cannot tell from a photo whether this still works. A few seconds of video is what sells it.");
       return;
     }
 

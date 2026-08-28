@@ -59,6 +59,11 @@ export function useListingVideoGuidance(): string {
 export interface CategoryVideoRule {
   video_required: boolean;
   video_guidance: string | null;
+  /** The whole sentence a blocked seller reads, written per category and
+   * used VERBATIM. Never assembled from category_name: a category name is a
+   * label, not a noun that fits a sentence, and building one produced
+   * "strollers and prams still works" across all fifteen. */
+  video_block_reason: string | null;
   category_name: string | null;
 }
 

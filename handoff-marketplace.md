@@ -8838,3 +8838,37 @@ clears the skip, so switching into a required category asks again.
 Files: `listingVideo.ts` (two hooks), `listingVideoUploads.ts` (listing-free
 upload, `uploaded` state, `attachUploadToListing`), `sell/ListingVideoPicker.tsx`,
 `sell/ListingVideoField.tsx`, `sell/CreateListingPage.tsx`, `marketplace.css`.
+
+## 157. The blocked message comes from the category, not from its name (2026-08-28)
+
+Section 156 built the blocked sentence in the template, inserting the category
+name: "Buyers cannot tell if strollers and prams still works from a photo." A
+category name is a label, not a noun that fits a sentence, so all fifteen read
+badly, "cots and cribs still works", "car seats still works".
+
+`category_video_rule` now returns a fourth column, `video_block_reason`, written
+per category, and it is used VERBATIM. The returned columns are
+`(video_required, video_guidance, video_block_reason, category_name)`; the row is
+read by property name so the new column's position does not matter.
+
+Verified live through the anon RPC, which is what a seller will read:
+
+  Strollers and prams: "Buyers cannot tell from a photo whether a pram still
+  folds and rolls properly. A few seconds of video is what sells it."
+  Cots and cribs: "Buyers cannot tell from a photo whether a cot is still steady
+  and complete. A few seconds of video is what sells it."
+  Car seats: "Buyers cannot tell from a photo whether the harness still tightens
+  and releases properly. On a car seat that matters more than anything, so a
+  video is required."
+
+All 15 required categories have one, none empty. A generic fallback covers the
+case where the column is somehow null, but it does not name a category either.
+`category_name` now survives only as a field on the type and is never used to
+build a string anywhere.
+
+Lesson worth keeping: interpolating a database label into prose reads fine for
+whichever example you happen to test and badly for the rest. Fifteen categories
+meant fifteen sentences, and only one of them was ever looked at.
+
+Unchanged: the escape hatch, the guidance panel, the pick-time upload, and the
+edit-mode exemption.
