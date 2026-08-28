@@ -8653,3 +8653,32 @@ already exists, on the success screen when it has just been created.
 `user` comes from `useSeller()` and is the auth user, so `user.id` is the auth
 uid the staging path needs, the same value the photo upload on the same screen
 already uses.
+
+## 153. Telling the seller the video step is coming (2026-08-28)
+
+The create form cannot carry the video field, because staging needs a listing id
+that does not exist until the listing is saved. Photos with no video option
+beside them read as broken rather than deliberate, and a seller seeing the form
+for the first time has no way to infer a step is coming. Reported by someone who
+already knew the feature existed and still hit it.
+
+A line now sits directly under the photo help on CREATE only:
+
+  "You can add a video on the next screen, once your listing is saved. A few
+  seconds of it working answers what buyers ask most."
+
+Worded forward, as the next step rather than an apology for a gap, and it
+carries the same reason the field itself gives. Never rendered on edit, where
+the field is in the form.
+
+The three video render sites in this file are now mutually exclusive:
+`!isEditMode` for this line and `createdId` for the success-screen field (both
+create), `isEditMode && editId` for the field in the form (edit).
+
+Worth recording as a pattern rather than a one off: twice in two turns something
+filed as a design decision hid a gap. "Editing only" in section 148 was a
+blocker written as a footnote, and section 151's consolidation into one
+component left a single render site inside `if (done)`, silently removing the
+edit form's field. Both were found by re-reading finished work rather than by
+trusting the note that described it. A tidy-up that merges render sites deserves
+a check that every case still has one.

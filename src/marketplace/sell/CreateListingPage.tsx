@@ -1135,6 +1135,16 @@ export default function CreateListingPage() {
             <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
           )}
 
+          {/* CREATE only. The video field cannot be here, because staging
+              needs a listing id that does not exist until this is saved,
+              and photos with no video option next to them read as broken
+              rather than deliberate. Says a step is coming, rather than
+              apologising for one that is missing. Never on edit, where the
+              field itself sits a little further down. */}
+          {!isEditMode && (
+            <div className="mkt-help">You can add a video on the next screen, once your listing is saved. A few seconds of it working answers what buyers ask most.</div>
+          )}
+
           {/* Placed right where the mistake actually happens, mid photo
               selection, not a banner at the top a seller scrolls past
               before deciding what they're even listing. Distinct coral
