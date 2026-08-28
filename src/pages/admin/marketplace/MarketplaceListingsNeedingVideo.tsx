@@ -24,19 +24,45 @@ export default function MarketplaceListingsNeedingVideo() {
     queryKey: QUERY_KEY, staleTime: 15000, queryFn: fetchListingsNeedingVideo,
   });
   const [showContacted, setShowContacted] = useState(false);
+  const [q, setQ] = useState("");
 
-  const { working, contacted, requiredCount } = useMemo(() => {
+  // Trimmed, because a trailing space off a phone keyboard is common and
+  // would otherwise match nothing. No debounce: 212 rows filter in well
+  // under a frame, and the admin screens that already have a search field
+  // (AdminCustomers, AdminMerchandising) filter on keystroke too, with no
+  // shared debounce hook in the codebase to reuse.
+  const query = q.trim().toLowerCase();
+  const searching = query !== "";
+
+  const { working, contacted, matched, requiredCount, shownCount } = useMemo(() => {
     const all = rows ?? [];
+    // UNCHANGED, and applied after filtering rather than instead of it:
+    // searching narrows the list, it never reorders it.
     const sort = (a: ListingNeedingVideoRow, b: ListingNeedingVideoRow) => {
       if (a.video_required !== b.video_required) return a.video_required ? -1 : 1;
       return (b.view_count || 0) - (a.view_count || 0);
     };
+    const hit = (r: ListingNeedingVideoRow) =>
+      (r.seller_name || "").toLowerCase().includes(query)
+      || (r.title || "").toLowerCase().includes(query);
+
+    // A search spans BOTH groups on purpose. The whole point is finding one
+    // known listing after a seller replies, and those sellers have just been
+    // emailed, so the row wanted is often already marked asked and sitting
+    // behind the collapsed toggle. Searching only the working list would
+    // fail exactly the case this exists for, so results come back as one
+    // flat list and each row says for itself whether it has been asked.
+    const m = query ? all.filter(hit).sort(sort) : [];
+    const w = all.filter((r) => !r.contacted_at).sort(sort);
+    const c = all.filter((r) => !!r.contacted_at).sort(sort);
+    // Counts follow what is SHOWN, so the header cannot contradict the list.
+    const basis = query ? m : all;
     return {
-      working: all.filter((r) => !r.contacted_at).sort(sort),
-      contacted: all.filter((r) => !!r.contacted_at).sort(sort),
-      requiredCount: all.filter((r) => r.video_required).length,
+      working: w, contacted: c, matched: m,
+      requiredCount: basis.filter((r) => r.video_required).length,
+      shownCount: basis.length,
     };
-  }, [rows]);
+  }, [rows, query]);
 
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
@@ -56,33 +82,92 @@ export default function MarketplaceListingsNeedingVideo() {
         subtitle="Sorted by the ones that need it most, then by how many people are looking."
       />
 
-      <div className="rounded-2xl border p-3.5 mb-4 flex flex-wrap gap-x-6 gap-y-2"
-        style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
-        <Stat label="With no video" value={String(rows.length)} />
-        <Stat label="Buyers cannot tell it works" value={String(requiredCount)} tone="warn" />
-        <Stat label="Not yet asked" value={String(working.length)} />
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        {working.map((r) => <Row key={r.listing_id} r={r} />)}
-      </div>
-
-      {working.length === 0 && (
-        <div className="text-[12px] text-text-med">Every one of these has been asked.</div>
-      )}
-
-      {contacted.length > 0 && (
-        <div className="mt-5">
-          <button onClick={() => setShowContacted((v) => !v)}
-            className="font-heading font-extrabold text-[12px] underline" style={{ color: "#6B5B54" }}>
-            {showContacted ? "Hide" : "Show"} {contacted.length} already asked
-          </button>
-          {showContacted && (
-            <div className="flex flex-col gap-2.5 mt-2.5">
-              {contacted.map((r) => <Row key={r.listing_id} r={r} />)}
-            </div>
+      {/* Optimised for finding ONE known listing after a seller replies on
+          WhatsApp, not for browsing. */}
+      <div className="mb-3">
+        <div className="relative">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search a seller or an item"
+            aria-label="Search by seller name or item title"
+            className="w-full rounded-xl border px-3 py-2.5 pr-9 text-[13px]"
+            style={{ borderColor: "#E3D4CB", background: "#fff" }}
+          />
+          {q !== "" && (
+            <button
+              onClick={() => setQ("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-[15px] leading-none"
+              style={{ color: "#8A7A72" }}
+            >
+              ×
+            </button>
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border p-3.5 mb-4 flex flex-wrap gap-x-6 gap-y-2"
+        style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
+        {/* Counts follow the search, so the header always describes the
+            list under it rather than the whole table. */}
+        <Stat label={searching ? "Matching" : "With no video"} value={String(shownCount)} />
+        <Stat label="Buyers cannot tell it works" value={String(requiredCount)} tone="warn" />
+        {!searching && <Stat label="Not yet asked" value={String(working.length)} />}
+        {searching && (
+          <div className="w-full text-[11px] text-text-med">
+            Showing {shownCount} of {rows.length}, already asked included.
+          </div>
+        )}
+      </div>
+
+      {searching ? (
+        matched.length === 0 ? (
+          <div className="rounded-2xl border p-4 flex flex-col items-start gap-2"
+            style={{ borderColor: "#F0DDD2", background: "#fff" }}>
+            <div className="font-heading font-black text-sm text-foreground">
+              Nothing matched "{q.trim()}"
+            </div>
+            <div className="text-[12px] text-text-med">
+              No seller or item here has that in its name. Check the spelling, or try just part of it.
+            </div>
+            <button onClick={() => setQ("")}
+              className="font-heading font-extrabold text-[12px] underline" style={{ color: "#2D6A4F" }}>
+              Clear the search
+            </button>
+          </div>
+        ) : (
+          /* One flat list, still in the required-first then most-viewed
+             order. Each row shows its own "Asked ..." line, so the two
+             groups stay distinguishable without a toggle to miss. */
+          <div className="flex flex-col gap-2.5">
+            {matched.map((r) => <Row key={r.listing_id} r={r} />)}
+          </div>
+        )
+      ) : (
+        <>
+          <div className="flex flex-col gap-2.5">
+            {working.map((r) => <Row key={r.listing_id} r={r} />)}
+          </div>
+
+          {working.length === 0 && (
+            <div className="text-[12px] text-text-med">Every one of these has been asked.</div>
+          )}
+
+          {contacted.length > 0 && (
+            <div className="mt-5">
+              <button onClick={() => setShowContacted((v) => !v)}
+                className="font-heading font-extrabold text-[12px] underline" style={{ color: "#6B5B54" }}>
+                {showContacted ? "Hide" : "Show"} {contacted.length} already asked
+              </button>
+              {showContacted && (
+                <div className="flex flex-col gap-2.5 mt-2.5">
+                  {contacted.map((r) => <Row key={r.listing_id} r={r} />)}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

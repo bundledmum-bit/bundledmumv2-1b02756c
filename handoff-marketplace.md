@@ -8945,3 +8945,48 @@ Extending the diff habit from section 158, as suggested: the chips were one case
 of a list that must mirror another, and the same shape exists between email
 templates and stage config, and between render sites and the cases that reach
 them. Reading has failed at all three; diffing has not.
+
+## 160. Search on the listings needing video screen (2026-08-28)
+
+87 sellers were emailed. When one replies on WhatsApp saying "I sent the video
+for my pram", the job is finding that ONE listing among 212, not browsing.
+
+Client side filter over the rows already loaded, no database query and no
+debounce: 212 rows filter in well under a frame, and the admin screens that
+already have a search field (AdminCustomers, AdminMerchandising) filter on
+keystroke with no shared debounce hook in the codebase to reuse.
+
+Matches seller name OR item title, case insensitive substring, trimmed because
+a trailing space off a phone keyboard is common. Verified against real rows from
+the view: "taiye" returns her four listings, "stroller" returns two across
+different sellers, "tai" matches the same four as "taiye", "TAIYE" and "taiye  "
+both match identically, a blank query returns nothing rather than everything.
+
+**The sort is untouched and search does not reorder.** The same comparator runs
+after filtering. Proved with the case that would expose a mistake: searching
+"stroller" puts "Convertible Strollers" (required, 15 views) ABOVE "Stroller
+rain cover" (optional, 99 views), so required still beats view count.
+
+**A search spans both groups, deliberately.** The screen normally splits not-yet-
+asked from a collapsed "already asked" group. Since the sellers being searched
+for have just been emailed, the wanted row will often be the one already marked
+asked and hidden behind that toggle, so searching only the working list would
+fail exactly the case this exists for. Results come back as ONE flat list in
+sort order, each row carrying its own "Asked ..." line, and the header says
+"Showing 4 of 212, already asked included." Today `contacted_at` is null on all
+212, so this has no visible effect yet; it matters the moment anything is marked.
+
+**Header counts follow what is shown.** During a search the first stat becomes
+"Matching" over the filtered set, "Buyers cannot tell it works" counts only
+matches, and "Not yet asked" is hidden rather than left describing the whole
+table, so the header cannot contradict the list under it.
+
+**Empty result**, naming the term rather than the generic empty state:
+
+  Nothing matched "pramm"
+  No seller or item here has that in its name. Check the spelling, or try just
+  part of it.
+  Clear the search
+
+The required and optional pills, the admin upload with its required note, and
+the category guidance are all unchanged.
