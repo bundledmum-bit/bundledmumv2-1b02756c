@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { getBrowserId } from "@/lib/supabaseAdapters";
 
 // ── Session ID ────────────────────────────────
 function getSessionId(): string {
@@ -253,6 +254,45 @@ function trackEvent(eventType: string, eventData?: Record<string, unknown>) {
   });
 }
 
+// ── PWA session ────────────────────────────────
+/**
+ * Record one standalone app launch, through record_pwa_session.
+ *
+ * A dedicated RPC rather than the generic analytics insert, because this is
+ * the only event that needs a stable DEVICE id: session_id changes every
+ * visit, so 217 sessions could be 20 people or 200 and nothing could tell
+ * them apart. The RPC also resolves customer_id from the session server
+ * side, which a client insert cannot do.
+ *
+ * os / browser / device_type are passed explicitly and deliberately. The
+ * pwa_analytics_summary view derives ios_pwa_sessions from `os`, and since
+ * iOS fires no appinstalled event, this event is the ONLY way an iOS
+ * install is ever counted. session_id is passed separately from device_id
+ * so the existing distinct-session counts keep meaning sessions.
+ *
+ * Fire and forget: the RPC swallows its own errors and this never rejects,
+ * so analytics can never break app boot.
+ */
+function recordPwaSession(displayMode: string): void {
+  try {
+    const ua = parseUserAgent();
+    (supabase as any).rpc("record_pwa_session", {
+      p_page_url: window.location.pathname,
+      p_device_id: getBrowserId(),
+      p_session_id: getSessionId(),
+      p_os: ua.os,
+      p_browser: ua.browser,
+      p_device_type: ua.device_type,
+      p_user_agent: ua.user_agent,
+      p_display_mode: displayMode,
+    }).then(({ error }: { error: unknown }) => {
+      if (error) console.error("Analytics error:", error);
+    });
+  } catch {
+    /* never let analytics break boot */
+  }
+}
+
 // ── Track Page View ────────────────────────────
 async function trackPageView() {
   await initSession();
@@ -293,5 +333,6 @@ export {
   markSessionConverted,
   initSession,
   parseUserAgent,
+  recordPwaSession,
 };
 export type { TrafficAttribution };

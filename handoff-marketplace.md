@@ -8223,3 +8223,63 @@ like something failing to load rather than a list that is genuinely done.
 Also noted: the generated types still describe two `log_outreach_contact`
 overloads where the database now has one. Harmless, since both call shapes still
 type check and PostgREST resolves on what is sent, so they were left alone.
+
+## 144. Counting devices, not sessions, and the marketplace install blind spot (2026-08-28)
+
+We could not tell how many people had the app installed. `session_id` changes
+every visit, so 217 marketplace sessions could have been 20 regulars or 200
+one-time opens.
+
+**One recording path, through the RPC.** `trackPwaSession()` in `lib/pwa.ts`
+previously went through `trackEvent`, a direct insert into `analytics_events`.
+It now calls `recordPwaSession()` in `lib/analytics.ts`, which calls
+`record_pwa_session`, and nothing else writes a `pwa_session` row. Verified by
+intercepting `window.fetch` while forcing the standalone branch: exactly one
+request, to `rpc/record_pwa_session`, and no `analytics_events` insert
+alongside it.
+
+The first version of that RPC was deployed broken and this was caught before
+switching to it. It inserted into a `metadata` column that does not exist, and
+its own `exception when others then return` swallowed the error, so it ran
+clean and wrote nothing. Proved by calling it and counting rows rather than
+reading it. It also wrote no `os`, which would have zeroed `ios_pwa_sessions`
+(and since iOS fires no `appinstalled` event, `pwa_session` is the only way an
+iOS install is ever counted), and it put the DEVICE id into `session_id`, which
+would have silently changed `total_pwa_sessions` and `pwa_sessions_last_30d`
+from counting sessions to counting devices mid-series. All three are fixed in
+the deployed function; the client now passes `p_session_id` separately from
+`p_device_id`, plus os, browser, device_type and user_agent.
+
+**The device id is `getBrowserId()`, reused, not a new one.** `bm-browser-id`
+in `supabaseAdapters.ts` already existed. A third id for one browser could
+never have been reconciled with it. It was hardened first, the same way
+`referral.ts` hardens its visitor id: in private mode `localStorage` access
+itself throws rather than returning null, and `crypto.randomUUID` can be
+missing, and this is now read at app boot. When storage is unavailable the
+caller still gets a valid id for that page load, which undercounts a returning
+device rather than breaking boot.
+
+Live verified: the id persisted across a full reload, the session id stayed the
+real `bm-session-id`, and the row landed with `os`, `browser`, `device_type`
+and `display_mode` populated and `customer_id` null for an anonymous caller.
+The signed in case is resolved server side from `auth.uid()` and was read in
+the function body rather than exercised, since no login exists in this
+environment. Test rows were deleted afterwards.
+
+`event_data` changes from `{display_mode, os_hint}` to `{display_mode}`. No view
+reads either key, checked before making the change, and all 400 historical rows
+keep their `os_hint`.
+
+**The marketplace install blind spot.** 907 install prompts on the marketplace
+in 30 days against the storefront's 415, and not one install recorded. Not
+unreliable firing: the §60 route guard in `listenForAppInstalled` sat ABOVE both
+the analytics event and the localStorage flag write, so guarding the flag
+suppressed the event too. Every marketplace `pwa_installed` row in the database
+predates 12 August, when that guard shipped.
+
+The event now sits above the guard and carries
+`surface: "marketplace" | "storefront"`; the flag write stays below it. The §60
+protection is unchanged in effect, and this was verified in place rather than
+reasoned about: dispatching a real `appinstalled` event on `/marketplace`
+recorded a `pwa_installed` row with `surface: marketplace`, set the
+marketplace's own flag, and left the storefront's `bm_pwa_installed` null.

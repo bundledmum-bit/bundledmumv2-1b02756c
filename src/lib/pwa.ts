@@ -1,4 +1,4 @@
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, recordPwaSession } from "@/lib/analytics";
 
 // ── PWA helpers ────────────────────────────────────────────────────────────
 // Installability + analytics for the customer site. Events reuse trackEvent so
@@ -56,6 +56,13 @@ export function registerServiceWorker(): void {
 /**
  * Log exactly ONE pwa_session per browser session when launched standalone.
  * This is how iOS installs are counted (Apple fires no appinstalled event).
+ *
+ * Goes through record_pwa_session, NOT the generic analytics insert, and
+ * only through it — one path, never both — so every launch carries the
+ * stable device id. Without that, session_id changes every visit and the
+ * session count cannot tell twenty regular users from two hundred one-time
+ * ones. The RPC resolves customer_id from the session itself, so a signed
+ * in person is attributed without the client sending anything identifying.
  */
 export function trackPwaSession(): void {
   if (!isStandalone()) return;
@@ -65,7 +72,7 @@ export function trackPwaSession(): void {
   } catch {
     /* if storage is unavailable, fall through and log once for this load */
   }
-  trackEvent("pwa_session", { display_mode: "standalone", os_hint: isIos() ? "ios" : "other" });
+  recordPwaSession("standalone");
 }
 
 /** Log pwa_installed when the app is installed (Android / desktop Chrome). */
@@ -104,11 +111,24 @@ export function listenForAppInstalled(): void {
     // This listener is registered once at app boot (initPwa() in main.tsx),
     // regardless of route, so it also fires for a MARKETPLACE install — its
     // own separate PWA (see MarketplaceInstallBanner.tsx), not this one.
-    // Skip it there: writing PWA_INSTALLED_KEY here for a marketplace
-    // install would wrongly hide the STOREFRONT's own banner forever on
-    // that device for someone who never installed the storefront app.
-    if (window.location.pathname.startsWith("/marketplace")) return;
-    trackEvent("pwa_installed", { source: "appinstalled" });
+    const onMarketplace = window.location.pathname.startsWith("/marketplace");
+
+    // COUNT every install, on either surface. This sits ABOVE the guard on
+    // purpose. The guard below is about the storefront's localStorage flag,
+    // not about analytics, and having one line cover both meant the
+    // marketplace recorded no installs at all: 907 install prompts there in
+    // 30 days against the storefront's 415, and not one install captured
+    // since the guard shipped on 12 August. `surface` keeps the two apart.
+    trackEvent("pwa_installed", {
+      source: "appinstalled",
+      surface: onMarketplace ? "marketplace" : "storefront",
+    });
+
+    // The §60 guard, unchanged in effect: writing PWA_INSTALLED_KEY for a
+    // MARKETPLACE install would wrongly hide the STOREFRONT's own banner
+    // forever on that device, for an install that never happened. The
+    // marketplace keeps its own flag (marketplace/lib/installState.ts).
+    if (onMarketplace) return;
     // Remember the install so later normal-tab visits suppress the prompts.
     try { localStorage.setItem(PWA_INSTALLED_KEY, "1"); } catch { /* ignore */ }
   });

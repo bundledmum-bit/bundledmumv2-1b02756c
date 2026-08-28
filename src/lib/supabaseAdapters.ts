@@ -439,14 +439,42 @@ export function adaptBundles(rows: any[]): Bundle[] {
 
 // ─── Browser ID ────────────────────────────────────────────────
 
+/**
+ * A stable, opaque id for this BROWSER. Identifies a device, never a person,
+ * and never leaves the device except as this random id.
+ *
+ * Hardened the same way referral.ts already hardens its visitor id, because
+ * this is now read at app boot by the PWA session recorder: in private mode
+ * and with site data blocked, localStorage access itself THROWS rather than
+ * returning null, and crypto.randomUUID can be missing on older browsers.
+ * Either would have taken down the boot path. When storage is unavailable
+ * the caller still gets a valid id for this page load; it simply cannot
+ * persist, which undercounts a returning device rather than breaking it.
+ */
 export function getBrowserId(): string {
   const KEY = "bm-browser-id";
-  let id = localStorage.getItem(KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(KEY, id);
-  }
+  try {
+    const existing = localStorage.getItem(KEY);
+    if (existing) return existing;
+  } catch { /* private mode / site data blocked — fall through */ }
+
+  const id = makeBrowserUuid();
+  try { localStorage.setItem(KEY, id); } catch { /* ignore, see above */ }
   return id;
+}
+
+/** crypto.randomUUID when available, else a v4-shaped fallback. */
+function makeBrowserUuid(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch { /* fall through */ }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 export function getSessionId(): string {
