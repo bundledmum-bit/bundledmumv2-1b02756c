@@ -3211,6 +3211,9 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-videoprompt .t { font: 900 15px/1.25 'Nunito', sans-serif; color: var(--mkt-black); }
 .mkt-videoprompt .s { font: 400 12.5px/1.45 'Lato', sans-serif; color: var(--mkt-muted); margin-top: 3px; }
 .mkt-videoprompt .lead { font: 400 12px/1.45 'Lato', sans-serif; color: var(--mkt-black); margin-top: 6px; }
+/* The count is its own line so a narrow screen cannot swallow it at the
+   end of a wrapping sentence. */
+.mkt-videoprompt .count { font: 700 11.5px/1.45 'Nunito', sans-serif; color: var(--mkt-green); margin-top: 3px; }
 .mkt-videoprompt .acts { grid-column: 1 / -1; display: flex; gap: 8px; }
 .mkt-videoprompt .go,
 .mkt-videoprompt .no {

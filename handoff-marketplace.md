@@ -8921,3 +8921,27 @@ function has NOT been deployed: "no Supabase changes" is listed as a non-goal
 while an edge function was also asked for, and rather than resolve that
 contradiction by taking an outward-facing action, the source is committed and
 the deploy left as a decision.
+
+## 159. The seller video prompt at 320px (2026-08-28)
+
+Measured at 320x568, an iPhone SE, not just at 375. The 23-listing case
+survived: card fully on screen, no horizontal overflow, 44px buttons, and the
+count visible. But it was 9 lines of text at 45% of the screen, and the count
+sat at the end of a three-line run-on sentence, which is survival by luck rather
+than by construction.
+
+The lead is now two elements: the item to start with, and the count on its own
+line. Same facts, and the count can no longer be swallowed by a wrap.
+
+At 320x568 after the change: title 2 lines, reason 4, lead 2, count 2. Card
+274px, 48% of the screen, fully on screen, nothing clipped, buttons 44px.
+
+Honest cost: the card grew 19px, from 255 to 274, because splitting adds a
+margin and the count still wraps to two lines at that width. Worth it, since the
+question was whether the count survives and it now does structurally rather than
+incidentally.
+
+Extending the diff habit from section 158, as suggested: the chips were one case
+of a list that must mirror another, and the same shape exists between email
+templates and stage config, and between render sites and the cases that reach
+them. Reading has failed at all three; diffing has not.

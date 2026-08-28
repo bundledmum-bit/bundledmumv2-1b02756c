@@ -112,11 +112,18 @@ export default function SellerVideoPrompt() {
               ? lead.reason
               : "A few seconds of it working answers the question buyers ask most, before they even have to message."}
           </div>
+          {/* Two short lines rather than one long one. At 320px the single
+              sentence ran to three lines and the count trailed off the end
+              of it; as its own element the count cannot be lost in a wrap. */}
           <div className="lead">
             Start with <b>{lead.title || "your listing"}</b>
             {lead.views ? `, ${lead.views} ${lead.views === 1 ? "person has" : "people have"} looked at it` : ""}.
-            {others > 0 && ` ${others} more after that${requiredCount > 1 ? `, ${requiredCount} of them really need one` : ""}.`}
           </div>
+          {others > 0 && (
+            <div className="count">
+              {others} more after that{requiredCount > 1 ? `, ${requiredCount} of them really need one` : ""}.
+            </div>
+          )}
         </div>
         <div className="acts">
           <button className="go" onClick={go}>Add a video</button>
