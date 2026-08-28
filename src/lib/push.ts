@@ -10,6 +10,7 @@ export type PushStatus =
   | "unsupported" // browser can't do web push, or iOS Safari not installed as PWA
   | "denied" // user blocked notifications
   | "granted-subscribed" // permission granted and a push subscription exists
+  | "needs-signin" // supported, but we do not know who this is yet
   | "default"; // supported, not yet decided
 
 /** Convert a base64url VAPID key to the Uint8Array the Push API expects. */
@@ -72,6 +73,14 @@ export async function getPushStatus(): Promise<PushStatus> {
 export async function subscribeToPush(customerEmail?: string | null): Promise<PushStatus> {
   if (!isPushSupported() || isIosNeedsInstall()) return "unsupported";
 
+  // WITHOUT AN EMAIL THERE IS NO SUBSCRIPTION. A row with customer_email
+  // null cannot be targeted by any trigger, so it is not a subscriber, it
+  // is a permission burned for nothing: 22 of 28 rows were in exactly that
+  // state, and a browser only ever answers this question once. Refusing
+  // here is what stops the 23rd.
+  const email = (customerEmail || "").trim();
+  if (!email) return "needs-signin";
+
   const permission = await Notification.requestPermission();
   if (permission !== "granted") {
     return permission === "denied" ? "denied" : "default";
@@ -94,7 +103,7 @@ export async function subscribeToPush(customerEmail?: string | null): Promise<Pu
     body: {
       action: "subscribe",
       subscription: subscription.toJSON(),
-      customer_email: customerEmail || null,
+      customer_email: email,
       session_id: getSessionId(),
       device_type: ua.device_type,
       browser: ua.browser,
@@ -105,6 +114,49 @@ export async function subscribeToPush(customerEmail?: string | null): Promise<Pu
 
   trackEvent("push_subscribed", { os: ua.os, browser: ua.browser });
   return "granted-subscribed";
+}
+
+/**
+ * Attach an email to a subscription this browser already has.
+ *
+ * The one route by which an existing email-less row becomes reachable: the
+ * edge function upserts on `endpoint`, so re-sending the same subscription
+ * with an email fills it in rather than creating a second row. Called when
+ * someone signs in, which is the moment we first learn who a browser
+ * belongs to.
+ *
+ * Deliberately silent and side effect free otherwise: it never asks for
+ * permission, never subscribes, and does nothing at all unless permission
+ * is already granted and a subscription already exists.
+ */
+export async function syncPushEmail(customerEmail?: string | null): Promise<boolean> {
+  const email = (customerEmail || "").trim();
+  if (!email) return false;
+  if (!isPushSupported() || isIosNeedsInstall()) return false;
+  if (Notification.permission !== "granted") return false;
+
+  try {
+    const reg = await getRegistration();
+    const subscription = reg ? await reg.pushManager.getSubscription() : null;
+    if (!subscription) return false;
+
+    const ua = parseUserAgent();
+    await supabase.functions.invoke("manage-push-subscription", {
+      body: {
+        action: "subscribe",
+        subscription: subscription.toJSON(),
+        customer_email: email,
+        session_id: getSessionId(),
+        device_type: ua.device_type,
+        browser: ua.browser,
+        os: ua.os,
+        user_agent: ua.user_agent,
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Unsubscribe locally and tell the backend to deactivate the row. */

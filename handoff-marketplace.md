@@ -8283,3 +8283,68 @@ protection is unchanged in effect, and this was verified in place rather than
 reasoned about: dispatching a real `appinstalled` event on `/marketplace`
 recorded a `pwa_installed` row with `surface: marketplace`, set the
 marketplace's own flag, and left the storefront's `bm_pwa_installed` null.
+
+## 145. Push: why 22 of 28 subscriptions were unreachable, and the marketplace ask (2026-08-28)
+
+**The cause, found before building anything.** `PushOptInCard` was mounted
+globally in `StorefrontApp.tsx` and shown to ANY visitor on any non admin
+route, with no sign in check. It calls `subscribeToPush(user?.email)`, which is
+`undefined` when signed out, so the edge function wrote `customer_email: null`.
+A null email cannot be targeted by any trigger, so those rows are not
+subscribers: they are permissions spent for nothing, and a browser answers that
+question only once.
+
+There is a second, worse mechanism in the same path. `manage-push-subscription`
+upserts on `endpoint` and always writes `customer_email`, so someone who
+subscribed while signed in and later re-subscribed while signed out had their
+email OVERWRITTEN with null. Not just never captured, actively erased.
+
+**The 22 are not recoverable from data.** All 22 carry a `session_id`. 14 of
+those sessions appear in `analytics_events`, but ZERO of them ever carried a
+`customer_id`, so nobody signed in during any of them. `customer_id` on
+`analytics_events` is new as of section 144 anyway. There is no join to a
+person that does not already exist.
+
+They are recoverable by BEHAVIOUR, and that is now built. `syncPushEmail()`
+re-sends the existing subscription with an email when someone signs in.
+Because the upsert is keyed on `endpoint`, that fills in the existing row
+rather than creating a second one. So any of the 22 who signs in on that same
+browser is recovered silently, with no second permission prompt. Anyone who
+never signs in on that device stays unreachable permanently.
+
+**No subscription can be created without an email any more.**
+`subscribeToPush` refuses with a new `needs-signin` status BEFORE calling
+`Notification.requestPermission`, which matters: refusing after the prompt
+would still burn the browser's one answer. Verified live, all three anonymous
+shapes (undefined, null, whitespace) return `needs-signin` with zero permission
+prompts fired.
+
+**Storefront changed too, deliberately.** `PushOptInCard` now also requires
+`signedIn`. Fixing only the marketplace would have left the storefront free to
+keep minting null email rows, which makes the fix pointless. The 5 working
+subscriptions are untouched; this only stops new bad ones.
+
+**The marketplace ask.** New `MarketplacePushPrompt`, mounted in
+`MarketplaceApp` below `PendingActionPrompt`. Three gates:
+
+1. Installed app only, via `isStandalone()`. A browser visitor is never asked,
+   because a refusal is permanent in that browser.
+2. Signed in only, so the row always has an email.
+3. Never on first launch. `bm-mkt-app-launches` counts one launch per browser
+   session (a `sessionStorage` flag stops page navigation inflating it) and the
+   ask waits for the second. Someone who just installed has not decided they
+   trust the app yet. The counter only increments when standalone, so browsing
+   the site in a tab never uses up that first launch.
+
+It subscribes to `deliveryGateChannel` and `pendingActionChannel` and hides
+while either is up, taking the slot below the pending prompt in the section 133
+ordering. Dismissal is permanent.
+
+Verified in a normal tab: the prompt is absent from the DOM and the launch
+counter is never even created. Card measured at 375px: 351 wide, on screen,
+44px tap targets, Nunito 900 heading, Lato body, green #2D6A4F action on cream
+#FFF8F4.
+
+Files: `lib/push.ts`, `hooks/usePush.ts`, `components/PushOptInCard.tsx`,
+`marketplace/components/MarketplacePushPrompt.tsx` (new),
+`marketplace/MarketplaceApp.tsx`, `marketplace/marketplace.css`.

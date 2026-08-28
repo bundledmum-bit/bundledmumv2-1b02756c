@@ -4,6 +4,7 @@ import {
   getPushStatus,
   subscribeToPush,
   unsubscribeFromPush,
+  syncPushEmail,
   isIosNeedsInstall,
   isPushSupported,
   type PushStatus,
@@ -26,6 +27,14 @@ export function usePush() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // The recovery path for a row that already exists without an email.
+  // Signing in is the moment this browser stops being anonymous, so that is
+  // when the email gets attached. Silent: it never asks for permission and
+  // does nothing unless a subscription is already there.
+  useEffect(() => {
+    if (user?.email) void syncPushEmail(user.email);
+  }, [user?.email]);
 
   const subscribe = useCallback(async () => {
     setBusy(true);
@@ -55,6 +64,7 @@ export function usePush() {
     subscribe,
     unsubscribe,
     refresh,
+    signedIn: !!user?.email,
     supported: isPushSupported(),
     iosNeedsInstall: isIosNeedsInstall(),
   };

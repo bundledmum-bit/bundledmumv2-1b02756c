@@ -6,6 +6,7 @@ import InstallPage from "./InstallPage";
 import MarketplaceInstallBanner from "./MarketplaceInstallBanner";
 import SellerDeliveryGate from "./sell/SellerDeliveryGate";
 import PendingActionPrompt from "./components/PendingActionPrompt";
+import MarketplacePushPrompt from "./components/MarketplacePushPrompt";
 import MarketplaceHeader from "./MarketplaceHeader";
 import MarketplaceFooter from "./MarketplaceFooter";
 import MarketplaceScrollManager from "./MarketplaceScrollManager";
@@ -151,6 +152,9 @@ export default function MarketplaceApp() {
           {/* Someone is waiting on this person. Outranks the install banner
               and the WhatsApp nudge, yields to the blocking gate above. */}
           <PendingActionPrompt />
+          {/* Installed app only, signed in only, never on first launch.
+              Yields to the gate and the pending prompt above it. */}
+          <MarketplacePushPrompt />
         </div>
       </BrowserRouter>
     </QueryClientProvider>

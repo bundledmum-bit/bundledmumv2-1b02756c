@@ -13,7 +13,7 @@ import { promptWrapperClasses } from "@/lib/promptPosition";
 const DISMISS_KEY = "bm-push-optin-dismissed";
 
 export default function PushOptInCard() {
-  const { status, busy, subscribe, iosNeedsInstall, supported } = usePush();
+  const { status, busy, subscribe, iosNeedsInstall, supported, signedIn } = usePush();
   const { optinTitle, optinBody, optinCta, optinDecline, optinPosition } = usePromptCopy();
   const { pathname } = useLocation();
   const [dismissed, setDismissed] = useState(() => {
@@ -26,7 +26,11 @@ export default function PushOptInCard() {
   // iOS Safari (not installed) can't do web push — show an install-first nudge
   // instead of a dead Allow button. Otherwise only prompt when undecided.
   const showIosInstall = iosNeedsInstall;
-  const showAllow = supported && !iosNeedsInstall && status === "default";
+  // Signed in only. An anonymous Allow wrote customer_email null, which is
+  // an unreachable row and a permission spent for nothing, and a browser
+  // answers this question exactly once. This is the storefront half of that
+  // fix; the marketplace prompt has the same rule.
+  const showAllow = supported && !iosNeedsInstall && signedIn && status === "default";
   if (!showIosInstall && !showAllow) return null;
 
   const dismiss = () => {
