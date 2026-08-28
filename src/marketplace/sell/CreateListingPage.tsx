@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { stageListingVideo, useListingVideoNotice, useListingVideo, useListingVideoMaxMb, mbSent, mbTotal } from "../listingVideo";
+import ListingVideoField from "./ListingVideoField";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -127,56 +127,10 @@ export default function CreateListingPage() {
   const queryClient = useQueryClient();
   const { id: editId } = useParams<{ id?: string }>();
   const isEditMode = !!editId;
+  // The id of the listing just created, so the success screen can offer a
+  // video. Null on edit, where editId already is the id.
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
-  // The YouTube-hosted listing video. Only offered when EDITING, because
-  // seller_stage_listing_video needs a listing id and on create there is
-  // not one yet. Entirely separate from the paused compression pipeline
-  // below, which stays gated behind marketplace_video_enabled.
-  const listingVideoNotice = useListingVideoNotice();
-  const listingVideoMaxMb = useListingVideoMaxMb();
-  const { data: existingListingVideo } = useListingVideo(editId);
-  const ytFileRef = useRef<HTMLInputElement | null>(null);
-  const [ytBusy, setYtBusy] = useState(false);
-  const [ytProgress, setYtProgress] = useState(0);
-  const [ytStaged, setYtStaged] = useState(false);
-  const [ytError, setYtError] = useState<string | null>(null);
-  // THE PICKED FILE IS KEPT. The raw file goes up untouched, so a seller on
-  // Nigerian mobile data may be pushing 40MB for several minutes, and a
-  // connection that drops at 80% is ordinary rather than exceptional.
-  // Holding it here means "Try again" resends the same file: they never
-  // re-pick it and never re-read the notice for a dropped connection.
-  const [ytFile, setYtFile] = useState<File | null>(null);
-
-  function pickListingVideo(files: FileList | null) {
-    const f = files?.[0];
-    if (!f) return;
-    // file.size is the ONLY thing read from the file. No duration, no
-    // <video> element, no canvas, no compression. Reading a video hangs
-    // indefinitely on iPhone and that is what killed this feature the
-    // first time (handoff 87 to 92).
-    if (f.size > listingVideoMaxMb * 1024 * 1024) {
-      setYtFile(null);
-      setYtError(`That file is larger than ${listingVideoMaxMb}MB. Please record a shorter clip.`);
-      return;
-    }
-    setYtFile(f);
-    setYtError(null);
-    void sendListingVideo(f);
-  }
-
-  async function sendListingVideo(f: File) {
-    if (!editId || !user?.id) return;
-    setYtBusy(true); setYtError(null); setYtProgress(0);
-    const res = await stageListingVideo({
-      listingId: editId, sellerAuthUid: user.id, file: f, onProgress: setYtProgress,
-    });
-    setYtBusy(false);
-    // The file stays in state on failure, which is what makes the retry
-    // below a one-tap resend rather than a restart.
-    if (!res.ok) { setYtError(res.message ?? "That could not be saved."); return; }
-    setYtStaged(true);
-    setYtFile(null);
-  }
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
   // A seller landing here directly for a LIVE listing (bookmark, back button,
@@ -852,10 +806,17 @@ export default function CreateListingPage() {
       // this), never an insert; seller_id/quantity_sold/reviewed_by are
       // never touched, and status is always exactly 'pending_review', never
       // 'live' — only BundledMum can do that.
-      const { error: writeErr } = isEditMode
+      const { data: writeRow, error: writeErr } = isEditMode
         ? await sdb.from("marketplace_listings").update(payload).eq("id", editId as string)
-        : await sdb.from("marketplace_listings").insert({ ...payload, seller_id: seller.id });
+        // .select() so the new row's id comes back: a video cannot be
+        // staged until the listing exists, so the success screen needs the
+        // id to offer one. "Seller reads own listings" makes this readable.
+        : await sdb.from("marketplace_listings").insert({ ...payload, seller_id: seller.id }).select("id").single();
       if (writeErr) throw writeErr;
+      if (!isEditMode) {
+        const newId = (writeRow as { id?: string } | null)?.id;
+        if (newId) setCreatedId(newId);
+      }
       setBusy(false); setDone(true);
     } catch (e) {
       setBusy(false);
@@ -994,6 +955,15 @@ export default function CreateListingPage() {
               body="Install the app and we will let you know the moment someone buys this or asks you a question."
             />
           )}
+          {/* The video is offered HERE rather than in the form, because a
+              listing must exist before seller_stage_listing_video can be
+              called. This is the moment the seller is most invested, having
+              just done the work, and it avoids holding a 40MB file through
+              a submission that might fail. */}
+          {(createdId || editId) && user?.id && (
+            <ListingVideoField listingId={(createdId || editId) as string} sellerAuthUid={user.id} />
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <button className="mkt-primary" onClick={() => window.location.reload()}>List another item</button>
             <button className="mkt-outline-light" onClick={() => navigate("/sell/dashboard")}>Go to my dashboard</button>
@@ -1178,68 +1148,6 @@ export default function CreateListingPage() {
             <p><b>One item, one listing.</b> If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below.</p>
           </div>
         </div>
-
-        {/* The video that goes on the listing, hosted by YouTube. Editing
-            only, since staging needs a listing id. */}
-        {isEditMode && (
-          <div className="mkt-field mkt-video-field">
-            <div className="mkt-field-head">
-              <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
-            </div>
-            <p className="mkt-help">A few seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
-
-            {existingListingVideo ? (
-              <div className="mkt-video-preparing"><span>✓</span><span>Your video is on this listing.</span></div>
-            ) : ytStaged ? (
-              <div className="mkt-video-preparing">
-                <span className="sp" aria-hidden />
-                <span>We are getting your video ready. It shows on your listing shortly, and buyers see nothing until it is.</span>
-              </div>
-            ) : ytBusy ? (
-              /* A real byte-level bar, never a bare spinner. A big file on
-                 a slow line takes minutes, and a seller watching something
-                 that looks motionless assumes it has frozen and closes the
-                 page. The megabytes tick up even when the percentage looks
-                 stuck, which is the part that reads as progress. */
-              <div className="mkt-video-processing">
-                <div className="bar-row">
-                  <div className="bar"><i style={{ width: `${ytProgress}%` }} /></div>
-                  <span>{ytProgress}%</span>
-                </div>
-                <p className="mkt-help">
-                  Sending your video, {mbSent(ytFile, ytProgress)} of {mbTotal(ytFile)}.
-                  It is going up exactly as you filmed it, so it can take a few minutes. You can carry on filling in the rest of the form.
-                </p>
-              </div>
-            ) : ytFile && ytError ? (
-              /* Failed partway. The file is still held, so this is a
-                 resend, not a restart: no re-picking, no re-reading the
-                 notice. */
-              <div className="mkt-video-processing">
-                <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>
-                <p className="mkt-help">{ytFile.name} is still here, nothing was lost.</p>
-                <button type="button" className="mkt-primary" onClick={() => void sendListingVideo(ytFile)}>Try again</button>
-                <button type="button" className="mkt-secondary" onClick={() => { setYtFile(null); setYtError(null); }}>Choose a different video</button>
-              </div>
-            ) : (
-              <>
-                {/* Told, not asked. At the upload itself, not in terms
-                    elsewhere, and read live from site_settings. */}
-                {listingVideoNotice && (
-                  <p className="mkt-help" style={{ color: "#6B5B54" }}>{listingVideoNotice}</p>
-                )}
-                <button type="button" className="mkt-video-add" onClick={() => ytFileRef.current?.click()}>
-                  <span className="ic">▶</span>
-                  <span className="t">Record or upload a video</span>
-                  <span className="s">Up to {listingVideoMaxMb}MB. Send it as it is, we do the rest.</span>
-                </button>
-              </>
-            )}
-            {ytError && !ytFile && <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>}
-            <input ref={ytFileRef} type="file" accept="video/*" hidden
-              onChange={(e) => { pickListingVideo(e.target.files); e.target.value = ""; }} />
-          </div>
-        )}
 
         {/* One optional video, design 37a, sits right after photos in the
             seller form too. Genuinely optional: never counted in `filled`

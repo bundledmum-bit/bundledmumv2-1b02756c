@@ -8575,3 +8575,55 @@ removed one of the strictNullChecks narrowing failures in
 
 Still dead, for the section 148 cleanup pass once a video has gone end to end:
 `sellerUploadVideoForRequest`, `adminUploadVideoForSeller`, and their two RPCs.
+
+## 151. Why no seller saw a video option, and the old design put back (2026-08-28)
+
+**The cause was the sequencing, not the flag.** The new block was gated on
+`isEditMode` alone, never on `marketplace_video_enabled`; that flag still gates
+only the old paused block further down the same file. `isEditMode = !!editId`,
+and a new listing has no `editId`, so the field rendered nothing on create. Four
+sellers listed in 24 hours and none of them was ever shown it. Section 148
+recorded this as "editing only" in a comment rather than flagging that CREATE
+had no video at all, which is why it read as built.
+
+**Option (a), the success screen.** `seller_stage_listing_video` needs a listing
+id, so the listing must exist first. The insert did not return the id, so it now
+runs `.select("id").single()` (the "Seller reads own listings" policy makes that
+readable) and the id is held in `createdId`. The field then renders on the
+success screen. Option (b), holding the file through submission, would mean
+carrying 40MB across a submit that can fail; (c) tells them to go and find it
+later. (a) catches the seller having just done the work.
+
+**Reused from the old design**: the whole `.mkt-field .mkt-video-field` block,
+its `.mkt-field-head`, the `.mkt-video-add` resting control with its ▶ icon and
+three lines, `.mkt-video-processing` for the busy state, `.mkt-errbox` and the
+`.mkt-video-footnote`. On listing detail, `ListingVideoCard`'s entire treatment:
+the `.mkt-video-card` block, the "🎥 Watch a video of this item" header, the
+`.mkt-video-frame` resting state with scrim, play control and "Tap to play", and
+the caption. It is placed last in the gallery exactly as before.
+
+**Could not be reused, both for the same reason.** The duration badge and the
+"15 seconds" copy came from `video_duration_seconds`, which only existed because
+the old pipeline READ the file. The custom progress and pause controls belonged
+to the local `<video>`; YouTube's player owns those now. The poster survives,
+supplied by YouTube's thumbnail rather than an extracted frame.
+
+**Only `file.size` is read.** In `ListingVideoField.tsx`:
+
+    if (f.size > maxMb * 1024 * 1024) {
+
+Grepping both seller paths for `.size`, `.name`, `createElement("video")`,
+`loadedmetadata`, `.duration`, `canvas`, `MediaRecorder` and `captureStream`
+returns only `file.size` (the cap), `file.name` (the extension and the retry
+line) and one comment. No video element is created for anything but playback.
+
+**Kept from section 149**: the real byte-level bar with "15.5MB of 42.0MB", and
+the retry that holds the file so a drop at 80% is a resend rather than a
+restart. Both carried into the reused block.
+
+The notice still sits at the upload itself, live from
+`marketplace_listing_video_notice`. `marketplace_video_enabled` is untouched and
+still false. Both upload paths read `marketplace_listing_video_max_mb` live.
+
+Files: `sell/ListingVideoField.tsx` (new), `components/ListingVideoPlayer.tsx`
+(rewritten to the old card), `sell/CreateListingPage.tsx`, `marketplace.css`.
