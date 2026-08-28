@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { isStandalone, isIos } from "@/lib/pwa";
 import { subscribeToWaPromptVisible } from "./components/WhatsAppInactivityPrompt";
 import { subscribeToInstallCtaVisible } from "./components/MarketplaceInstallCta";
-import { deliveryGateChannel, pendingActionChannel } from "./lib/promptVisibility";
+import { deliveryGateChannel, pendingActionChannel, sellerVideoChannel } from "./lib/promptVisibility";
 import {
   isMarketplacePwaInstalled,
   markMarketplacePwaInstalled,
@@ -112,11 +112,12 @@ export default function MarketplaceInstallBanner() {
   // nudge alike.
   const [outrankedVisible, setOutrankedVisible] = useState(false);
   useEffect(() => {
-    let gate = false, pending = false;
-    const push = () => setOutrankedVisible(gate || pending);
+    let gate = false, pending = false, video = false;
+    const push = () => setOutrankedVisible(gate || pending || video);
     const offGate = deliveryGateChannel.subscribe((v) => { gate = v; push(); });
     const offPending = pendingActionChannel.subscribe((v) => { pending = v; push(); });
-    return () => { offGate(); offPending(); };
+    const offVideo = sellerVideoChannel.subscribe((v) => { video = v; push(); });
+    return () => { offGate(); offPending(); offVideo(); };
   }, []);
 
   // Genuine engagement, not a first-paint interstitial: whichever comes

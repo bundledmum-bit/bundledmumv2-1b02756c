@@ -8872,3 +8872,52 @@ meant fifteen sentences, and only one of them was ever looked at.
 
 Unchanged: the escape hatch, the guidance panel, the pick-time upload, and the
 edit-mode exemption.
+
+## 158. Getting video onto 214 listings: prompt, email, chips, admin upload (2026-08-28)
+
+**The chip omission was worse than reported, and found by diffing rather than
+noticing.** `get_outreach_queue` delegates to `get_seller_nudge_suggestions` and
+`get_buyer_nudge_suggestions`; extracting the stage keys from those two and
+diffing against the chip lists showed SIX stages with no chip, not two. The two
+new video ones, and three buyer stages that had been missing all along:
+`abandoned_at_payment`, `abandoned_before_payment` and `buyer_no_review`. All
+five are now added; `payment_not_completed` is correctly absent, since it
+belongs to the pending payments screen rather than the queue. The diff now shows
+none missing and none orphaned in either direction, and that check is worth
+re-running whenever a stage is added.
+
+**The prompt is one prompt for everything they have.** `SellerVideoPrompt` calls
+`seller_listing_needing_video`, which returns every listing needing one, ordered
+required-category first then most viewed. With one listing it reads "Your
+listing would sell faster with a video"; with 23 it reads "23 of your listings
+have no video", then "Start with {title}, 41 people have looked at it. 22 more
+after that, 6 of them really need one." The reason line comes from the lead
+item's own `reason`, never assembled from a category name.
+
+New `sellerVideoChannel` sits third in the precedence: below the delivery gate
+and the pending action prompt, above the WhatsApp nudge and install banner,
+which both now subscribe to it. Dismissible for 7 days, and never shown on
+checkout or mid-listing routes.
+
+**One email per seller.** `send-seller-add-video-email` takes a `seller_id`,
+reads every one of their listings from `marketplace_listings_needing_video`
+ordered required first then most viewed, caps the list at five and says "And 4
+more listings with no video yet." Each block carries the item, whether buyers
+cannot tell it works, how many people have looked, and the category's own
+"Film this:" line. Built in the shape of `send-marketplace-seller-email`,
+because `send-marketplace-email` is built around orders and refuses anything
+with no order_id.
+
+**Admin upload** at `/admin/marketplace/needs-video`, sorted required first then
+most viewed, showing each category's guidance as "Ask them to film: ..." so
+whoever is about to message knows what to ask FOR. The note is required at 5
+characters, labelled "Where did the seller send you this?", and the button is
+inert without both a file and a note. Nothing reads the file.
+
+**Two things that did not match the brief.**
+`send-marketplace-video-request-email` does not exist in this repo, so the shape
+was taken from `send-marketplace-seller-email` instead. And the new edge
+function has NOT been deployed: "no Supabase changes" is listed as a non-goal
+while an edge function was also asked for, and rather than resolve that
+contradiction by taking an outward-facing action, the source is committed and
+the deploy left as a decision.

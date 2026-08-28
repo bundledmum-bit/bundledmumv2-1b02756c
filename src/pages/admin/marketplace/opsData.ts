@@ -537,7 +537,13 @@ export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urg
   // fallback, but with no entry here it had no chip and no count, so it
   // could not be filtered to or measured. Urgency matches the RPC's own.
   { key: "missing_delivery_prefs", chipLabel: "Buyers cannot tell if they will send", urgency: 2 },
+  // Both returned by get_seller_nudge_suggestions. 214 live listings have
+  // no video across 87 sellers; 56 sit in the 15 categories where a photo
+  // cannot answer the buyer's real question, which is what separates these
+  // two.
+  { key: "missing_video_required", chipLabel: "Needs a video, buyers cannot tell it works", urgency: 2 },
   { key: "listed_no_sales", chipLabel: "Live, no sale", urgency: 3 },
+  { key: "missing_video_optional", chipLabel: "Could use a video", urgency: 3 },
   // Urgency 4, the RPC's lowest, so it sits last. Same bug as
   // missing_delivery_prefs had: returned by the RPC all along and visible
   // under "All" via the label fallback, but with no entry here it had no
@@ -552,7 +558,16 @@ export const SELLER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urg
  * side. */
 export const BUYER_OUTREACH_STAGES: Array<{ key: string; chipLabel: string; urgency: number }> = [
   { key: "order_awaiting_delivery", chipLabel: "Awaiting delivery", urgency: 0 },
+  // The three below were found by diffing get_buyer_nudge_suggestions'
+  // stage keys against this list, rather than by anyone noticing them
+  // missing. All three were reaching the queue and rendering under "All"
+  // via the label fallback, with no chip and no count, so they could
+  // neither be filtered to nor measured. Same bug as missing_delivery_prefs
+  // and seller_no_review each had.
+  { key: "abandoned_at_payment", chipLabel: "Left at the payment page", urgency: 1 },
+  { key: "abandoned_before_payment", chipLabel: "Left before paying", urgency: 2 },
   { key: "answered_question_no_purchase", chipLabel: "Waiting to buy", urgency: 2 },
+  { key: "buyer_no_review", chipLabel: "Has not left feedback", urgency: 4 },
 ];
 
 /** Pulls the human-readable text out of a wa.me link purely for a read-only
@@ -991,4 +1006,69 @@ export async function adminFulfilRequestWithListingVideo(input: {
     p_request_id: input.requestId, p_storage_path: path, p_note: input.note,
   });
   return readRpcResult(error, data);
+}
+
+/* ── Listings with no video ───────────────────────────────────────────────
+ * 214 live listings have none, across 87 sellers. 56 are in the 15
+ * categories where a photo cannot answer "does it still work".
+ */
+
+export interface ListingNeedingVideoRow {
+  listing_id: string;
+  title: string | null;
+  image_url: string | null;
+  final_price_naira: number | null;
+  view_count: number | null;
+  created_at: string;
+  days_listed: number | null;
+  seller_id: string;
+  seller_name: string | null;
+  seller_phone: string | null;
+  category_name: string | null;
+  video_required: boolean;
+  /** What the seller should actually film for THIS kind of item, so an
+   * operator knows what to ask for before asking. */
+  video_guidance: string | null;
+  youtube_status: string | null;
+  contacted_at: string | null;
+}
+
+export async function fetchListingsNeedingVideo(): Promise<ListingNeedingVideoRow[]> {
+  const { data, error } = await adb.from("marketplace_listings_needing_video").select("*");
+  if (error) throw error;
+  return (data ?? []) as ListingNeedingVideoRow[];
+}
+
+export async function adminAddListingVideo(input: {
+  listingId: string; storagePath: string; note: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { data, error } = await adb.rpc("admin_add_listing_video", {
+    p_listing_id: input.listingId, p_storage_path: input.storagePath, p_note: input.note,
+  });
+  if (error) return { ok: false, message: error.message };
+  const d = (data ?? {}) as Record<string, unknown>;
+  if (d.ok === true) return { ok: true };
+  const msg = typeof d.error === "string" ? d.error : typeof d.message === "string" ? d.message : undefined;
+  return { ok: false, message: msg || "That could not be saved. Refresh and check it still has no video." };
+}
+
+/**
+ * Uploads a video a seller sent on WhatsApp, then records it against the
+ * listing. Same staging bucket and same shape as the seller's own path.
+ *
+ * SIZE IS NEVER READ TO REJECT. Nothing here decodes the file, creates a
+ * video element, touches a canvas or reads a duration: that is what hung on
+ * iPhone and killed this feature twice.
+ */
+export async function adminUploadListingVideo(input: {
+  listingId: string; file: File; note: string; onProgress: (pct: number) => void;
+}): Promise<{ ok: boolean; message?: string }> {
+  const ext = (input.file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const path = `admin/listing-${input.listingId}-${Date.now()}.${ext}`;
+  try {
+    await uploadWithProgress(adb as unknown as SupabaseClient, "listing-video-staging", path, input.file, input.onProgress);
+  } catch {
+    return { ok: false, message: "The upload did not finish. Check the connection and try again." };
+  }
+  return adminAddListingVideo({ listingId: input.listingId, storagePath: path, note: input.note });
 }

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useMarketplaceWhatsAppNumber, waHref } from "../lib/whatsapp";
 import { buildMessage, listingUrlFor, markContactedUs, hasContactedUs, type WhatsAppHelpContext } from "./WhatsAppHelpLink";
-import { deliveryGateChannel, pendingActionChannel } from "../lib/promptVisibility";
+import { deliveryGateChannel, pendingActionChannel, sellerVideoChannel } from "../lib/promptVisibility";
 
 /**
  * The floating WhatsApp prompt from the Claude Design mobile marketplace
@@ -121,11 +121,12 @@ export default function WhatsAppInactivityPrompt({ context, listingId, itemName,
   // always wait for either.
   const [outrankedVisible, setOutrankedVisible] = useState(false);
   useEffect(() => {
-    let gate = false, pending = false;
-    const push = () => setOutrankedVisible(gate || pending);
+    let gate = false, pending = false, video = false;
+    const push = () => setOutrankedVisible(gate || pending || video);
     const offGate = deliveryGateChannel.subscribe((v) => { gate = v; push(); });
     const offPending = pendingActionChannel.subscribe((v) => { pending = v; push(); });
-    return () => { offGate(); offPending(); };
+    const offVideo = sellerVideoChannel.subscribe((v) => { video = v; push(); });
+    return () => { offGate(); offPending(); offVideo(); };
   }, []);
   const [dismissed, setDismissed] = useState(false);
   const firedRef = useRef(false);

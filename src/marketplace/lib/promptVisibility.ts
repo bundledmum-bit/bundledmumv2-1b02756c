@@ -12,8 +12,9 @@
  *
  *   1. SellerDeliveryGate   non-dismissible and blocking, must resolve first
  *   2. PendingActionPrompt  a real person is waiting on this person
- *   3. WhatsAppInactivityPrompt  a hesitation nudge
- *   4. MarketplaceInstallBanner  a standing convenience offer
+ *   3. SellerVideoPrompt     their own listings would sell better
+ *   4. WhatsAppInactivityPrompt  a hesitation nudge
+ *   5. MarketplaceInstallBanner  a standing convenience offer
  *
  * Note this REVERSED one existing relationship: the delivery gate used to
  * yield to the WhatsApp prompt. Keeping that while adding
@@ -54,3 +55,7 @@ export function createVisibilityChannel(): VisibilityChannel {
 export const deliveryGateChannel = createVisibilityChannel();
 /** Someone is genuinely waiting on this person. Outranks the nudges. */
 export const pendingActionChannel = createVisibilityChannel();
+/** A seller's own listings would sell better with a video. Ranks BELOW the
+ * pending action prompt, because someone waiting on a reply matters more
+ * than a video that can wait, and above the two standing nudges. */
+export const sellerVideoChannel = createVisibilityChannel();
