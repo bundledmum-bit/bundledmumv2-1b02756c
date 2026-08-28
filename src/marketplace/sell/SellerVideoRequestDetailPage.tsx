@@ -7,11 +7,9 @@ import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import {
   fetchSellerVideoRequest,
-  sellerUploadVideoForRequest,
   sellerDeclineVideoRequest,
-  useVideoRequestMaxMb,
-  describeVideoRequestUploadError,
 } from "../videoRequests";
+import { fulfilRequestWithListingVideo, useListingVideoMaxMb, useListingVideoNotice } from "../listingVideo";
 
 /**
  * Answer a video request (seller side), at /sell/video-requests/:id — the
@@ -33,7 +31,6 @@ export default function SellerVideoRequestDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user, seller, loading: sellerLoading, isLoggedIn } = useSeller();
-  const { data: maxMb = 60 } = useVideoRequestMaxMb();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -56,12 +53,15 @@ export default function SellerVideoRequestDetailPage() {
     queryFn: () => fetchSellerVideoRequest(id as string),
   });
 
+  const listingVideoMaxMb = useListingVideoMaxMb();
+  const listingVideoNotice = useListingVideoNotice();
+
   function pick(files: FileList | null) {
     if (!files || !files[0]) return;
     const f = files[0];
     // file.size is known the instant the file is picked, no decoding at
     // all — this is the ONLY check made on the file before upload.
-    if (f.size > maxMb * 1024 * 1024) {
+    if (f.size > listingVideoMaxMb * 1024 * 1024) {
       setError("That video is too long, please record about 30 seconds or less.");
       setFile(null);
       return;
@@ -73,9 +73,15 @@ export default function SellerVideoRequestDetailPage() {
   async function upload() {
     if (!file || !request || !user) return;
     setBusy(true); setError(null); setProgress(0);
-    const res = await sellerUploadVideoForRequest(request.id, user.id, file, setProgress);
+    // NEW requests go on the listing and close the request in one call.
+    // The four legacy private_only videos never reach this: they already
+    // have uploaded_at set, so this screen shows them as sent, and the RPC
+    // refuses a request that has one regardless.
+    const res = await fulfilRequestWithListingVideo({
+      requestId: request.id, sellerAuthUid: user.id, file, onProgress: setProgress,
+    });
     setBusy(false);
-    if (!res.ok) { setError(res.message); return; }
+    if (!res.ok) { setError(res.message ?? "That could not be saved."); return; }
     setFile(null);
     qc.invalidateQueries({ queryKey: ["seller-video-requests-attention", seller?.id] });
     await refetch();
@@ -143,9 +149,17 @@ export default function SellerVideoRequestDetailPage() {
           <span className="amt" style={{ font: "700 17px/1.35 'Nunito', sans-serif" }}>{request.note || "No note, just show it works normally"}</span>
         </div>
 
+        {/* This used to promise "only they will ever see it", which stopped
+            being true the moment a requested video started going on the
+            listing. Replaced with what actually happens, read live from
+            site_settings, and shown at the upload itself rather than in
+            terms elsewhere. The four legacy videos filmed under the old
+            promise are unaffected: they are already sent, so this screen
+            never offers to upload for them. */}
         <div className="mkt-heldbox">
-          <div className="hb-title">Only they will ever see it</div>
-          <div className="hb-line"><span className="hb-tick">✓</span>This video goes only to the buyer who asked, nobody else can see it, and it's deleted afterwards.</div>
+          <div className="hb-title">Where this video goes</div>
+          <div className="hb-line"><span className="hb-tick">✓</span>{listingVideoNotice}</div>
+          <div className="hb-line"><span className="hb-tick">✓</span>The buyer who asked gets told as soon as it is ready, and everyone looking at your listing can watch it too.</div>
         </div>
 
         {!declining ? (

@@ -8525,3 +8525,53 @@ Nothing changed for the originals bucket. The seller still uploads to
 `listing-video-staging` and calls `seller_stage_listing_video` with the same two
 arguments; the worker keeping the raw file in `listing-video-originals` is
 entirely server side.
+
+## 150. A requested video now closes the request and reaches the listing (2026-08-28)
+
+The gap reported in section 148 is closed. `seller_fulfil_request_with_listing_video`
+and `admin_fulfil_request_with_listing_video` stage the video for YouTube AND
+close the request in one call, setting `fulfilled_by_listing_video` and leaving
+`video_path` NULL so nothing tries to serve a private file that does not exist.
+
+- `SellerVideoRequestDetailPage` now calls `fulfilRequestWithListingVideo`
+  instead of `sellerUploadVideoForRequest`.
+- The admin on-behalf panel calls `adminFulfilRequestWithListingVideo` instead
+  of `adminUploadVideoForSeller`, still requiring the note.
+
+**A false promise removed.** That seller screen said "Only they will ever see
+it: this video goes only to the buyer who asked, nobody else can see it, and
+it's deleted afterwards." That stopped being true the moment a requested video
+went on the listing. It now reads "Where this video goes", carrying the live
+`marketplace_listing_video_notice` plus "The buyer who asked gets told as soon
+as it is ready, and everyone looking at your listing can watch it too."
+
+**The four legacy videos are untouched**, verified live: all four still
+`private_only`, still holding their private file, `fulfilled_by_listing_video`
+false, and their listings have `youtube_status`, `youtube_video_id` and
+`staged_video_path` all null. Three independent things keep them that way: they
+already have `uploaded_at` set so both new RPCs refuse them; the seller screen
+shows them as already sent and never offers an upload; and the buyer's "Watch
+your own video" button is unchanged.
+
+**A real bug in what section 148 shipped, found while wiring this.** None of
+these RPCs returns an `ok` flag. They raise on failure and return a plain
+payload with a `note` on success. `stageListingVideo` and `readRpcResult` both
+checked `d.ok === true`, so every SUCCESSFUL call reported "that could not be
+saved" while the write had gone through. That is the log_outreach_contact
+void-versus-boolean bug in a new place, and worse than failing, because the
+obvious response is to press again: on the listing upload that would have
+staged a second copy and overwritten `staged_video_path`. Both now key on the
+absence of an error, which is the only correct test. It affected the three admin
+on-behalf actions from section 146 and the listing upload from 148.
+`superAdminConfirmReceiptOnBehalf` was already correct.
+
+**Point 3 done.** `marketplace_listing_video_max_mb` is read live by
+`useListingVideoMaxMb()` in both the listing upload and the request upload,
+matching the request path. The constant is now a fallback only.
+
+Type-error baseline drops from 5 to 4: the flat `{ ok, message? }` result shape
+removed one of the strictNullChecks narrowing failures in
+`SellerVideoRequestDetailPage`.
+
+Still dead, for the section 148 cleanup pass once a video has gone end to end:
+`sellerUploadVideoForRequest`, `adminUploadVideoForSeller`, and their two RPCs.

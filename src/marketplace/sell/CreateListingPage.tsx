@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { stageListingVideo, useListingVideoNotice, useListingVideo, LISTING_VIDEO_MAX_MB, mbSent, mbTotal } from "../listingVideo";
+import { stageListingVideo, useListingVideoNotice, useListingVideo, useListingVideoMaxMb, mbSent, mbTotal } from "../listingVideo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -133,6 +133,7 @@ export default function CreateListingPage() {
   // not one yet. Entirely separate from the paused compression pipeline
   // below, which stays gated behind marketplace_video_enabled.
   const listingVideoNotice = useListingVideoNotice();
+  const listingVideoMaxMb = useListingVideoMaxMb();
   const { data: existingListingVideo } = useListingVideo(editId);
   const ytFileRef = useRef<HTMLInputElement | null>(null);
   const [ytBusy, setYtBusy] = useState(false);
@@ -153,9 +154,9 @@ export default function CreateListingPage() {
     // <video> element, no canvas, no compression. Reading a video hangs
     // indefinitely on iPhone and that is what killed this feature the
     // first time (handoff 87 to 92).
-    if (f.size > LISTING_VIDEO_MAX_MB * 1024 * 1024) {
+    if (f.size > listingVideoMaxMb * 1024 * 1024) {
       setYtFile(null);
-      setYtError(`That file is larger than ${LISTING_VIDEO_MAX_MB}MB. Please record a shorter clip.`);
+      setYtError(`That file is larger than ${listingVideoMaxMb}MB. Please record a shorter clip.`);
       return;
     }
     setYtFile(f);
@@ -1230,7 +1231,7 @@ export default function CreateListingPage() {
                 <button type="button" className="mkt-video-add" onClick={() => ytFileRef.current?.click()}>
                   <span className="ic">▶</span>
                   <span className="t">Record or upload a video</span>
-                  <span className="s">Up to {LISTING_VIDEO_MAX_MB}MB. Send it as it is, we do the rest.</span>
+                  <span className="s">Up to {listingVideoMaxMb}MB. Send it as it is, we do the rest.</span>
                 </button>
               </>
             )}

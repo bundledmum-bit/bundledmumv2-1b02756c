@@ -5,7 +5,7 @@ import { useVideoRequestMaxMb } from "@/marketplace/videoRequests";
 import {
   formatNaira, relativeTimeAgo,
   fetchSellerPendingQuestions, fetchSellerPendingVideoRequests, fetchSellerPendingOffers,
-  adminAnswerQuestionForSeller, adminUploadVideoForSeller, adminAnswerOfferForSeller,
+  adminAnswerQuestionForSeller, adminFulfilRequestWithListingVideo, adminAnswerOfferForSeller,
   type PendingQuestion, type PendingVideoRequest, type PendingOffer,
 } from "./opsData";
 
@@ -149,7 +149,7 @@ function SendVideo({ r, onDone }: { r: PendingVideoRequest; onDone: () => void }
   async function send() {
     if (!file) return;
     setBusy(true); setError(null); setProgress(0);
-    const res = await adminUploadVideoForSeller({
+    const res = await adminFulfilRequestWithListingVideo({
       requestId: r.id, file, note: note.trim(), onProgress: setProgress,
     });
     setBusy(false);
@@ -158,7 +158,7 @@ function SendVideo({ r, onDone }: { r: PendingVideoRequest; onDone: () => void }
   }
 
   return (
-    <Panel title="Send the video the seller gave you">
+    <Panel title="Put their video on the listing">
       <div className="rounded-lg px-2.5 py-2 text-[11.5px]" style={{ background: "#FDE8DF", color: "#8C4A34" }}>
         <b className="font-heading font-extrabold">Asked {relativeTimeAgo(r.created_at)}</b>
         {r.note ? `: ${r.note}` : ". No note left."}
@@ -173,7 +173,7 @@ function SendVideo({ r, onDone }: { r: PendingVideoRequest; onDone: () => void }
       <Err msg={error} />
       <button onClick={send} disabled={!ready || busy}
         className="rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={btn(ready && !busy)}>
-        {busy ? `Uploading... ${progress}%` : "Send this video"}
+        {busy ? `Uploading... ${progress}%` : "Put it on the listing"}
       </button>
     </Panel>
   );

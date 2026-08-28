@@ -890,14 +890,22 @@ export async function fetchSellerPendingOffers(sellerId: string): Promise<Pendin
   return (data ?? []) as PendingOffer[];
 }
 
-/** All three RPCs return jsonb. A `false`/`error` shape becomes a message
- * the operator can act on rather than a silent no-op. */
-function readRpcResult(data: unknown): { ok: boolean; message?: string } {
+/**
+ * These RPCs signal failure by RAISING, which PostgREST surfaces as `error`,
+ * and on success return a plain jsonb payload carrying a human `note`. They
+ * do NOT return an `ok` flag.
+ *
+ * This previously checked `d.ok === true`, which no version of any of them
+ * has ever set, so every SUCCESSFUL call reported "that could not be saved"
+ * to the operator while the write had in fact gone through. Exactly the
+ * shape of the log_outreach_contact void-versus-boolean bug: worse than
+ * failing, because the obvious response is to press again and do it twice.
+ * The only correct check is the absence of an error.
+ */
+function readRpcResult(error: { message?: string } | null, data: unknown): { ok: boolean; message?: string } {
+  if (error) return { ok: false, message: error.message || "That could not be saved. Please try again." };
   const d = (data ?? {}) as Record<string, unknown>;
-  if (d.ok === true) return { ok: true };
-  const msg = typeof d.error === "string" ? d.error
-    : typeof d.message === "string" ? d.message : undefined;
-  return { ok: false, message: msg || "That could not be saved. Refresh and check it is still unanswered." };
+  return { ok: true, message: typeof d.note === "string" ? d.note : undefined };
 }
 
 export async function adminAnswerQuestionForSeller(input: {
@@ -906,8 +914,7 @@ export async function adminAnswerQuestionForSeller(input: {
   const { data, error } = await adb.rpc("admin_answer_question_for_seller", {
     p_question_id: input.questionId, p_answer: input.answer, p_note: input.note,
   });
-  if (error) return { ok: false, message: error.message };
-  return readRpcResult(data);
+  return readRpcResult(error, data);
 }
 
 export async function adminAttachVideoForSeller(input: {
@@ -916,8 +923,7 @@ export async function adminAttachVideoForSeller(input: {
   const { data, error } = await adb.rpc("admin_attach_video_for_seller", {
     p_request_id: input.requestId, p_video_path: input.videoPath, p_note: input.note,
   });
-  if (error) return { ok: false, message: error.message };
-  return readRpcResult(data);
+  return readRpcResult(error, data);
 }
 
 export async function adminAnswerOfferForSeller(input: {
@@ -928,8 +934,7 @@ export async function adminAnswerOfferForSeller(input: {
     p_offer_id: input.offerId, p_decision: input.decision,
     p_counter_price_naira: input.counterPriceNaira, p_note: input.note,
   });
-  if (error) return { ok: false, message: error.message };
-  return readRpcResult(data);
+  return readRpcResult(error, data);
 }
 
 /**
@@ -957,4 +962,33 @@ export async function adminUploadVideoForSeller(input: {
     return { ok: false, message: "The upload did not finish. Check the connection and try again." };
   }
   return adminAttachVideoForSeller({ requestId: input.requestId, videoPath: path, note: input.note });
+}
+
+/**
+ * A video the seller sent on WhatsApp now goes on the LISTING and closes
+ * the request, exactly as the seller's own upload does.
+ *
+ * Replaces adminUploadVideoForSeller for NEW requests. That function stays
+ * for nothing: the four legacy private_only videos are already sent, so no
+ * request that could reach this is one of them, and the RPC refuses any
+ * request that already has an uploaded_at.
+ *
+ * SIZE ONLY, as everywhere in this feature. The staging bucket's admin
+ * policy checks the bucket and the permission with no path prefix rule, so
+ * `admin/` is a provenance convention.
+ */
+export async function adminFulfilRequestWithListingVideo(input: {
+  requestId: string; file: File; note: string; onProgress: (pct: number) => void;
+}): Promise<{ ok: boolean; message?: string }> {
+  const ext = (input.file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const path = `admin/${input.requestId}-${Date.now()}.${ext}`;
+  try {
+    await uploadWithProgress(adb as unknown as SupabaseClient, "listing-video-staging", path, input.file, input.onProgress);
+  } catch {
+    return { ok: false, message: "The upload did not finish. Check the connection and try again." };
+  }
+  const { data, error } = await adb.rpc("admin_fulfil_request_with_listing_video", {
+    p_request_id: input.requestId, p_storage_path: path, p_note: input.note,
+  });
+  return readRpcResult(error, data);
 }
