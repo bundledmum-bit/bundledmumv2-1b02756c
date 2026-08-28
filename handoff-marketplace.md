@@ -8489,3 +8489,39 @@ nothing.
 
 Files: `listingVideo.ts` (new), `components/ListingVideoPlayer.tsx` (new),
 `pages/ListingDetailPage.tsx`, `sell/CreateListingPage.tsx`, `marketplace.css`.
+
+## 149. Slow uploads: real progress, and a retry that does not restart (2026-08-28)
+
+The raw file goes up untouched, so a seller may be pushing 40MB rather than 4MB,
+which on Nigerian mobile data takes minutes and can drop partway. That is a
+deliberate trade, since compressing in the browser is what killed this feature
+the first time and iPhones cannot do it at all. Two things follow.
+
+**Real progress, never a spinner.** The upload already used
+`uploadWithProgress`, which reports genuine byte-level percentages from
+`xhr.upload.onprogress` rather than a simulated bar, but it was rendering as one
+line of text. It now shows the existing `.mkt-video-processing` bar, reused
+rather than reinvented, plus a line reading "Sending your video, 15.5MB of
+42.0MB." The megabytes matter as much as the bar: on a slow line the percentage
+can sit on one number for a while, and the megabytes visibly moving is what
+tells a seller it has not frozen. `mbSent`/`mbTotal` read `file.size` and
+nothing else, the same single property the cap check uses, and both clamp out of
+range percentages and handle a null file.
+
+**A failure is a resend, not a restart.** The picked file was previously a local
+variable, so a connection that dropped at 80% lost it and the seller had to
+re-pick the file and re-read the notice. It is now held in state, and the
+failure branch shows the error, "clip.mp4 is still here, nothing was lost", a
+"Try again" that resends the same file, and a "Choose a different video" for
+when they actually want one.
+
+Branch order is ready, staged, uploading, failed-with-file, picker, so the retry
+state is reached before the picker and the notice is not shown again for a
+dropped connection. A file rejected for being over the 200MB cap deliberately
+clears the held file instead, since retrying an oversized file would fail
+identically: that one falls back to the picker with its own error.
+
+Nothing changed for the originals bucket. The seller still uploads to
+`listing-video-staging` and calls `seller_stage_listing_video` with the same two
+arguments; the worker keeping the raw file in `listing-video-originals` is
+entirely server side.

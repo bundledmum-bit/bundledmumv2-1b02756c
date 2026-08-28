@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { stageListingVideo, useListingVideoNotice, useListingVideo, LISTING_VIDEO_MAX_MB } from "../listingVideo";
+import { stageListingVideo, useListingVideoNotice, useListingVideo, LISTING_VIDEO_MAX_MB, mbSent, mbTotal } from "../listingVideo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -139,25 +139,42 @@ export default function CreateListingPage() {
   const [ytProgress, setYtProgress] = useState(0);
   const [ytStaged, setYtStaged] = useState(false);
   const [ytError, setYtError] = useState<string | null>(null);
+  // THE PICKED FILE IS KEPT. The raw file goes up untouched, so a seller on
+  // Nigerian mobile data may be pushing 40MB for several minutes, and a
+  // connection that drops at 80% is ordinary rather than exceptional.
+  // Holding it here means "Try again" resends the same file: they never
+  // re-pick it and never re-read the notice for a dropped connection.
+  const [ytFile, setYtFile] = useState<File | null>(null);
 
-  async function addListingVideo(files: FileList | null) {
+  function pickListingVideo(files: FileList | null) {
     const f = files?.[0];
-    if (!f || !editId || !user?.id) return;
+    if (!f) return;
     // file.size is the ONLY thing read from the file. No duration, no
     // <video> element, no canvas, no compression. Reading a video hangs
     // indefinitely on iPhone and that is what killed this feature the
     // first time (handoff 87 to 92).
     if (f.size > LISTING_VIDEO_MAX_MB * 1024 * 1024) {
+      setYtFile(null);
       setYtError(`That file is larger than ${LISTING_VIDEO_MAX_MB}MB. Please record a shorter clip.`);
       return;
     }
+    setYtFile(f);
+    setYtError(null);
+    void sendListingVideo(f);
+  }
+
+  async function sendListingVideo(f: File) {
+    if (!editId || !user?.id) return;
     setYtBusy(true); setYtError(null); setYtProgress(0);
     const res = await stageListingVideo({
       listingId: editId, sellerAuthUid: user.id, file: f, onProgress: setYtProgress,
     });
     setYtBusy(false);
+    // The file stays in state on failure, which is what makes the retry
+    // below a one-tap resend rather than a restart.
     if (!res.ok) { setYtError(res.message ?? "That could not be saved."); return; }
     setYtStaged(true);
+    setYtFile(null);
   }
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
@@ -1178,9 +1195,30 @@ export default function CreateListingPage() {
                 <span>We are getting your video ready. It shows on your listing shortly, and buyers see nothing until it is.</span>
               </div>
             ) : ytBusy ? (
-              <div className="mkt-video-preparing">
-                <span className="sp" aria-hidden />
-                <span>Sending your video... {ytProgress}%</span>
+              /* A real byte-level bar, never a bare spinner. A big file on
+                 a slow line takes minutes, and a seller watching something
+                 that looks motionless assumes it has frozen and closes the
+                 page. The megabytes tick up even when the percentage looks
+                 stuck, which is the part that reads as progress. */
+              <div className="mkt-video-processing">
+                <div className="bar-row">
+                  <div className="bar"><i style={{ width: `${ytProgress}%` }} /></div>
+                  <span>{ytProgress}%</span>
+                </div>
+                <p className="mkt-help">
+                  Sending your video, {mbSent(ytFile, ytProgress)} of {mbTotal(ytFile)}.
+                  It is going up exactly as you filmed it, so it can take a few minutes. You can carry on filling in the rest of the form.
+                </p>
+              </div>
+            ) : ytFile && ytError ? (
+              /* Failed partway. The file is still held, so this is a
+                 resend, not a restart: no re-picking, no re-reading the
+                 notice. */
+              <div className="mkt-video-processing">
+                <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>
+                <p className="mkt-help">{ytFile.name} is still here, nothing was lost.</p>
+                <button type="button" className="mkt-primary" onClick={() => void sendListingVideo(ytFile)}>Try again</button>
+                <button type="button" className="mkt-secondary" onClick={() => { setYtFile(null); setYtError(null); }}>Choose a different video</button>
               </div>
             ) : (
               <>
@@ -1196,9 +1234,9 @@ export default function CreateListingPage() {
                 </button>
               </>
             )}
-            {ytError && <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>}
+            {ytError && !ytFile && <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>}
             <input ref={ytFileRef} type="file" accept="video/*" hidden
-              onChange={(e) => { void addListingVideo(e.target.files); e.target.value = ""; }} />
+              onChange={(e) => { pickListingVideo(e.target.files); e.target.value = ""; }} />
           </div>
         )}
 

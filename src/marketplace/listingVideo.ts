@@ -99,3 +99,19 @@ export async function stageListingVideo(input: {
   const msg = typeof d.error === "string" ? d.error : undefined;
   return { ok: false, message: msg || "That could not be saved. Please try again." };
 }
+
+/** Megabytes, for the upload progress line. Reads file.size and nothing
+ * else — the same single property the cap check uses. Showing megabytes
+ * alongside the percentage matters on a slow connection: the percentage can
+ * sit on one number for a while, and the megabytes visibly moving is what
+ * tells a seller it has not frozen. */
+export function mbTotal(file: File | null): string {
+  if (!file) return "0MB";
+  return `${(file.size / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+export function mbSent(file: File | null, pct: number): string {
+  if (!file) return "0MB";
+  const done = (file.size * Math.max(0, Math.min(100, pct))) / 100;
+  return `${(done / (1024 * 1024)).toFixed(1)}MB`;
+}
