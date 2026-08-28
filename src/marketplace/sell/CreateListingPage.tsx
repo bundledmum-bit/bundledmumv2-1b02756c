@@ -960,8 +960,8 @@ export default function CreateListingPage() {
               called. This is the moment the seller is most invested, having
               just done the work, and it avoids holding a 40MB file through
               a submission that might fail. */}
-          {(createdId || editId) && user?.id && (
-            <ListingVideoField listingId={(createdId || editId) as string} sellerAuthUid={user.id} />
+          {createdId && user?.id && (
+            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} />
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1148,6 +1148,15 @@ export default function CreateListingPage() {
             <p><b>One item, one listing.</b> If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below.</p>
           </div>
         </div>
+
+        {/* EDITING: the listing already exists, so the video field belongs
+            in the form itself, in design 37a's own place right after the
+            photos. On CREATE there is no listing id yet and
+            seller_stage_listing_video needs one, so that case is offered on
+            the success screen instead, immediately after submitting. */}
+        {isEditMode && editId && user?.id && (
+          <ListingVideoField listingId={editId} sellerAuthUid={user.id} />
+        )}
 
         {/* One optional video, design 37a, sits right after photos in the
             seller form too. Genuinely optional: never counted in `filled`

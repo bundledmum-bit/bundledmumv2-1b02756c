@@ -8627,3 +8627,29 @@ still false. Both upload paths read `marketplace_listing_video_max_mb` live.
 
 Files: `sell/ListingVideoField.tsx` (new), `components/ListingVideoPlayer.tsx`
 (rewritten to the old card), `sell/CreateListingPage.tsx`, `marketplace.css`.
+
+## 152. The video field was missing from the edit form too (2026-08-28)
+
+Reported as "I do not see the video upload option", from the CREATE form.
+
+Two separate things, and only one of them was intended.
+
+**Create form: absent on purpose.** `seller_stage_listing_video` needs a listing
+id and a new listing has none until it is saved, so the field is offered on the
+success screen straight after submitting (section 151, option a). Looking for it
+in the form finds nothing, which is exactly what the seller in this report hit.
+
+**Edit form: absent by mistake, mine.** Section 148 rendered it on edit.
+Consolidating into `ListingVideoField` in section 151 moved the only render site
+inside `if (done)`, so on edit it appeared only AFTER submitting changes rather
+than in the form. That is a regression against 148 and is now fixed: the field
+renders in the form when `isEditMode`, in design 37a's own position right after
+the photos, and the success-screen copy is now for the create case only
+(`createdId`).
+
+So there are two render sites, one per case: in the form when the listing
+already exists, on the success screen when it has just been created.
+
+`user` comes from `useSeller()` and is the auth user, so `user.id` is the auth
+uid the staging path needs, the same value the photo upload on the same screen
+already uses.
