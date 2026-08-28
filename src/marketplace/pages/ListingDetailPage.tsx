@@ -37,6 +37,8 @@ import PhotoViewer from "../components/PhotoViewer";
 import ProtectionBadge from "../components/ProtectionBadge";
 import DeliveryTermsBlock from "../components/DeliveryTermsBlock";
 import ListingVideoCard from "../components/ListingVideoCard";
+import ListingVideoPlayer from "../components/ListingVideoPlayer";
+import { useListingVideo } from "../listingVideo";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
 import WhatsAppInactivityPrompt from "../components/WhatsAppInactivityPrompt";
@@ -197,6 +199,11 @@ export default function ListingDetailPage() {
   // "declined") is NOT the same as claiming it — buyerClaimVideoRequest,
   // which starts the deletion clock, is only ever called from inside
   // WatchRequestVideoSheet's own "Play video" button, never here.
+  // The listing's own YouTube video, shared by everyone. The RPC returns
+  // nothing until YouTube actually has it, so a buyer sees no trace of a
+  // video that is still transcoding.
+  const { data: listingVideo } = useListingVideo(id);
+
   const { data: myVideoRequest, refetch: refetchMyVideoRequest } = useQuery({
     queryKey: ["buyer-video-request", id],
     enabled: !!id && isLoggedIn,
@@ -788,7 +795,20 @@ export default function ListingDetailPage() {
         {/* Ask for a video, directly after Ask a question so the two read
             as a pair. Same hidden-once-acted-on pattern: waiting, watch it,
             or (rarely) declined, in place of the entry button. */}
-        {!myVideoRequest ? (
+        {/* One video per listing, whoever prompted it. Once one exists
+            nobody asks again, everyone watches the same one. Asking is
+            only offered while there is none. */}
+        {listingVideo && <ListingVideoPlayer youtubeVideoId={listingVideo.youtube_video_id} />}
+
+        {/* A buyer who has their OWN older private video keeps it, even
+            once the listing has a public one. Those four were filmed under
+            a written promise that only that buyer would see it, so their
+            link is never taken away and their video is never published. */}
+        {listingVideo && myVideoRequest?.video_path && !myVideoRequest.declined_at && (
+          <button type="button" className="mkt-offer-entry" onClick={() => setWatchVideoSheetOpen(true)}>Watch your own video</button>
+        )}
+
+        {listingVideo ? null : !myVideoRequest ? (
           <button type="button" className="mkt-offer-entry" onClick={openRequestVideoSheet}>Ask {askName} for a video</button>
         ) : myVideoRequest.declined_at ? (
           <div className="mkt-offer-used">The seller couldn't film this one{myVideoRequest.decline_reason ? `: ${myVideoRequest.decline_reason}` : ""}</div>

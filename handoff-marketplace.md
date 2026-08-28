@@ -8440,3 +8440,52 @@ fires `loadeddata`. Confirmed in both directions.
 
 `first_watch` still comes back from the claim and still means `watched_at is
 null`, so nothing else changed.
+
+## 148. Listing video, second attempt: YouTube hosts it, so nothing is processed here (2026-08-28)
+
+Public listing video was abandoned in sections 87 to 92 because iPhones cannot
+compress in the browser (WebKit has never implemented `captureStream()`), which
+left serving a raw 50MB file to every visitor. YouTube removes both problems:
+the seller uploads raw, YouTube transcodes, and it streams from YouTube.
+
+**Absolutely no processing.** `file.size` against a 200MB cap is the only thing
+read from the file, plus `file.name` for an extension. No compression, no
+duration read, no `<video>` element for inspection, no canvas. Verified by
+grepping the finished files: every match for `createElement("video")`,
+`loadedmetadata`, `.duration`, `canvas`, `MediaRecorder` and `captureStream` in
+`listingVideo.ts` and `ListingVideoPlayer.tsx` is a comment.
+
+**Ask becomes watch.** On listing detail, `useListingVideo(id)` calls the
+`listing_video` RPC, which filters on `youtube_status = 'ready'` server side, so
+a buyer sees nothing at all while a video is transcoding. With a video, the
+"Ask {seller} for a video" button is replaced by "Watch a video of this item".
+With none, asking works exactly as before. Nothing renders when there is no
+video: no placeholder.
+
+**The four private_only videos are untouched.** The client never reads or writes
+`private_only` and never sends any request video to staging or YouTube; the two
+paths share no code. A buyer who has their own older private video keeps a
+"Watch your own video" button even once the listing has a public one, so the
+written promise that only they would see it is kept and their access is never
+taken away.
+
+**Autoplay.** The tap is a real user gesture, so playback is allowed, but an
+UNMUTED autoplay inside a cross-origin iframe is still refused often enough by
+Safari and Android Chrome that it would show a dead player. It starts muted,
+which every browser permits, with "Tap the speaker on the video for sound."
+under it. A video that always plays silently beats one that sometimes does not
+play, and these clips are about whether the thing works. The iframe is only
+created on the tap, so nothing loads from YouTube for visitors who never watch.
+
+**The seller is told, not asked**, live from `marketplace_listing_video_notice`,
+rendered directly above the upload button at the moment they add a video:
+"Your video will show on your listing, and we may also share it on BundledMum's
+Instagram and YouTube to help your item sell."
+
+**Editing only.** `seller_stage_listing_video` needs a listing id, which does
+not exist during create, so the control appears in edit mode only. While a video
+is staged the SELLER sees "We are getting your video ready"; a buyer sees
+nothing.
+
+Files: `listingVideo.ts` (new), `components/ListingVideoPlayer.tsx` (new),
+`pages/ListingDetailPage.tsx`, `sell/CreateListingPage.tsx`, `marketplace.css`.

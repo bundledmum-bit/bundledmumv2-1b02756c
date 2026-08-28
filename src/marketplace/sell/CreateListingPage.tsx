@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { stageListingVideo, useListingVideoNotice, useListingVideo, LISTING_VIDEO_MAX_MB } from "../listingVideo";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -126,6 +127,38 @@ export default function CreateListingPage() {
   const queryClient = useQueryClient();
   const { id: editId } = useParams<{ id?: string }>();
   const isEditMode = !!editId;
+
+  // The YouTube-hosted listing video. Only offered when EDITING, because
+  // seller_stage_listing_video needs a listing id and on create there is
+  // not one yet. Entirely separate from the paused compression pipeline
+  // below, which stays gated behind marketplace_video_enabled.
+  const listingVideoNotice = useListingVideoNotice();
+  const { data: existingListingVideo } = useListingVideo(editId);
+  const ytFileRef = useRef<HTMLInputElement | null>(null);
+  const [ytBusy, setYtBusy] = useState(false);
+  const [ytProgress, setYtProgress] = useState(0);
+  const [ytStaged, setYtStaged] = useState(false);
+  const [ytError, setYtError] = useState<string | null>(null);
+
+  async function addListingVideo(files: FileList | null) {
+    const f = files?.[0];
+    if (!f || !editId || !user?.id) return;
+    // file.size is the ONLY thing read from the file. No duration, no
+    // <video> element, no canvas, no compression. Reading a video hangs
+    // indefinitely on iPhone and that is what killed this feature the
+    // first time (handoff 87 to 92).
+    if (f.size > LISTING_VIDEO_MAX_MB * 1024 * 1024) {
+      setYtError(`That file is larger than ${LISTING_VIDEO_MAX_MB}MB. Please record a shorter clip.`);
+      return;
+    }
+    setYtBusy(true); setYtError(null); setYtProgress(0);
+    const res = await stageListingVideo({
+      listingId: editId, sellerAuthUid: user.id, file: f, onProgress: setYtProgress,
+    });
+    setYtBusy(false);
+    if (!res.ok) { setYtError(res.message ?? "That could not be saved."); return; }
+    setYtStaged(true);
+  }
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
   // A seller landing here directly for a LIVE listing (bookmark, back button,
@@ -1127,6 +1160,47 @@ export default function CreateListingPage() {
             <p><b>One item, one listing.</b> If these photos are actually a few different things, each needs its own listing and its own price. Selling several together on purpose, like a set of six babygrows for one price? That's a bundle, and it's completely fine, just say so below.</p>
           </div>
         </div>
+
+        {/* The video that goes on the listing, hosted by YouTube. Editing
+            only, since staging needs a listing id. */}
+        {isEditMode && (
+          <div className="mkt-field mkt-video-field">
+            <div className="mkt-field-head">
+              <span className="lbl">Add a video <span className="mkt-video-optional">optional</span></span>
+            </div>
+            <p className="mkt-help">A few seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
+
+            {existingListingVideo ? (
+              <div className="mkt-video-preparing"><span>✓</span><span>Your video is on this listing.</span></div>
+            ) : ytStaged ? (
+              <div className="mkt-video-preparing">
+                <span className="sp" aria-hidden />
+                <span>We are getting your video ready. It shows on your listing shortly, and buyers see nothing until it is.</span>
+              </div>
+            ) : ytBusy ? (
+              <div className="mkt-video-preparing">
+                <span className="sp" aria-hidden />
+                <span>Sending your video... {ytProgress}%</span>
+              </div>
+            ) : (
+              <>
+                {/* Told, not asked. At the upload itself, not in terms
+                    elsewhere, and read live from site_settings. */}
+                {listingVideoNotice && (
+                  <p className="mkt-help" style={{ color: "#6B5B54" }}>{listingVideoNotice}</p>
+                )}
+                <button type="button" className="mkt-video-add" onClick={() => ytFileRef.current?.click()}>
+                  <span className="ic">▶</span>
+                  <span className="t">Record or upload a video</span>
+                  <span className="s">Up to {LISTING_VIDEO_MAX_MB}MB. Send it as it is, we do the rest.</span>
+                </button>
+              </>
+            )}
+            {ytError && <div className="mkt-errbox"><span className="m">!</span><span>{ytError}</span></div>}
+            <input ref={ytFileRef} type="file" accept="video/*" hidden
+              onChange={(e) => { void addListingVideo(e.target.files); e.target.value = ""; }} />
+          </div>
+        )}
 
         {/* One optional video, design 37a, sits right after photos in the
             seller form too. Genuinely optional: never counted in `filled`
