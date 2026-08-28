@@ -8405,3 +8405,38 @@ Noted in passing, not changed: the comment above `sellerUploadVideoForRequest`
 says the storage policy requires the seller's auth uid as the path prefix. The
 deployed seller INSERT policy checks only `bucket_id`, so the prefix is
 convention there too.
+
+## 147. The deletion clock starts on playback, not on the claim (2026-08-28)
+
+`buyer_claim_request_video` used to stamp `watched_at` when it handed over the
+path. `purge_request_videos` keys on `watched_at` and deletes four hours later,
+so a playback that failed after the claim destroyed a video nobody had seen,
+while the record said it was watched and `my_pending_action` dropped the "your
+video is ready" prompt. Enomfon's video was already in exactly that state.
+
+Both halves are fixed server side: the claim no longer stamps, and a new
+`buyer_mark_video_watched(p_request_id)` does, updating only where `watched_at`
+is null so it cannot double count.
+
+**Where it is called.** `WatchRequestVideoSheet.tsx`, on the `<video>` element's
+own `onLoadedData` and `onPlaying`. Not on mount, not on the claim, not when the
+signed URL is requested. `buyerMarkVideoWatched()` wraps the RPC in
+`videoRequests.ts`. A `markedRef` makes it once per mount, since both events can
+fire for one playback.
+
+**Deliberately NOT `onPlay`, and this is the important part.** The brief
+suggested "play or loadeddata". `play` fires on the INTENT to play and is
+followed by `error` when the media never arrives, so using it would have
+reproduced the original bug in a new place. Measured in the browser rather than
+reasoned about:
+
+- unreachable URL: fires `play`, then `error`. No `loadeddata`, no `playing`.
+- empty src, which is what a null signed URL gives: identical.
+- a real playable clip, built with MediaRecorder as a positive control: fires
+  `play` then `loadeddata`.
+
+So a failed playback fires neither of the two events wired here, and a real one
+fires `loadeddata`. Confirmed in both directions.
+
+`first_watch` still comes back from the claim and still means `watched_at is
+null`, so nothing else changed.

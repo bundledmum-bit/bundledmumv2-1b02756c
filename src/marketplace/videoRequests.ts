@@ -98,6 +98,24 @@ export async function buyerClaimVideoRequest(requestId: string): Promise<{ ok: t
   return { ok: true, videoPath: row.video_path, firstWatch: !!row.first_watch };
 }
 
+/**
+ * Records that the buyer ACTUALLY watched it, which is what starts the four
+ * hour deletion clock (purge_request_videos keys on watched_at).
+ *
+ * Separate from the claim on purpose. The claim used to stamp watched_at,
+ * so a playback that failed after the path was handed over burned the video
+ * anyway: it was deleted four hours later having never been seen, and the
+ * record said it was watched. Getting the path is not watching.
+ *
+ * Idempotent server side, updating only where watched_at is null, so the
+ * several playback events that can fire for one video cannot double count.
+ */
+export async function buyerMarkVideoWatched(requestId: string): Promise<boolean> {
+  const { data, error } = await cdb.rpc("buyer_mark_video_watched", { p_request_id: requestId });
+  if (error) return false;
+  return data === true;
+}
+
 /** A short-lived signed URL to play the video — the bucket is private by
  * design (only the requesting buyer should ever see it), so a plain public
  * URL would not work even if used. Same convention as
