@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ListingVideoField from "./ListingVideoField";
+import ListingVideoPicker from "./ListingVideoPicker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
@@ -130,6 +131,10 @@ export default function CreateListingPage() {
   // The id of the listing just created, so the success screen can offer a
   // video. Null on edit, where editId already is the id.
   const [createdId, setCreatedId] = useState<string | null>(null);
+  // Chosen on the form, uploaded only after the listing exists. Held here
+  // and never touched by the submit itself, so nothing about the video can
+  // reach the listing write.
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
@@ -961,7 +966,7 @@ export default function CreateListingPage() {
               just done the work, and it avoids holding a 40MB file through
               a submission that might fail. */}
           {createdId && user?.id && (
-            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} />
+            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} initialFile={pendingVideo} />
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1135,14 +1140,17 @@ export default function CreateListingPage() {
             <div className="mkt-help">At least four, take them yourself with the camera or pick from your gallery. Aim for the front, the back, a close up of any flaw, and the item in use or its full view. The first is the main photo buyers see.</div>
           )}
 
-          {/* CREATE only. The video field cannot be here, because staging
-              needs a listing id that does not exist until this is saved,
-              and photos with no video option next to them read as broken
-              rather than deliberate. Says a step is coming, rather than
-              apologising for one that is missing. Never on edit, where the
-              field itself sits a little further down. */}
+          {/* CREATE only, directly under Photos, which is where a seller
+              looks for it. It PICKS ONLY: the listing has no id yet, so the
+              file is held and sent on the success screen once the listing
+              exists. Nothing here touches the network, so nothing here can
+              affect whether the listing is created. */}
           {!isEditMode && (
-            <div className="mkt-help">You can add a video on the next screen, once your listing is saved. A few seconds of it working answers what buyers ask most.</div>
+            <ListingVideoPicker
+              file={pendingVideo}
+              onPick={setPendingVideo}
+              onClear={() => setPendingVideo(null)}
+            />
           )}
 
           {/* Placed right where the mistake actually happens, mid photo

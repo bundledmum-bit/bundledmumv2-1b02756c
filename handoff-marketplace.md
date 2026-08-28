@@ -8682,3 +8682,56 @@ component left a single render site inside `if (done)`, silently removing the
 edit form's field. Both were found by re-reading finished work rather than by
 trusting the note that described it. A tidy-up that merges render sites deserves
 a check that every case still has one.
+
+## 154. The video is chosen under Photos and uploaded after the listing exists (2026-08-28)
+
+Section 151 put the video on the success screen because staging needs a listing
+id. That solved the easy problem. It is a SEQUENCING problem, not a placement
+one: the picker can sit under Photos, hold the file, and upload once the listing
+exists.
+
+**On the create form**, directly under Photos, a new `ListingVideoPicker`
+labelled "Upload a video of the item (optional)". It PICKS ONLY and never
+touches the network, so nothing about it can affect whether a listing is
+created. The help line from section 153 is replaced by the field itself.
+
+**The order, and why it cannot reverse.** `pendingVideo` appears in exactly
+three places in CreateListingPage: the declaration, the picker, and the success
+screen. It appears NOWHERE inside `submit()`, which spans lines 630 to 830, so
+the listing write cannot see it. `createdId` is set only after
+`if (writeErr) throw writeErr;`, and the uploader is mounted only when
+`createdId` is set, so the upload cannot begin until the listing exists. Both
+properties are structural rather than conditional.
+
+**A failed or lost video cannot affect the listing.** The upload runs in a
+component mounted after `done`, outside the submit try/catch entirely. If it
+fails, the seller sees the progress state's error with the retry that holds the
+file. If the file itself is gone, they are told:
+
+  "Your listing is saved and with our team, but the video did not make it
+  across. Nothing else was lost. You can add one any time by editing this
+  listing."
+
+**Progress** is on the success screen: the byte level bar with "15.5MB of
+42.0MB" and the retry, both from section 149, alongside the listing summary and
+timeline that already say the listing is safely received.
+
+**The memory risk, and my view.** A File in React state is a reference to a
+blob the browser owns, not a copy in the page, so it is not garbage collected
+while referenced. The real risk is the OS evicting or invalidating the
+underlying blob on a low end device, or the user moving or deleting the file.
+That surfaces as a size of 0 or a failed read, not as a crash. It is checked
+before any upload is attempted, and again if the transfer fails, and both paths
+lead to the message above.
+
+I do not think holding it is risky enough to avoid. The alternative, uploading
+before the listing exists, is worse in every case: it either blocks the listing
+on a slow transfer or orphans files with no listing to attach them to. The
+failure mode here costs the seller a re-pick on a listing that is already live,
+which is recoverable by editing.
+
+Edit form unchanged: the listing already exists, so it uploads immediately.
+
+Files: `sell/ListingVideoPicker.tsx` (new), `sell/ListingVideoField.tsx`
+(accepts `initialFile`, auto sends, handles a lost file),
+`sell/CreateListingPage.tsx`.

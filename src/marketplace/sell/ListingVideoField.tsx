@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   stageListingVideo, useListingVideoNotice, useListingVideo, useListingVideoMaxMb,
   mbSent, mbTotal,
@@ -20,9 +20,12 @@ import {
  * frame, both of which required reading the video. YouTube supplies the
  * thumbnail instead.
  */
-export default function ListingVideoField({ listingId, sellerAuthUid }: {
+export default function ListingVideoField({ listingId, sellerAuthUid, initialFile }: {
   listingId: string;
   sellerAuthUid: string;
+  /** A file chosen on the create form BEFORE this listing existed. Sent as
+   * soon as this mounts, which is after the listing is safely created. */
+  initialFile?: File | null;
 }) {
   const notice = useListingVideoNotice();
   const maxMb = useListingVideoMaxMb();
@@ -34,7 +37,25 @@ export default function ListingVideoField({ listingId, sellerAuthUid }: {
   const [staged, setStaged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Held so a drop at 80% is a resend, not a restart.
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(initialFile ?? null);
+  // The file was picked on the previous screen and is gone from the page it
+  // was picked on, so it cannot be re-picked here without starting over.
+  const [lost, setLost] = useState(false);
+  const autoStartedRef = useRef(false);
+
+  // Sends a file handed over from the create form. Runs only after the
+  // listing exists, because this component is not mounted until then.
+  useEffect(() => {
+    if (!initialFile || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    // A File held across a long form can have its underlying blob evicted
+    // by the OS on a low end device. Size 0 is what that looks like from
+    // here, and it is checked BEFORE any upload so the seller gets the
+    // honest message rather than a failed transfer.
+    if (initialFile.size === 0) { setLost(true); setFile(null); return; }
+    void send(initialFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
 
   function pick(files: FileList | null) {
     const f = files?.[0];
@@ -54,7 +75,13 @@ export default function ListingVideoField({ listingId, sellerAuthUid }: {
     setBusy(true); setError(null); setProgress(0);
     const res = await stageListingVideo({ listingId, sellerAuthUid, file: f, onProgress: setProgress });
     setBusy(false);
-    if (!res.ok) { setError(res.message ?? "That could not be saved."); return; }
+    if (!res.ok) {
+      // The browser reports an unreadable file as a failed read rather than
+      // a network error. Either way the seller keeps the listing.
+      if (f.size === 0) { setLost(true); setFile(null); return; }
+      setError(res.message ?? "That could not be saved.");
+      return;
+    }
     setStaged(true);
     setFile(null);
   }
@@ -66,7 +93,14 @@ export default function ListingVideoField({ listingId, sellerAuthUid }: {
       </div>
       <p className="mkt-help">A few seconds of it folding, rolling or switching on answers the question buyers ask most, whether it actually works, before they even have to message.</p>
 
-      {existing ? (
+      {lost ? (
+        /* NOTHING here touches the listing. It is created, it is with the
+           review team, and only the video is missing. */
+        <div className="mkt-errbox">
+          <span className="m">!</span>
+          <span>Your listing is saved and with our team, but the video did not make it across. Nothing else was lost. You can add one any time by editing this listing.</span>
+        </div>
+      ) : existing ? (
         <div className="mkt-video-preparing"><span>✓</span><span>Your video is on this listing.</span></div>
       ) : staged ? (
         <div className="mkt-video-preparing">
