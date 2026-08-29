@@ -102,6 +102,7 @@ export default function MarketplaceHeader() {
             <Link to="/" className="mkt-menu-item">Browse</Link>
             <Link to="/sell" className="mkt-menu-item">Sell an item</Link>
             {isLoggedIn && <Link to="/orders" className="mkt-menu-item">My orders</Link>}
+            {isLoggedIn && <Link to="/account" className="mkt-menu-item">Your account</Link>}
             {seller && <Link to="/sell/dashboard" className="mkt-menu-item">Seller dashboard</Link>}
             <a href="/" className="mkt-menu-item soft">Back to bundledmum.com</a>
           </nav>

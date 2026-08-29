@@ -31,7 +31,7 @@ export function safeReturnTo(returnTo: string | null | undefined): string {
  * question — deliberately separate from "question" above, which is worded
  * for the buyer asking, wrong direction for a seller arriving to answer).
  */
-export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question" | "answer_question" | "video" | "answer_video";
+export type LoginReason = "offer" | "sell" | "seller" | "orders" | "dispute" | "return" | "payment" | "question" | "answer_question" | "video" | "answer_video" | "account";
 
 /**
  * The copy for each reason, always leading with what the person was doing,
@@ -55,6 +55,10 @@ export const LOGIN_REASON_COPY: Record<LoginReason, { lead: string; sub: string 
   orders: {
     lead: "To see your orders, we need your email",
     sub: "This is how we know which orders are yours, so nobody else can see them. We'll email you a code, no password to remember.",
+  },
+  account: {
+    lead: "To change your settings, we need your email",
+    sub: "This is how we keep your details yours, so nobody else can change them. We'll email you a code, no password to remember.",
   },
   dispute: {
     lead: "To report a problem, we need your email",
@@ -104,6 +108,7 @@ export const LOGIN_REASON_ICON: Record<LoginReason | "generic", { glyph: string;
   sell: { glyph: "🛍", bg: "var(--mkt-coral-light)", fg: "var(--mkt-coral-dark)" },
   seller: { glyph: "🛍", bg: "var(--mkt-coral-light)", fg: "var(--mkt-coral-dark)" },
   orders: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
+  account: { glyph: "☺", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   return: { glyph: "📦", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },
   dispute: { glyph: "🚩", bg: "var(--mkt-error-bg)", fg: "var(--mkt-error)" },
   question: { glyph: "?", bg: "var(--mkt-green-light)", fg: "var(--mkt-green-dark)" },

@@ -9714,3 +9714,60 @@ its delivery line lives inside `.body` regardless.
 
 The service fee line is unaffected, still reading "Service fee, N2,400, charged
 on each item in this order", as is the "3 separate deliveries" note.
+
+## 175. A buyer can change their state after checkout (2026-08-29)
+
+A buyer could SET their state at checkout and then never change it. Someone who
+moved, or picked wrong once, was told which items could and could not reach them
+based on a state they had no way to correct.
+
+**The account page did not exist.** The brief said "add it to the account page";
+the header's "Account" is a slide-out MENU (Browse, Sell an item, My orders,
+Seller dashboard, email, sign out) and there was no `/account` route or any page
+showing buyer details. So one was built: `account/AccountPage.tsx` at
+`/account`, linked from that menu under My orders, signed in only.
+
+Also worth recording: the brief says three of fourteen buyers have a state.
+Live it is 24 of 502.
+
+**A LoginReason had to be added.** `sendToMarketplaceLogin` takes a closed union
+and "account" was not in it. Reusing "orders" would have shown orders copy on an
+account page, so a new reason was added with its own honest line, matching the
+existing pattern: "To change your settings, we need your email."
+
+**Immediate effect, and how.** `buyerState.ts` already had the mechanism: a
+localStorage copy plus a `bm-mkt-buyer-state-change` event, and every
+deliverability query is KEYED on the buyer state (`DeliveryTermsBlock`,
+`CartPage`) and re-runs when it fires. So the page writes the account via
+`set_my_delivery_state`, then calls `setBuyerStateLocal`, which is what makes a
+listing answer differently with no reload.
+
+Proved on a state-only seller, in one page load with no navigation between:
+
+  state Lagos  "Praise will send this to you in Lagos."
+  -> Kano      "Praise cannot send this to you in Kano, she only sells within
+                Lagos."
+  -> Lagos     back to the first line
+
+**What a buyer is told before changing it**, one line as asked:
+
+  "This changes which items we tell you cannot reach you, on a listing and at
+  checkout."
+
+**Clearing, worded as a real choice rather than a mistake:**
+
+  "We will stop telling you which items can reach you. Nothing gets blocked, you
+  would just arrange delivery with the seller yourself."
+
+and afterwards, "Cleared. We will stop telling you which items can reach you."
+
+Verified end to end as the QA buyer: set Lagos (server and local both Lagos,
+clear button appears), cleared it (server null, local null, clear button
+disappears since there is nothing left to clear), and with it cleared the
+state-only listing states the seller's terms conditionally, says nothing about
+being unable to reach them, and Buy now stays enabled. That is the rule holding:
+unknown state blocks nothing.
+
+The checkout selector, the undeliverable blocking and the personalised listing
+wording are untouched: this only adds a second place to write the same value
+through the same functions.
