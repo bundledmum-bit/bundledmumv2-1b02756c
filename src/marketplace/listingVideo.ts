@@ -151,9 +151,33 @@ export function useCategoryVideoRule(categoryId: string | undefined) {
   });
 }
 
+/**
+ * A short-lived link to a staged video, for the gap before YouTube has it.
+ *
+ * YouTube caps the channel at roughly 12 uploads a day and sellers are
+ * uploading faster, so a video can wait a day or more. A buyer looking at
+ * that listing today saw nothing, which is exactly the doubt the whole
+ * feature exists to remove.
+ *
+ * Same convention as getRequestVideoSignedUrl: the bucket is private, and a
+ * fresh link is minted only when the video is actually about to play, never
+ * cached or stored. Reading it is allowed by the "Buyers read staged video
+ * for a live listing" policy, which covers anon as well as authenticated.
+ */
+export async function getStopgapVideoSignedUrl(path: string): Promise<string | null> {
+  const { data, error } = await mdb.storage
+    .from(LISTING_VIDEO_STAGING_BUCKET)
+    .createSignedUrl(path, 600);
+  if (error) return null;
+  return data?.signedUrl ?? null;
+}
+
 export interface ListingVideo {
-  youtube_video_id: string;
-  status: string;
+  /** Set only when status is 'ready'. */
+  youtube_video_id: string | null;
+  status: "ready" | "stopgap";
+  /** Set only when status is 'stopgap': a path in listing-video-staging. */
+  stopgap_path: string | null;
 }
 
 /**
@@ -216,12 +240,24 @@ export function useListingVideo(listingId: string | undefined) {
   return useQuery({
     queryKey: ["mkt-listing-video", listingId],
     enabled: !!listingId,
-    staleTime: 60_000,
+    // Short, and revalidated on every mount, because a stopgap must not
+    // outlive the YouTube copy: once the worker gets through the queue this
+    // RPC starts returning 'ready', and serving the raw file after that
+    // costs our bandwidth for a video YouTube is already hosting. The
+    // marketplace QueryClient has no persister, so a reload always refetches
+    // anyway; this covers navigating back to a listing within one session.
+    staleTime: 30_000,
+    refetchOnMount: "always",
     queryFn: async (): Promise<ListingVideo | null> => {
       const { data, error } = await mdb.rpc("listing_video", { p_listing_id: listingId });
       if (error) return null;
       const row = (Array.isArray(data) ? data[0] : data) as ListingVideo | undefined;
-      return row?.youtube_video_id ? row : null;
+      // Keyed on STATUS, not on youtube_video_id. A stopgap row carries no
+      // YouTube id, so testing for one would have thrown every stopgap away
+      // and rendered nothing, which is the bug this feature exists to fix.
+      if (row?.status === "ready" && row.youtube_video_id) return row;
+      if (row?.status === "stopgap" && row.stopgap_path) return row;
+      return null;
     },
   });
 }

@@ -714,7 +714,7 @@ export default function ListingDetailPage() {
             Most listings have none and the page has to look complete
             without it. listing_video returns nothing until YouTube really
             has the file, so a half-ready one never appears here. */}
-        {listingVideo && <ListingVideoPlayer youtubeVideoId={listingVideo.youtube_video_id} />}
+        {listingVideo && <ListingVideoPlayer video={listingVideo} posterUrl={listing.image_url} />}
 
         {listing.condition_notes ? (
           <div className="mkt-detail-condition">

@@ -9506,3 +9506,60 @@ honestly. Telling the two apart is the whole point.
 
 Nothing was left behind: three attempts to insert a QA listing were refused by
 the listing triggers, and zero QA listings exist.
+
+## 171. A stopgap video, while YouTube's queue catches up (2026-08-29)
+
+YouTube caps the channel at roughly 12 uploads a day and sellers upload faster,
+so a video can wait a day or more. A buyer looking at that listing saw nothing,
+which is the exact doubt the feature exists to remove. Four are queued: 8.7,
+29.6, 30.1 and 40.0 MB, all under the 50MB ceiling.
+
+**Would the old player have autoplayed a stopgap? It could not have been handed
+one.** `ListingVideoPlayer` took a `youtubeVideoId` and built an iframe; there
+was no path by which a file URL could reach it. Its autoplay is `autoplay=1&
+mute=1` on the iframe src, and the iframe is only created after a tap. So the
+risk was never the existing code, it was the obvious next edit: swapping the
+iframe for a `<video autoPlay>` behind the same tap would have autoplayed 40MB.
+
+**A separate bug found on the way in.** `useListingVideo` ended with
+`return row?.youtube_video_id ? row : null`. A stopgap row carries no YouTube id,
+so every stopgap would have been thrown away and nothing rendered. It now keys on
+`status`.
+
+**No bytes before the tap, verified from the network panel.** On a queued
+listing, before any tap: no `<video>` element exists at all, no iframe, and the
+network shows zero requests to `listing-video-staging`. The signed URL is not
+even requested until the tap. A poster attribute pointing at the file, or a
+`<video preload="auto">` behind a poster image, would have looked identical and
+cost the buyer the same 10 to 20 naira.
+
+`preload="none"` also suppresses autoplay, which is why the first attempt sat at
+`readyState 0` forever. The tap now calls `play()` explicitly, muted, since an
+unmuted programmatic play is refused on mobile and the controls are right there.
+After the tap on the 8.7MB clip: readyState 4, playing, currentTime advancing
+through a 70.9 second video.
+
+**One of the four cannot play in Chrome, and now shows nothing rather than
+something broken.** The 40MB file is a `.mov`; Chrome sits at readyState 0
+forever WITHOUT firing an error, so `onError` cannot rescue it and the buyer
+gets a dead player. `browserCanPlay()` checks `canPlayType` for the extension
+first and the card renders not at all if the answer is no, which is exactly what
+a buyer saw before stopgaps existed. That creates a `<video>` element but never
+gives it a src and never loads anything: a capability lookup, not the metadata
+probe that hung iOS twice.
+
+**Switching to YouTube.** `listing_video` prefers YouTube whenever it is ready.
+The marketplace QueryClient has no persister, so a reload always refetches;
+`staleTime` is now 30s with `refetchOnMount: "always"` so returning to a listing
+within one session also revalidates. The signed URL is never cached: it is minted
+on the tap, held in component state, and discarded on unmount.
+
+**The deleted-mid-playback case** fails quietly: `onError` drops back to the
+poster with no message. A reload picks up the YouTube copy.
+
+**The buyer is told nothing.** No badge, no "temporary", no "processing". The
+card, the poster, the "Tap to play" and the caption are identical either way.
+
+Verified across all six states: three mp4 stopgaps show the card with no video
+element before the tap, the .mov shows nothing, a ready listing shows the card
+with no iframe before the tap, and a listing with no video shows nothing.
