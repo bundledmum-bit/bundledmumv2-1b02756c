@@ -1539,7 +1539,7 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
             className="mkt-video-skip"
             onClick={() => setVideoSkipped(true)}
           >
-            I cannot film this right now
+            I cannot record one right now
           </button>
         )}
 

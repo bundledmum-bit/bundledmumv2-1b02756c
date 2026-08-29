@@ -23,7 +23,7 @@ export default function VideoRequiredSheet({
     <div className="mkt-sheet-overlay" onClick={onClose}>
       <div className="mkt-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="grab" />
-        <h3>Add a video to post this listing</h3>
+        <h3>A video is needed for this item</h3>
 
         {/* The category's own sentence, verbatim. */}
         <p>{reason}</p>
@@ -36,8 +36,11 @@ export default function VideoRequiredSheet({
           </div>
         )}
 
-        <button className="mkt-primary" onClick={onAddVideo}>Record or choose a video</button>
-        <button className="mkt-video-skip" onClick={onSkip}>I cannot film this right now</button>
+        {/* TWO REAL CHOICES. The second is a full button, not a quiet
+            link: a seller who genuinely cannot film right now must not feel
+            they are losing their listing by taking it. */}
+        <button className="mkt-primary" onClick={onAddVideo}>Upload video</button>
+        <button className="mkt-secondary" onClick={onSkip}>I cannot record one right now</button>
         <button className="back" onClick={onClose}>Back to my listing</button>
       </div>
     </div>

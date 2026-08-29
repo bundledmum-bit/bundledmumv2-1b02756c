@@ -26,6 +26,11 @@ import { attachStagedListingVideo, LISTING_VIDEO_STAGING_BUCKET } from "./listin
  * `file.size` is the only thing ever read from the file.
  */
 
+/** "video/webm;codecs=vp8" -> "video/webm". */
+function bareMime(m: string | undefined): string {
+  return (m || "").split(";")[0].trim();
+}
+
 export type UploadStatus =
   | "uploading"
   /** Sent, but no listing to attach it to yet. */
@@ -165,7 +170,12 @@ async function begin(listingId: string | null, file: File, authUid: string, file
     metadata: {
       bucketName: LISTING_VIDEO_STAGING_BUCKET,
       objectName,
-      contentType: file.type || "video/mp4",
+      // WITHOUT codec parameters. A phone or a MediaRecorder clip reports
+      // "video/webm;codecs=vp8", and the bucket's allowed_mime_types check
+      // is an exact match, so the raw type is rejected and the upload dies
+      // as "the connection dropped". Same reason sellData.ts has bareMime;
+      // kept local so this file does not pull in the dead pipeline.
+      contentType: bareMime(file.type) || "video/mp4",
       cacheControl: "3600",
     },
     // Supabase's TUS implementation requires exactly 6MB chunks.

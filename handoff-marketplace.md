@@ -9146,3 +9146,61 @@ reaches public browse.
 
 If either row is ever deleted, delete the matching id from `testAccounts.ts` too,
 or the filters would silently hide a real person who inherits the id.
+
+## 164. The video gate, walked as a seller (2026-08-29)
+
+First time this form has been driven signed in rather than reasoned about.
+Signed in as qa-seller@bundledmum.test and ran all eight cases in the real form.
+Two genuine defects surfaced that no amount of reading had found.
+
+**All eight, run:**
+1. Car seats, no video: popup appeared, listing NOT created.
+2. Took "I cannot record one right now": listing created, reached "Well done, it
+   is with our team", row confirmed `pending_review` with no video.
+3. Baby clothing, no video: no popup, saved normally.
+4. Baby clothing then Car seats: label flipped optional to required, the
+   is-required styling appeared, guidance changed to the harness line.
+5. Back to Baby clothing: both reverted.
+6. Car seats WITH a video attached: no popup, saved.
+7. Switched to Car seats and submitted in the SAME TICK on a cold query cache:
+   did NOT slip through, popup in 300ms. This is the bug that shipped three
+   times.
+8. Edited a Car seats listing: field showed "optional", no popup, saved.
+
+**Defect one, found by uploading.** `listingVideoUploads.ts` passed `file.type`
+straight to tus as the content type. A recorded clip reports
+`video/webm;codecs=vp8`, and the bucket's `allowed_mime_types` check is an exact
+match, so every such upload failed as "The connection dropped". A raw tus create
+with a bare `video/webm` returned 201, which isolated it. Fixed with a local
+`bareMime`, the same convention `sellData.ts` already had for exactly this. Re
+run after the fix: status `uploaded` instead of `error`.
+
+Worth noting the failure was graceful: the listing still saved with the message
+"Your listing is safe", which is the section 154 guarantee holding under a real
+failure rather than a hypothetical one.
+
+**Defect two, found by skipping then signing back in.** The prompt read
+`seller_listing_needing_video`, which returns only LIVE listings. A seller who
+takes the escape has a `pending_review` listing, so they were never reminded,
+which is the opposite of what the escape promises. Switched to
+`my_listings_without_video`, which covers live and pending review in the same
+required-first then most-viewed order and is what AddVideoSheet already uses.
+Verified after: the reminder returns on a new visit naming the skipped listing,
+"3 of your listings have no video ... Start with QA Test Car Seat".
+
+**Also confirmed by doing:** dismissal holds for the visit and returns on the
+next page load; the pending action prompt suppresses the video prompt and it
+returns when that clears; adding a video to a LIVE listing kept `status = live`
+throughout, watched by polling the row during the upload rather than by reading
+the SET clause.
+
+**Popup copy** now matches the brief exactly: title "A video is needed for this
+item", the category's own reason and guidance, and two real buttons, "Upload
+video" and "I cannot record one right now", the second a full button rather than
+a quiet link.
+
+**Left behind:** nothing. All four QA listings deleted, 12 listing photos and the
+staged video removed, the temporarily-live QA listing gone. Live listings back to
+218 and the no-video backlog back to 212, both matching the pre-test numbers. One
+1.5KB orphaned webm remains in `listing-video-staging` because the seller role has
+no DELETE policy there; `purge_orphaned_staged_videos` clears it within 24 hours.

@@ -70,14 +70,30 @@ export default function SellerVideoPrompt() {
     || pathname.startsWith("/sell/new")
     || pathname.startsWith("/sell/listings/");
 
+  // my_listings_without_video, NOT seller_listing_needing_video. The latter
+  // only returns LIVE listings, so a seller who took "I cannot record one
+  // right now" while creating was never reminded: their listing sits in
+  // pending_review and the prompt saw nothing. Found by skipping one and
+  // signing back in. This RPC covers live AND pending_review, in the same
+  // required-first then most-viewed order, and is the one AddVideoSheet
+  // already uses.
   const { data: rows } = useQuery({
     queryKey: ["mkt-seller-needs-video", seller?.id],
     enabled: !!seller?.id && isLoggedIn,
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<NeedsVideo[]> => {
-      const { data, error } = await mdb.rpc("seller_listing_needing_video", { p_seller_id: seller!.id });
+      const { data, error } = await mdb.rpc("my_listings_without_video");
       if (error) return [];
-      return (data ?? []) as NeedsVideo[];
+      return ((data ?? []) as Array<{
+        listing_id: string; title: string | null; video_required: boolean;
+        video_guidance: string | null; view_count: number | null;
+      }>).map((r) => ({
+        listing_id: r.listing_id,
+        title: r.title,
+        is_required: r.video_required,
+        reason: r.video_guidance,
+        views: r.view_count,
+      }));
     },
   });
 
