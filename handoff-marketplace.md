@@ -8990,3 +8990,57 @@ table, so the header cannot contradict the list under it.
 
 The required and optional pills, the admin upload with its required note, and
 the category guidance are all unchanged.
+
+## 161. Adding a video no longer takes the listing down (2026-08-28)
+
+We emailed 87 sellers asking for videos, and the only way to comply was to
+delist. The prompt from section 158 navigated to `/sell/listings/:id/edit`,
+which for a LIVE listing is a wall reading "This listing is live", whose only
+way forward is "Make changes" into DelistToEditSheet. So the ask and the only
+route to satisfying it pointed in opposite directions. That is why 212 listings
+still have none.
+
+**The listing stays live, proved rather than assumed.** The SET clause of
+`seller_add_video_to_live_listing` was extracted programmatically rather than
+read: it updates `youtube_status`, `youtube_error`, `video_notice_shown`,
+`video_notice_shown_at`, `staged_video_path` and `video_needs_review`. `status`
+is not among them. Supporting evidence from live data: all six listings that
+already have a video are `status = live`.
+
+**Delisting is untouched for everything else.** All three DelistToEditSheet call
+sites remain (SellerPriceEditPage, SellerDashboardPage, CreateListingPage), and
+`DelistToEditSheet.tsx`, `SellerPriceEditPage.tsx` and `CreateListingPage.tsx`
+do not appear in this change at all. Price, title, description, photos and
+condition still require it. Only video is exempt, because a video is ADDITIVE:
+it changes nothing a buyer already decided on, which is the entire reason
+delisting exists.
+
+**Where the seller does it.** A new `AddVideoSheet`, opened in place from two
+entry points and never navigating anywhere:
+- the seller video prompt, which now opens the sheet with the lead listing
+  preselected instead of routing into the edit wall;
+- a card on the seller dashboard, since the email sends them there.
+
+`my_listings_without_video()` supplies the list, live ones included, already
+ordered required first then most viewed. With more than one, the seller picks
+from a scrollable list showing each item's thumbnail, whether buyers can tell it
+works, and its view count. Each listing's OWN per category guidance shows once
+chosen.
+
+**What they are told**, in the sheet before and during the upload:
+
+  "Your listing stays live while we prepare your video. Nothing comes down, you
+  do not need to take anything off the marketplace."
+
+and on the dashboard card, "Your listing stays live while we prepare it. Nothing
+comes down." Said this plainly because a seller who has been asked to delist
+before will assume this does the same.
+
+**Videos go public unreviewed, deliberately.** A new admin screen at
+`/admin/marketplace/videos-to-review` lists `marketplace_videos_to_review` with
+a watch link. Its own subtitle says what it is: "These are already live on the
+listing and on our channel. Watching them is a check after the fact, not an
+approval." At three sales a day a queue would cost more in delay than it saves.
+
+`file.size` is read once, to estimate minutes. Nothing else about the file is
+touched.

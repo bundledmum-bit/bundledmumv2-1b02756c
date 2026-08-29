@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { mdb } from "../data/mdb";
 import { useSeller } from "../sell/useSeller";
+import AddVideoSheet from "../sell/AddVideoSheet";
 import { deliveryGateChannel, pendingActionChannel, sellerVideoChannel } from "../lib/promptVisibility";
 
 /**
@@ -42,8 +43,8 @@ function dismissedRecently(): boolean {
 
 export default function SellerVideoPrompt() {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
-  const { seller, isLoggedIn } = useSeller();
+  const { seller, isLoggedIn, user } = useSeller();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [dismissed, setDismissed] = useState(dismissedRecently);
   const [higherUp, setHigherUp] = useState(false);
 
@@ -89,10 +90,21 @@ export default function SellerVideoPrompt() {
     try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
   };
 
-  const go = () => {
-    close();
-    navigate(`/sell/listings/${lead.listing_id}/edit`);
-  };
+  // Opens the sheet in place. It used to navigate to the edit screen,
+  // which for a LIVE listing is a wall whose only way forward is delisting,
+  // so the prompt asking for a video led straight to taking the item off
+  // the marketplace. That was the loop.
+  const go = () => setSheetOpen(true);
+
+  if (sheetOpen) {
+    return (
+      <AddVideoSheet
+        sellerAuthUid={user?.id ?? ""}
+        initialListingId={lead.listing_id}
+        onClose={() => { setSheetOpen(false); close(); }}
+      />
+    );
+  }
 
   return (
     <div className="mkt-videoprompt" role="dialog" aria-label="Add a video to your listings">

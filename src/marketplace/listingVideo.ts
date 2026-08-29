@@ -56,6 +56,68 @@ export function useListingVideoGuidance(): string {
   return data ?? "";
 }
 
+/**
+ * Every listing this seller can still add a video to, live ones included.
+ * Required categories first, then most viewed.
+ */
+export interface ListingWithoutVideo {
+  listing_id: string;
+  title: string | null;
+  image_url: string | null;
+  status: string;
+  view_count: number | null;
+  video_required: boolean;
+  video_guidance: string | null;
+}
+
+export function useMyListingsWithoutVideo(enabled: boolean) {
+  return useQuery({
+    queryKey: ["mkt-my-listings-without-video"],
+    enabled,
+    staleTime: 60_000,
+    queryFn: async (): Promise<ListingWithoutVideo[]> => {
+      const { data, error } = await mdb.rpc("my_listings_without_video");
+      if (error) return [];
+      return (data ?? []) as ListingWithoutVideo[];
+    },
+  });
+}
+
+/**
+ * Attaches a staged video to a listing that is LIVE, without delisting it.
+ *
+ * Safe precisely because a video is ADDITIVE: it changes no price, no title
+ * and nothing a buyer already decided on. Delisting exists so terms cannot
+ * change underneath a buyer, and that reason does not apply here. The RPC's
+ * own UPDATE touches youtube_status, staged_video_path and the review flags
+ * and does NOT include `status` in its SET list, so the listing keeps
+ * selling throughout.
+ */
+export async function addVideoToLiveListing(input: {
+  listingId: string; storagePath: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await sdb.rpc("seller_add_video_to_live_listing", {
+    p_listing_id: input.listingId, p_storage_path: input.storagePath,
+  });
+  if (error) return { ok: false, message: error.message || "That could not be saved. Please try again." };
+  return { ok: true };
+}
+
+/** Uploads to staging, then attaches without delisting. Nothing is read
+ * from the file beyond the name for its extension. */
+export async function uploadVideoForLiveListing(input: {
+  listingId: string; sellerAuthUid: string; file: File; onProgress: (pct: number) => void;
+}): Promise<{ ok: boolean; message?: string }> {
+  const ext = (input.file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const path = `${input.sellerAuthUid}/live-${input.listingId}-${Date.now()}.${ext}`;
+  try {
+    await uploadWithProgress(sdb, LISTING_VIDEO_STAGING_BUCKET, path, input.file, input.onProgress);
+  } catch {
+    return { ok: false, message: "The upload did not finish. Check your connection and try again." };
+  }
+  return addVideoToLiveListing({ listingId: input.listingId, storagePath: path });
+}
+
 export interface CategoryVideoRule {
   video_required: boolean;
   video_guidance: string | null;

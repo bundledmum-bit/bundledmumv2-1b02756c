@@ -11,6 +11,8 @@ import { fetchSellerOffersNeedingAttention } from "../offers";
 import { fetchSellerVideoRequestsNeedingAttention } from "../videoRequests";
 import MarketplaceTitle from "../components/MarketplaceTitle";
 import DelistToEditSheet from "./DelistToEditSheet";
+import AddVideoSheet from "./AddVideoSheet";
+import { useMyListingsWithoutVideo } from "../listingVideo";
 
 interface MyListing {
   id: string;
@@ -62,10 +64,14 @@ function OrderRow({ o, coral, pill, onClick }: { o: SellerOrder; coral?: boolean
  * ever shown to the seller here, never public.
  */
 export default function SellerDashboardPage() {
-  const { loading, isLoggedIn, seller, refresh } = useSeller();
+  const { loading, isLoggedIn, seller, refresh, user } = useSeller();
   const navigate = useNavigate();
   const waNumber = useMarketplaceWhatsAppNumber();
   const [editing, setEditing] = useState(false);
+  const [videoSheetOpen, setVideoSheetOpen] = useState(false);
+  // Live listings included: adding a video no longer requires delisting.
+  const { data: needsVideoRows } = useMyListingsWithoutVideo(!!seller && isLoggedIn);
+  const needsVideo = needsVideoRows ?? [];
   const [tab, setTab] = useState<"listings" | "orders">("listings");
 
   useEffect(() => {
@@ -157,6 +163,28 @@ export default function SellerDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* The email sends sellers here, so this is where the way in has to
+          be. Adding a video does NOT delist, unlike every other edit. */}
+      {needsVideo.length > 0 && (
+        <div className="mkt-sell-body" style={{ paddingBottom: 0 }}>
+          <div className="mkt-db-addvideo">
+            <div className="tx">
+              <div className="t">
+                {needsVideo.length === 1
+                  ? "One of your listings has no video"
+                  : `${needsVideo.length} of your listings have no video`}
+              </div>
+              <div className="s">Your listing stays live while we prepare it. Nothing comes down.</div>
+            </div>
+            <button className="mkt-secondary" onClick={() => setVideoSheetOpen(true)}>Add a video</button>
+          </div>
+        </div>
+      )}
+
+      {videoSheetOpen && (
+        <AddVideoSheet sellerAuthUid={user?.id ?? ""} onClose={() => setVideoSheetOpen(false)} />
+      )}
 
       <div className="mkt-sell-body">
         {/* Persistent balance + list-new action, desktop only (design 18a,

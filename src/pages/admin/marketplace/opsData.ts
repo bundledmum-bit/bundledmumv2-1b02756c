@@ -1072,3 +1072,24 @@ export async function adminUploadListingVideo(input: {
   }
   return adminAddListingVideo({ listingId: input.listingId, storagePath: path, note: input.note });
 }
+
+/* ── Videos that reached YouTube unreviewed ───────────────────────────────
+ * These go public without a gate, deliberately: at three sales a day,
+ * speed matters more than a queue. This is a list to check them AFTER the
+ * fact, not a gate in front of them.
+ */
+export interface VideoToReviewRow {
+  listing_id: string;
+  title: string | null;
+  youtube_video_id: string | null;
+  watch_link: string | null;
+  youtube_uploaded_at: string | null;
+  seller_name: string | null;
+  listing_status: string | null;
+}
+
+export async function fetchVideosToReview(): Promise<VideoToReviewRow[]> {
+  const { data, error } = await adb.from("marketplace_videos_to_review").select("*");
+  if (error) throw error;
+  return (data ?? []) as VideoToReviewRow[];
+}
