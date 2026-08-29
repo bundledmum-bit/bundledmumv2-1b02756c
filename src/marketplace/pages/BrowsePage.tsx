@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { recordMarketplaceSearch } from "../searchDemand";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -227,6 +228,39 @@ export default function BrowsePage() {
 
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
+
+  /**
+   * Record what was searched for, and how many results it actually got.
+   *
+   * DEBOUNCE: none is added here, because one already exists. `searchInput`
+   * settles into `filters.search` after 350ms, so this effect keys on the
+   * SETTLED term and "p", "pr", "pra", "pram" produce one record, not four.
+   *
+   * The count is the real server-side match count for this exact filter
+   * set. useBrowseListings sets no placeholder data, so while a new filter
+   * set loads `data` is undefined and `count` is 0 while `isLoading` is
+   * true; skipping until it settles is what stops a zero being recorded for
+   * a search that had results.
+   *
+   * The ref keys on term + category + state so a refetch, a remount, or a
+   * tab regaining focus cannot log the same search twice, while genuinely
+   * changing a filter does record again, since "pram in Lagos with nothing
+   * found" is a different fact from "pram".
+   */
+  const lastRecordedSearch = useRef<string | null>(null);
+  useEffect(() => {
+    const term = filters.search.trim();
+    if (!term || isLoading || isError || !data) return;
+    const key = `${term}|${filters.categoryId}|${filters.state}`;
+    if (lastRecordedSearch.current === key) return;
+    lastRecordedSearch.current = key;
+    recordMarketplaceSearch({
+      term,
+      resultsCount: count,
+      categoryId: filters.categoryId || null,
+      state: filters.state || null,
+    });
+  }, [filters.search, filters.categoryId, filters.state, count, isLoading, isError, data]);
 
   const anyFilter = !!(filters.categoryId || filters.groupId || filters.state || filters.city || filters.minPrice != null || filters.maxPrice != null || filters.conditions.length || filters.search);
 

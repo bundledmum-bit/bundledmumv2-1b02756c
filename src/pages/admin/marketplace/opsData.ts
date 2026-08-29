@@ -1101,3 +1101,23 @@ export async function fetchVideosToReview(): Promise<VideoToReviewRow[]> {
   if (error) throw error;
   return (data ?? []) as VideoToReviewRow[];
 }
+
+/* ── What buyers searched for ─────────────────────────────────────────────
+ * The empty ones are the point: demand we could serve and do not.
+ */
+export interface SearchDemandRow {
+  term: string;
+  times_searched: number;
+  times_found_nothing: number;
+  pct_empty: number | null;
+  last_searched: string | null;
+  distinct_people: number | null;
+}
+
+export async function fetchSearchDemand(): Promise<SearchDemandRow[]> {
+  // No client-side sort: the view already orders empty searches first, and
+  // re-sorting here would just be a second opinion that could drift.
+  const { data, error } = await adb.from("marketplace_search_demand").select("*");
+  if (error) throw error;
+  return (data ?? []) as SearchDemandRow[];
+}

@@ -172,6 +172,7 @@ import MarketplacePendingPayments from "@/pages/admin/marketplace/MarketplacePen
 import MarketplaceAwaitingConfirmation from "@/pages/admin/marketplace/MarketplaceAwaitingConfirmation";
 import MarketplaceListingsNeedingVideo from "@/pages/admin/marketplace/MarketplaceListingsNeedingVideo";
 import MarketplaceVideosToReview from "@/pages/admin/marketplace/MarketplaceVideosToReview";
+import MarketplaceSearchDemand from "@/pages/admin/marketplace/MarketplaceSearchDemand";
 import MarketplaceReturns from "@/pages/admin/marketplace/MarketplaceReturns";
 import MarketplaceSellers from "@/pages/admin/marketplace/MarketplaceSellers";
 import MarketplaceBuyers from "@/pages/admin/marketplace/MarketplaceBuyers";
@@ -607,6 +608,7 @@ const StorefrontApp = () => (
                 <Route path="marketplace/awaiting-confirmation" element={<PermissionGate module="marketplace" action="manage"><MarketplaceAwaitingConfirmation /></PermissionGate>} />
                 <Route path="marketplace/needs-video" element={<PermissionGate module="marketplace" action="manage"><MarketplaceListingsNeedingVideo /></PermissionGate>} />
                 <Route path="marketplace/videos-to-review" element={<PermissionGate module="marketplace" action="manage"><MarketplaceVideosToReview /></PermissionGate>} />
+                <Route path="marketplace/search-demand" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSearchDemand /></PermissionGate>} />
                 <Route path="marketplace/disputes" element={<PermissionGate module="marketplace" action="manage"><MarketplaceDisputes /></PermissionGate>} />
                 <Route path="marketplace/returns" element={<PermissionGate module="marketplace" action="manage"><MarketplaceReturns /></PermissionGate>} />
                 <Route path="marketplace/sellers" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSellers /></PermissionGate>} />

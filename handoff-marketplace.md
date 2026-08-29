@@ -9204,3 +9204,47 @@ staged video removed, the temporarily-live QA listing gone. Live listings back t
 218 and the no-video backlog back to 212, both matching the pre-test numbers. One
 1.5KB orphaned webm remains in `listing-video-staging` because the seller role has
 no DELETE policy there; `purge_orphaned_staged_videos` clears it within 24 hours.
+
+## 165. Recording what buyers search for (2026-08-29)
+
+Nothing recorded what buyers looked for. 214 listings exist and we had no idea
+whether they were what anyone wanted. A buyer who searched for a pram, found
+nothing and left was invisible.
+
+**The real count is what is recorded.** `useBrowseListings` already returns an
+exact server-side `count` for the whole filter set, not just the page, so that
+is what goes in. The effect skips entirely while the query is loading or errored:
+`useBrowseListings` sets no placeholder data, so on a new filter set `data` is
+undefined and `count` falls back to 0, and recording then would log a false zero
+for a search that had results. Verified live: "pram" recorded
+`results_count: 1`, "unicorn saddle" recorded `0`.
+
+**Debounce: none added, because one already existed.** BrowsePage debounces
+`searchInput` into `filters.search` at 350ms, so keying the effect on the SETTLED
+term is enough. Verified by typing at 80ms per key: "pram" (4 keystrokes) and
+"mittens" (7) each produced exactly ONE row. A ref keyed on
+term + category + state also stops a refetch, remount or tab refocus logging the
+same search twice, while genuinely changing a filter records again, since "cots
+in Lagos with nothing found" is a different fact from "cots".
+
+**Category and state travel with it.** Verified: "cots" recorded with
+`state: Lagos`, "mittens" recorded with category `Baby clothing`.
+
+**The bug this shipped with, found only by running it.** The first version ended
+in `void mdb.rpc(...)`. supabase-js's `rpc()` returns a LAZY thenable that issues
+no request until it is awaited or `.then()`d, so the call was built and never
+sent, recording nothing while appearing to work. A direct awaited call recorded
+fine, which isolated it. Now `builder.then(() => {}, () => {})`, both handlers
+no-ops so nothing can surface or reject.
+
+**The buyer sees nothing.** `searchDemand.ts` renders nothing, returns nothing
+and holds no state; BrowsePage's diff is one import and one effect. No empty
+state, message or copy changed anywhere, confirmed by diffing for buyer-visible
+strings.
+
+**Admin screen** at `/admin/marketplace/search-demand`, reading
+`marketplace_search_demand` in the view's own order, empty searches first, with no
+sort control or chart. A term nobody ever found gets a coral border and "Found
+nothing, every time".
+
+Test rows deleted afterwards: `marketplace_searches` is back to 0.

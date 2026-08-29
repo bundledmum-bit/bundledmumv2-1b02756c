@@ -92,6 +92,7 @@ function AdminLayoutInner() {
     { label: "Waiting on the buyer", to: "/admin/marketplace/awaiting-confirmation", icon: ShoppingCart },
     { label: "Listings with no video", to: "/admin/marketplace/needs-video", icon: ShoppingCart },
     { label: "Videos to check", to: "/admin/marketplace/videos-to-review", icon: ShoppingCart },
+    { label: "What buyers searched for", to: "/admin/marketplace/search-demand", icon: ShoppingCart },
     { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
     { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
     { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },
