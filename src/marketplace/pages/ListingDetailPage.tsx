@@ -703,6 +703,19 @@ export default function ListingDetailPage() {
           {verified ? <VerifiedBadge size="lg" /> : null}
         </div>
 
+        {/* The video sits directly above the condition notes on purpose: a
+            buyer reading how honest the seller has been about wear is the
+            moment a clip of it actually working is most persuasive, so the
+            two belong together.
+
+            Deliberately NOT tied to condition_notes existing, since a
+            listing can have a video and no notes. When there is no video
+            this renders nothing at all: no placeholder, no empty state.
+            Most listings have none and the page has to look complete
+            without it. listing_video returns nothing until YouTube really
+            has the file, so a half-ready one never appears here. */}
+        {listingVideo && <ListingVideoPlayer youtubeVideoId={listingVideo.youtube_video_id} />}
+
         {listing.condition_notes ? (
           <div className="mkt-detail-condition">
             <p className="mkt-section-label">Condition notes</p>
@@ -794,12 +807,11 @@ export default function ListingDetailPage() {
 
         {/* Ask for a video, directly after Ask a question so the two read
             as a pair. Same hidden-once-acted-on pattern: waiting, watch it,
-            or (rarely) declined, in place of the entry button. */}
-        {/* One video per listing, whoever prompted it. Once one exists
-            nobody asks again, everyone watches the same one. Asking is
-            only offered while there is none. */}
-        {listingVideo && <ListingVideoPlayer youtubeVideoId={listingVideo.youtube_video_id} />}
+            or (rarely) declined, in place of the entry button.
 
+            Once the listing HAS a video the whole chain is hidden: there is
+            nothing left to ask for, and the video answers the question by
+            itself further up the page. No watch button replaces it here. */}
         {/* A buyer who has their OWN older private video keeps it, even
             once the listing has a public one. Those four were filmed under
             a written promise that only that buyer would see it, so their

@@ -9248,3 +9248,38 @@ sort control or chart. A term nobody ever found gets a coral border and "Found
 nothing, every time".
 
 Test rows deleted afterwards: `marketplace_searches` is back to 0.
+
+## 166. The video moves next to the condition notes (2026-08-29)
+
+**One of the two changes was already in place.** The ask button was written as
+`{listingVideo ? null : ...}` in section 158, so it already hid whenever the
+listing had a video, and it already sat alongside the other ask actions. Nothing
+was needed there, and nothing was changed. Reporting it rather than claiming to
+have built it.
+
+**The move.** `ListingVideoPlayer` was rendering inside the ask-actions block,
+between "Ask a question" and the ask-for-a-video button. It now renders
+immediately before the condition notes instead, and only there: a buyer reading
+how honest the seller has been about wear is the moment a clip of it working is
+most persuasive.
+
+Deliberately NOT tied to `condition_notes` existing, since a listing can have a
+video and no notes; the player is gated on the video alone.
+
+**Verified by loading real listings, not by reading:**
+
+  Activity Play Gym   1 player, directly above the notes, no ask button
+  Graco Baby Swing    1 player, next sibling is .mkt-detail-condition
+  2in1 Baby Swing     1 player, next sibling is .mkt-detail-condition
+  Toddler Play Bundle no video: 0 players, 0 iframes, no placeholder text,
+                      "Ask Esohe for a video" present, and the element before
+                      the condition notes is the seller card, so the page
+                      closes up with no gap
+
+On all three with video the ask-for-a-video button is absent and no watch button
+replaces it. "Ask a question" and "Ask for a lower price" are untouched
+everywhere.
+
+The private_only path is unchanged: a buyer with their own older request video
+still gets "Watch your own video" even once the listing has a public one, which
+matters because those four were filmed under a written promise.
