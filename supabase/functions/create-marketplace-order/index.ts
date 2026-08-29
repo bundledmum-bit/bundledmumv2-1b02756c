@@ -5,6 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// SERVICE FEE IS NOW A PERCENTAGE with a floor and a cap, decided by the
+// marketplace_service_fee function so this and the cart path cannot drift.
+//
+// A flat fee punished cheap items: one buyer paid N1,800 plus a N500 fee, 28%
+// on top, and took seven attempts to complete. 23 live listings under N2,000
+// averaged 34% on top while a N360,000 item paid 1%.
+//
+// Charged PER ORDER now. The once-a-day rule existed only because a flat fee
+// made buying several cheap things absurd, and a percentage does not.
+
 function generateReference(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = new Uint8Array(8);
@@ -194,44 +204,11 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (existingOrder) return json({ order: existingOrder, email: customerEmail, reused: true });
 
-    const { data: thresholdSetting } = await admin
-      .from('site_settings').select('value').eq('key', 'marketplace_service_fee_threshold_naira').maybeSingle();
-    const { data: belowSetting } = await admin
-      .from('site_settings').select('value').eq('key', 'marketplace_service_fee_below_naira').maybeSingle();
-    const { data: aboveSetting } = await admin
-      .from('site_settings').select('value').eq('key', 'marketplace_service_fee_at_or_above_naira').maybeSingle();
-    const { data: onceSetting } = await admin
-      .from('site_settings').select('value').eq('key', 'marketplace_service_fee_once_per_day').maybeSingle();
-
-    const threshold = Number(thresholdSetting?.value ?? 10000);
-    const feeBelow = Number(belowSetting?.value ?? 500);
-    const feeAtOrAbove = Number(aboveSetting?.value ?? 1000);
-    let serviceFee = itemPrice < threshold ? feeBelow : feeAtOrAbove;
-
-    // There is no basket: buying from three sellers creates three orders, which
-    // without this would mean paying the service fee three times and punishing
-    // exactly the behaviour we want. So the fee applies once per buyer per day.
-    // Judged on PAID orders only, since an abandoned pending order should not
-    // hand someone a free fee on everything afterwards.
-    let feeWaived = false;
-    if (onceSetting?.value === true) {
-      const startOfDay = new Date();
-      startOfDay.setUTCHours(0, 0, 0, 0);
-
-      const { data: paidToday } = await admin
-        .from('marketplace_orders')
-        .select('id')
-        .eq('buyer_id', customerId)
-        .eq('payment_status', 'paid')
-        .gt('service_fee_naira', 0)
-        .gte('created_at', startOfDay.toISOString())
-        .limit(1);
-
-      if ((paidToday ?? []).length > 0) {
-        serviceFee = 0;
-        feeWaived = true;
-      }
-    }
+    // ONE place decides the fee, shared with the cart path
+    const { data: feeRaw } = await admin.rpc('marketplace_service_fee', {
+      p_item_price_naira: itemPrice,
+    });
+    const serviceFee = Number(feeRaw ?? 0);
 
     const amount = itemPrice + serviceFee;
     const platformShare = amount - sellerShare;
@@ -274,7 +251,7 @@ Deno.serve(async (req) => {
       negotiated: offerId !== null,
       discount_naira: offerDiscount,
       service_fee_naira: serviceFee,
-      service_fee_waived: feeWaived,
+      service_fee_waived: false,
       offer_expired: offerExpired,
     });
   } catch (e) {

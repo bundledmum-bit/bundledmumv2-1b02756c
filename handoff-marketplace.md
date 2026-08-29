@@ -9628,3 +9628,41 @@ max.
 Worth knowing: the N200 floor still means 40% on top of a N500 item. Better than
 the N500 flat fee that took 100%, but the very cheapest listings remain the place
 where the fee is felt most.
+
+## 173. The stale edge function source, made honest (2026-08-29)
+
+`create-marketplace-order`'s committed source still read
+`marketplace_service_fee_threshold_naira`, `_below_naira`, `_at_or_above_naira`
+and `_once_per_day`, with the whole once-per-buyer-per-day waiver block, none of
+which the DEPLOYED function has done since it moved to
+`marketplace_service_fee()`. Behaviour was never wrong: N1,800 charges N200 and
+N360,000 charges N1,500, verified. Only the source lied.
+
+Repo now matches deployed v21 for the fee: one RPC call, no tier settings, no
+daily waiver, and `service_fee_waived` returns a literal `false`. The deployed
+source was FETCHED and the repo patched to match it, rather than rewritten from
+memory, and only the fee region was touched so nothing else could drift.
+
+NOT DEPLOYED. Edge function deploys are the owner's, and nothing here changes
+behaviour: it makes the committed copy describe what already runs.
+
+A residual difference, harmless and pre-existing: the repo copy keeps its
+TypeScript annotations (`function isValidEmail(email: string): boolean`) where
+the deployed copy has them stripped. That is a compile artefact, not a
+behavioural divergence.
+
+Nothing in `src/` or `supabase/` reads any of the four dead settings now. The one
+remaining textual hit is the comment in policySettings.ts that explains they ARE
+dead, which is worth keeping.
+
+**A method note, from the same day.** The network panel was cited as proof that
+no bytes were fetched before a video tap. The panel was not recording those
+requests at all: it reported nothing for calls that provably happened, including
+a 206 fetched by hand. The conclusion held on the DOM evidence (no `<video>`
+element existed at all) but the stated reasoning did not.
+
+The lesson generalises and has now cost time twice: a tool reporting nothing is
+not the same as nothing happening. It is the same shape as the zero-width
+viewport that made a card measure 30px wide. Before treating an instrument's
+silence as evidence, confirm the instrument is recording, by making it show
+something known to be true.
