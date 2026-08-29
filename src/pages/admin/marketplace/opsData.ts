@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { uploadWithProgress } from "@/marketplace/lib/uploadWithProgress";
 import { adb, formatNaira } from "./data";
+import { isTestAccountId } from "@/lib/testAccounts";
 
 /**
  * Shared data layer for the marketplace operations screens (dashboard, payout
@@ -365,7 +366,11 @@ export interface OutreachRow {
 export async function fetchOutreachQueue(): Promise<OutreachRow[]> {
   const { data, error } = await adb.rpc("get_outreach_queue");
   if (error) throw error;
-  const rows = (data ?? []) as unknown as OutreachRow[];
+  // The QA accounts are real sellers and buyers to the database, so they
+  // reach this queue like anyone else. Dropped here so nobody is ever asked
+  // to chase a test account.
+  const rows = ((data ?? []) as unknown as OutreachRow[])
+    .filter((r) => !isTestAccountId(r.person_id));
 
   // get_outreach_queue builds its `context` in a SQL CASE that has no arm
   // for missing_delivery_prefs, so those rows arrive with context null.
@@ -1036,7 +1041,10 @@ export interface ListingNeedingVideoRow {
 export async function fetchListingsNeedingVideo(): Promise<ListingNeedingVideoRow[]> {
   const { data, error } = await adb.from("marketplace_listings_needing_video").select("*");
   if (error) throw error;
-  return (data ?? []) as ListingNeedingVideoRow[];
+  // Same reason as the outreach queue: a QA listing is a real listing, and
+  // it must not show up as work for someone to do.
+  return ((data ?? []) as ListingNeedingVideoRow[])
+    .filter((r) => !isTestAccountId(r.seller_id));
 }
 
 export async function adminAddListingVideo(input: {

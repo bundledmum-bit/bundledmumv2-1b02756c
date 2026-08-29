@@ -9102,3 +9102,47 @@ Still one prompt covering everything (`lead = rows[0]`, others counted), still
 below the pending action prompt (it subscribes to `pendingActionChannel` and
 hides while that is up), and it disappears entirely once every listing has a
 video, since `visible` requires a lead row and the RPC returns none.
+
+## 163. QA seller and buyer accounts (2026-08-29)
+
+Every authenticated screen in this project has been verified by code review,
+SQL, or DOM measurement, because no login existed here. These two accounts end
+that.
+
+  qa-seller@bundledmum.test
+  qa-buyer@bundledmum.test
+  password: BundledMumQA!2026
+
+Real rows in production, created through `auth.users` + `auth.identities` +
+`customers` + `marketplace_sellers`. They behave exactly like anyone else: the
+seller signs in, lists, uploads and is prompted normally. Confirmed by using
+them, not by inspection: signing in as the seller and loading
+`/sell/dashboard` renders the seller shell and immediately raises the
+SellerDeliveryGate, which is the section 133 precedence working in reality.
+
+**Two things worth knowing for the next person who does this.**
+
+A trigger on `auth.users` already creates the `customers` row, so inserting one
+by hand collides on `customers_email_key`. Update the trigger's row instead.
+A second trigger rewrote `display_name` to the house "Qa T." format.
+
+Hand-inserted `auth.users` rows fail login with an opaque **500
+AuthRetryableFetchError** if `confirmation_token`, `recovery_token`,
+`email_change` or `email_change_token_new` are NULL. All 479 real users have
+them as empty strings; GoTrue's Go scanner cannot read NULL into a string. Found
+by diffing the test rows against the real ones rather than guessing at the 500.
+
+**They are excluded from anything operational**, client side so the database
+behaves identically for them and no bug can hide behind a special case
+(`src/lib/testAccounts.ts`):
+- the public seller count, filtered server side with `.not("id","in",...)` so it
+  stays a head+count. Verified: 218 unfiltered, 217 as shipped.
+- the outreach queue, dropped on `person_id`, so nobody is asked to chase a test
+  account.
+- the no-video backlog, dropped on `seller_id`.
+
+Their listings stay in `pending_review` unless deliberately approved, so nothing
+reaches public browse.
+
+If either row is ever deleted, delete the matching id from `testAccounts.ts` too,
+or the filters would silently hide a real person who inherits the id.

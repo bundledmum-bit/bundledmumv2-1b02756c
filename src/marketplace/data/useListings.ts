@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { mdb, LISTING_SELECT, SELLER_PUBLIC_SELECT } from "./mdb";
+import { testSellerIdList } from "@/lib/testAccounts";
 import type { MarketplaceListing, MarketplaceSellerPublic } from "../types";
 
 /**
@@ -305,7 +306,10 @@ export function useMarketplaceStats() {
     queryKey: ["marketplace", "stats"],
     queryFn: async (): Promise<MarketplaceStats> => {
       const [sellersRes, listingsRes, countRes] = await Promise.all([
-        mdb.from("marketplace_sellers_public").select("id", { count: "exact", head: true }),
+        mdb.from("marketplace_sellers_public").select("id", { count: "exact", head: true })
+          // The QA seller is a real row but must never inflate a number
+          // shown to buyers. Excluded server side so this stays a head+count.
+          .not("id", "in", testSellerIdList()),
         mdb.from("marketplace_listings").select("final_price_naira").eq("status", "live"),
         mdb.from("marketplace_listings").select("id", { count: "exact", head: true }).eq("status", "live"),
       ]);
