@@ -56,7 +56,7 @@ function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
     },
     {
       q: "What does BundledMum charge me?",
-      a: `A service fee — ${naira(s.serviceFeeBelowNaira)} on items under ${naira(s.serviceFeeThresholdNaira)} and ${naira(s.serviceFeeAtOrAboveNaira)} at or above — charged once per day even if you buy several things. It's already included in the price you see, nothing extra appears at checkout.`,
+      a: `A service fee on each item you buy, ${s.serviceFeePercent}% of its price, never less than ${naira(s.serviceFeeMinNaira)} and never more than ${naira(s.serviceFeeMaxNaira)}. You see the exact amount at checkout before you pay anything.`,
     },
     {
       q: "Do I need an account to buy?",
@@ -72,7 +72,7 @@ function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
     },
     {
       q: "Do I pay the fee more than once if I buy several things?",
-      a: `No. The service fee is charged once per day, not per item and not per seller, so buying several things together costs you the same one fee as buying one. It is ${naira(s.serviceFeeBelowNaira)} on items under ${naira(s.serviceFeeThresholdNaira)} and ${naira(s.serviceFeeAtOrAboveNaira)} at or above.`,
+      a: `Yes. The fee is charged on each item, so three items means three fees. Checkout shows you the total before you pay, so there is nothing to discover afterwards. It is ${s.serviceFeePercent}% of each item's price, never less than ${naira(s.serviceFeeMinNaira)} and never more than ${naira(s.serviceFeeMaxNaira)}.`,
     },
     {
       q: "Can I pay without a card?",

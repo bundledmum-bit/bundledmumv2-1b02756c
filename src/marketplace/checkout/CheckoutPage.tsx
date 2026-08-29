@@ -372,7 +372,7 @@ export default function CheckoutPage() {
     queryKey: ["mkt-checkout-settings"],
     queryFn: async () => {
       const { data } = await cdb.from("site_settings").select("key, value")
-        .in("key", ["marketplace_service_fee_threshold_naira", "marketplace_service_fee_below_naira", "marketplace_service_fee_at_or_above_naira", "marketplace_payment_paystack_enabled", "marketplace_payment_transfer_enabled", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
+        .in("key", ["marketplace_payment_paystack_enabled", "marketplace_payment_transfer_enabled", "marketplace_bank_name", "marketplace_bank_account_name", "marketplace_bank_account_number"]);
       const m: Record<string, unknown> = {};
       for (const r of (data ?? []) as Array<{ key: string; value: unknown }>) m[r.key] = r.value;
       return m;
@@ -382,9 +382,6 @@ export default function CheckoutPage() {
   const settingsLoaded = settings !== undefined;
   const paystackEnabled = settings?.marketplace_payment_paystack_enabled === true;
   const transferEnabled = settings?.marketplace_payment_transfer_enabled === true;
-  const feeThreshold = Number(settings?.marketplace_service_fee_threshold_naira) || 0;
-  const feeBelow = Number(settings?.marketplace_service_fee_below_naira) || 0;
-  const feeAtOrAbove = Number(settings?.marketplace_service_fee_at_or_above_naira) || 0;
   const bankName = String(settings?.marketplace_bank_name ?? "").trim();
   const acctName = String(settings?.marketplace_bank_account_name ?? "").trim();
   const acctNumber = String(settings?.marketplace_bank_account_number ?? "").trim();
@@ -520,14 +517,26 @@ export default function CheckoutPage() {
   // actually charged.
   const cartItemsTotal = cartOrderQ.data ? Number(cartOrderQ.data.items_total ?? 0) : cartItems.reduce((s, r) => s + r.price, 0);
   const itemPrice = isCart ? cartItemsTotal : singleItemPrice;
-  // Tiered, not flat: the same threshold logic create-marketplace-order already
-  // charges from, applied here to the same itemPrice, so the line shown here
-  // never disagrees with what the server actually charged. In cart mode the
-  // server has already told us the real figure — charged ONCE for the whole
-  // cart, not per item or per seller — so that is used rather than recomputed.
+  // NEVER computed here. The fee is a percentage with a floor and a cap, and
+  // all three are settings that will change, so marketplace_service_fee is
+  // the single place the rule lives and both order paths already charge from
+  // it. Reimplementing the maths in the client is how the shown fee and the
+  // charged fee drift apart.
+  const singleFeeQ = useQuery({
+    queryKey: ["mkt-service-fee", itemPrice],
+    enabled: !isCart && itemPrice > 0,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<number> => {
+      const { data, error } = await cdb.rpc("marketplace_service_fee", { p_item_price_naira: Math.round(itemPrice) });
+      if (error) return 0;
+      return Number(data ?? 0);
+    },
+  });
+  // In cart mode the server has already totalled the per-item fees for this
+  // cart, so that figure is used rather than anything derived here.
   const serviceFee = isCart
     ? Number(cartOrderQ.data?.service_fee_naira ?? 0)
-    : (itemPrice >= feeThreshold ? feeAtOrAbove : feeBelow);
+    : Number(singleFeeQ.data ?? 0);
   const paymentFee = Number(payQ.data?.paystack_fee_naira ?? 0);
   const paystackTotal = Number(payQ.data?.amount_naira ?? 0);
   // Whether Paystack's own fee is passed to the buyer (dashboard fee-passing
@@ -804,13 +813,13 @@ export default function CheckoutPage() {
             {isCart ? (
               /* Cart breakdown (design C7): the service fee gets its own
                  line and its own sub-line, because "charged once for the
-                 whole cart, not per item or per seller" is a genuine
+                 each item, which a buyer must not discover afterwards" is a genuine
                  benefit worth stating plainly rather than burying inside a
                  combined fee line. */
               <div className="mkt-brk">
                 <div className="line"><span>Items, {cartItems.length}</span><b>{formatNaira(itemPrice)}</b></div>
                 <div className="line">
-                  <div><span>Service fee</span><div className="sub">One fee per order today, not per item or per seller</div></div>
+                  <div><span>Service fee</span><div className="sub">Charged on each item in this order</div></div>
                   <b>{cartOrderQ.data ? formatNaira(serviceFee) : "..."}</b>
                 </div>
                 {payQ.data && feeAdded && (

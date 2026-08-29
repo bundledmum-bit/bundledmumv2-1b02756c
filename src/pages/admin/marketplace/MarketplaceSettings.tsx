@@ -60,15 +60,15 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
         note: "Editing this number alone affects new listings only. Existing listings only change when you use Apply to existing listings below.",
       },
       {
-        key: "marketplace_service_fee_threshold_naira", label: "Service fee threshold", type: "number", money: true, integer: true, positive: true,
+        key: "marketplace_service_fee_percent", label: "Service fee percent", type: "number", integer: false, positive: true,
         help: "The item price that decides which service fee tier applies. At this price and above, the higher fee applies; below it, the lower fee applies.",
       },
       {
-        key: "marketplace_service_fee_below_naira", label: "Service fee, below threshold", type: "number", money: true, integer: true, positive: true,
+        key: "marketplace_service_fee_min_naira", label: "Service fee, minimum", type: "number", money: true, integer: true, positive: true,
         help: "Non-refundable service fee charged to the buyer when the item price is below the threshold.",
       },
       {
-        key: "marketplace_service_fee_at_or_above_naira", label: "Service fee, at or above threshold", type: "number", money: true, integer: true, positive: true,
+        key: "marketplace_service_fee_max_naira", label: "Service fee, maximum", type: "number", money: true, integer: true, positive: true,
         help: "Non-refundable service fee charged to the buyer when the item price is at or above the threshold.",
       },
       { key: "marketplace_buyer_pays_paystack_fee", label: "Buyer pays the Paystack fee", type: "toggle", help: "Show the Paystack transaction fee as a separate line charged to the buyer at marketplace checkout." },
@@ -445,10 +445,10 @@ export default function MarketplaceSettings() {
   const paystackOn = val("marketplace_payment_paystack_enabled") === true;
   const transferOn = val("marketplace_payment_transfer_enabled") === true;
   const noPaymentMethod = !paystackOn && !transferOn;
-  const feeThreshold = Number(val("marketplace_service_fee_threshold_naira"));
-  const feeBelow = Number(val("marketplace_service_fee_below_naira"));
-  const feeAtOrAbove = Number(val("marketplace_service_fee_at_or_above_naira"));
-  const feeTiersResolved = isFinite(feeThreshold) && isFinite(feeBelow) && isFinite(feeAtOrAbove);
+  const feePercent = Number(val("marketplace_service_fee_percent"));
+  const feeMin = Number(val("marketplace_service_fee_min_naira"));
+  const feeMax = Number(val("marketplace_service_fee_max_naira"));
+  const feeTiersResolved = isFinite(feePercent) && isFinite(feeMin) && isFinite(feeMax);
 
   /** One setting card: number/text share the edit-save-cancel pattern already
    * used for the bank fields; toggle/select act on the first interaction,
@@ -525,7 +525,7 @@ export default function MarketplaceSettings() {
           </div>
           {group.title === "Pricing and fees" && feeTiersResolved && (
             <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#D8EFE5", background: "#F0FAF6", color: "#1A4A33" }}>
-              As one structure: below {formatNaira(feeThreshold)}, buyers pay {formatNaira(feeBelow)}. At {formatNaira(feeThreshold)} and above, they pay {formatNaira(feeAtOrAbove)}.
+              As one structure: buyers pay {feePercent}% of each item's price, never below {formatNaira(feeMin)} and never above {formatNaira(feeMax)}. Charged on every item, not once per order.
             </div>
           )}
           {group.title === "Orders and disputes" && confirmVsDisputeClash && (

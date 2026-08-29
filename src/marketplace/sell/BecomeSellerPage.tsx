@@ -35,7 +35,8 @@ const PAYOUT_STEPS = [
  * and (mobile) a sticky footer, all funnelling into the same login/setup or
  * create-listing destination — never a second competing action. Carries NO
  * buyer-side cost, no price breakdown, no calculator or invented stats: the
- * service fee (tiered by item price, see marketplace_service_fee_* settings)
+ * service fee (a percentage of the item price, floored and capped, see
+ * marketplace_service_fee())
  * is the buyer's, and BundledMum's markup belongs on create-listing only.
  *
  * An existing seller gets a distinct, smaller hero (S2) right on this page —

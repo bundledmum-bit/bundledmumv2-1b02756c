@@ -9563,3 +9563,68 @@ card, the poster, the "Tap to play" and the caption are identical either way.
 Verified across all six states: three mp4 stopgaps show the card with no video
 element before the tap, the .mov shows nothing, a ready listing shows the card
 with no iframe before the tap, and a listing with no video shows nothing.
+
+## 172. The service fee is a percentage now, and charged on every order (2026-08-29)
+
+It was a flat N500 below N10,000 and N1,000 at or above, once per buyer per day.
+It is now 8% of the item price, floor N200, cap N1,500, charged on EVERY order.
+A flat fee punished cheap items: 23 live listings under N2,000 averaged 34% on
+top while a N360,000 item paid 1%, and one real buyer paid N1,800 plus a N500
+fee and took seven attempts. The once-a-day rule only existed to make a flat fee
+bearable across several cheap things; a percentage does not need it.
+
+**Every place the fee was described, calculated or displayed:**
+
+  CheckoutPage.tsx        read all three dead settings and computed the tier
+                          itself for single-item mode; cart mode already used
+                          the server figure. Also the false sub-line.
+  FaqPage.tsx             two answers, both stating the once-a-day rule
+  TermsPage.tsx           the fee sentence in the charges paragraph
+  policySettings.ts       fetched and exposed the three dead settings
+  MarketplaceSettings.tsx admin editors for the three dead settings, plus a
+                          summary line describing the tiers
+  BecomeSellerPage.tsx    a comment describing the fee as "tiered by item price"
+  create-marketplace-order/index.ts  reads all three dead settings AND
+                          once_per_day. This is the REPO copy of an edge
+                          function; the deployed one already charges from
+                          marketplace_service_fee(). Left alone, since edge
+                          function deploys are out of scope here, but the repo
+                          copy is stale and will mislead whoever reads it next.
+
+**Nothing computes the fee in the frontend any more.** Single-item checkout now
+calls `marketplace_service_fee(p_item_price_naira)`, the one place the rule
+lives and what both order paths charge from. Verified from the query cache on a
+live checkout: `["mkt-service-fee", 36]` resolved to 200 in one fetch. Cart mode
+still uses the server's own total.
+
+**The new checkout wording**, replacing "One fee per order today, not per item
+or per seller":
+
+  "Service fee — Charged on each item in this order"
+
+**The new FAQ answers:**
+
+  What does BundledMum charge me?
+  "A service fee on each item you buy, 8% of its price, never less than N200 and
+  never more than N1,500. You see the exact amount at checkout before you pay
+  anything."
+
+  Do I pay the fee more than once if I buy several things?
+  "Yes. The fee is charged on each item, so three items means three fees.
+  Checkout shows you the total before you pay, so there is nothing to discover
+  afterwards. It is 8% of each item's price, never less than N200 and never more
+  than N1,500."
+
+Answering "Yes" first, plainly, because a buyer who finds three fees after being
+told there is one will not trust the next thing we say.
+
+**Nothing hardcodes the percentage, floor or cap.** The only literals are the
+fallbacks in policySettings, and they are deliberately the SAME values
+`marketplace_service_fee()` itself coalesces to, so a missing setting cannot make
+the policy page state something the function would not charge. No dead setting is
+read anywhere in src/ any more; the admin editors now point at percent, min and
+max.
+
+Worth knowing: the N200 floor still means 40% on top of a N500 item. Better than
+the N500 flat fee that took 100%, but the very cheapest listings remain the place
+where the fee is felt most.
