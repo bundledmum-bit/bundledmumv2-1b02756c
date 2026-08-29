@@ -9666,3 +9666,51 @@ not the same as nothing happening. It is the same shape as the zero-width
 viewport that made a card measure 30px wide. Before treating an instrument's
 silence as evidence, confirm the instrument is recording, by making it show
 something known to be true.
+
+## 174. Delivery terms overlapping the item on cart checkout (2026-08-29)
+
+On an iPhone at 390px the delivery line rendered ON TOP of the item name and
+price. "Sander" and N12,000 sat behind "Praise only sells to buyers in Lagos...",
+both unreadable. Only cards whose seller had set terms were affected.
+
+**The cause: the delivery line is a THIRD flex child of `.mkt-cocard-row`, a
+sibling of `.body`, in a nowrap row.** The cart page puts the same component
+INSIDE `.body`, which is why that page never showed the fault. `.mkt-cocard-row`
+is `display: flex` with no wrap, `.body` has `flex: 1; min-width: 0`, and the
+delivery line had neither a `min-width: 0` nor a basis. It carries an 80
+character sentence, so flexbox would not shrink it below its min-content width,
+`.body` collapsed toward zero, and the title and price overflowed their own box
+straight into the terms text.
+
+Not an absolute position or a negative margin: a plain flex sizing conflict, and
+invisible until a seller had terms long enough to win the fight for width.
+
+**The mobile rule was described and never written.** The desktop override at
+2720 carries the comment "Terms sit inline beside the item on desktop's wider
+row, since there is width to spare, rather than on their own line beneath it."
+The beneath-it case that comment contrasts with had no CSS at all. Now:
+
+  .mkt-cocard-row { flex-wrap: wrap; }
+  .mkt-cocard-row .mkt-delivery-line { flex: 1 0 100%; min-width: 0; }
+
+with `flex-wrap: nowrap` added to the desktop rule so the inline treatment is
+explicit rather than incidental.
+
+**Verified by loading the real cart**, the same three items that produced the
+screenshot, measuring for actual rectangle intersection rather than eyeballing:
+
+  390px  Sander / N12,000, terms 15px BELOW the body, no overlap, body 271px
+         Baby Teethers / N3,600, same
+         Baby Walker / N14,400, no terms, no line, unchanged
+  320px  all three, no overlap, no horizontal page overflow, body 201px, and
+         neither title nor price overflows its box
+  1280px terms back beside the item, capped at 240px, nowrap, no overlap
+
+The no-terms card is the control and renders exactly as before: with no terms
+`SellerDeliveryLine` returns null, so there is no third child and nothing wraps.
+
+The cart page is untouched: no rule added here targets `.mkt-cartcard-row`, and
+its delivery line lives inside `.body` regardless.
+
+The service fee line is unaffected, still reading "Service fee, N2,400, charged
+on each item in this order", as is the "3 separate deliveries" note.

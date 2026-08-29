@@ -2635,6 +2635,21 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-cartcard-row .body, .mkt-cocard-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mkt-cartcard-row .t, .mkt-cocard-row .t { font: 400 12.5px/1.3 'Lato', sans-serif; }
 .mkt-cartcard-row .price, .mkt-cocard-row .price { font: 900 15px/1.3 'Nunito', sans-serif; }
+
+/* CHECKOUT ONLY, and only on narrow screens. The delivery line is a THIRD
+   child of .mkt-cocard-row, a sibling of .body, whereas the cart page puts
+   it INSIDE .body. In a nowrap flex row that made it compete with the item
+   details for width: it carries an 80 character sentence with no min-width
+   of 0, so flexbox refused to shrink it below min-content, .body (which DOES
+   have min-width: 0) collapsed toward zero, and the title and price
+   overflowed their box straight into the terms text. Both unreadable.
+
+   Wrapping it onto its own full-width line beneath is what the desktop rule
+   below already describes as the mobile intent, and was simply never
+   written. Only rows that HAVE terms gain a second line: with no terms
+   SellerDeliveryLine renders nothing, so there is no third child to wrap. */
+.mkt-cocard-row { flex-wrap: wrap; }
+.mkt-cocard-row .mkt-delivery-line { flex: 1 0 100%; min-width: 0; }
 .mkt-cartcard-row .rm {
   flex: 0 0 auto; background: none; border: none; cursor: pointer;
   font: 700 11.5px/1 'Lato', sans-serif; color: var(--mkt-error); padding: 4px;
@@ -2702,7 +2717,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   }
   /* Terms sit inline beside the item on desktop's wider row, since there
      is width to spare, rather than on their own line beneath it. */
-  .mkt-cocard-row { align-items: center; }
+  .mkt-cocard-row { align-items: center; flex-wrap: nowrap; }
   .mkt-cocard-row .mkt-delivery-line { flex: 0 0 auto; max-width: 240px; }
 }
 
