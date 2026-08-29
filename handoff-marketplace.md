@@ -9348,33 +9348,41 @@ value `when not is_design_viewer()`, so real admins are unaffected. Loaded
 `/admin/marketplace/needs-video` signed in as this account: 159 rows, 158 masked
 phones, ZERO real phone numbers or emails. Nine views carry it, as described.
 
-**One thing does not match the description, and it matters.**
-
-The brief says "every write action is explicitly denied ... it cannot approve,
-edit, delete, create, export or manage anything". The 78 denies are real, but
-they live in `admin_role_defaults` for the role, not in `admin_user_permissions`,
-and alongside them are FIVE grants:
-
-  content view, dashboard view, merchandising view,
-  marketplace view, marketplace MANAGE
-
-`marketplace: manage` is granted. On this codebase that string is both the view
+**Read-only in fact, not by convention (corrected 2026-08-29).** This account
+originally had `marketplace: manage`, which on this codebase is BOTH the route
 gate (`PermissionGate module="marketplace" action="manage"` wraps every
 marketplace admin route) and the write gate (every admin marketplace RPC checks
-`has_admin_permission('marketplace','manage')`). So it cannot simply be revoked
-without the screens disappearing, but while it is granted the account can reach
-**24 write RPCs**, including `admin_mark_payout_released`,
-`admin_resolve_dispute`, `admin_answer_question_for_seller` (which posts a public
-answer in a seller's name), `admin_answer_offer_for_seller`, and the outreach
-contact log.
+`has_admin_permission('marketplace','manage')`). That left 24 write RPCs
+reachable from a design account, `admin_mark_payout_released` among them.
 
-So "a design task cannot accidentally change live data" is not true today for
-marketplace writes. Treated as read-only by convention here, and no write was
-performed while verifying this.
+Fixed at the function rather than the permission, since revoking the grant would
+empty the screens: all 24 now call `assert_not_read_only()`, which raises "This
+is a read-only account for design work. It cannot change anything." for a
+`design_viewer` and is a no-op for everyone else.
 
-**Smaller mismatch, not a leak.** Names are masked on 2 of the 9 views
-(`marketplace_buyers`, `marketplace_payout_queue`) rather than everywhere.
-`marketplace_listings_needing_video` shows real seller display names such as
-"Taiye E." rather than "Taiye X.". Those names are already public on every
-listing, so nothing private is exposed; the description just implies wider name
-masking than exists.
+Verified by re-running the same diff that found the hole: 24 reachable write
+RPCs, 24 guarded, none missed, and in all 24 the guard precedes the write rather
+than following it. Then exercised from the client, which is the part that
+matters: `admin_add_listing_video`, `undo_outreach_contact` and
+`admin_mark_payout_released` each returned the read-only message. All three were
+called with an id matching nothing, so neither outcome could have written.
+
+**Names.** Buyer names are now masked on all six views carrying one
+(`marketplace_abandoned_checkouts`, `marketplace_admin_orders`,
+`marketplace_awaiting_confirmation`, `marketplace_pending_payments`,
+`marketplace_returns_awaiting_confirmation`, `marketplace_stopped_at_payment`),
+plus `full_name` on `marketplace_buyers` and `bank_account_name` on
+`marketplace_payout_queue`.
+
+SELLER display names stay real, deliberately: they are already public on every
+listing, so masking them would hide what the whole internet can see. So the rule
+is a real SELLER name is expected; a real BUYER name, phone, email or bank
+number is a bug worth raising at once.
+
+Money is deliberately NOT masked, so column widths are designed against real
+values: ₦156,000 wraps differently from ₦9,999.
+
+**All seven marketplace admin screens load** signed in as this account, none
+denied, and no real phone or email appears on any of them: payouts, outreach,
+pending payments, needs-video, videos-to-review, awaiting-confirmation and
+search-demand.
