@@ -30,22 +30,31 @@ interface NeedsVideo {
   views: number | null;
 }
 
-const DISMISS_KEY = "bm-mkt-video-prompt-dismissed";
-/** Long enough not to nag, short enough to still matter. */
-const DISMISS_DAYS = 7;
+/**
+ * Dismissal lasts THIS VISIT ONLY, not seven days.
+ *
+ * The delivery gate was persistent and 46 sellers answered within a day, so
+ * sellers do respond to being asked again. But filming needs the item
+ * physically in front of you, unlike the gate's two ten second questions, so
+ * a seller checking on the bus cannot comply however often we ask. Asking
+ * every visit and closing easily is the version that does not punish
+ * someone who would have filmed it at home that evening.
+ *
+ * sessionStorage, so it comes back on the next visit rather than after a
+ * timer. Falls back to in-memory state when storage is unavailable, which
+ * still holds for the rest of this visit.
+ */
+const DISMISS_KEY = "bm-mkt-video-prompt-dismissed-visit";
 
-function dismissedRecently(): boolean {
-  try {
-    const at = Number(localStorage.getItem(DISMISS_KEY) || "0");
-    return at > 0 && Date.now() - at < DISMISS_DAYS * 86400_000;
-  } catch { return false; }
+function dismissedThisVisit(): boolean {
+  try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
 }
 
 export default function SellerVideoPrompt() {
   const { pathname } = useLocation();
   const { seller, isLoggedIn, user } = useSeller();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(dismissedRecently);
+  const [dismissed, setDismissed] = useState(dismissedThisVisit);
   const [higherUp, setHigherUp] = useState(false);
 
   useEffect(() => {
@@ -87,7 +96,7 @@ export default function SellerVideoPrompt() {
 
   const close = () => {
     setDismissed(true);
-    try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
+    try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* ignore */ }
   };
 
   // Opens the sheet in place. It used to navigate to the edit screen,

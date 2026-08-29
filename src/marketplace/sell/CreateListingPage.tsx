@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import ListingVideoField from "./ListingVideoField";
 import ListingVideoPicker from "./ListingVideoPicker";
 import { useCategoryVideoRule } from "../listingVideo";
+import { videoGate } from "./videoGate";
+import VideoRequiredSheet from "./VideoRequiredSheet";
 import { attachUploadToListing, getListingVideoUpload, uploadIsComplete } from "../listingVideoUploads";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -143,6 +145,8 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   // worth more than a seller who gives up, and admin review is still a
   // second gate.
   const [videoSkipped, setVideoSkipped] = useState(false);
+  // The block, shown as a sheet. Null when not blocking.
+  const [videoSheet, setVideoSheet] = useState<{ reason: string; guidance: string | null } | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const hydratedRef = useRef(false);
@@ -436,9 +440,14 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   const categoryName = categories.find((c) => c.id === categoryId)?.name ?? "";
   // NEW LISTINGS ONLY. 56 live listings sit in these categories with no
   // video; editing one to fix a typo must never demand one.
-  const { data: videoRule } = useCategoryVideoRule(isEditMode ? undefined : categoryId);
+  const videoRuleQuery = useCategoryVideoRule(isEditMode ? undefined : categoryId);
+  const videoRule = videoRuleQuery.data;
+  // Three states, not two. "unknown" is NOT "allow": see videoGate.ts.
+  const gate = videoGate({
+    isEditMode, rule: videoRule, categoryId, hasVideo, skipped: videoSkipped,
+  });
   const videoRequired = !isEditMode && !!videoRule?.video_required;
-  const videoBlocking = videoRequired && !hasVideo && !videoSkipped;
+  const videoBlocking = gate.decision === "block";
 
   // A generic reason, always, never the field's own help_text: that now
   // renders on its own right above this (see QuestionField), so reusing it
@@ -643,7 +652,14 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  async function submit() {
+  /**
+   * `skipVideoNow` exists because React state is asynchronous: the sheet's
+   * "I cannot film this right now" sets videoSkipped AND resubmits in the
+   * same tick, so submit() would still close over the old `false` and block
+   * again, looping the sheet forever. The override is read instead.
+   */
+  async function submit(opts?: { skipVideoNow?: boolean }) {
+    const skippedNow = opts?.skipVideoNow === true || videoSkipped;
     setError(null); setContactBlocked(false); setRecovery(null);
     if (!seller || !user) return;
     if (photos.length < MIN_PHOTOS) {
@@ -652,14 +668,23 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
     }
     if (!title.trim()) { setError("Give your listing a title."); return; }
     if (!categoryId) { setError("Choose a category."); return; }
-    // Same treatment as a missing photo, said in terms of the buyer. The
-    // sentence comes from the category VERBATIM rather than being built
-    // here, because a category name is a label rather than a noun that fits
-    // a sentence.
-    if (videoBlocking) {
-      setError(videoRule?.video_block_reason
-        || "Buyers cannot tell from a photo whether this still works. A few seconds of video is what sells it.");
-      return;
+    // The video gate, BEFORE the insert. A popup rather than an inline
+    // error, because a message at the foot of a long form is easy to miss.
+    {
+      let g = videoGate({ isEditMode, rule: videoRuleQuery.data, categoryId, hasVideo, skipped: skippedNow });
+      if (g.decision === "unknown") {
+        // The rule has not arrived, or the lookup failed. Never sail
+        // through on a missing answer: ask again and wait for it.
+        setBusy(true);
+        const again = await videoRuleQuery.refetch();
+        setBusy(false);
+        g = videoGate({ isEditMode, rule: again.data ?? null, categoryId, hasVideo, skipped: skippedNow });
+        if (g.decision === "unknown") {
+          setError("We could not check whether this kind of item needs a video. Check your connection and try again.");
+          return;
+        }
+      }
+      if (g.decision === "block") { setVideoSheet(g); return; }
     }
 
     // Required client side even though the database only blocks this at
@@ -1503,12 +1528,11 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
       </div>
 
       <div className="mkt-sell-foot">
-        <button className="mkt-primary" onClick={submit} disabled={busy || photoBusy}>{busy ? "Sending for review..." : isEditMode ? "Resend for review" : "Send for review"}</button>
+        <button className="mkt-primary" onClick={() => void submit()} disabled={busy || photoBusy}>{busy ? "Sending for review..." : isEditMode ? "Resend for review" : "Send for review"}</button>
 
-        {/* NOT A DEAD END. A listing that exists without a video is worth
-            more than a seller who gives up, and admin review is still a
-            second gate. Deliberately a plain link rather than a second
-            button, so it is available without competing with filming. */}
+        {/* The block itself is the sheet below; this stays as the quiet
+            in-form way out for someone who already knows they cannot film,
+            so they are not made to hit the popup first. */}
         {videoBlocking && (
           <button
             type="button"
@@ -1517,6 +1541,29 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
           >
             I cannot film this right now
           </button>
+        )}
+
+        {videoSheet && (
+          <VideoRequiredSheet
+            reason={videoSheet.reason}
+            guidance={videoSheet.guidance}
+            onClose={() => setVideoSheet(null)}
+            onAddVideo={() => {
+              setVideoSheet(null);
+              // Straight to the picker under Photos, already on this page.
+              document.querySelector(".mkt-video-field")?.scrollIntoView({ behavior: "smooth", block: "center" });
+              (document.querySelector(".mkt-video-field .mkt-video-add") as HTMLButtonElement | null)?.click();
+            }}
+            onSkip={() => {
+              // Saves exactly as it would without the requirement. The
+              // listing is created, goes for review and appears on the
+              // marketplace; only the video is missing, and it can be added
+              // later from the dashboard card or the prompt.
+              setVideoSheet(null);
+              setVideoSkipped(true);
+              void submit({ skipVideoNow: true });
+            }}
+          />
         )}
         {videoSkipped && videoRequired && (
           <p className="mkt-help mkt-video-skip-note">

@@ -9044,3 +9044,61 @@ approval." At three sales a day a queue would cost more in delay than it saves.
 
 `file.size` is read once, to estimate minutes. Nothing else about the file is
 touched.
+
+## 162. Why the video requirement did not fire, and the gate made testable (2026-08-29)
+
+A Car seats listing was created today with no video, no block, no message and
+no escape link. The backend was correct: `category_video_rule` for
+`4f208519-13d7-4788-b4d2-f05496e49a89` returns `video_required: true` with its
+reason and guidance, confirmed anon from the browser.
+
+**The cause: "we do not know yet" and "not required" were the same value.**
+The component computed `videoRequired = !!videoRule?.video_required`. React
+Query's `data` is `undefined` while loading, and `useCategoryVideoRule` swallows
+a failed lookup into `null`. Both make that expression `false`, so a seller who
+submitted before the rule arrived, or whose lookup failed, sailed straight
+through. Every symptom follows from that one flag: the block, the message, the
+escape link AND the guidance all hang off it, which is why all four were absent
+together. So the answer to "was the guidance showing" is that it would not have
+been, and its absence was the tell.
+
+Proved by running the two states rather than reading them: on error the rule is
+`null` and `videoRequired` is `false`; while loading it is `undefined` and
+`videoRequired` is `false`; loaded it is `true`.
+
+**The fix.** The decision moved into `sell/videoGate.ts`, a pure function with
+THREE answers: allow, block, unknown. Unknown never means allow. On submit, an
+unknown gate refetches and waits; if it is still unknown the seller is told we
+could not check rather than being let through. This shipped twice looking
+correct because the only way to check it was to read three expressions spread
+through a 1500 line component. It now has 9 tests that run.
+
+**The block is a sheet**, `VideoRequiredSheet`, reusing the existing
+`.mkt-sheet-overlay` pattern rather than a third kind of dialog. It carries the
+category's own `video_block_reason` verbatim, its own `video_guidance`, a
+primary action that scrolls to the picker and opens the file chooser, and the
+escape link.
+
+**One bug caught while building it:** the sheet's escape called
+`setVideoSkipped(true)` and resubmitted in the same tick, so `submit()` still
+closed over the old `false` and would have blocked again, looping the sheet
+forever. `submit({ skipVideoNow: true })` passes the decision explicitly. There
+is a test for exactly this.
+
+**The escape still saves, tested not assumed.** The gate returns allow, and
+every early return between the gate (line 674) and the insert (line 869) is an
+ordinary field check: condition, description, price, quantity, contact leak.
+None is video related, so nothing about video can stop the write once the gate
+allows.
+
+**The prompt now asks every visit.** Dismissal moved from a 7 day localStorage
+window to a sessionStorage flag, so it returns on the next visit rather than
+after a timer. The delivery gate was persistent and 46 sellers answered within a
+day, but filming needs the item in front of you, unlike the gate's two ten
+second questions, so it stays easily dismissible: a seller on the bus cannot
+comply however often we ask.
+
+Still one prompt covering everything (`lead = rows[0]`, others counted), still
+below the pending action prompt (it subscribes to `pendingActionChannel` and
+hides while that is up), and it disappears entirely once every listing has a
+video, since `visible` requires a lead row and the RPC returns none.
