@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useListingVideoNotice, useListingVideo, useListingVideoGuidance, useCategoryVideoRule } from "../listingVideo";
+import { useListingVideoNotice, useListingVideo, useListingVideoGuidance, useCategoryVideoRule,
+  useMyListingVideoState, VIDEO_QUEUED_LINE } from "../listingVideo";
 import {
   startListingVideoUpload, subscribeToListingVideoUpload, retryListingVideoUpload,
   setUploadDetailShown, type UploadState,
@@ -34,6 +35,10 @@ export default function ListingVideoField({ listingId, sellerAuthUid, categoryId
   const guidance = useListingVideoGuidance();
   const { data: rule } = useCategoryVideoRule(categoryId);
   const { data: existing } = useListingVideo(listingId);
+  // The owner's own view of it, which listing_video deliberately hides:
+  // without this a QUEUED video looks exactly like no video, and the seller
+  // uploads again.
+  const { data: videoState } = useMyListingVideoState(listingId);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [up, setUp] = useState<UploadState | null>(null);
@@ -80,10 +85,32 @@ export default function ListingVideoField({ listingId, sellerAuthUid, categoryId
           <span className="m">!</span>
           <span>Your listing is saved and with our team, but the video did not make it across. Nothing else was lost. You can add one any time by editing this listing.</span>
         </div>
-      ) : mine?.status === "done" || existing ? (
+      ) : videoState === "failed" ? (
+        /* A GENUINE failure, kept distinct from queueing on purpose: the
+           whole point is that a seller can tell the two apart. */
+        <div className="mkt-video-processing">
+          <div className="mkt-errbox">
+            <span className="m">!</span>
+            <span>Something went wrong with that video and it did not go up. Please try sending it again.</span>
+          </div>
+          <button type="button" className="mkt-video-add" onClick={() => fileRef.current?.click()}>
+            <span className="ic">▶</span>
+            <span className="t">Try another video</span>
+          </button>
+        </div>
+      ) : existing || videoState === "ready" ? (
         <div className="mkt-video-preparing">
           <span>✓</span>
-          <span>We are getting your video ready. It shows on your listing shortly, and buyers see nothing until it is.</span>
+          <span>Your video is on this listing.</span>
+        </div>
+      ) : mine?.status === "done" || mine?.status === "uploaded" || videoState === "pending" ? (
+        /* QUEUED, WHICH IS NORMAL. YouTube caps uploads per channel per
+           day, so the worker paces itself and retries by itself. Worded as
+           finished because from the seller's side it is: they have spent
+           minutes on mobile data and must not be told to do it again. */
+        <div className="mkt-video-preparing">
+          <span>✓</span>
+          <span>{VIDEO_QUEUED_LINE} It shows on your listing as soon as it is through, and buyers see nothing until then.</span>
         </div>
       ) : mine?.status === "uploading" ? (
         /* Real byte-level progress, never a bare spinner. The megabytes move

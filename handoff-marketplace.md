@@ -9447,3 +9447,62 @@ MARKETPLACE_NAV is a hardcoded array. This grouping is local to the array. The
 eventual convergence is moving marketplace nav into `admin_nav_items` so
 ordering is editable without a deploy, but that is a Supabase change and did not
 belong in a nav tidy.
+
+## 170. A queued video is not a failed one (2026-08-29)
+
+YouTube caps how many videos a channel may upload in a rolling 24 hours. It is a
+CHANNEL limit, not an API quota, so it cannot be raised by asking. We hit it at
+13 because sellers actually responded. The worker now paces itself against
+`marketplace_youtube_daily_cap` and returns anything refused for that reason to
+`pending`, so it retries by itself. Queueing is a NORMAL outcome now, and will
+happen more.
+
+**The cause was the first option, not the false-failure bug.** The interface had
+no pending state at all. `listing_video` deliberately returns nothing until
+YouTube really has the file, which is right for buyers and wrong for the owner:
+it makes a QUEUED video indistinguishable from NO video. So the field fell
+through to its last branch and offered "Record or upload a video" again. A
+seller who had just spent minutes on mobile data reads that as failure and
+uploads again, which is the same mechanism behind the six duplicate uploads.
+
+**The guard test should NOT have caught this, and did not.** It bans deciding an
+RPC's success from an `ok` field in its payload. Nothing here does: every call in
+the video path is already error keyed, and the suite passes. This was a missing
+UI state, not a misread result. Different failure mode, correctly outside its
+scope. Worth noting because "we have a test for that" would have been the wrong
+conclusion.
+
+**The fix.** `useMyListingVideoState(listingId)` reads `youtube_status` straight
+off the listing, which the "Seller reads own listings" policy already allows and
+`authenticated` has column access to, so no Supabase change was needed. It
+returns one of pending / ready / failed / null, and the field branches on all
+four rather than on "is there a ready video".
+
+Verified against real rows in every state: the live queued listing maps to
+`pending`, Activity Play Gym to `ready`, Toddler Play Bundle to `null`, and a
+failed row to `failed`. The queued one was uploaded from the admin screen, which
+is exactly the case reported.
+
+**What a seller sees when queued**, one constant used in all three places so the
+wording cannot drift:
+
+  "Done, your video will be added shortly."
+
+with, on the listing field, "It shows on your listing as soon as it is through,
+and buyers see nothing until then." Worded as DONE rather than as a delay,
+because from the seller's side the job is finished.
+
+**What admin sees**, uploading on a seller's behalf: "Done, the video will be
+added shortly. It is queued for YouTube and appears on the listing by itself, so
+there is nothing to send again." The row pill now reads "Video queued, nothing to
+do" rather than the raw status.
+
+**A genuine failure still reads as one.** `youtube_status = 'failed'` is checked
+BEFORE the queued branch and gets its own error box, "Something went wrong with
+that video and it did not go up. Please try sending it again," plus a control to
+send another. Admin gets a negative "Video failed, needs another". The transfer
+failures (unreadable file, dropped connection) are untouched and still report
+honestly. Telling the two apart is the whole point.
+
+Nothing was left behind: three attempts to insert a QA listing were refused by
+the listing triggers, and zero QA listings exist.

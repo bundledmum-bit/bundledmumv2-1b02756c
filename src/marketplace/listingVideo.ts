@@ -162,6 +162,56 @@ export interface ListingVideo {
  * anything at all while a video is still transcoding, whatever this client
  * does.
  */
+/**
+ * The four states of a listing's video, for the SELLER who owns it.
+ *
+ * `listing_video` deliberately returns nothing until YouTube actually has
+ * the file, which is right for buyers and wrong for the owner: it makes a
+ * QUEUED video indistinguishable from no video at all. So after a reload
+ * the seller saw "Record or upload a video" again and concluded theirs had
+ * failed, which is how duplicate uploads happen on mobile data.
+ *
+ * Queueing is now a normal outcome, not an error: YouTube caps how many
+ * videos a channel may upload in a rolling 24 hours, so the worker paces
+ * itself against marketplace_youtube_daily_cap and puts anything refused
+ * for that reason back to 'pending' to retry by itself.
+ *
+ * Reads `youtube_status` straight off the listing, which the "Seller reads
+ * own listings" policy already allows, so no new RPC is needed. Returns
+ * null for a listing with no video at all.
+ */
+export type ListingVideoState = "pending" | "ready" | "failed" | null;
+
+export function useMyListingVideoState(listingId: string | undefined) {
+  return useQuery({
+    queryKey: ["mkt-my-listing-video-state", listingId],
+    enabled: !!listingId,
+    // Short, because a queued video becomes ready without the seller doing
+    // anything, and the screen should catch up on its own.
+    staleTime: 20_000,
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<ListingVideoState> => {
+      const { data, error } = await sdb
+        .from("marketplace_listings")
+        .select("youtube_status, youtube_video_id, staged_video_path")
+        .eq("id", listingId)
+        .maybeSingle();
+      if (error || !data) return null;
+      const row = data as { youtube_status: string | null; youtube_video_id: string | null; staged_video_path: string | null };
+      if (row.youtube_status === "ready" && row.youtube_video_id) return "ready";
+      if (row.youtube_status === "failed") return "failed";
+      // 'pending', 'uploading', or a staged file the worker has not picked
+      // up yet: all of them mean the seller's job is done and ours is not.
+      if (row.youtube_status || row.staged_video_path) return "pending";
+      return null;
+    },
+  });
+}
+
+/** Said the same way everywhere: from the seller's side the job is
+ * finished, so this is worded as DONE rather than as a delay. */
+export const VIDEO_QUEUED_LINE = "Done, your video will be added shortly.";
+
 export function useListingVideo(listingId: string | undefined) {
   return useQuery({
     queryKey: ["mkt-listing-video", listingId],

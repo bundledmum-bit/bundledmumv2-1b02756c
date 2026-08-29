@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  useListingVideoGuidance, useCategoryVideoRule, mbTotal,
+  useListingVideoGuidance, useCategoryVideoRule, mbTotal, VIDEO_QUEUED_LINE,
 } from "../listingVideo";
 import {
   startListingVideoUpload, subscribeToListingVideoUpload, retryListingVideoUpload,
@@ -93,7 +93,7 @@ export default function ListingVideoPicker({ categoryId, required, sellerAuthUid
       ) : up?.status === "uploaded" || up?.status === "done" ? (
         <div className="mkt-video-preparing">
           <span>✓</span>
-          <span>{picked?.name ? `${picked.name} is sent.` : "Your video is sent."} It goes on your listing once you send this for review.</span>
+          <span>{VIDEO_QUEUED_LINE} It goes on your listing once this is sent for review.</span>
         </div>
       ) : up?.status === "error" ? (
         <div className="mkt-video-processing">

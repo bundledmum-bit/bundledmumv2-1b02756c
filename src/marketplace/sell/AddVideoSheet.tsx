@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useMyListingsWithoutVideo, uploadVideoForLiveListing,
-  useListingVideoGuidance, mbTotal, type ListingWithoutVideo,
+  useListingVideoGuidance, mbTotal, VIDEO_QUEUED_LINE, type ListingWithoutVideo,
 } from "../listingVideo";
 
 /**
@@ -78,10 +78,10 @@ export default function AddVideoSheet({ sellerAuthUid, initialListingId, onClose
 
         {done ? (
           <>
-            <h3>That is on its way</h3>
+            <h3>{VIDEO_QUEUED_LINE}</h3>
             <div className="mkt-hb">
               <div className="hb-line"><span className="hb-tick">✓</span>Your listing stayed live the whole time and is still selling.</div>
-              <div className="hb-line"><span className="hb-tick">✓</span>We are preparing your video now. It appears on your listing shortly.</div>
+              <div className="hb-line"><span className="hb-tick">✓</span>Nothing more for you to do. It appears on your listing as soon as it is through.</div>
             </div>
             <button className="mkt-primary" onClick={onClose}>Done</button>
           </>

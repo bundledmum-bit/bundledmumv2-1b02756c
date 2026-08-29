@@ -210,7 +210,11 @@ function Row({ r }: { r: ListingNeedingVideoRow }) {
             ? <StatusPill tone="negative" label="Buyers cannot tell it works" />
             : <StatusPill tone="neutral" label="Would help" />}
           {r.days_listed != null && <StatusPill tone="neutral" label={`Listed ${r.days_listed} days`} />}
-          {r.youtube_status && <StatusPill tone="work" label={`Video ${r.youtube_status}`} />}
+          {r.youtube_status === "failed"
+            ? <StatusPill tone="negative" label="Video failed, needs another" />
+            : r.youtube_status
+              ? <StatusPill tone="work" label="Video queued, nothing to do" />
+              : null}
         </div>
 
         {/* What to ask FOR, before asking. */}
@@ -273,7 +277,11 @@ function AddVideoForSeller({ r }: { r: ListingNeedingVideoRow }) {
   if (done) {
     return (
       <div className="rounded-lg px-2.5 py-2 text-[11.5px]" style={{ background: "#D8EFE5", color: "#1A4A33" }}>
-        Sent. It goes to YouTube and appears on the listing shortly.
+        {/* Same words the seller gets. Queueing is normal: YouTube caps
+            uploads per channel per day, so the worker paces itself and
+            retries by itself. Saying anything failure-shaped here is what
+            produced six duplicate uploads. */}
+        Done, the video will be added shortly. It is queued for YouTube and appears on the listing by itself, so there is nothing to send again.
       </div>
     );
   }
