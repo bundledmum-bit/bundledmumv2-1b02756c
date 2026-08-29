@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import {
@@ -249,13 +249,22 @@ function AddVideoForSeller({ r }: { r: ListingNeedingVideoRow }) {
   const noteOk = note.trim().length >= 5;
   const ready = !!file && noteOk;
 
+  // Synchronous, unlike `busy`: setBusy triggers a re-render, but a second
+  // click landing in the SAME tick sees the old disabled=false and starts a
+  // second 40MB upload before the RPC can refuse it. That is how one breast
+  // pump listing collected three copies. A ref closes the gap the state
+  // cannot.
+  const inFlight = useRef(false);
+
   async function send() {
-    if (!file) return;
+    if (!file || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true); setError(null); setProgress(0);
     const res = await adminUploadListingVideo({
       listingId: r.listing_id, file, note: note.trim(), onProgress: setProgress,
     });
     setBusy(false);
+    inFlight.current = false;
     if (!res.ok) { setError(res.message ?? "Could not send that."); return; }
     setDone(true);
     await qc.invalidateQueries({ queryKey: QUERY_KEY });

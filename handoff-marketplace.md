@@ -9283,3 +9283,46 @@ everywhere.
 The private_only path is unchanged: a buyer with their own older request video
 still gets "Watch your own video" even once the listing has a public one, which
 matters because those four were filmed under a written promise.
+
+## 167. The ok-field bug, third occurrence, made structurally impossible (2026-08-29)
+
+Adding a video for a seller always reported "That could not be saved" while the
+save had gone through. `admin_add_listing_video` returns `{ listing_id, note }`
+and RAISES on failure; it has never had an `ok` field. Real cost: six duplicate
+uploads, three on one breast pump listing, because the obvious answer to a false
+failure is to press again.
+
+**The diff, generated rather than read.**
+
+Client side, 5 call sites decided success from an `ok` field, all through one
+helper: `admin_answer_question_for_seller`, `admin_attach_video_for_seller`,
+`admin_answer_offer_for_seller`, `admin_fulfil_request_with_listing_video`,
+`admin_add_listing_video`.
+
+Database side, of **551** public functions exactly **2** emit an `ok` key,
+`check_email_rate_limit` and `quiz_budget_suggestions`, and NEITHER is called
+with an ok-check anywhere.
+
+So every client ok-check in the codebase was wrong, and no function anyone
+ok-checks has ever returned one. Four had already been corrected in an earlier
+pass; `adminAddListingVideo` was written afterwards and reintroduced the same
+mistake, which is the whole reason a convention was not enough.
+
+**The structural fix.** `src/lib/rpcResult.ts` owns the contract:
+`rpcAction(client, fn, args, fallback)` computes `ok` from the error alone and
+DOES NOT RETURN THE PAYLOAD, so a caller has nothing to invent a verdict from.
+The function's own `note` still surfaces as `message` on success, since that is
+the only part worth showing. All five call sites now go through it.
+
+**And a guard that fails the build.** `src/lib/rpcResult.test.ts` scans every
+source file, finds each `.rpc(` call, and fails if `.ok` is read from the
+payload within that call's own window. Scoped to the call site on purpose: an
+earlier file-wide version flagged four innocents, a `fetch` Response and three
+of our own `{ok,message}` wrappers. Verified by deliberately reintroducing the
+bug, watching the test fail, and restoring: 6 passed, then 1 failed, then 6
+passed.
+
+**Double press.** `setBusy(true)` re-renders, but a second click in the SAME
+tick still sees `disabled=false` and starts another 40MB upload before the RPC
+can refuse it. A `useRef` guard closes that window synchronously, which state
+cannot.
