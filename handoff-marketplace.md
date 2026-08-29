@@ -9386,3 +9386,64 @@ values: ₦156,000 wraps differently from ₦9,999.
 denied, and no real phone or email appears on any of them: payouts, outreach,
 pending payments, needs-video, videos-to-review, awaiting-confirmation and
 search-demand.
+
+## 169. The marketplace admin nav, grouped, and the rule for adding to it (2026-08-29)
+
+The sidebar had reached 21 flat items, 821px of rail in a 603px viewport, so it
+scrolled. Six of them shared a placeholder `ShoppingCart` icon: every screen
+added during this session was appended to the end with a default icon, because
+there was no structure to put it in.
+
+**Grouped by why you open it, not by what it touches.** Almost every screen here
+touches listings or orders, which is exactly why grouping by entity produced a
+flat list. Now 11 rows collapsed instead of 21, and it no longer overflows.
+
+  Dashboard
+  Review queue                    top level, out of Queues: it is the first
+                                  thing opened most days
+  Queues        Payout queue, Disputes, Returns
+  Follow up     Everyone to chase, Did not finish paying, Abandoned checkouts,
+                Waiting on the buyer
+  Video         Listings with no video, Videos to check
+  Records       Sellers, Buyers, Listings, Orders
+  Money         Money owed, Finance
+  What buyers searched for        top level: read to decide, never to act, and
+                                  a group of one is worse than no group
+  Setup         Categories, Featured categories, Settings
+
+A group may itself be a link, for when the parent is the general case and the
+children are slices of it: "Follow up" IS the whole outreach queue.
+
+**WHERE A NEW ITEM GOES.** First rule that matches wins:
+  1. shows a count that should reach zero            -> Queues
+     ...and clearing it means messaging someone      -> Follow up
+  2. you open it to find one known thing             -> Records
+  3. money in or out                                 -> Money
+  4. changes behaviour for everyone                  -> Setup
+  5. read to decide, never to act                    -> top level, alone
+If two match, ask which would make you open it at 9am.
+
+**And the rules that stop it drifting back:**
+  - a group needs TWO members; one child stays top level
+  - six children means it is really two groups (Follow up is at four)
+  - a reused generic icon is not a style choice, it is the system saying the
+    item was appended without anyone deciding where it belonged
+  - ADD TO A GROUP, never to the end of the list. If nothing fits, that is
+    evidence for a new group, not permission to append.
+
+All of the above lives as a comment above `MARKETPLACE_NAV`, where the next
+person adding a screen will actually see it.
+
+**Behaviour, verified signed in as the design account.** A group opens by itself
+when it holds the current page, so nobody has to remember which group a screen
+lives in; an explicit toggle is remembered and wins. Navigating from
+needs-video to payouts closed Video and opened Queues, while a manually opened
+Money stayed open, and the active child was highlighted.
+
+**Not done, and worth knowing.** There are two nav systems in AdminLayout: the
+storefront nav is DB driven (`get_admin_nav()`, `admin_nav_items` with
+`parent_key` and `display_order`) and already renders a parent/child tree, while
+MARKETPLACE_NAV is a hardcoded array. This grouping is local to the array. The
+eventual convergence is moving marketplace nav into `admin_nav_items` so
+ordering is editable without a deploy, but that is a Supabase change and did not
+belong in a nav tidy.

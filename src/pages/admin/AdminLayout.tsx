@@ -12,6 +12,7 @@ import {
   BarChart3, Gift, LogOut, LayoutDashboard, FileText, Users, Image, Bell,
   Search, X, Menu, ChevronLeft, ChevronDown, MessageCircleQuestion, Workflow, Mail, Rocket,
   Smartphone, Banknote, Gavel, Coins, ClipboardCheck, ListTree, Contact, Star, ShoppingCart,
+  Inbox, Video, FolderOpen, Wrench, CreditCard, Clock, Film, Search as SearchIcon, PhoneCall,
   type LucideIcon,
 } from "lucide-react";
 import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
@@ -83,30 +84,103 @@ function AdminLayoutInner() {
     enabled: canMarketplace,
     staleTime: 30000,
   });
-  const MARKETPLACE_NAV: Array<{ label: string; to: string; icon: LucideIcon; exact?: boolean; badge?: number }> = [
+  /**
+   * The marketplace sidebar, grouped rather than flat.
+   *
+   * It had grown to 21 items appended one at a time, 821px of rail in a
+   * 603px viewport, with six of them sharing a placeholder ShoppingCart
+   * icon because each was added to the end without deciding where it
+   * belonged. The grouping is by WHY YOU OPEN IT, not by which entity it
+   * touches: almost everything here touches listings or orders, which is
+   * exactly why entity-grouping produced a flat list.
+   *
+   * WHERE A NEW ITEM GOES. First rule that matches wins:
+   *   1. shows a count that should reach zero      -> Queues
+   *      ...and clearing it means messaging someone -> Follow up
+   *   2. you open it to find one known thing        -> Records
+   *   3. money in or out                            -> Money
+   *   4. changes behaviour for everyone             -> Setup
+   *   5. read to decide, never to act               -> top level, alone
+   * If two match, ask which would make you open it at 9am.
+   *
+   * And the rules that stop it drifting back:
+   *   - a group needs TWO members; one child stays top level
+   *   - six children means it is really two groups
+   *   - a reused generic icon means the item was appended without deciding
+   *   - ADD TO A GROUP, never to the end. If nothing fits, that is evidence
+   *     for a new group, not permission to append.
+   *
+   * A group may itself be a link (`to`), for when the parent is the general
+   * case and the children are the specific ones: "Follow up" is the whole
+   * outreach queue, and the three under it are slices of it.
+   */
+  type MktNavItem = { label: string; to: string; icon: LucideIcon; exact?: boolean; badge?: number };
+  type MktNavEntry = MktNavItem & { children?: MktNavItem[] };
+
+  const MARKETPLACE_NAV: MktNavEntry[] = [
     { label: "Dashboard", to: "/admin/marketplace", icon: LayoutDashboard, exact: true },
-    { label: "Payout queue", to: "/admin/marketplace/payouts", icon: Banknote },
+    // Out of Queues on purpose: it is the first thing opened most days, so
+    // it earns a top-level row of its own directly under Dashboard.
     { label: "Review queue", to: "/admin/marketplace/review", icon: ClipboardCheck, badge: mktPendingCount },
-    { label: "Follow up", to: "/admin/marketplace/outreach", icon: Megaphone },
-    { label: "Did not finish paying", to: "/admin/marketplace/pending-payments", icon: ShoppingCart },
-    { label: "Waiting on the buyer", to: "/admin/marketplace/awaiting-confirmation", icon: ShoppingCart },
-    { label: "Listings with no video", to: "/admin/marketplace/needs-video", icon: ShoppingCart },
-    { label: "Videos to check", to: "/admin/marketplace/videos-to-review", icon: ShoppingCart },
-    { label: "What buyers searched for", to: "/admin/marketplace/search-demand", icon: ShoppingCart },
-    { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
-    { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
-    { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },
-    { label: "Sellers", to: "/admin/marketplace/sellers", icon: Users },
-    { label: "Buyers", to: "/admin/marketplace/buyers", icon: Contact },
-    { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
-    { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
-    { label: "Money owed", to: "/admin/marketplace/money-owed", icon: Coins },
-    { label: "Finance", to: "/admin/marketplace/finance", icon: BarChart3 },
-    { label: "Categories", to: "/admin/marketplace/categories", icon: ListTree },
-    { label: "Featured categories", to: "/admin/marketplace/featured-categories", icon: Star },
-    { label: "Settings", to: "/admin/marketplace/settings", icon: Settings },
+    {
+      label: "Queues", to: "/admin/marketplace/payouts", icon: Inbox,
+      children: [
+        { label: "Payout queue", to: "/admin/marketplace/payouts", icon: Banknote },
+        { label: "Disputes", to: "/admin/marketplace/disputes", icon: Gavel },
+        { label: "Returns", to: "/admin/marketplace/returns", icon: RotateCcw },
+      ],
+    },
+    {
+      // The parent IS the general outreach queue; the children are slices.
+      label: "Follow up", to: "/admin/marketplace/outreach", icon: Megaphone,
+      children: [
+        { label: "Everyone to chase", to: "/admin/marketplace/outreach", icon: Megaphone },
+        { label: "Did not finish paying", to: "/admin/marketplace/pending-payments", icon: CreditCard },
+        { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
+        { label: "Waiting on the buyer", to: "/admin/marketplace/awaiting-confirmation", icon: Clock },
+      ],
+    },
+    {
+      label: "Video", to: "/admin/marketplace/needs-video", icon: Video,
+      children: [
+        { label: "Listings with no video", to: "/admin/marketplace/needs-video", icon: Video },
+        { label: "Videos to check", to: "/admin/marketplace/videos-to-review", icon: Film },
+      ],
+    },
+    {
+      label: "Records", to: "/admin/marketplace/sellers", icon: FolderOpen,
+      children: [
+        { label: "Sellers", to: "/admin/marketplace/sellers", icon: Users },
+        { label: "Buyers", to: "/admin/marketplace/buyers", icon: Contact },
+        { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
+        { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
+      ],
+    },
+    {
+      label: "Money", to: "/admin/marketplace/money-owed", icon: Coins,
+      children: [
+        { label: "Money owed", to: "/admin/marketplace/money-owed", icon: Coins },
+        { label: "Finance", to: "/admin/marketplace/finance", icon: BarChart3 },
+      ],
+    },
+    // Read to decide, never to act on, and the only one of its kind. A group
+    // of one is worse than no group, so it stays top level until a second
+    // insight screen exists.
+    { label: "What buyers searched for", to: "/admin/marketplace/search-demand", icon: SearchIcon },
+    {
+      label: "Setup", to: "/admin/marketplace/settings", icon: Wrench,
+      children: [
+        { label: "Categories", to: "/admin/marketplace/categories", icon: ListTree },
+        { label: "Featured categories", to: "/admin/marketplace/featured-categories", icon: Star },
+        { label: "Settings", to: "/admin/marketplace/settings", icon: Settings },
+      ],
+    },
   ];
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Which marketplace nav groups the user has explicitly opened or closed.
+  // Unset means "follow the current page", so the group holding the current
+  // screen opens by itself and nobody has to remember where a screen lives.
+  const [openMktGroups, setOpenMktGroups] = useState<Record<string, boolean>>({});
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -499,24 +573,73 @@ function AdminLayoutInner() {
           })}
 
           {world === "marketplace" && MARKETPLACE_NAV.map((m) => {
-            const active = m.exact
-              ? location.pathname === m.to
-              : location.pathname === m.to || location.pathname.startsWith(m.to + "/");
+            const isActive = (to: string, exact?: boolean) => exact
+              ? location.pathname === to
+              : location.pathname === to || location.pathname.startsWith(to + "/");
+
+            // A plain item: no children, renders exactly as before.
+            if (!m.children?.length) {
+              const active = isActive(m.to, m.exact);
+              return (
+                <Link key={m.to} to={m.to}
+                  className={`flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
+                    active
+                      ? "bg-white/15 text-white font-semibold shadow-sm"
+                      : "text-white/60 hover:bg-white/8 hover:text-white/90"
+                  }`}>
+                  <m.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
+                  {m.label}
+                  {m.badge ? (
+                    <span className="ml-auto text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "#F4845F" }}>{m.badge}</span>
+                  ) : active ? (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />
+                  ) : null}
+                </Link>
+              );
+            }
+
+            // A group. Open when it holds the current page, so the sidebar
+            // always shows where you are without anyone having to remember
+            // which group a screen lives in; otherwise open only if toggled.
+            const holdsCurrent = m.children.some((c) => isActive(c.to)) || isActive(m.to);
+            const open = openMktGroups[m.label] ?? holdsCurrent;
+
             return (
-              <Link key={m.to} to={m.to}
-                className={`flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
-                  active
-                    ? "bg-white/15 text-white font-semibold shadow-sm"
-                    : "text-white/60 hover:bg-white/8 hover:text-white/90"
-                }`}>
-                <m.icon className={`w-4 h-4 ${active ? "text-coral" : ""}`} />
-                {m.label}
-                {m.badge ? (
-                  <span className="ml-auto text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "#F4845F" }}>{m.badge}</span>
-                ) : active ? (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />
-                ) : null}
-              </Link>
+              <div key={m.label}>
+                <button
+                  type="button"
+                  onClick={() => setOpenMktGroups((g) => ({ ...g, [m.label]: !open }))}
+                  aria-expanded={open}
+                  className={`w-full flex items-center gap-2.5 px-5 py-2 text-[13px] transition-all mx-2 rounded-lg font-body ${
+                    holdsCurrent && !open
+                      ? "bg-white/10 text-white/90 font-semibold"
+                      : "text-white/60 hover:bg-white/8 hover:text-white/90"
+                  }`}>
+                  <m.icon className="w-4 h-4" />
+                  {m.label}
+                  <ChevronDown className={`ml-auto w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
+                </button>
+
+                {open && m.children.map((c) => {
+                  const active = isActive(c.to, c.exact);
+                  return (
+                    <Link key={c.to + c.label} to={c.to}
+                      className={`flex items-center gap-2.5 pl-11 pr-5 py-1.5 text-[12.5px] transition-all mx-2 rounded-lg font-body ${
+                        active
+                          ? "bg-white/15 text-white font-semibold shadow-sm"
+                          : "text-white/55 hover:bg-white/8 hover:text-white/90"
+                      }`}>
+                      <c.icon className={`w-3.5 h-3.5 ${active ? "text-coral" : ""}`} />
+                      {c.label}
+                      {c.badge ? (
+                        <span className="ml-auto text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5" style={{ background: "#F4845F" }}>{c.badge}</span>
+                      ) : active ? (
+                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-coral" />
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
