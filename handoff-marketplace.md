@@ -9326,3 +9326,55 @@ passed.
 tick still sees `disabled=false` and starts another 40MB upload before the RPC
 can refuse it. A `useRef` guard closes that window synchronously, which state
 cannot.
+
+## 168. QA design admin account (2026-08-29)
+
+  qa-design@bundledmum.test
+  password: BundledMumQA!2026
+  auth uid 0c123342-a232-4477-af86-b9420b7d0150, role `design_viewer`
+
+Closes the last standing limitation in these reports: admin screens had only
+ever been verified by code review and SQL, because no admin login existed here.
+Sits alongside the QA seller and buyer from section 163, with the same caution:
+if the row is ever deleted, remove it from anywhere referencing it.
+
+**Login works, first attempt.** The auth row was checked against a working admin
+row first, since that is where the QA seller failed: all eight token columns are
+empty strings rather than NULL, `email_confirmed_at` set, `aud`/`role`
+`authenticated`, one identity, provider email. Nothing differs.
+
+**Masking works, and is role conditional.** `mask_for_viewer` returns the raw
+value `when not is_design_viewer()`, so real admins are unaffected. Loaded
+`/admin/marketplace/needs-video` signed in as this account: 159 rows, 158 masked
+phones, ZERO real phone numbers or emails. Nine views carry it, as described.
+
+**One thing does not match the description, and it matters.**
+
+The brief says "every write action is explicitly denied ... it cannot approve,
+edit, delete, create, export or manage anything". The 78 denies are real, but
+they live in `admin_role_defaults` for the role, not in `admin_user_permissions`,
+and alongside them are FIVE grants:
+
+  content view, dashboard view, merchandising view,
+  marketplace view, marketplace MANAGE
+
+`marketplace: manage` is granted. On this codebase that string is both the view
+gate (`PermissionGate module="marketplace" action="manage"` wraps every
+marketplace admin route) and the write gate (every admin marketplace RPC checks
+`has_admin_permission('marketplace','manage')`). So it cannot simply be revoked
+without the screens disappearing, but while it is granted the account can reach
+**24 write RPCs**, including `admin_mark_payout_released`,
+`admin_resolve_dispute`, `admin_answer_question_for_seller` (which posts a public
+answer in a seller's name), `admin_answer_offer_for_seller`, and the outreach
+contact log.
+
+So "a design task cannot accidentally change live data" is not true today for
+marketplace writes. Treated as read-only by convention here, and no write was
+performed while verifying this.
+
+**Smaller mismatch, not a leak.** Names are masked on 2 of the 9 views
+(`marketplace_buyers`, `marketplace_payout_queue`) rather than everywhere.
+`marketplace_listings_needing_video` shows real seller display names such as
+"Taiye E." rather than "Taiye X.". Those names are already public on every
+listing, so nothing private is exposed; the description just implies wider name
+masking than exists.
