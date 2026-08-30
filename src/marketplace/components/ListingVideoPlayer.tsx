@@ -24,31 +24,30 @@ import { getStopgapVideoSignedUrl, type ListingVideo } from "../listingVideo";
  * no "processing". Which source it came from is our problem.
  */
 /**
- * Can this browser play the container the staged file is in?
+ * NOTHING pre-judges whether the browser can play the file any more.
  *
- * Three of the four queued files are mp4 and one is a .mov, which Chrome
- * will not decode: it sits at readyState 0 forever WITHOUT firing an error,
- * so onError cannot rescue it and the buyer gets a dead player. Asking
- * first means we simply show nothing, exactly as before this feature
- * existed, rather than something broken.
+ * This used to ask canPlayType("video/quicktime") first and render nothing
+ * when the answer was empty. Both beliefs behind that were measured false
+ * against the live steriliser listing, whose staged file is a .mov, as all
+ * three queued files are, because our sellers film on iPhones:
  *
- * This creates a <video> element but NEVER gives it a src and never loads
- * anything: canPlayType is a synchronous capability lookup, not a read of
- * the file. It is not the metadata-probe pattern that hung iOS twice.
+ *   Chromium answers "" for video/quicktime and then PLAYS the file
+ *   perfectly: loadeddata, readyState 4, 960x1280, 20.9s, no error. So the
+ *   check hid a working video from Chrome and Android, which is most
+ *   buyers, on every listing the feature was built for.
+ *
+ *   Chromium does NOT sit silently at readyState 0 on a file it genuinely
+ *   cannot decode. It fires `error` in about 6ms, MEDIA_ERR_SRC_NOT_SUPPORTED,
+ *   "DEMUXER_ERROR_COULD_NOT_OPEN". So onError is a real fallback and was
+ *   always the honest instrument.
+ *
+ * canPlayType is also useless as a veto in the other direction: WebKit
+ * answers "maybe" to every bare mime type it is given, webm included.
+ *
+ * So we attempt it, and on the error we hide the card outright rather than
+ * returning to a Tap to play button that would never work and would spend a
+ * little more of the buyer's data on each attempt.
  */
-function browserCanPlay(path: string): boolean {
-  const ext = (path.split(".").pop() || "").toLowerCase();
-  const mime = ({
-    mp4: "video/mp4", m4v: "video/x-m4v", webm: "video/webm",
-    mov: "video/quicktime", "3gp": "video/3gpp",
-  } as Record<string, string>)[ext];
-  if (!mime) return false;
-  try {
-    return document.createElement("video").canPlayType(mime) !== "";
-  } catch {
-    return false;
-  }
-}
 
 export default function ListingVideoPlayer({ video, posterUrl }: {
   video: ListingVideo;
@@ -58,14 +57,17 @@ export default function ListingVideoPlayer({ video, posterUrl }: {
   posterUrl?: string | null;
 }) {
   const [playing, setPlaying] = useState(false);
+  /** Set only once the browser has actually refused the file. */
+  const [cannotPlay, setCannotPlay] = useState(false);
   const [stopgapUrl, setStopgapUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const isReady = video.status === "ready" && !!video.youtube_video_id;
-  // A stopgap this browser cannot decode is worse than no video: render
-  // nothing, which is exactly what a buyer saw before stopgaps existed.
-  if (!isReady && !(video.stopgap_path && browserCanPlay(video.stopgap_path))) return null;
+  if (!isReady && !video.stopgap_path) return null;
+  // Only after this browser has actually tried and failed. A dead card is
+  // worse than no card, but so is hiding one that would have played.
+  if (cannotPlay) return null;
   const id = isReady ? encodeURIComponent(video.youtube_video_id as string) : "";
   const poster = isReady ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : (posterUrl || undefined);
 
@@ -117,11 +119,12 @@ export default function ListingVideoPlayer({ video, posterUrl }: {
               autoPlay
               playsInline
               preload="none"
-              /* The staged file is deleted the instant YouTube succeeds. If
-                 that lands mid playback the video simply stops; a reload
-                 picks up the YouTube copy. Rare, and a buyer should never
-                 see an error about our upload queue. */
-              onError={() => { setPlaying(false); setStopgapUrl(null); }}
+              /* Covers both refusals: a container this browser cannot
+                 decode, and the staged file being deleted the instant
+                 YouTube succeeds. Either way the card goes, and a reload
+                 picks up the YouTube copy. A buyer should never read an
+                 error about our upload queue. */
+              onError={() => { setPlaying(false); setStopgapUrl(null); setCannotPlay(true); }}
             />
           )}
         </div>

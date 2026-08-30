@@ -9771,3 +9771,80 @@ unknown state blocks nothing.
 The checkout selector, the undeliverable blocking and the personalised listing
 wording are untouched: this only adds a second place to write the same value
 through the same functions.
+
+## 176. The stopgap video was hidden from the browsers that could play it (2026-08-30)
+
+A staged .mov on "2 in 1 Electric Steam Steriliser" rendered nothing on the
+listing page. Both candidate causes were wrong.
+
+**The stopgap code was deployed.** `MarketplaceApp-C4rYu4tf.js` on
+bundledmum.com contains `stopgap_path`, `canPlayType`, `video/quicktime` and
+"Plays only when you tap". Not a deploy lag.
+
+**The capability check did not require "probably".** It accepted anything
+`canPlayType` did not answer with the empty string, so "maybe" passed. The
+suspected Safari rejection was not happening: measured in a real WKWebView
+(AppleWebKit/605.1.15), `canPlayType("video/quicktime")` returns **"maybe"**,
+and the deployed page played the steriliser file on tap — readyState 4,
+960x1280, 20.9s, currentTime 8.64, no error.
+
+**The actual fault was the opposite way round.** Chromium answers `""` for
+`video/quicktime` **and then plays the file perfectly**: loadeddata,
+readyState 4, 960x1280, duration 20.918, no error. So the check hid a working
+video from Chrome and Android — most Nigerian buyers — on all three queued
+listings, every one of them a .mov because sellers film on iPhones. The
+feature did nothing for the common case, which was the whole point of it.
+
+The comment justifying the check was also false. Chromium does **not** sit
+silently at readyState 0 on a file it genuinely cannot decode: given 5000
+bytes of garbage labelled video/quicktime it fired `error` in **6ms**, code 4,
+`DEMUXER_ERROR_COULD_NOT_OPEN`. `onError` was a working fallback all along.
+
+`canPlayType` is worthless as a veto in either direction here, because WebKit
+answers "maybe" to every bare mime type it is handed, webm included.
+
+**The fix** removes `browserCanPlay` entirely. We attempt the file on the tap
+and, on the error, hide the card outright rather than returning to a Tap to
+play button that would never work and would spend a little more of the
+buyer's data on each attempt.
+
+### The lesson, again in a new shape
+
+Both the code and the brief reasoned from what an API *says* it can do.
+Neither matched what the browser *does*. A capability string is a claim, not
+a measurement, and a claim that fails closed silently removes a feature
+without anything looking broken. Measure the behaviour, and measure the
+failure path too: it was the 6ms error that made removing the gate safe.
+
+Nothing here reads video metadata. `canPlayType` never touched a file, and
+neither does its removal — the only thing that reads the file now is playback
+itself, after a tap.
+
+### Verified, not read
+
+The instrument first: resource timing records **zero** entries for a media
+fetch even while the video is demonstrably playing, so "0 staged requests"
+proves nothing and was not used. A `window.fetch` spy, proven live against a
+known-true favicon call, was used instead.
+
+Chromium, all three staged .mov listings, local build:
+
+| listing | before tap | after tap |
+|---|---|---|
+| 2 in 1 Electric Steam Steriliser | card, 0 `<video>`, no staging URL in the DOM, 0 sign calls | 960x1280, rs 4, playing, no error |
+| Kidilo Infant Rocking Bed | card | 480x774, rs 4, playing, no error |
+| Mastela 4in1 Baby Bassinet | card | 2160x3840, rs 4, playing, no error |
+
+The tap, and only the tap, minted the signed URL —
+`live-2ac49138-...-1788070947920.mov` appeared in the spy on the tap and
+never before it.
+
+WebKit (WKWebView) against the patched build: card present, 0 `<video>`
+before the tap, then paused false, currentTime 7.8, no error. Unchanged.
+
+Error path: dispatching `error` on the playing element removed the card and
+left the rest of the listing intact.
+
+YouTube 'ready' is untouched — Mastela 3in1 Baby Rocker still shows the
+i.ytimg.com thumbnail, no iframe before the tap, and the
+youtube-nocookie embed with `autoplay=1&mute=1` after it.
