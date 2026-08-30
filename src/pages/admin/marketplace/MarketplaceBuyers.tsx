@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira, formatDateTime, orderMoneyState, DISPUTE_OUTCOMES } from "./opsData";
 import { OpsHeader, OpsEmpty, OpsCard, StatusPill } from "./opsUi";
+import BuyerOnBehalf from "./BuyerOnBehalf";
 
 /**
  * Buyers, the counterpart to Sellers, read only (an admin cannot edit a
@@ -367,6 +368,14 @@ function BuyerDetail({ b, onBack }: { b: BuyerRow; onBack: () => void }) {
           })}
         </div>
       )}
+
+      {/* All three of these need a listing as well as a buyer, and an
+          outreach row has no listing_id, so the buyer's own record is the
+          only place both are known. */}
+      <div className="flex flex-col gap-2">
+        <div className="font-heading font-extrabold text-xs uppercase tracking-wider" style={{ color: "#6B5B54" }}>Do something for them</div>
+        <BuyerOnBehalf buyerId={b.customer_id} buyerName={b.full_name} />
+      </div>
 
       <div className="flex flex-col gap-2">
         <div className="font-heading font-extrabold text-xs uppercase tracking-wider" style={{ color: "#6B5B54" }}>Purchase history</div>

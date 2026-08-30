@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
-import { adb, formatNaira, type PillTone } from "./opsData";
-import { OpsHeader, OpsEmpty, StatusPill } from "./opsUi";
+import { adb, formatNaira, formatDateTime, fetchAdminOrderDetail, type PillTone } from "./opsData";
+import { OpsHeader, OpsEmpty, OpsCard, StatusPill } from "./opsUi";
+import { MarkDispatched, RaiseDispute } from "./OrderOnBehalf";
 
 /** marketplace_admin_orders (admin readable) already embeds listing_title,
  * buyer_name and seller_name directly, and only ever contains a genuine
@@ -49,12 +50,21 @@ function orderRowState(r: Row): { label: string; tone: PillTone } {
  * Orders, the money ledger. Every genuine marketplace order newest first
  * with one clear money-state pill. Genuine means money actually moved:
  * marketplace_admin_orders already excludes checkout attempts that were
- * never paid for, those live in Abandoned checkouts instead. Read only,
- * this is where the operator answers "what happened with this order".
- * Actions live in the payout queue and disputes.
+ * never paid for, those live in Abandoned checkouts instead.
+ *
+ * NO LONGER READ ONLY. This was a flat table with no way into a single
+ * order, which is why the two things an operator most often has to do for
+ * someone on WhatsApp had nowhere to live: recording a dispatch the seller
+ * never marked, and opening a dispute for a buyer whose item arrived
+ * broken. Both are per-order decisions, so they need a per-order screen.
+ *
+ * Same list-plus-detail shape as Sellers, Buyers and Disputes: pick a row,
+ * work it in the panel. Money still only moves through the payout queue and
+ * disputes, exactly as before.
  */
 export default function MarketplaceOrders() {
   const [filter, setFilter] = useState<string>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   // Optional deep link from Buyers (or anywhere else): ?order=<id> highlights
   // and scrolls to that one row. Additive only — nothing changes when absent.
   const [searchParams] = useSearchParams();
@@ -84,53 +94,135 @@ export default function MarketplaceOrders() {
     if (highlightId && highlightRef.current) highlightRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [highlightId, filtered.length]);
 
+  // ?order=<id> already came from Buyers' purchase history and only
+  // highlighted a row, because there was nothing to open. Now that there is
+  // a panel, the link should land on the order itself. Runs once, so
+  // closing the panel does not immediately reopen it.
+  const appliedDeepLink = useRef(false);
+  useEffect(() => {
+    if (highlightId && !appliedDeepLink.current) {
+      appliedDeepLink.current = true;
+      setSelectedId(highlightId);
+    }
+  }, [highlightId]);
+
   if (isLoading) return <div className="flex justify-center py-20"><BMLoadingAnimation size={140} /></div>;
 
   return (
     <div>
-      <OpsHeader title="Orders" subtitle="The money ledger. Read only, actions live in the payout queue and disputes." />
+      <OpsHeader title="Orders" subtitle="The money ledger. Pick an order to record a dispatch or open a dispute for someone. Money still only moves through the payout queue and disputes." />
 
       <div className="mt-4 flex gap-1.5 flex-wrap">
         <Tab label="All" count={withState.length} on={filter === "all"} onClick={() => setFilter("all")} />
         {FILTERS.map((f) => <Tab key={f} label={f} count={counts[f] || 0} on={filter === f} onClick={() => setFilter(f)} />)}
       </div>
 
-      {filtered.length === 0 ? (
-        <OpsEmpty
-          title={withState.length === 0 ? "No orders yet" : "Nothing here right now"}
-          body={
-            withState.length === 0
-              ? "This is the real ledger, only orders where money has actually moved. Checkout attempts that never turned into a sale live in Abandoned checkouts instead."
-              : "No orders currently in this state."
-          }
-        />
-      ) : (
-        <div className="mt-4 rounded-2xl border overflow-hidden" style={{ borderColor: "#F0DDD2" }}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left" style={{ background: "#FFF8F4" }}>
-                  <Th>Order</Th><Th>Item</Th><Th>Parties</Th><Th>Amount</Th><Th>Money state</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr key={r.id} ref={r.id === highlightId ? highlightRef : undefined} className="border-t" style={{ borderColor: "#F0DDD2", background: r.id === highlightId ? "#FDE8DF" : undefined }}>
-                    <Td>
-                      <div className="font-heading font-bold text-foreground">{r.paystack_transaction_reference || "-"}</div>
-                      <div className="text-[11px] text-text-med">{new Date(r.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</div>
-                    </Td>
-                    <Td>{r.listing_title || "Item"}</Td>
-                    <Td><span className="text-text-med">{r.buyer_name || "Buyer"} · {r.seller_name || "Seller"}</span></Td>
-                    <Td><span className="tabular-nums font-heading font-bold">{formatNaira(r.amount_naira)}</span></Td>
-                    <Td><StatusPill tone={r.state.tone} label={r.state.label} /></Td>
+      <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] items-start">
+        {filtered.length === 0 ? (
+          <OpsEmpty
+            title={withState.length === 0 ? "No orders yet" : "Nothing here right now"}
+            body={
+              withState.length === 0
+                ? "This is the real ledger, only orders where money has actually moved. Checkout attempts that never turned into a sale live in Abandoned checkouts instead."
+                : "No orders currently in this state."
+            }
+          />
+        ) : (
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: "#F0DDD2" }}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left" style={{ background: "#FFF8F4" }}>
+                    <Th>Order</Th><Th>Item</Th><Th>Parties</Th><Th>Amount</Th><Th>Money state</Th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filtered.map((r) => {
+                    const on = r.id === selectedId;
+                    return (
+                      <tr
+                        key={r.id} ref={r.id === highlightId ? highlightRef : undefined}
+                        onClick={() => setSelectedId(on ? null : r.id)}
+                        className="border-t cursor-pointer"
+                        style={{ borderColor: "#F0DDD2", background: on ? "#FDE8DF" : r.id === highlightId ? "#FFF3EC" : undefined }}
+                      >
+                        <Td>
+                          <div className="font-heading font-bold text-foreground">{r.paystack_transaction_reference || "-"}</div>
+                          <div className="text-[11px] text-text-med">{new Date(r.created_at).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}</div>
+                        </Td>
+                        <Td>{r.listing_title || "Item"}</Td>
+                        <Td><span className="text-text-med">{r.buyer_name || "Buyer"} · {r.seller_name || "Seller"}</span></Td>
+                        <Td><span className="tabular-nums font-heading font-bold">{formatNaira(r.amount_naira)}</span></Td>
+                        <Td><StatusPill tone={r.state.tone} label={r.state.label} /></Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
+
+        <div className="xl:sticky xl:top-4">
+          {selectedId
+            ? <OrderDetail orderId={selectedId} onClose={() => setSelectedId(null)} />
+            : <OpsEmpty title="Pick an order" body="Select an order to see what has happened to it, and to record a dispatch or open a dispute for someone who told you on WhatsApp." />}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One order, and the two things that can be done for someone on it.
+ *
+ * Fetched on selection rather than carried over from the row, because the
+ * actions need facts the ledger view does not have: whether it is already
+ * marked as sent, whether a dispute is already open, and the dispatch
+ * photo. Deciding either of those from a stale row is how you get a
+ * confusing refusal from the database.
+ */
+function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => void }) {
+  const { data: o, isLoading, refetch } = useQuery({
+    queryKey: ["mkt-order-detail", orderId],
+    queryFn: () => fetchAdminOrderDetail(orderId),
+    staleTime: 5000,
+  });
+
+  if (isLoading) return <OpsCard><div className="text-xs text-text-med">Loading this order...</div></OpsCard>;
+  if (!o) return <OpsCard><div className="text-xs text-text-med">That order could not be loaded.</div></OpsCard>;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <OpsCard>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-heading font-black text-base text-foreground">{o.listing_title || "Item"}</div>
+            <div className="text-[11px] text-text-med">{o.paystack_transaction_reference || "No reference"}</div>
+          </div>
+          <button onClick={onClose} className="text-[11px] underline shrink-0" style={{ color: "#6B5B54" }}>Close</button>
+        </div>
+        <div className="mt-3 rounded-xl border divide-y" style={{ borderColor: "#F0DDD2" }}>
+          <Kv label="Amount" value={formatNaira(o.amount_naira)} />
+          <Kv label="Buyer" value={o.buyer_name || "Buyer"} />
+          <Kv label="Seller" value={o.seller_name || "Seller"} />
+          <Kv label="Ordered" value={formatDateTime(o.created_at)} />
+          <Kv label="Sent" value={o.dispatch_confirmed_at ? formatDateTime(o.dispatch_confirmed_at) : "Not yet"} />
+          <Kv label="Buyer confirmed" value={o.buyer_confirmed_at ? formatDateTime(o.buyer_confirmed_at) : "Not yet"} />
+        </div>
+      </OpsCard>
+
+      <MarkDispatched o={o} onDone={() => void refetch()} />
+      <RaiseDispute o={o} onDone={() => void refetch()} />
+    </div>
+  );
+}
+
+function Kv({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-3 py-2">
+      <span className="text-[11px] text-text-med">{label}</span>
+      <span className="font-heading font-extrabold text-[12.5px] text-foreground tabular-nums text-right">{value}</span>
     </div>
   );
 }

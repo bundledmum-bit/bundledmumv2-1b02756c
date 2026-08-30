@@ -15,7 +15,7 @@ import {
   Inbox, Video, FolderOpen, Wrench, CreditCard, Clock, Film, Search as SearchIcon, PhoneCall,
   type LucideIcon,
 } from "lucide-react";
-import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone } from "lucide-react";
+import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone, History } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
@@ -154,6 +154,11 @@ function AdminLayoutInner() {
         { label: "Buyers", to: "/admin/marketplace/buyers", icon: Contact },
         { label: "Listings", to: "/admin/marketplace/listings", icon: Tag },
         { label: "Orders", to: "/admin/marketplace/orders", icon: ShoppingBag },
+        // Records by the rule: you open it to find one known thing, namely
+        // why a particular order says something the seller did not do. It
+        // is not a queue, nothing in it reaches zero, and nothing in it can
+        // be acted on. Its own icon, not a reused one.
+        { label: "Done for someone", to: "/admin/marketplace/on-behalf", icon: History },
       ],
     },
     {

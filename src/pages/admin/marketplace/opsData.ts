@@ -1095,3 +1095,284 @@ export async function fetchSearchDemand(): Promise<SearchDemandRow[]> {
   if (error) throw error;
   return (data ?? []) as SearchDemandRow[];
 }
+
+/* ── Doing it for them, the seven that had no interface ───────────────────
+ *
+ * Twelve on-behalf functions existed and five had screens, so most of them
+ * could not be used at all. Every one below requires marketplace manage,
+ * calls assert_not_read_only(), and refuses without a note. The note
+ * minimum is 10 wherever the action moves money or accuses someone
+ * (dispatch, dispute, return) and 5 elsewhere; those numbers are the
+ * functions' own, restated here only so the form can disable its button
+ * rather than let the database do the rejecting.
+ */
+
+/** Ten, matching the functions that check for ten. */
+export const ON_BEHALF_NOTE_MIN_HEAVY = 10;
+export const ON_BEHALF_NOTE_MIN_LIGHT = 5;
+
+export async function adminMarkDispatchedOnBehalf(input: {
+  orderId: string; note: string; photoUrl?: string | null;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_mark_dispatched_on_behalf", {
+    p_order_id: input.orderId, p_note: input.note, p_photo_url: input.photoUrl ?? null,
+  }, "That could not be recorded. Refresh and check it is not already marked as sent.");
+}
+
+export async function adminRaiseDisputeForBuyer(input: {
+  orderId: string; reason: string; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_raise_dispute_for_buyer", {
+    p_order_id: input.orderId, p_reason: input.reason, p_note: input.note,
+  }, "That could not be opened. Refresh and check there is no dispute already.");
+}
+
+export async function adminMarkReturnSentForBuyer(input: {
+  disputeId: string; note: string; proofUrl?: string | null; shippingCostNaira?: number | null;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_mark_return_sent_for_buyer", {
+    p_dispute_id: input.disputeId, p_note: input.note,
+    p_proof_url: input.proofUrl ?? null,
+    p_return_shipping_cost_naira: input.shippingCostNaira ?? null,
+  }, "That could not be recorded. Refresh and check it is not already marked as sent back.");
+}
+
+export async function adminSetDeliveryPrefsForSeller(input: {
+  sellerId: string; sellsNationwide: boolean; localHandover: SellerLocalHandover; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_set_delivery_prefs_for_seller", {
+    p_seller_id: input.sellerId, p_sells_nationwide: input.sellsNationwide,
+    p_local_handover: input.localHandover, p_note: input.note,
+  }, "That could not be saved. Please try again.");
+}
+
+/** The function accepts exactly these three and rejects anything else, so
+ * this is a closed union rather than a free string: a checkbox pair cannot
+ * express "both" and would produce values the function refuses. */
+export type SellerLocalHandover = "ships" | "collection" | "both";
+
+export const LOCAL_HANDOVER_CHOICES: Array<{ key: SellerLocalHandover; title: string; detail: string }> = [
+  { key: "ships", title: "She posts it", detail: "Even to someone in the same city, it goes by courier." },
+  { key: "collection", title: "They collect it", detail: "Someone nearby comes and picks it up in person." },
+  { key: "both", title: "Either one", detail: "She is happy to post it or hand it over, whichever suits." },
+];
+
+export async function adminDeclineVideoForSeller(input: {
+  requestId: string; reason: string; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_decline_video_for_seller", {
+    p_request_id: input.requestId, p_reason: input.reason, p_note: input.note,
+  }, "That could not be saved. Refresh and check it is still waiting.");
+}
+
+export async function adminAskQuestionForBuyer(input: {
+  listingId: string; buyerId: string; question: string; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_ask_question_for_buyer", {
+    p_listing_id: input.listingId, p_buyer_id: input.buyerId,
+    p_question: input.question, p_note: input.note,
+  }, "That could not be sent. Please try again.");
+}
+
+export async function adminMakeOfferForBuyer(input: {
+  listingId: string; buyerId: string; buyerPriceNaira: number; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_make_offer_for_buyer", {
+    p_listing_id: input.listingId, p_buyer_id: input.buyerId,
+    p_buyer_price_naira: input.buyerPriceNaira, p_note: input.note,
+  }, "That could not be sent. Please try again.");
+}
+
+export async function adminRequestVideoForBuyer(input: {
+  listingId: string; buyerId: string; buyerNote: string; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_request_video_for_buyer", {
+    p_listing_id: input.listingId, p_buyer_id: input.buyerId,
+    p_buyer_note: input.buyerNote, p_note: input.note,
+  }, "That could not be sent. Please try again.");
+}
+
+/* ── What the on-behalf screens need to read ─────────────────────────── */
+
+/** A seller's delivery preferences as they stand, so the form opens on what
+ * is already true rather than on a guess. */
+export interface SellerDeliveryPrefs {
+  sells_nationwide: boolean | null;
+  local_handover: string | null;
+  delivery_prefs_set_at: string | null;
+}
+
+export async function fetchSellerDeliveryPrefs(sellerId: string): Promise<SellerDeliveryPrefs | null> {
+  const { data, error } = await adb.from("marketplace_sellers")
+    .select("sells_nationwide, local_handover, delivery_prefs_set_at")
+    .eq("id", sellerId).maybeSingle();
+  if (error) return null;
+  return (data ?? null) as SellerDeliveryPrefs | null;
+}
+
+/**
+ * Disputes that were ruled as needing the item back, where the buyer has
+ * not yet said they posted it.
+ *
+ * This state had no screen at all. Disputes shows only OPEN disputes
+ * (outcome is null) and a return is only required once one is RULED on, so
+ * a dispute leaves that screen at the very moment this step begins. Returns
+ * then picks it up at return_sent_at. The gap between the two is exactly
+ * where a buyer who told us on WhatsApp gets stuck.
+ */
+export interface ReturnNotYetSentRow {
+  dispute_id: string;
+  order_id: string;
+  order_reference: string;
+  amount_naira: number;
+  listing_title: string | null;
+  buyer_name: string | null;
+  outcome: string | null;
+  resolved_at: string | null;
+}
+
+export async function fetchReturnsNotYetSent(): Promise<ReturnNotYetSentRow[]> {
+  const { data: rows, error } = await adb.from("marketplace_disputes")
+    .select("id, order_id, buyer_id, outcome, resolved_at")
+    .eq("return_required", true)
+    .is("return_sent_at", null)
+    .order("resolved_at", { ascending: true });
+  if (error) throw error;
+  const dRows = (rows ?? []) as Array<{ id: string; order_id: string; buyer_id: string | null; outcome: string | null; resolved_at: string | null }>;
+  if (!dRows.length) return [];
+
+  const { data: orders } = await adb.from("marketplace_orders")
+    .select("id, paystack_transaction_reference, amount_naira, listing_id")
+    .in("id", dRows.map((d) => d.order_id));
+  const oMap = new Map((orders ?? []).map((o: Record<string, unknown>) => [o.id as string, o]));
+  const listingIds = Array.from(new Set((orders ?? []).map((o: Record<string, unknown>) => o.listing_id as string).filter(Boolean)));
+  const buyerIds = Array.from(new Set(dRows.map((d) => d.buyer_id).filter(Boolean))) as string[];
+  const [{ data: listings }, buyers] = await Promise.all([
+    listingIds.length ? adb.from("marketplace_listings").select("id, title").in("id", listingIds) : Promise.resolve({ data: [] }),
+    buyerIds.length ? adb.from("customers").select("id, full_name").in("id", buyerIds).then((r) => r.data ?? []) : Promise.resolve([]),
+  ]);
+  const lMap = new Map((listings ?? []).map((l: { id: string; title: string | null }) => [l.id, l.title]));
+  const bMap = new Map((buyers as Array<{ id: string; full_name: string | null }>).map((b) => [b.id, b.full_name]));
+
+  return dRows.map((d) => {
+    const o = (oMap.get(d.order_id) ?? {}) as Record<string, unknown>;
+    return {
+      dispute_id: d.id, order_id: d.order_id,
+      order_reference: (o.paystack_transaction_reference as string) || "",
+      amount_naira: Number(o.amount_naira || 0),
+      listing_title: (lMap.get(o.listing_id as string) as string) || null,
+      buyer_name: (bMap.get(d.buyer_id as string) as string) || null,
+      outcome: d.outcome, resolved_at: d.resolved_at,
+    };
+  });
+}
+
+/**
+ * The live listings a buyer-side action can be aimed at.
+ *
+ * All three buyer functions need a listing AND a buyer, and the outreach
+ * queue row carries no listing_id at all, which is why these live on the
+ * buyer's own record rather than beside the nudge. Each row carries the two
+ * facts that decide whether the action is even possible, so the operator
+ * reads them BEFORE choosing rather than after being refused: a firm price
+ * blocks an offer, and an existing video blocks a video request.
+ */
+export interface BuyerActionListing {
+  id: string;
+  title: string | null;
+  final_price_naira: number;
+  is_negotiable: boolean;
+  has_video: boolean;
+  seller_name: string | null;
+}
+
+export async function fetchListingsForBuyerAction(search: string): Promise<BuyerActionListing[]> {
+  let q = adb.from("marketplace_listings")
+    .select("id, title, final_price_naira, is_negotiable, youtube_video_id, seller_id")
+    .eq("status", "live").order("created_at", { ascending: false }).limit(40);
+  if (search.trim()) q = q.ilike("title", `%${search.trim()}%`);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{ id: string; title: string | null; final_price_naira: number; is_negotiable: boolean | null; youtube_video_id: string | null; seller_id: string }>;
+  if (!rows.length) return [];
+  const sellerIds = Array.from(new Set(rows.map((r) => r.seller_id).filter(Boolean)));
+  const { data: sellers } = sellerIds.length
+    ? await adb.from("marketplace_sellers").select("id, display_name").in("id", sellerIds)
+    : { data: [] };
+  const sMap = new Map((sellers ?? []).map((s: { id: string; display_name: string | null }) => [s.id, s.display_name]));
+  return rows.map((r) => ({
+    id: r.id, title: r.title,
+    final_price_naira: Number(r.final_price_naira || 0),
+    is_negotiable: r.is_negotiable === true,
+    has_video: !!r.youtube_video_id,
+    seller_name: (sMap.get(r.seller_id) as string) || null,
+  }));
+}
+
+/** One order, with everything needed to decide before acting on it. */
+export interface AdminOrderDetail {
+  id: string;
+  paystack_transaction_reference: string | null;
+  amount_naira: number;
+  payment_status: string;
+  settlement_status: string;
+  order_status: string;
+  created_at: string;
+  dispatch_confirmed_at: string | null;
+  dispatch_photo_url: string | null;
+  buyer_confirmed_at: string | null;
+  listing_title: string | null;
+  seller_name: string | null;
+  buyer_name: string | null;
+  has_open_dispute: boolean;
+}
+
+export async function fetchAdminOrderDetail(orderId: string): Promise<AdminOrderDetail | null> {
+  const { data: o, error } = await adb.from("marketplace_orders")
+    .select("id, paystack_transaction_reference, amount_naira, payment_status, settlement_status, order_status, created_at, dispatch_confirmed_at, dispatch_photo_url, buyer_confirmed_at, listing_id, seller_id, buyer_id")
+    .eq("id", orderId).maybeSingle();
+  if (error || !o) return null;
+  const row = o as Record<string, unknown>;
+  const [{ data: listing }, { data: seller }, { data: buyer }, { data: disputes }] = await Promise.all([
+    adb.from("marketplace_listings").select("title").eq("id", row.listing_id as string).maybeSingle(),
+    adb.from("marketplace_sellers").select("display_name").eq("id", row.seller_id as string).maybeSingle(),
+    row.buyer_id ? adb.from("customers").select("full_name").eq("id", row.buyer_id as string).maybeSingle() : Promise.resolve({ data: null }),
+    adb.from("marketplace_disputes").select("id").eq("order_id", orderId).is("outcome", null),
+  ]);
+  return {
+    id: row.id as string,
+    paystack_transaction_reference: (row.paystack_transaction_reference as string) || null,
+    amount_naira: Number(row.amount_naira || 0),
+    payment_status: row.payment_status as string,
+    settlement_status: row.settlement_status as string,
+    order_status: row.order_status as string,
+    created_at: row.created_at as string,
+    dispatch_confirmed_at: (row.dispatch_confirmed_at as string) || null,
+    dispatch_photo_url: (row.dispatch_photo_url as string) || null,
+    buyer_confirmed_at: (row.buyer_confirmed_at as string) || null,
+    listing_title: (listing as { title?: string } | null)?.title || null,
+    seller_name: (seller as { display_name?: string } | null)?.display_name || null,
+    buyer_name: (buyer as { full_name?: string } | null)?.full_name || null,
+    has_open_dispute: ((disputes ?? []) as unknown[]).length > 0,
+  };
+}
+
+/** Everything ever done in someone else's name, newest first. The view
+ * already resolves done_by to a name and the record to its item, so this is
+ * a straight read. */
+export interface OnBehalfLogRow {
+  action: string;
+  record_id: string;
+  item: string | null;
+  done_by: string | null;
+  note: string | null;
+  at: string;
+}
+
+export async function fetchOnBehalfLog(): Promise<OnBehalfLogRow[]> {
+  const { data, error } = await adb.from("marketplace_on_behalf_log")
+    .select("action, record_id, item, done_by, note, at")
+    .order("at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as OnBehalfLogRow[];
+}

@@ -9848,3 +9848,122 @@ left the rest of the listing intact.
 YouTube 'ready' is untouched — Mastela 3in1 Baby Rocker still shows the
 i.ytimg.com thumbnail, no iframe before the tap, and the
 youtube-nocookie embed with `autoplay=1&mute=1` after it.
+
+## 177. The seven on-behalf functions that had no interface (2026-08-30)
+
+Fourteen functions can now write to the marketplace as a seller or a buyer,
+and seven of them had no screen at all, so they could not be used. Sellers and
+buyers answer WhatsApp far more readily than they open the app, which is the
+whole reason these exist.
+
+**What already had a screen, and was not rebuilt:** answering a question,
+attaching a video, fulfilling a request with a listing video and answering an
+offer (all in `AnswerForSeller`, on the outreach row), adding a listing video
+(`MarketplaceListingsNeedingVideo`) and confirming receipt
+(`MarketplaceAwaitingConfirmation`).
+
+### Four things in the brief that did not match the code
+
+**1. There was no admin order detail screen.** `MarketplaceOrders` was a flat
+read-only table whose own header said "actions live in the payout queue and
+disputes". So "put it on order detail" had nowhere to land. Built as
+list-plus-detail, matching Sellers, Buyers and Disputes.
+
+**2. "Dispute view, mark the return sent" could not work.** Disputes queries
+`outcome IS NULL`, so a dispute LEAVES that screen the moment it is ruled on,
+and a return is only required after a ruling. Returns then picks it up at
+`return_sent_at`, which only a buyer can set. The step in between had no screen
+anywhere, which is exactly where a buyer who posts the item back and tells us
+on WhatsApp got stuck: the seller had nothing to confirm and the refund could
+not start. It went on Returns, the screen you already open to work a return.
+
+**3. The buyer actions could not go on an outreach row.** All three need a
+listing AND a buyer, and `OutreachRow` carries `person_id` and `stage_key` and
+no `listing_id` at all. The buyer's own record is the only place both are
+known, so they went there with a live-listing picker.
+
+**4. Twelve on-behalf functions is fourteen.** Seven new, seven existing.
+
+Also: `p_reason` on `admin_decline_video_for_seller` is optional, not required
+(`nullif(btrim(coalesce(p_reason,'')), '')`), and `p_local_handover` is text
+constrained to ships / collection / both, not a boolean. A checkbox pair cannot
+express "both" and would produce values the function rejects, so it is three
+explicit choices.
+
+### Where each one went, and why
+
+| function | where | why |
+|---|---|---|
+| `admin_mark_dispatched_on_behalf` | Orders, order detail | per-order decision, needs to know it is not already sent |
+| `admin_raise_dispute_for_buyer` | Orders, order detail | same, and needs the amount held in front of you |
+| `admin_mark_return_sent_for_buyer` | Returns, new first section | the screen you open to work a return |
+| `admin_set_delivery_prefs_for_seller` | outreach row, `missing_delivery_prefs` | that row exists *because* buyers cannot tell if she will send |
+| `admin_decline_video_for_seller` | outreach row, beside sending the video | the other real outcome of the same conversation |
+| `admin_ask_question_for_buyer` | Buyers detail | needs a listing, see 3 above |
+| `admin_make_offer_for_buyer` | Buyers detail | same |
+| `admin_request_video_for_buyer` | Buyers detail | same |
+
+The log went under **Records** by §169's rule: you open it to find one known
+thing, namely why an order says something a seller did not do. It is not a
+queue, nothing in it reaches zero, and nothing in it can be acted on. Its own
+icon, not a reused one.
+
+### Guards read before the click, not discovered after it
+
+Three refusals are perfectly visible up front, so `buyerActionGuards.ts` decides
+them and the picker shows the reason on the row itself. Live, that is 27 of 40
+listings blocked for an offer and 5 blocked for a video request. Seven tests
+cover them, including that the two are independent: a firm price must not hide a
+listing from a video request, and an existing video must not hide one from an
+offer.
+
+### The read-only account
+
+The server guard is the protection and is untouched: all seven call
+`assert_not_read_only()`. But a design account clicking "raise a dispute" and
+getting a database error reads as a broken screen rather than a deliberate
+limit, so a line now appears beside the controls, to that account only: "This
+account can look but not change anything." It asks `is_design_viewer()`, the
+SAME predicate the server guard uses, so the notice and the refusal cannot
+disagree.
+
+### A pre-existing gap this uncovered, NOT fixed here
+
+The design account sees **1** row of `admin_users` (itself) and **1** of
+`customers`. Every arm of `marketplace_on_behalf_log` joins `admin_users` on the
+acting admin, and `marketplace_admin_orders` and `marketplace_buyers` both join
+`customers`, so all three views return **zero** rows for that account while
+holding 9, 19 and many. That is RLS on the joined tables, it predates this work,
+and fixing it is a Supabase change. It does mean the design account cannot
+exercise Orders, Buyers or the log from their own lists.
+
+### Verified signed in as the design account
+
+Every panel was driven, not read. Where RLS hid the list, the real component was
+served the real payload shape so the rendering itself was still verified, and
+that is said plainly rather than glossed.
+
+- **Dispute:** the confirm dialog showed Item Honey Babywears, Seller
+  Oyindamola O., Money held ₦2,335, and the panel read "This freezes that money
+  and tells Oyindamola O. something is wrong with their item." Confirming gave
+  "This is a read-only account for design work. It cannot change anything.", and
+  **nothing was written**: 0 disputes, the order still not disputed.
+- **Delivery prefs:** opened on what was already true for Christiana O. (Yes,
+  anywhere + Either one, matching `sells_nationwide: true, local_handover:
+  'both'`), three explicit choices, refused on submit, 0 sellers written.
+- **Decline a video:** submitted with an empty reason and only a note, proving
+  the reason is genuinely optional; refused.
+- **Offer:** at the asking price of ₦144,000 the guard blocked and the button
+  was disabled; ₦143,500 cleared it; still disabled until the note; refused on
+  submit.
+- **Video request:** exactly the 5 listings with a video were blocked, and the
+  firm-price guard correctly did not apply.
+- **Note minimum, exactly:** 9 characters disabled, 10 enabled.
+- **Log:** 9 recorded, newest first, all nine attributed to Marvellous with
+  their notes.
+- **Returns:** the new section is absent when there is nothing waiting, and the
+  existing empty state no longer contradicts it.
+
+The `?order=` deep link from Buyers' purchase history now OPENS the order rather
+than only highlighting the row, which is what it should always have done once a
+panel existed.

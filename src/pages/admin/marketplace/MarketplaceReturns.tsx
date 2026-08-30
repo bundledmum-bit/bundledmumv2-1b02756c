@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import {
-  fetchReturnsAwaitingConfirmation, fetchReturnsToPay, adminConfirmReturnReceived, adminMarkReturnRefundPaid,
+  fetchReturnsAwaitingConfirmation, fetchReturnsToPay, fetchReturnsNotYetSent, adminConfirmReturnReceived, adminMarkReturnRefundPaid,
   formatNaira, type ReturnAwaitingRow, type ReturnToPayRow,
 } from "./opsData";
 import { OpsHeader, OpsEmpty, StatusPill, CopyField, ConfirmDialog } from "./opsUi";
+import ReturnNotSentYet from "./ReturnNotSentYet";
 
 /**
  * Returns queue (design 20a RT6). Two lists: returns the buyer has posted
@@ -23,6 +24,15 @@ export default function MarketplaceReturns() {
   const { data: toPay, isLoading: toPayLoading, refetch: refetchToPay } = useQuery({
     queryKey: ["mkt-returns-to-pay"],
     queryFn: fetchReturnsToPay,
+    staleTime: 10000,
+  });
+
+  // Same query key as ReturnNotSentYet, so this is the one fetch shared,
+  // not a second one. Only needed so the empty state cannot claim there are
+  // no returns in progress while one is waiting on the buyer above it.
+  const { data: notSentYet } = useQuery({
+    queryKey: ["mkt-returns-not-yet-sent"],
+    queryFn: fetchReturnsNotYetSent,
     staleTime: 10000,
   });
 
@@ -56,11 +66,17 @@ export default function MarketplaceReturns() {
   const awaitingRows = awaiting ?? [];
   const toPayRows = toPay ?? [];
   const overdueCount = awaitingRows.filter((r) => r.is_overdue).length;
-  const nothing = awaitingRows.length === 0 && toPayRows.length === 0;
+  const nothing = awaitingRows.length === 0 && toPayRows.length === 0 && (notSentYet ?? []).length === 0;
 
   return (
     <div>
       <OpsHeader title="Returns" subtitle="Confirm a return arrived back with the seller, then record the refund transfer once it is sent." />
+
+      {/* The step BEFORE the two below, and the one that was missing: only a
+          buyer can say they posted it back, so a buyer who told us on
+          WhatsApp instead left the whole return frozen. Renders nothing when
+          there is none, so the screen is unchanged in the normal case. */}
+      <ReturnNotSentYet />
 
       {nothing ? (
         <OpsEmpty title="No returns in progress" body="Rows appear here once a buyer marks a return sent, following a dispute ruling that required one." />

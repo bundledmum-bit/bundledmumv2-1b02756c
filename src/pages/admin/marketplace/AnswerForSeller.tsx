@@ -6,8 +6,14 @@ import {
   formatNaira, relativeTimeAgo,
   fetchSellerPendingQuestions, fetchSellerPendingVideoRequests, fetchSellerPendingOffers,
   adminAnswerQuestionForSeller, adminFulfilRequestWithListingVideo, adminAnswerOfferForSeller,
+  adminDeclineVideoForSeller, adminSetDeliveryPrefsForSeller, fetchSellerDeliveryPrefs,
+  LOCAL_HANDOVER_CHOICES, type SellerLocalHandover,
   type PendingQuestion, type PendingVideoRequest, type PendingOffer,
 } from "./opsData";
+import {
+  NoteField as SharedNoteField, noteReady, OnBehalfErr, OnBehalfDone, OnBehalfPanel,
+  onBehalfBtn, useOnBehalfSubmit, ReadOnlyNotice,
+} from "./onBehalf";
 
 /**
  * Doing, from the outreach queue, what the seller has already told us on
@@ -53,6 +59,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return (
     <div className="rounded-xl border p-3 flex flex-col gap-2.5" style={{ borderColor: "#F0DDD2", background: "#FFF8F4" }}>
       <div className="font-heading font-black text-[12.5px]">{title}</div>
+      <ReadOnlyNotice />
       {children}
       <div className="text-[10.5px]" style={{ color: "#8A7A72" }}>{OWN_WORDS}</div>
     </div>
@@ -175,6 +182,11 @@ function SendVideo({ r, onDone }: { r: PendingVideoRequest; onDone: () => void }
         className="rounded-lg py-2.5 font-heading font-extrabold text-[12.5px]" style={btn(ready && !busy)}>
         {busy ? `Uploading... ${progress}%` : "Put it on the listing"}
       </button>
+      {/* The other real outcome. A seller who says she cannot film it has
+          answered, and leaving the request open makes the buyer wait for
+          something that is never coming, and keeps nagging the seller for
+          it. Declining is the honest close. */}
+      <DeclineVideo r={r} onDone={onDone} />
     </Panel>
   );
 }
@@ -246,12 +258,163 @@ function AnswerOffer({ o, onDone }: { o: PendingOffer; onDone: () => void }) {
   );
 }
 
+
+/**
+ * A video request the seller has said no to.
+ *
+ * The buyer is waiting either way, so the request has to close one way or
+ * the other. The reason is optional in the function itself, but the buyer
+ * READS it, and "she said no" with nothing else is a worse answer than the
+ * silence it replaces, so the form asks for it plainly.
+ */
+function DeclineVideo({ r, onDone }: { r: PendingVideoRequest; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const { busy, error, done, submit } = useOnBehalfSubmit();
+
+  if (done) return <OnBehalfDone msg={done} />;
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} className="self-start text-[11px] underline" style={{ color: "#8A7A72" }}>
+        She said she cannot film it
+      </button>
+    );
+  }
+
+  const ready = noteReady(note);
+
+  return (
+    <div className="rounded-lg border p-2.5 flex flex-col gap-2.5" style={{ borderColor: "#E3D4CB", background: "#fff" }}>
+      <div className="font-heading font-extrabold text-[11.5px]">Tell the buyer she cannot</div>
+      <label className="flex flex-col gap-1">
+        <span className="font-heading font-extrabold text-[11px]" style={{ color: "#6B5B54" }}>Why not, in her words</span>
+        <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+          placeholder="For example: the item is already packed away at her mother's place"
+          className="rounded-lg border px-2.5 py-2 text-[13px] resize-y" style={{ borderColor: "#E3D4CB" }} />
+        <span className="text-[10.5px]" style={{ color: "#8A7A72" }}>The buyer reads this. Not required, but a reason is a much better answer than none.</span>
+      </label>
+      <SharedNoteField
+        value={note} onChange={setNote}
+        prompt="Where did the seller tell you this?"
+        placeholder="For example: she replied on WhatsApp this afternoon"
+      />
+      <OnBehalfErr msg={error} />
+      <div className="flex gap-2">
+        <button type="button" disabled={!ready || busy}
+          onClick={async () => {
+            const ok = await submit(() => adminDeclineVideoForSeller({ requestId: r.id, reason: reason.trim(), note }), "The buyer has been told.");
+            if (ok) onDone();
+          }}
+          className="font-heading font-extrabold text-[12px] rounded-lg px-3 py-2" style={onBehalfBtn(ready && !busy)}>
+          {busy ? "Working..." : "Tell the buyer"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="text-[11px] underline" style={{ color: "#8A7A72" }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Delivery preferences, recorded for a seller who told us on WhatsApp.
+ *
+ * This is the one stage here that is a SETTING rather than a message, and
+ * it changes what every buyer is told on every one of her listings, so the
+ * form opens on what is already true rather than on a guess.
+ *
+ * Three explicit choices, not a checkbox pair: the function accepts exactly
+ * ships, collection or both, and "both" is not expressible as two
+ * independent boxes without producing values it rejects.
+ */
+function SetDeliveryPrefs({ sellerId, onDone }: { sellerId: string; onDone: () => void }) {
+  const { data: current, isLoading } = useQuery({
+    queryKey: ["admin-seller-delivery-prefs", sellerId],
+    queryFn: () => fetchSellerDeliveryPrefs(sellerId),
+    staleTime: 15000,
+  });
+  const [nationwide, setNationwide] = useState<boolean | null>(null);
+  const [handover, setHandover] = useState<SellerLocalHandover | null>(null);
+  const [note, setNote] = useState("");
+  const { busy, error, done, submit } = useOnBehalfSubmit();
+
+  if (done) return <OnBehalfDone msg={done} />;
+  if (isLoading) return <span className="text-[11px] text-text-med">Looking...</span>;
+
+  const nw = nationwide ?? (current?.sells_nationwide ?? null);
+  const ho = handover ?? ((current?.local_handover as SellerLocalHandover | null) ?? null);
+  const ready = nw !== null && ho !== null && noteReady(note);
+
+  return (
+    <OnBehalfPanel
+      title="Where she sells, and how buyers get it"
+      foot="This applies to everything she has listed, and changes what a buyer is told before they pay."
+    >
+      <div className="flex flex-col gap-1.5">
+        <span className="font-heading font-extrabold text-[11px]" style={{ color: "#6B5B54" }}>Would she send to a buyer anywhere in Nigeria?</span>
+        <div className="flex gap-2">
+          <Choice on={nw === true} onClick={() => setNationwide(true)} label="Yes, anywhere" />
+          <Choice on={nw === false} onClick={() => setNationwide(false)} label="Only near her" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <span className="font-heading font-extrabold text-[11px]" style={{ color: "#6B5B54" }}>And for a buyer near her?</span>
+        <div className="flex flex-col gap-1.5">
+          {LOCAL_HANDOVER_CHOICES.map((c) => (
+            <button key={c.key} type="button" onClick={() => setHandover(c.key)}
+              className="text-left rounded-lg border px-2.5 py-2"
+              style={{ borderColor: ho === c.key ? "#2D6A4F" : "#E3D4CB", background: ho === c.key ? "#D8EFE5" : "#fff" }}>
+              <div className="font-heading font-extrabold text-[12px]">{c.title}</div>
+              <div className="text-[10.5px]" style={{ color: "#8A7A72" }}>{c.detail}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <SharedNoteField
+        value={note} onChange={setNote}
+        prompt="Where did the seller tell you this?"
+        placeholder="For example: she said on WhatsApp she posts nationwide by GIG"
+      />
+      <OnBehalfErr msg={error} />
+      <button type="button" disabled={!ready || busy}
+        onClick={async () => {
+          if (nw === null || ho === null) return;
+          const ok = await submit(
+            () => adminSetDeliveryPrefsForSeller({ sellerId, sellsNationwide: nw, localHandover: ho, note }),
+            "Recorded.",
+          );
+          if (ok) onDone();
+        }}
+        className="self-start font-heading font-extrabold text-[12px] rounded-lg px-3 py-2" style={onBehalfBtn(ready && !busy)}>
+        {busy ? "Saving..." : "Record this"}
+      </button>
+    </OnBehalfPanel>
+  );
+}
+
+function Choice({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="font-heading font-extrabold text-[12px] rounded-lg px-3 py-2 border"
+      style={{ borderColor: on ? "#2D6A4F" : "#E3D4CB", background: on ? "#D8EFE5" : "#fff", color: "#1A1A1A" }}>
+      {label}
+    </button>
+  );
+}
+
 /* ── The dispatcher mounted on an outreach row ────────────────────────── */
 
 const STAGE_TITLES: Record<string, string> = {
   unanswered_question: "Answer for them",
   video_request_pending: "Send their video",
   offer_awaiting_response: "Answer their offer",
+  // Not a pending item to answer, a setting to record. It sits here anyway
+  // because it is the same conversation: this row exists precisely because
+  // buyers cannot tell whether she would send to them, and she has almost
+  // certainly just said on WhatsApp that she would.
+  missing_delivery_prefs: "Set this for them",
 };
 
 export function canAnswerForSeller(stageKey: string): boolean {
@@ -273,6 +436,7 @@ export default function AnswerForSeller({ sellerId, stageKey }: { sellerId: stri
     queryFn: async (): Promise<PendingAny[]> => {
       if (stageKey === "unanswered_question") return fetchSellerPendingQuestions(sellerId);
       if (stageKey === "video_request_pending") return fetchSellerPendingVideoRequests(sellerId);
+      if (stageKey === "missing_delivery_prefs") return [];
       return fetchSellerPendingOffers(sellerId);
     },
   });
@@ -285,8 +449,12 @@ export default function AnswerForSeller({ sellerId, stageKey }: { sellerId: stri
   if (!canAnswerForSeller(stageKey)) return null;
 
   if (done) {
+    // Delivery preferences are a setting, not a reply, so the confirmation
+    // must not claim a buyer was told something they were not.
     return (
-      <Done msg="Sent. The buyer has been told, and it shows as the seller's own reply." />
+      <Done msg={stageKey === "missing_delivery_prefs"
+        ? "Recorded. It applies to everything she has listed."
+        : "Sent. The buyer has been told, and it shows as the seller's own reply."} />
     );
   }
 
@@ -303,9 +471,10 @@ export default function AnswerForSeller({ sellerId, stageKey }: { sellerId: stri
   return (
     <div className="flex flex-col gap-2 mt-1">
       {q.isLoading && <span className="text-[11px] text-text-med">Looking...</span>}
-      {!q.isLoading && rows.length === 0 && (
+      {!q.isLoading && rows.length === 0 && stageKey !== "missing_delivery_prefs" && (
         <span className="text-[11px] text-text-med">Nothing outstanding here any more. It may have just been answered.</span>
       )}
+      {stageKey === "missing_delivery_prefs" && <SetDeliveryPrefs sellerId={sellerId} onDone={finish} />}
       {stageKey === "unanswered_question" && (rows as PendingQuestion[]).map((r) => (
         <AnswerQuestion key={r.id} q={r} onDone={finish} />
       ))}
