@@ -1376,3 +1376,68 @@ export async function fetchOnBehalfLog(): Promise<OnBehalfLogRow[]> {
   if (error) throw error;
   return (data ?? []) as OnBehalfLogRow[];
 }
+
+/* ── Search aliases ─────────────────────────────────────────────────────
+ *
+ * What people type, mapped to what titles actually say. The search function
+ * applies these before it matches, so adding one fixes a whole class of
+ * miss without a deploy: breastpump to breast pump, pram to stroller, crib
+ * to cot, and Nigerian usage like tokunbo and fairly used to used.
+ *
+ * Written straight to the table rather than through an RPC, which is what
+ * the "Admin manages search aliases" policy allows. That policy now also
+ * carries `and not is_design_viewer()`, so a read-only account is refused
+ * by the database here exactly as it is by the write functions.
+ */
+
+export interface SearchAlias {
+  term: string;
+  maps_to: string;
+}
+
+export async function fetchSearchAliases(): Promise<SearchAlias[]> {
+  const { data, error } = await adb.from("marketplace_search_aliases")
+    .select("term, maps_to").order("term");
+  if (error) throw error;
+  return (data ?? []) as SearchAlias[];
+}
+
+/** The term is stored lowercase and trimmed because that is the form
+ * marketplace_search_terms looks it up in: it normalises the query to
+ * lowercase with punctuation stripped before checking, so an alias saved
+ * as "Breast Pump" would simply never be found. */
+export async function saveSearchAlias(input: { term: string; mapsTo: string }): Promise<RpcResult> {
+  const term = input.term.trim().toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  const mapsTo = input.mapsTo.trim().toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  if (term.length < 2) return { ok: false, message: "What someone types needs at least two characters." };
+  if (mapsTo.length < 2) return { ok: false, message: "What it should find needs at least two characters." };
+  if (term === mapsTo) return { ok: false, message: "Those are the same word, so this would change nothing." };
+  const { error } = await adb.from("marketplace_search_aliases")
+    .upsert({ term, maps_to: mapsTo }, { onConflict: "term" });
+  if (error) return { ok: false, message: error.message || "That could not be saved." };
+  return { ok: true, message: `Saved. Anyone searching "${term}" now finds "${mapsTo}".` };
+}
+
+export async function deleteSearchAlias(term: string): Promise<RpcResult> {
+  const { error } = await adb.from("marketplace_search_aliases").delete().eq("term", term);
+  if (error) return { ok: false, message: error.message || "That could not be removed." };
+  return { ok: true };
+}
+
+/** What people searched for and did not find, with how many the search WOULD
+ * find now. A row with would_find_now above zero is already fixed; a zero is
+ * either stock we do not have or a term that needs an alias. */
+export interface SearchMissRow {
+  term: string;
+  times: number;
+  people: number;
+  last_tried: string;
+  would_find_now: number;
+  has_alias: boolean;
+}
+
+export async function fetchSearchMisses(): Promise<SearchMissRow[]> {
+  const { data, error } = await adb.from("marketplace_search_misses").select("*");
+  if (error) throw error;
+  return (data ?? []) as SearchMissRow[];
+}

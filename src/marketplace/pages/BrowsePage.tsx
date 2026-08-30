@@ -298,6 +298,9 @@ export default function BrowsePage() {
   // category filter alone, distinct from a combined filter that also happens to
   // return zero results (that stays the existing generic empty state).
   const categoryOnly = !!filters.categoryId && !filters.state && !filters.city && filters.minPrice == null && filters.maxPrice == null && !filters.conditions.length && !filters.search;
+  // A typed word and nothing else applied, so "we have nothing like that" is
+  // the whole truth rather than a filter hiding stock we do have.
+  const searchOnly = !!filters.search.trim() && !filters.categoryId && !filters.groupId && !filters.state && !filters.city && filters.minPrice == null && filters.maxPrice == null && !filters.conditions.length;
 
   function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 
@@ -554,6 +557,22 @@ export default function BrowsePage() {
               categoryIcon={catIcon}
               onClearCategory={() => setFilters((f) => ({ ...f, categoryId: "" }))}
             />
+          ) : listings.length === 0 && filters.search.trim() ? (
+            /* The only case worth wording differently. The search now reads
+               plurals, spacing, noise words and typos, so nothing found
+               really does mean we have nothing, not that it could not read
+               them. Saying "try loosening a filter" to someone who typed a
+               word and applied no filter is advice they cannot act on.
+               Never says HOW it matched: match_kind is for us. */
+            <div className="mkt-center">
+              <div className="mkt-empty-title">We have nothing like "{filters.search.trim()}" right now</div>
+              <div className="mkt-empty-sub">
+                {anyFilter && !searchOnly
+                  ? "Try clearing your filters, or search for something else. New listings are added often."
+                  : "Try another word for it, or browse the categories below. New listings are added often."}
+              </div>
+              {anyFilter && <button className="mkt-secondary" style={{ maxWidth: 220, marginTop: 6 }} onClick={clearAll}>Clear all filters</button>}
+            </div>
           ) : listings.length === 0 ? (
             <div className="mkt-center">
               <div className="mkt-empty-title">Nothing matches just yet</div>

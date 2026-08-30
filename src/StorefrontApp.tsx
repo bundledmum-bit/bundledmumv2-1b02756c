@@ -181,6 +181,7 @@ import MarketplaceListingEdit from "@/pages/admin/marketplace/MarketplaceListing
 import MarketplaceSplitReview from "@/pages/admin/marketplace/MarketplaceSplitReview";
 import MarketplaceOrders from "@/pages/admin/marketplace/MarketplaceOrders";
 import MarketplaceOnBehalfLog from "@/pages/admin/marketplace/MarketplaceOnBehalfLog";
+import MarketplaceSearchAliases from "@/pages/admin/marketplace/MarketplaceSearchAliases";
 import MarketplaceMoneyOwed from "@/pages/admin/marketplace/MarketplaceMoneyOwed";
 import MarketplaceFinance from "@/pages/admin/marketplace/MarketplaceFinance";
 import MarketplaceCategoryFields from "@/pages/admin/marketplace/MarketplaceCategoryFields";
@@ -619,6 +620,7 @@ const StorefrontApp = () => (
                 <Route path="marketplace/listings/:id/split-review" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSplitReview /></PermissionGate>} />
                 <Route path="marketplace/orders" element={<PermissionGate module="marketplace" action="manage"><MarketplaceOrders /></PermissionGate>} />
                 <Route path="marketplace/on-behalf" element={<PermissionGate module="marketplace" action="manage"><MarketplaceOnBehalfLog /></PermissionGate>} />
+                <Route path="marketplace/search-words" element={<PermissionGate module="marketplace" action="manage"><MarketplaceSearchAliases /></PermissionGate>} />
                 <Route path="marketplace/money-owed" element={<PermissionGate module="marketplace" action="manage"><MarketplaceMoneyOwed /></PermissionGate>} />
                 <Route path="marketplace/finance" element={<PermissionGate module="marketplace" action="manage"><MarketplaceFinance /></PermissionGate>} />
                 <Route path="marketplace/categories" element={<PermissionGate module="marketplace" action="manage"><MarketplaceCategoryFields /></PermissionGate>} />

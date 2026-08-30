@@ -15,7 +15,7 @@ import {
   Inbox, Video, FolderOpen, Wrench, CreditCard, Clock, Film, Search as SearchIcon, PhoneCall,
   type LucideIcon,
 } from "lucide-react";
-import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone, History } from "lucide-react";
+import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone, History, Languages } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
@@ -171,7 +171,16 @@ function AdminLayoutInner() {
     // Read to decide, never to act on, and the only one of its kind. A group
     // of one is worse than no group, so it stays top level until a second
     // insight screen exists.
-    { label: "What buyers searched for", to: "/admin/marketplace/search-demand", icon: SearchIcon },
+    // No longer alone, so it becomes a group of two by §169's own rule. Both
+    // are about what buyers type: one is read to decide, the other is where
+    // you act on it by teaching the search a word.
+    {
+      label: "What buyers searched for", to: "/admin/marketplace/search-demand", icon: SearchIcon,
+      children: [
+        { label: "What they searched for", to: "/admin/marketplace/search-demand", icon: SearchIcon },
+        { label: "Search words", to: "/admin/marketplace/search-words", icon: Languages },
+      ],
+    },
     {
       label: "Setup", to: "/admin/marketplace/settings", icon: Wrench,
       children: [

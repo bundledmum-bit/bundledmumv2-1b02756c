@@ -79,15 +79,55 @@ export interface BrowseFilters {
   sort: BrowseSort;
 }
 
+/**
+ * The ids that match what was typed, in relevance order.
+ *
+ * Search used to be `title ilike '%term%'`, one substring against one column,
+ * and the search log showed every failing search had matching stock:
+ * "cots" missed "cot", "breastpump" missed "breast pump", "baby chair" missed
+ * "Baby Starter-chair" because no title holds that exact pair, and "baby bad"
+ * plainly meant bed. Live, that ilike returned NOTHING for six of the ten
+ * terms people actually typed.
+ *
+ * search_marketplace_listings does the reading instead: it strips noise words
+ * (every listing here is a baby item, so "baby" narrows nothing), applies the
+ * 44 admin-editable aliases, stems a trailing s, then tries exact, then
+ * partial, then fuzzy, stopping at the first pass that finds anything. Fuzzy
+ * being LAST is the point: it rescues a typo without diluting a good match.
+ *
+ * WHY IDS AND NOT ITS ROWS. The function returns nine columns and a listing
+ * card needs about twenty-five, and it returns no category_id at all, so its
+ * output cannot be filtered by category even in principle. Taking the ids and
+ * fetching them through LISTING_SELECT keeps the cards and all eight filters
+ * exactly as they were, and keeps the count a real server-side count, which is
+ * what the search log depends on.
+ */
+const SEARCH_ID_LIMIT = 500;
+
+async function searchListingIds(query: string): Promise<string[]> {
+  // p_limit is applied INSIDE each pass, before any of our filters run, so a
+  // small one would silently mean "Lagos cots among the best-ranked 60 cots"
+  // rather than all of them, and would cap the recorded count too. Set above
+  // the live catalogue (244) so it is not a real ceiling, while still bounded.
+  const { data, error } = await mdb.rpc("search_marketplace_listings", {
+    p_query: query, p_limit: SEARCH_ID_LIMIT,
+  });
+  if (error) return [];
+  return ((data ?? []) as Array<{ listing_id: string }>).map((r) => r.listing_id);
+}
+
 /** Builds the live-listings query with every filter applied SERVER SIDE, so this
- * scales past the seeded set. head:true gives just a count for the live sheet. */
-function buildBrowseQuery(f: BrowseFilters, head: boolean) {
+ * scales past the seeded set. head:true gives just a count for the live sheet.
+ * searchIds is the relevance-ordered result of searchListingIds, or null when
+ * nothing was typed. */
+function buildBrowseQuery(f: BrowseFilters, head: boolean, searchIds: string[] | null) {
   let q = mdb
     .from("marketplace_listings")
     .select(head ? "id" : LISTING_SELECT, { count: "exact", head })
     .eq("status", "live");
-  const search = f.search.trim();
-  if (search) q = q.ilike("title", `%${search}%`);
+  // The search is now an id set rather than a LIKE, and it is ANDed with the
+  // rest exactly as the LIKE was, so every other filter behaves identically.
+  if (searchIds) q = q.in("id", searchIds);
   // categoryId (a single category) always takes priority over categoryIds (a whole
   // group) if both are ever set at once — the finer filter wins, and this also
   // guards against a stale group selection lingering after a category is picked.
@@ -109,9 +149,27 @@ export function useBrowseListings(filters: BrowseFilters) {
   return useQuery({
     queryKey: ["marketplace", "browse", filters],
     queryFn: async (): Promise<{ listings: MarketplaceListing[]; count: number }> => {
-      const { data, error, count } = await buildBrowseQuery(filters, false);
+      const term = filters.search.trim();
+      const searchIds = term ? await searchListingIds(term) : null;
+      // Nothing matched what they typed, so there is no second query to make
+      // and no chance of `.in("id", [])` being read as "no filter".
+      if (searchIds && searchIds.length === 0) return { listings: [], count: 0 };
+
+      const { data, error, count } = await buildBrowseQuery(filters, false, searchIds);
       if (error) throw error;
-      const listings = (data ?? []) as unknown as MarketplaceListing[];
+      let listings = (data ?? []) as unknown as MarketplaceListing[];
+
+      // Relevance is the sort when someone has typed something and not asked
+      // for a different order: the function already ranks by pass, then a
+      // video, then views, and PostgREST cannot express that. An explicit
+      // price sort is a deliberate choice by the buyer and still wins.
+      if (searchIds && filters.sort === "newest") {
+        const rank = new Map(searchIds.map((id, i) => [id, i]));
+        listings = [...listings].sort(
+          (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity),
+        );
+      }
+
       const sellers = await fetchSellersByIds(listings.map((l) => l.seller_id));
       for (const l of listings) l.seller = sellers.get(l.seller_id) ?? null;
       return { listings, count: count ?? listings.length };
@@ -126,7 +184,10 @@ export function useBrowseCount(filters: BrowseFilters, enabled: boolean) {
     queryKey: ["marketplace", "browse-count", filters],
     enabled,
     queryFn: async (): Promise<number> => {
-      const { count, error } = await buildBrowseQuery(filters, true);
+      const term = filters.search.trim();
+      const searchIds = term ? await searchListingIds(term) : null;
+      if (searchIds && searchIds.length === 0) return 0;
+      const { count, error } = await buildBrowseQuery(filters, true, searchIds);
       if (error) throw error;
       return count ?? 0;
     },

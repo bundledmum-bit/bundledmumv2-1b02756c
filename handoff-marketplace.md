@@ -9967,3 +9967,113 @@ that is said plainly rather than glossed.
 The `?order=` deep link from Buyers' purchase history now OPENS the order rather
 than only highlighting the row, which is what it should always have done once a
 panel existed.
+
+## 178. A search that could not read (2026-08-30)
+
+Every search in the log that found nothing had matching stock. "cots" and we
+have 7. "breastpump", 7. "baby chair", 6. "baby bad", 12. Not missing stock, a
+search that could not read.
+
+**It was one line.** `q.ilike("title", '%' + search + '%')`: a single substring
+against a single column, no description, no category, no seller. Measured
+against live data, that ilike returned **0** for cots, breastpump, baby chair,
+baby bad, carseat, walka and baby bouncher, and **1** for pram where there are
+12.
+
+`search_marketplace_listings` reads instead: noise words dropped (every listing
+here is a baby item, so "baby" narrows nothing), 44 admin-editable aliases
+applied, a trailing s stemmed, then exact, then partial, then fuzzy, stopping at
+the first pass that finds anything. Fuzzy last is the point, it rescues a typo
+without diluting a good match. "baby bad" is not the fuzzy pass rescuing it:
+"baby" is noise and an alias maps bad to bed, so it lands as an EXACT match.
+
+### Ids, not its rows, and why that was forced
+
+The function returns nine columns and a listing card needs about twenty five, so
+its rows cannot be rendered. More decisively it returns **no category_id at
+all**, so its output cannot be filtered by category even in principle. So it
+supplies the matching ids in relevance order and those go through the existing
+LISTING_SELECT with `.in("id", ids)`. Cards are untouched, all EIGHT filters
+still AND server side (the brief said two; there are category, group, state,
+city, min price, max price, condition and sort), and the count stays a real
+server-side count, which is what the search log depends on.
+
+Relevance is the order when someone has typed and not asked for something else.
+An explicit price sort is a deliberate choice and still wins.
+
+### The silent ceiling that would have looked correct
+
+`p_limit` is applied INSIDE each pass, before any of our filters run. At the
+default 60, "cot in Lagos" would have meant "Lagos cots among the 60 best-ranked
+cots" rather than all of them, and the recorded count would have inherited the
+cap. Set to 500, above the 244 live listings, so it is bounded but not binding.
+This is the kind of cap that looks right until someone notices a missing
+listing.
+
+`.in("id", [])` is never issued: zero matches returns early, so an empty array
+can never be read as "no filter".
+
+### The only wording change
+
+`match_kind` is never shown. The one case worth wording differently is genuinely
+none, because the search now reads plurals, spacing, noise and typos, so nothing
+found really does mean we have nothing rather than that it could not read them.
+"We have nothing like "trombone" right now", and the sub-line differs by whether
+a filter is also on, since "try loosening a filter" is unactionable advice for
+someone who typed a word and applied none.
+
+### The hole this audit found, fixed in Supabase
+
+`marketplace_search_aliases` was writable by the read-only design account: its
+policy was `has_admin_permission('marketplace','manage')` with no read-only
+guard. The same shape existed on **seventeen other tables** including listings,
+orders, disputes, offers and sellers. The 24 write RPCs all called
+`assert_not_read_only()`, but a client can write to a table directly, so the
+guard was bypassable and "cannot change anything" was true of the functions and
+false of the tables. All 19 policies now carry `and not is_design_viewer()`;
+verified none remain unguarded.
+
+It was NOT tested by writing a row. Doing so would have proven the hole by
+exploiting it on live data.
+
+### Verified by typing, in the real interface
+
+| typed | before | now |
+|---|---|---|
+| cots | 0 | **7** |
+| breastpump | 0 | **7** |
+| baby chair | 0 | **6**, "Generic- Baby Starter-chair" first |
+| baby bad | 0 | **12** |
+
+Filters combine: Lagos alone 125, cots alone 7, **cots + Lagos 3**, all three
+shown Lagos, matching SQL exactly. Strollers and prams alone 12, and **cots
+inside it 0**, correctly, since all 7 cots sit in Cots and cribs.
+
+The recorded count is the real one and is now non-zero for all four:
+`cots 7`, `breastpump 7`, `baby chair 6`, `baby bad 12`, and `cots` with
+`state: Lagos` recorded **3**, not 7. One row per term at 80ms per keystroke, so
+the 350ms debounce still holds.
+
+### Search words screen
+
+At `/admin/marketplace/search-words`, listing all 44 with add and remove, beside
+what is still failing. **The misses list says plainly that most of it is not a
+problem**: the term is recorded once typing pauses, so a slow typist logs
+"breastp" on the way to "breastpump". Only rows with `would_find_now = 0` are
+shown as needing action, currently 3 of 26, and the screen says the other 23
+would find results now. A term that survives is usually stock we do not have, or
+a place name that belongs in the location filter, and neither is fixed by adding
+a word.
+
+Nav: "What buyers searched for" was top level and alone by §169's rule that a
+group of one is worse than no group. It is now a group of two, both about what
+buyers type: one read to decide, one where you act on it.
+
+Verified as the design account: 44 shown, the read-only line present, Add and
+every Remove disabled. The protection is the policy, the disable is only so a
+control that refuses is not mistaken for a broken one.
+
+**Test rows left in the log:** the verification searches above are real rows in
+`marketplace_searches` (cots, breastpump, baby chair, baby bad, trombone), and
+"trombone" is now one of the 3 in the misses list. Left in place rather than
+deleted unasked.
