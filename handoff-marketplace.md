@@ -10077,3 +10077,102 @@ control that refuses is not mistaken for a broken one.
 `marketplace_searches` (cots, breastpump, baby chair, baby bad, trombone), and
 "trombone" is now one of the 3 in the misses list. Left in place rather than
 deleted unasked.
+
+## 179. Every search and filter is a URL (2026-08-30)
+
+### What the URL carried before, measured
+
+Browse is `/marketplace/`, and only three and a half of the nine things
+reached the URL: `category` and `group` as slugs, `state`, and `condition`
+ONLY when exactly one was picked (zero or several had no URL form, so the
+param simply vanished). Search, city, min price, max price and sort lived
+purely in React state. The old sync effect said so: "never search/price, out
+of scope for both."
+
+The cost, measured rather than assumed. Typed "cot", got 7, opened a listing,
+pressed back:
+
+```
+url after searching:   /marketplace/     (unchanged)
+search box after back: ""
+results after back:    224               (the whole catalogue)
+```
+
+The same trip with `?state=Lagos` returned 125 before and 125 after, which is
+the point: the mechanism already worked and had simply never been pointed at
+the search.
+
+### The params
+
+`q`, `category`, `group`, `state`, `city`, `min`, `max`, `condition`
+(comma separated, so several finally have a form), `sort` (omitted when
+newest). Everything at its default is omitted, so a plain browse stays
+`/marketplace/`. **These names are a contract with the prerender edge
+function**, which reads them to build a title and preview for a shared link.
+
+  /marketplace?q=cots&state=Lagos
+
+Encoding and decoding live in `browseUrl.ts`, pure and separate from the page,
+because the round trip is a property that either holds for every filter or
+does not. 15 tests. One caught a real bug: `min=-5` had its sign stripped by
+`replace(/[^0-9]/g,"")` and became a 5 naira filter the buyer never asked for.
+Now a price is a plain positive integer or it is nothing.
+
+### Replace, never push
+
+The search is already debounced into `filters` at 350ms, so the URL write
+hangs off settled state and needs no second timer. Everything is `replace`:
+**0 history entries were added by typing "cot"**, verified. Back therefore
+leaves the listing rather than walking backwards through a filter session. The
+cost is that back never undoes one filter, which is what Clear all filters is
+for.
+
+The write also compares as a string before touching history, and
+`writeBrowseUrl` emits a fixed param order, so a render that changes nothing
+cannot rewrite the URL.
+
+It holds off entirely while a category or group SLUG is still resolving,
+rather than writing a URL with the category missing, which would drop it from
+a link shared during that window.
+
+### Not recording a restored search
+
+`record_marketplace_search` must not fire because a URL was opened. A FLAG,
+not a pre-computed key, and the difference is the whole point: a `?category=`
+slug only resolves to an id after the category list loads, so a key seeded at
+mount stops matching the moment it resolves and the restored search records
+after all. Suppressing the first pass that would otherwise record is exact
+whenever the slug lands. It suppresses exactly one.
+
+Verified against the live table:
+
+| action | recorded |
+|---|---|
+| typed "cot" | `cot`, 7, once |
+| typed "cots" with Lagos on | `cots`, **3**, state Lagos |
+| back from a listing, search restored | nothing |
+| opened `?q=cots&state=Lagos` cold | nothing |
+| typed "bouncer" after arriving on that link | `bouncer`, 3, Lagos |
+| opened `?q=cot&category=cots-and-cribs`, slug resolving | nothing, `cot` still 1 row |
+
+### Verified
+
+Back from a listing now returns to `?q=cot` with "cot" in the box and 7
+results. A URL carrying five things at once restores all of them:
+`?q=cot&category=cots-and-cribs&condition=good,almost_new&sort=price_asc` gave
+the term in the box, the Cots and cribs chip, BOTH condition chips (a
+combination that previously had no URL form at all), and 6 results genuinely
+ascending by price. The URL did not churn as the slug resolved.
+
+Preserved: cots plus Lagos still 3, all Lagos; "trombone" still returns the
+honest empty state rather than the catalogue.
+
+### The instrument lied, again
+
+The Browser pane served three identical stale screenshots showing a loading
+spinner while the DOM reported the grid rendered with 3 cards and ZERO
+`.mkt-center` blocks. Rather than report a spinner bug, I set a magenta
+outline on the body and screenshotted again: it never appeared, proving the
+pane was not painting. A fresh tab captured the real page immediately. Same
+lesson as §171, in a new place: check the instrument records a known-true
+change before believing what it shows.

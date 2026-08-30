@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { recordMarketplaceSearch } from "../searchDemand";
+import { readBrowseUrl, writeBrowseUrl, browseUrlKey } from "../browseUrl";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -113,26 +114,31 @@ export default function BrowsePage() {
   // slug (a typo in an ad, or a group renamed since the link was made) falls
   // through to unfilteredNote rather than an error or a silent empty result.
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialCategoryParam = searchParams.get("category") || "";
-  const initialGroupParam = searchParams.get("group") || "";
-  // ?state= and ?condition= (from the listing detail chips, see handoff §57)
-  // need no async lookup like a category/group slug does — a state name and
-  // a condition value are matched directly, so they resolve synchronously
-  // here, the same way the UUID form of ?category= always has.
-  const initialStateParam = searchParams.get("state") || "";
-  const initialConditionParam = searchParams.get("condition") || "";
+  // Everything the URL carries, read once on mount. Every filter and the
+  // search term now travel here, not just category, group and state: before
+  // this, someone who searched "cot", opened a listing and pressed back
+  // landed on the full 224-item catalogue with an empty box, measured.
+  //
+  // A state name, a city, a price, a condition and a sort all resolve
+  // synchronously. Only a category or group SLUG cannot, since it needs the
+  // category list, so those stay "pending" and are consumed below. The UUID
+  // form of ?category= still resolves immediately, as it always has.
+  const initial = readBrowseUrl(searchParams);
+  const initialCategoryParam = initial.category;
+  const initialGroupParam = initial.group;
   const [filters, setFilters] = useState<BrowseFilters>({
     ...EMPTY,
+    ...initial.filters,
     categoryId: isUuid(initialCategoryParam) ? initialCategoryParam : "",
-    state: initialStateParam,
-    conditions: CONDITION_VALUES.includes(initialConditionParam) ? [initialConditionParam] : [],
   });
   const [pendingCategorySlug, setPendingCategorySlug] = useState<string | null>(
     initialCategoryParam && !isUuid(initialCategoryParam) ? initialCategoryParam : null,
   );
   const [pendingGroupSlug, setPendingGroupSlug] = useState<string | null>(initialGroupParam || null);
   const [unrecognisedFilterNote, setUnrecognisedFilterNote] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState("");
+  // Seeded from the URL so a restored search shows in the box immediately,
+  // rather than the box being empty while results are filtered.
+  const [searchInput, setSearchInput] = useState(initial.filters.search);
   const [sheetOpen, setSheetOpen] = useState(false);
   const { isLoggedIn } = useCustomerAuth();
 
@@ -188,43 +194,41 @@ export default function BrowsePage() {
     }
   }, [categories, groups, categoriesLoading, groupsLoading, pendingCategorySlug, pendingGroupSlug]);
 
-  // Keeps the URL in sync with whichever category/group filter is active, in
-  // its readable slug form, from wherever it was set (a home tile, the
-  // accordion, a chip clear) — so the current view is always the shareable
-  // link, without every one of those click handlers needing to know about
-  // the URL at all. Only category and group here (see the sibling effect
-  // below for state/condition); never search/price, out of scope for both.
+  /**
+   * One effect, writing the WHOLE filter set to the URL.
+   *
+   * This replaced two effects that between them wrote only category, group,
+   * state and a lone condition, which is why a search and four filters
+   * evaporated on the back button. Every search and filter combination is now
+   * a shareable URL, which is the point: a mum sends "cots in Lagos" to a
+   * friend on WhatsApp, and that is distribution we could not previously
+   * receive.
+   *
+   * REPLACE, never push. The search is already debounced into `filters` at
+   * 350ms, so this fires on a settled term rather than per keystroke, but even
+   * so a history entry per filter change would mean the back button walks
+   * backwards through a filter session instead of leaving the listing. The
+   * cost is that back never undoes a single filter, which is what "Clear all
+   * filters" is for.
+   *
+   * Compared as a string first, so a render that changes nothing does not
+   * rewrite history. writeBrowseUrl emits a fixed param order for exactly
+   * this reason.
+   *
+   * A category or group SLUG can only be written once the category list has
+   * loaded. Until then this holds off entirely rather than writing a URL with
+   * the category missing, which would drop it from a link the moment someone
+   * shared during that window.
+   */
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    let changed = false;
-    if (filters.categoryId) {
-      const slug = categories.find((c) => c.id === filters.categoryId)?.slug;
-      if (slug && (next.get("category") !== slug || next.has("group"))) { next.set("category", slug); next.delete("group"); changed = true; }
-    } else if (filters.groupId) {
-      const slug = groups.find((g) => g.id === filters.groupId)?.slug;
-      if (slug && (next.get("group") !== slug || next.has("category"))) { next.set("group", slug); next.delete("category"); changed = true; }
-    } else if (next.has("category") || next.has("group")) {
-      next.delete("category"); next.delete("group"); changed = true;
-    }
-    if (changed) setSearchParams(next, { replace: true });
-  }, [filters.categoryId, filters.groupId, categories, groups]);
-
-  // Same idea, a sibling effect rather than folding into the one above so
-  // each stays easy to reason about on its own: keeps ?state= and
-  // ?condition= in sync with the location and condition filters, for the
-  // listing detail chips (handoff §57) and anything else that sets them.
-  // A single condition maps to one plain value; zero or several (the sheet
-  // allows multiple checkboxes) has no one clean URL form, so the param is
-  // simply absent then, same as before this existed.
-  useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    let changed = false;
-    if (filters.state) { if (next.get("state") !== filters.state) { next.set("state", filters.state); changed = true; } }
-    else if (next.has("state")) { next.delete("state"); changed = true; }
-    if (filters.conditions.length === 1) { if (next.get("condition") !== filters.conditions[0]) { next.set("condition", filters.conditions[0]); changed = true; } }
-    else if (next.has("condition")) { next.delete("condition"); changed = true; }
-    if (changed) setSearchParams(next, { replace: true });
-  }, [filters.state, filters.conditions]);
+    if (categoriesLoading || groupsLoading) return;
+    if (pendingCategorySlug != null || pendingGroupSlug != null) return;
+    const next = writeBrowseUrl(filters, {
+      categorySlug: categories.find((c) => c.id === filters.categoryId)?.slug ?? null,
+      groupSlug: groups.find((g) => g.id === filters.groupId)?.slug ?? null,
+    });
+    if (browseUrlKey(next) !== browseUrlKey(searchParams)) setSearchParams(next, { replace: true });
+  }, [filters, categories, groups, categoriesLoading, groupsLoading, pendingCategorySlug, pendingGroupSlug, searchParams, setSearchParams]);
 
   const listings = data?.listings ?? [];
   const count = data?.count ?? 0;
@@ -248,12 +252,35 @@ export default function BrowsePage() {
    * found" is a different fact from "pram".
    */
   const lastRecordedSearch = useRef<string | null>(null);
+  /**
+   * True when the URL ARRIVED carrying a search, so the first settled state is
+   * a restored one and must not be recorded.
+   *
+   * This matters now that a search lives in the URL. Pressing back from a
+   * listing, or opening a link a friend sent on WhatsApp, would otherwise log
+   * "cot" again every time, and the search log is how we found that the old
+   * search could not read plurals at all. Phantom searches would cost us the
+   * next such finding.
+   *
+   * A FLAG rather than a pre-computed key, deliberately. A ?category= slug
+   * only resolves to an id after the category list loads, so a key seeded at
+   * mount would stop matching the moment it resolved and the restored search
+   * would record after all. Suppressing the first pass that would otherwise
+   * record is exact regardless of when the slug lands.
+   *
+   * It suppresses exactly one, so a buyer who opens a shared "cots in Lagos"
+   * link and then types something else is still recorded.
+   */
+  const restoredFromUrl = useRef<boolean>(!!initial.filters.search.trim());
   useEffect(() => {
     const term = filters.search.trim();
     if (!term || isLoading || isError || !data) return;
     const key = `${term}|${filters.categoryId}|${filters.state}`;
     if (lastRecordedSearch.current === key) return;
     lastRecordedSearch.current = key;
+    // The one this page opened with. Remembered, so a later change still
+    // records, but not logged as something the buyer just typed.
+    if (restoredFromUrl.current) { restoredFromUrl.current = false; return; }
     recordMarketplaceSearch({
       term,
       resultsCount: count,
