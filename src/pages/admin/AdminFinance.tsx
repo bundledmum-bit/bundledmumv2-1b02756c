@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { NavLink, Routes, Route, useNavigate } from "react-router-dom";
@@ -229,6 +229,8 @@ function plRowKobo(row: PLRow | undefined, key: keyof PLRow): number {
 // ================================================================
 // Acquisition KPI formatters. NOTE: the finance_kpi_* views are already in
 // NAIRA, so these do NOT use fmtNaira (which expects kobo and divides by 100).
+// Parse to a finite number or null (for null-safe comparisons in the new views).
+const toNum = (v: any): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 const acqNgn = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : "₦" + Number(n).toLocaleString("en-NG"));
 const acqPct = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(1)}%`);
 const acqRoas = (n: number | null | undefined) => (n === null || n === undefined ? "n/a" : `${Number(n).toFixed(2)}x`);
@@ -338,6 +340,24 @@ function DashboardTab() {
     },
     staleTime: 60_000,
   });
+
+  // Sub-view within the dashboard: Storefront (the existing screen) | Marketplace | Company.
+  const [subView, setSubView] = useState<"storefront" | "marketplace" | "company">("storefront");
+
+  // Company-wide period figures (range-driven, SAME range as the P&L cards via
+  // pmRange). Powers the Storefront contribution cards below; the Marketplace
+  // and Company sub-views fetch their own copies keyed on the same range.
+  const { data: cfpRows } = useQuery({
+    queryKey: ["company-finance-period", pmRange?.start, pmRange?.end],
+    enabled: !!pmRange,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("company_finance_period", { p_start: pmRange!.start, p_end: pmRange!.end });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const cfp = cfpRows?.[0];
 
   // Switch to a preset, or reveal custom inputs seeded from the current range
   // (and keep the cards on that range until the user edits + Applies).
@@ -540,7 +560,34 @@ function DashboardTab() {
         </div>
       )}
 
+      {/* Sub-view switcher — the dashboard split into three separated views.
+          All three share the single range picker above (range-driven RPCs);
+          snapshot/trend panels inside each view are labelled as not filtered. */}
+      <div className="flex flex-wrap gap-1.5">
+        {(([["storefront", "Storefront"], ["marketplace", "Marketplace"], ["company", "Company"]] as const)).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => setSubView(k)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${subView === k ? "bg-forest text-primary-foreground border-forest" : "border-border text-text-med hover:bg-muted"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {subView === "storefront" && (<>
       <SourceLegend />
+
+      {/* Storefront contribution — range-driven, from company_finance_period.
+          Contribution is revenue less this arm's OWN direct costs; it is not
+          profit (shared overhead and payroll sit at company level). */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard title="Storefront Revenue" source="auto" value={acqNgn(cfp?.store_revenue)} />
+        <KpiCard title="Storefront Gross Profit" source="auto" value={acqNgn(cfp?.store_gross_profit)} />
+        <KpiCard title="Storefront Direct Costs" source="auto" value={acqNgn(cfp?.store_direct_costs)} />
+        <KpiCard title="Storefront Contribution" source="auto" value={acqNgn(cfp?.store_contribution)} negative={Number(cfp?.store_contribution) < 0} subtitle="Revenue less storefront direct costs (contribution, not profit)" />
+      </div>
 
       {/* P&L — driven by the selected range (finance_period_metrics) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -805,6 +852,291 @@ function DashboardTab() {
 
       {/* Tax alert */}
       <TaxAlertBox position={taxPosition} />
+      </>)}
+
+      {subView === "marketplace" && <MarketplaceView pmRange={pmRange} />}
+      {subView === "company" && <CompanyView pmRange={pmRange} cfp={cfp} />}
+    </div>
+  );
+}
+
+// ── Shared type for the range that drives the new company/marketplace RPCs ──
+type PmRange = { start: string; end: string; partial: boolean } | null;
+
+// Small caption used to make clear a panel is NOT filtered by the range picker
+// (runway, pipeline, monthly trend, revenue split, unit economics are snapshot
+// or month-based, per the RPC contract).
+function NotFilteredNote({ children = "Not filtered by the date range (latest snapshot)." }: { children?: ReactNode }) {
+  return <p className="text-[11px] text-text-light italic">{children}</p>;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// MARKETPLACE VIEW — take-rate business (never owns inventory). GMV is volume,
+// not revenue; seller share is a pass-through liability; every arm figure is
+// CONTRIBUTION, never profit.
+// ════════════════════════════════════════════════════════════════════════
+function MarketplaceView({ pmRange }: { pmRange: PmRange }) {
+  // Range-driven: company_finance_period (marketplace_* fields) + funnel.
+  const { data: cfpRows } = useQuery({
+    queryKey: ["company-finance-period", pmRange?.start, pmRange?.end],
+    enabled: !!pmRange,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("company_finance_period", { p_start: pmRange!.start, p_end: pmRange!.end });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const cfp = cfpRows?.[0];
+  const { data: mfpRows } = useQuery({
+    queryKey: ["marketplace-funnel-period", pmRange?.start, pmRange?.end],
+    enabled: !!pmRange,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).rpc("marketplace_funnel_period", { p_start: pmRange!.start, p_end: pmRange!.end });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const f = mfpRows?.[0];
+  // Snapshot (NOT range-filtered): markup vs service fee, per-order economics.
+  const { data: split } = useQuery({
+    queryKey: ["marketplace-revenue-split"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("marketplace_revenue_split").select("*").maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const { data: ue } = useQuery({
+    queryKey: ["marketplace-unit-economics"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("marketplace_unit_economics").select("*").maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+
+  const directCosts = toNum(cfp?.marketplace_direct_costs);
+  const netRevenue = toNum(cfp?.marketplace_net_revenue);
+  const covers = directCosts !== null && netRevenue !== null ? netRevenue >= directCosts : null;
+
+  return (
+    <div className="space-y-4">
+      {/* THE POINT OF THE VIEW: does the take cover the arm's own direct costs? */}
+      <div className={`rounded-xl border p-4 ${covers === false ? "border-red-300 bg-red-50" : covers === true ? "border-forest/40 bg-forest/[0.05]" : "border-border bg-card"}`}>
+        <h3 className="text-sm font-bold mb-2">Marketplace direct spend vs revenue kept</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-text-light font-semibold">Marketplace direct spend</div>
+            <div className="text-lg font-bold">{acqNgn(cfp?.marketplace_direct_costs)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-text-light font-semibold">Revenue kept (the take)</div>
+            <div className="text-lg font-bold">{acqNgn(cfp?.marketplace_net_revenue)}</div>
+          </div>
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-text-light font-semibold">Contribution (not profit)</div>
+            <div className={`text-lg font-bold ${Number(cfp?.marketplace_contribution) < 0 ? "text-red-600" : ""}`}>{acqNgn(cfp?.marketplace_contribution)}</div>
+          </div>
+        </div>
+        <p className="text-[11px] text-text-med mt-2">
+          {covers === null ? "Waiting for figures in this range." : covers ? "The take currently covers the marketplace's own direct costs." : "The take does NOT yet cover the marketplace's own direct costs. The arm's true cost is worse still, because it also consumes shared staff and tools charged at company level."}
+        </p>
+      </div>
+
+      {/* Revenue — GMV is volume, seller share is a liability, take is the revenue. */}
+      <div>
+        <h3 className="text-sm font-bold mb-2">Revenue kept vs money passing through</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="GMV" source="auto" value={acqNgn(cfp?.marketplace_gmv_volume)} subtitle="Volume, not revenue" />
+          <KpiCard title="Seller Share" source="auto" value={acqNgn(cfp?.marketplace_seller_share)} subtitle="Pass-through liability (owed to sellers)" />
+          <KpiCard title="Revenue Kept (take)" source="auto" value={acqNgn(cfp?.marketplace_net_revenue)} subtitle="Markup + service fee" />
+          <KpiCard title="Marketplace Orders" source="auto" value={acqCount(cfp?.marketplace_orders)} />
+          <KpiCard title="Markup Revenue" source="auto" value={acqNgn(split?.markup_revenue)} subtitle="Scales with item price" />
+          <KpiCard title="Service Fee Revenue" source="auto" value={acqNgn(split?.service_fee_revenue)} subtitle="8% of price, NGN 200 floor / NGN 1,500 cap" />
+          <KpiCard title="Blended Take Rate" source="auto" value={acqPct(split?.blended_take_pct)} />
+          <KpiCard title="Contribution per Order" source="auto" value={acqNgn(ue?.contribution_per_order)} subtitle="Contribution, not profit" />
+        </div>
+        <NotFilteredNote>Markup / service fee split, blended take rate and contribution per order are latest-snapshot figures, not filtered by the date range.</NotFilteredNote>
+      </div>
+
+      {/* Funnel — seller activation, buyer conversion, reliability. Range-driven. */}
+      <div>
+        <h3 className="text-sm font-bold mb-2">Funnel (this date range)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="Sellers Registered" source="auto" value={acqCount(f?.sellers_registered)} />
+          <KpiCard title="Sellers Who Listed" source="auto" value={acqCount(f?.sellers_who_listed)} badge={acqPct(f?.pct_sellers_who_listed)} />
+          <KpiCard title="Sellers Who Sold" source="auto" value={acqCount(f?.sellers_who_sold)} />
+          <KpiCard title="Listings Live" source="auto" value={acqCount(f?.listings_live)} />
+          <KpiCard title="Listings Sold" source="auto" value={acqCount(f?.listings_sold)} badge={acqPct(f?.listing_sell_through_pct)} subtitle="Sell-through %" />
+          <KpiCard title="Checkouts Started" source="auto" value={acqCount(f?.checkouts_started)} />
+          <KpiCard title="Orders Paid" source="auto" value={acqCount(f?.orders_paid)} badge={acqPct(f?.pct_checkout_to_paid)} subtitle="Checkout-to-paid %" />
+          <KpiCard title="Orders Paid Out" source="auto" value={acqCount(f?.orders_paid_out)} />
+          <KpiCard title="Avg Payment Attempts / Paid Order" source="auto" value={toNum(f?.avg_attempts_per_paid_order) === null ? "n/a" : Number(f?.avg_attempts_per_paid_order).toFixed(1)} subtitle={`Worst: ${toNum(f?.worst_attempts_to_pay) === null ? "n/a" : Number(f?.worst_attempts_to_pay).toFixed(0)} attempts`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// COMPANY VIEW — the only level where "profit" is allowed. Company revenue is
+// a SUM of two different revenue types (storefront retail + marketplace take).
+// Shared overhead and payroll belong to neither arm. ONE company runway.
+// ════════════════════════════════════════════════════════════════════════
+function CompanyView({ pmRange, cfp }: { pmRange: PmRange; cfp: any }) {
+  // Snapshot / month-based (NOT range-filtered).
+  const { data: crw } = useQuery({
+    queryKey: ["company-runway"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("company_runway").select("*").maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+  const { data: pipeline } = useQuery({
+    queryKey: ["company-pipeline"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("company_pipeline").select("*");
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+  const { data: monthly } = useQuery({
+    queryKey: ["company-finance-monthly"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("company_finance_monthly").select("*").order("month", { ascending: true });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
+
+  const kindOrder: Record<string, number> = { incoming: 0, supply: 1, liability: 2 };
+  const kindLabel: Record<string, string> = { incoming: "Incoming (demand not yet earned)", supply: "Supply (inventory awaiting sale)", liability: "Liability (owed to others)" };
+  const pipeByKind = (pipeline || []).reduce((acc: Record<string, any[]>, r: any) => {
+    const k = String(r.kind || "other");
+    (acc[k] ||= []).push(r);
+    return acc;
+  }, {});
+  const kinds = Object.keys(pipeByKind).sort((a, b) => (kindOrder[a] ?? 9) - (kindOrder[b] ?? 9));
+  const monthsFmt = (v: any) => (toNum(v) === null ? "n/a" : `${Number(v).toFixed(1)} months`);
+
+  return (
+    <div className="space-y-4">
+      {/* Company revenue is a SUM of two different revenue types. */}
+      <div>
+        <h3 className="text-sm font-bold mb-2">Company (this date range)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="Company Revenue" source="auto" value={acqNgn(cfp?.company_revenue)} subtitle="Sum of two types: storefront retail + marketplace take" />
+          <KpiCard title="Company Total Contribution" source="auto" value={acqNgn(cfp?.company_total_contribution)} negative={Number(cfp?.company_total_contribution) < 0} subtitle="Both arms' contribution, before shared costs" />
+          <KpiCard title="Shared Overhead" source="auto" value={acqNgn(cfp?.shared_overhead)} subtitle="Belongs to neither arm" />
+          <KpiCard title="Shared Payroll" source="auto" value={acqNgn(cfp?.shared_payroll)} subtitle="Belongs to neither arm" />
+          <KpiCard title="Referral Commissions" source="auto" value={acqNgn(cfp?.referral_commissions_cost)} />
+          <KpiCard title="Company Net Profit" source="auto" value={acqNgn(cfp?.company_net_profit)} negative={Number(cfp?.company_net_profit) < 0} subtitle="The only figure that is profit (after shared costs)" />
+        </div>
+      </div>
+
+      {/* Liabilities held on behalf of sellers — never revenue, never cash. */}
+      <div>
+        <h3 className="text-sm font-bold mb-2">Liabilities held for sellers</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="Escrow Held" source="auto" value={acqNgn(cfp?.escrow_held_for_sellers)} subtitle="Liability, not revenue or cash" />
+          <KpiCard title="Pending Seller Payouts" source="auto" value={acqNgn(cfp?.pending_seller_payouts)} subtitle="Liability, not revenue or cash" />
+        </div>
+      </div>
+
+      {/* Runway — one shared, company-wide figure. Snapshot, not range-filtered. */}
+      <div>
+        <h3 className="text-sm font-bold mb-2">Runway (company-wide)</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard title="Committed Capital" source="manual" value={acqNgn(crw?.committed_capital)} />
+          <KpiCard title="Capital Remaining" source="auto" value={acqNgn(crw?.company_capital_remaining)} />
+          <KpiCard title="Recurring Monthly" source="auto" value={acqNgn(crw?.recurring_structural_monthly)} />
+          <KpiCard title="Runway (structural)" source="auto" value={monthsFmt(crw?.company_runway_months_structural)} subtitle="One shared company runway" />
+        </div>
+        <NotFilteredNote>Runway is a live company-wide snapshot, not filtered by the date range.</NotFilteredNote>
+      </div>
+
+      {/* Pipeline, grouped by kind. Snapshot, not range-filtered. */}
+      <div className={cardCls}>
+        <h3 className="text-sm font-bold mb-2">Pipeline</h3>
+        {kinds.length === 0 ? (
+          <p className="text-xs text-text-light">No pipeline rows.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-text-light border-b border-border">
+                  <th className="py-1.5 pr-3 font-semibold">Kind</th>
+                  <th className="py-1.5 pr-3 font-semibold">Arm</th>
+                  <th className="py-1.5 pr-3 font-semibold">Source</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Items</th>
+                  <th className="py-1.5 font-semibold text-right">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kinds.map((k) => (
+                  <Fragment key={k}>
+                    <tr className="bg-muted/50">
+                      <td colSpan={5} className="py-1.5 px-1 font-semibold text-text-med">{kindLabel[k] || k}</td>
+                    </tr>
+                    {pipeByKind[k].map((r: any, i: number) => (
+                      <tr key={i} className="border-b border-border/60">
+                        <td className="py-1.5 pr-3">{String(r.kind ?? "").replace(/_/g, " ")}</td>
+                        <td className="py-1.5 pr-3">{String(r.arm ?? "").replace(/_/g, " ")}</td>
+                        <td className="py-1.5 pr-3">{String(r.source ?? "").replace(/_/g, " ")}</td>
+                        <td className="py-1.5 pr-3 text-right">{acqCount(r.items)}</td>
+                        <td className="py-1.5 text-right font-semibold">{acqNgn(r.value_naira)}</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <NotFilteredNote>Pipeline is a live snapshot (not earned revenue), not filtered by the date range. Liabilities are owed to sellers, not company money.</NotFilteredNote>
+      </div>
+
+      {/* Month-by-month company trend. Month-based, not range-filtered. */}
+      <div className={cardCls}>
+        <h3 className="text-sm font-bold mb-2">Month-by-month (company)</h3>
+        {(monthly || []).length === 0 ? (
+          <p className="text-xs text-text-light">No monthly data.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-text-light border-b border-border">
+                  <th className="py-1.5 pr-3 font-semibold">Month</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Company Revenue</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Store Contribution</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Mkt Contribution</th>
+                  <th className="py-1.5 font-semibold text-right">Company Net Profit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(monthly || []).map((r: any, i: number) => (
+                  <tr key={i} className="border-b border-border/60">
+                    <td className="py-1.5 pr-3">{String(r.month ?? "").slice(0, 7)}</td>
+                    <td className="py-1.5 pr-3 text-right">{acqNgn(r.company_revenue)}</td>
+                    <td className={`py-1.5 pr-3 text-right ${Number(r.store_contribution) < 0 ? "text-red-600" : ""}`}>{acqNgn(r.store_contribution)}</td>
+                    <td className={`py-1.5 pr-3 text-right ${Number(r.marketplace_contribution) < 0 ? "text-red-600" : ""}`}>{acqNgn(r.marketplace_contribution)}</td>
+                    <td className={`py-1.5 text-right font-semibold ${Number(r.company_net_profit) < 0 ? "text-red-600" : ""}`}>{acqNgn(r.company_net_profit)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <NotFilteredNote>Month-by-month trend is month-based, not filtered by the date range.</NotFilteredNote>
+      </div>
     </div>
   );
 }

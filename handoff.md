@@ -1,5 +1,40 @@
 # Handoff
 
+## Finance DASHBOARD screen — Storefront / Marketplace / Company views (DONE, this turn)
+The on-screen finance dashboard (not the PDF) now splits into three views. **Only file:
+[src/pages/admin/AdminFinance.tsx](src/pages/admin/AdminFinance.tsx).** Pattern: an inner
+sub-view switcher inside `DashboardTab` (styled like the existing range buttons), sharing the
+ONE existing range picker (`pmRange`). No PDF/edge-function change.
+- **Storefront view = the entire existing dashboard, unchanged** (wrapped in
+  `{subView==="storefront" && …}`), PLUS a 4-card row (Revenue / Gross Profit / Direct Costs /
+  **Contribution**) from the range-driven `company_finance_period` RPC.
+- **Marketplace view (new `MarketplaceView`):** a prominent callout comparing
+  `marketplace_direct_costs` vs `marketplace_net_revenue` → contribution (red when the take does
+  not cover direct costs); revenue cards — **GMV "volume, not revenue"**, seller share
+  "pass-through liability", markup vs service fee, revenue kept, blended take, contribution per
+  order; and the range-driven funnel (`marketplace_funnel_period`): registered→listed→sold,
+  listings live/sold, checkouts→paid→paid out, sell-through %, checkout-to-paid %, avg + worst
+  payment attempts.
+- **Company view (new `CompanyView`):** company revenue labelled "sum of two types: storefront
+  retail + marketplace take"; shared overhead + payroll "belongs to neither arm"; **company net
+  profit** (the only "profit"); escrow + pending payouts as **liabilities** ("not revenue or
+  cash"); one **company-wide runway** (`company_runway_months_structural`); pipeline grouped by
+  kind (incoming / supply / liability); month-by-month `company_finance_monthly` trend.
+- **Range wiring:** the date picker drives the two new range RPCs (`company_finance_period`,
+  `marketplace_funnel_period`) via the same `pmRange`. Snapshot/month panels (runway, pipeline,
+  monthly trend, revenue split, unit economics) are each labelled "not filtered by the date
+  range". Nulls/zeros render "n/a" or a dash (via `acqNgn`/`acqPct`/`acqCount` + `toNum`), never
+  undefined/NaN.
+- **Verified live** (dev server, QA design_viewer, no auth bypass): the two new views + the
+  storefront cards were mounted in isolation and rendered REAL range-driven numbers — storefront
+  contribution −₦2,384,359.27; marketplace direct spend ₦341,915.42 vs revenue kept ₦9,800 →
+  −₦333,125.42, GMV ₦43,800 (volume), funnel 229→96→3 / 45→4, 5.0 avg attempts; company revenue
+  ₦1,541,102, shared overhead ₦1,120,748.24, net profit −₦4,240,832.93, pipeline grouped by
+  kind. Snapshot-view cards (runway/pipeline/revenue-split/unit-economics) showed the graceful
+  n/a path because those views are RLS-restricted for the read-only QA account; a real admin
+  (confirmed via service role) sees runway 8.3 months, pipeline 213/49 items, markup 7,300 /
+  service 2,500. `npm run build` passes. Existing storefront metrics unchanged.
+
 ## Finance PDF — three company-wide sections now RENDER (DONE, this turn)
 Wired the v26 edge function's three new narrative keys + six company views into the
 delivered PDF (the delivery change scoped out last time). **Only file:
