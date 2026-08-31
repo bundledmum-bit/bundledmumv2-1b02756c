@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -59,17 +59,29 @@ const GROUPS: Array<{ title: string; fields: SettingField[] }> = [
         help: "Percentage added to the seller asking price to produce the buyer-facing price.",
         note: "Editing this number alone affects new listings only. Existing listings only change when you use Apply to existing listings below.",
       },
+      // All five help lines rewritten. They described the flat-tier scheme that
+      // died in §172: percent was labelled as the threshold, and min and max as
+      // two flat fees selected by it. An operator reading those would have set
+      // them as two prices rather than a floor and a cap.
       {
         key: "marketplace_service_fee_percent", label: "Service fee percent", type: "number", integer: false, positive: true,
-        help: "The item price that decides which service fee tier applies. At this price and above, the higher fee applies; below it, the lower fee applies.",
+        help: "The percentage of each item's price the buyer pays as a service fee, before the minimum and the caps are applied.",
       },
       {
         key: "marketplace_service_fee_min_naira", label: "Service fee, minimum", type: "number", money: true, integer: true, positive: true,
-        help: "Non-refundable service fee charged to the buyer when the item price is below the threshold.",
+        help: "The floor. A cheap item pays this even when the percentage works out lower.",
       },
       {
-        key: "marketplace_service_fee_max_naira", label: "Service fee, maximum", type: "number", money: true, integer: true, positive: true,
-        help: "Non-refundable service fee charged to the buyer when the item price is at or above the threshold.",
+        key: "marketplace_service_fee_max_naira", label: "Service fee, cap below the threshold", type: "number", money: true, integer: true, positive: true,
+        help: "The most a buyer pays on an item at or under the threshold price below.",
+      },
+      {
+        key: "marketplace_service_fee_tier_naira", label: "Threshold price", type: "number", money: true, integer: true, positive: true,
+        help: "The item price separating the two caps. At this price the lower cap applies; a naira above it, the higher one does.",
+      },
+      {
+        key: "marketplace_service_fee_max_high_naira", label: "Service fee, cap above the threshold", type: "number", money: true, integer: true, positive: true,
+        help: "The most a buyer pays on an item above the threshold price.",
       },
       { key: "marketplace_buyer_pays_paystack_fee", label: "Buyer pays the Paystack fee", type: "toggle", help: "Show the Paystack transaction fee as a separate line charged to the buyer at marketplace checkout." },
     ],
@@ -365,11 +377,25 @@ export default function MarketplaceSettings() {
   async function confirmSave() {
     if (!pendingSave) return;
     setBusy(true); setError(null);
-    const { error } = await adb.from("site_settings")
+    // .select() and a ROW COUNT, not just the error.
+    //
+    // An UPDATE refused by RLS returns no error and zero rows: PostgREST has
+    // nothing to complain about, the row simply did not match the policy. So
+    // checking `error` alone reported a successful save, closed the editor,
+    // and then refetched the OLD value, leaving the number to snap back with
+    // no explanation. Same shape as the ok-field bug in §167: the absence of
+    // an error is not success for a table write.
+    const { data: saved, error } = await adb.from("site_settings")
       .update({ value: pendingSave.value, updated_at: new Date().toISOString() })
-      .eq("key", pendingSave.key);
+      .eq("key", pendingSave.key)
+      .select("key");
     setBusy(false);
     if (error) { setError(error.message); setPendingSave(null); return; }
+    if (!saved || saved.length === 0) {
+      setError("That was not saved. This account cannot change settings.");
+      setPendingSave(null);
+      return;
+    }
     setEditing((e) => ({ ...e, [pendingSave.key]: false }));
     setPendingSave(null);
     settingsQ.refetch();
@@ -379,9 +405,16 @@ export default function MarketplaceSettings() {
     if (!pendingToggle) return;
     setBusy(true); setError(null);
     const next = !pendingToggle.cat.is_allowed;
-    const { error } = await adb.from("marketplace_categories").update({ is_allowed: next }).eq("id", pendingToggle.cat.id);
+    const { data: toggled, error } = await adb.from("marketplace_categories")
+      .update({ is_allowed: next }).eq("id", pendingToggle.cat.id).select("id");
     setBusy(false);
     if (error) { setError(error.message); setPendingToggle(null); return; }
+    // Same silent-refusal shape as confirmSave above.
+    if (!toggled || toggled.length === 0) {
+      setError("That was not saved. This account cannot change settings.");
+      setPendingToggle(null);
+      return;
+    }
     setPendingToggle(null);
     catsQ.refetch();
   }
@@ -445,10 +478,6 @@ export default function MarketplaceSettings() {
   const paystackOn = val("marketplace_payment_paystack_enabled") === true;
   const transferOn = val("marketplace_payment_transfer_enabled") === true;
   const noPaymentMethod = !paystackOn && !transferOn;
-  const feePercent = Number(val("marketplace_service_fee_percent"));
-  const feeMin = Number(val("marketplace_service_fee_min_naira"));
-  const feeMax = Number(val("marketplace_service_fee_max_naira"));
-  const feeTiersResolved = isFinite(feePercent) && isFinite(feeMin) && isFinite(feeMax);
 
   /** One setting card: number/text share the edit-save-cancel pattern already
    * used for the bank fields; toggle/select act on the first interaction,
@@ -523,11 +552,7 @@ export default function MarketplaceSettings() {
           <div className="mt-2 grid gap-4 md:grid-cols-2">
             {group.fields.map(renderField)}
           </div>
-          {group.title === "Pricing and fees" && feeTiersResolved && (
-            <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#D8EFE5", background: "#F0FAF6", color: "#1A4A33" }}>
-              As one structure: buyers pay {feePercent}% of each item's price, never below {formatNaira(feeMin)} and never above {formatNaira(feeMax)}. Charged on every item, not once per order.
-            </div>
-          )}
+          {group.title === "Pricing and fees" && <FeeWorkedExample />}
           {group.title === "Orders and disputes" && confirmVsDisputeClash && (
             <div className="mt-3 rounded-2xl border p-3 text-sm" style={{ borderColor: "#C0392B", background: "#FDECEA", color: "#8C2A1F" }}>
               The confirm-receipt prompt fires on day {confirmDay}, at or after the {disputeDays}-day dispute window that auto releases the payout. A buyer gets prompted the same moment their money is already releasing. This has happened before, lower the prompt day or raise the dispute window so the prompt lands first.
@@ -809,6 +834,85 @@ export default function MarketplaceSettings() {
               <button onClick={confirmToggle} disabled={busy} className="flex-1 font-heading font-extrabold text-sm rounded-xl py-2.5 text-white" style={{ background: "#D4613C" }}>{busy ? "Saving..." : "Confirm"}</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What these five numbers actually do, priced by the real function.
+ *
+ * Five input boxes with no context invite a mistake, and the mistake an
+ * operator will make is the threshold, not the percentage. So the examples sit
+ * either side of it: an item at the threshold and an item one naira above it
+ * pay different fees, and seeing ₦1,000 become ₦2,000 across one naira
+ * explains the structure faster than any label.
+ *
+ * Every figure comes from marketplace_service_fee, the same function both
+ * order paths charge from, so this preview CANNOT drift from what is really
+ * charged. Computing it here would recreate exactly the bug that showed a
+ * ₦750 fee while ₦1,000 was being taken.
+ *
+ * Re-queried as the settings change, since the point is to see the effect of
+ * an edit before trusting it.
+ */
+function FeeWorkedExample() {
+  const { data: fee } = useQuery({
+    queryKey: ["mkt-fee-settings-admin"],
+    staleTime: 10_000,
+    queryFn: async () => {
+      const { data } = await adb.rpc("marketplace_fee_settings");
+      return (data ?? null) as Record<string, number> | null;
+    },
+  });
+
+  // Either side of the threshold, plus a cheap item on the floor and a
+  // mid-priced one already on the lower cap.
+  const tier = Number(fee?.tier_naira);
+  const prices = useMemo(() => {
+    const t = isFinite(tier) && tier > 1 ? tier : null;
+    return [1200, 18000, ...(t ? [t, t + 1] : []), 75000];
+  }, [tier]);
+
+  const { data: examples } = useQuery({
+    queryKey: ["mkt-fee-examples", prices.join(",")],
+    enabled: prices.length > 0,
+    staleTime: 10_000,
+    queryFn: async () => {
+      const out: Array<{ price: number; fee: number | null }> = [];
+      for (const price of prices) {
+        const { data } = await adb.rpc("marketplace_service_fee", { p_item_price_naira: price });
+        const n = Number(data);
+        out.push({ price, fee: isFinite(n) ? n : null });
+      }
+      return out;
+    },
+  });
+
+  if (!examples || examples.length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-2xl border p-3" style={{ borderColor: "#D8EFE5", background: "#F0FAF6" }}>
+      <div className="text-[11px] font-heading font-extrabold uppercase tracking-wider" style={{ color: "#1A4A33" }}>
+        What a buyer actually pays
+      </div>
+      <div className="text-[11px] mt-0.5" style={{ color: "#1A4A33" }}>
+        Priced by the same function the checkout charges from, so this cannot disagree with a real order.
+      </div>
+      <div className="mt-2 rounded-xl border divide-y bg-white" style={{ borderColor: "#D8EFE5" }}>
+        {examples.map((e) => (
+          <div key={e.price} className="flex items-center justify-between gap-3 px-3 py-2">
+            <span className="text-[12.5px] text-text-med tabular-nums">An item at {formatNaira(e.price)}</span>
+            <span className="font-heading font-extrabold text-[13px] tabular-nums" style={{ color: "#1A4A33" }}>
+              {e.fee == null ? "—" : formatNaira(e.fee)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {isFinite(tier) && tier > 1 && (
+        <div className="text-[11px] mt-2" style={{ color: "#6B5B54" }}>
+          The jump between {formatNaira(tier)} and {formatNaira(tier + 1)} is the threshold doing its job. Buyers are not shown it.
         </div>
       )}
     </div>

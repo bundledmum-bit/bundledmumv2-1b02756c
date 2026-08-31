@@ -4,6 +4,7 @@ import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import MarketplaceSeo from "../components/MarketplaceSeo";
 import { useMarketplacePolicySettings, naira, type MarketplacePolicySettings } from "../policy/policySettings";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
+import { useFeeSettings, feeRuleSentence, type FeeSettings } from "../feeSettings";
 
 /**
  * FAQ page (design 41a): search plus a buyer/seller split, since the two
@@ -24,7 +25,7 @@ import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 
 interface FaqItem { q: string; a: string; }
 
-function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
+function buyerFaq(s: MarketplacePolicySettings, fee: FeeSettings | null): FaqItem[] {
   return [
     {
       q: "How do I know this is not a scam?",
@@ -56,7 +57,9 @@ function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
     },
     {
       q: "What does BundledMum charge me?",
-      a: `A service fee on each item you buy, ${s.serviceFeePercent}% of its price, never less than ${naira(s.serviceFeeMinNaira)} and never more than ${naira(s.serviceFeeMaxNaira)}. You see the exact amount at checkout before you pay anything.`,
+      a: fee
+        ? `A service fee on each item you buy, ${feeRuleSentence(fee)} You see the exact amount at checkout before you pay anything.`
+        : "A service fee on each item you buy, and Paystack's own processing fee. You see the exact amount at checkout before you pay anything.",
     },
     {
       q: "Do I need an account to buy?",
@@ -72,7 +75,9 @@ function buyerFaq(s: MarketplacePolicySettings): FaqItem[] {
     },
     {
       q: "Do I pay the fee more than once if I buy several things?",
-      a: `Yes. The fee is charged on each item, so three items means three fees. Checkout shows you the total before you pay, so there is nothing to discover afterwards. It is ${s.serviceFeePercent}% of each item's price, never less than ${naira(s.serviceFeeMinNaira)} and never more than ${naira(s.serviceFeeMaxNaira)}.`,
+      a: fee
+        ? `Yes. The fee is charged on each item, so three items means three fees. Your cart says how many, and checkout shows every one before you pay, so there is nothing to discover afterwards. Each is ${feeRuleSentence(fee)}`
+        : "Yes. The fee is charged on each item, so three items means three fees. Your cart says how many, and checkout shows every one before you pay, so there is nothing to discover afterwards.",
     },
     {
       q: "Can I pay without a card?",
@@ -140,12 +145,15 @@ function matches(item: FaqItem, needle: string): boolean {
 
 export default function FaqPage() {
   const { data: s, isLoading } = useMarketplacePolicySettings();
+  // Null until it resolves, and the two fee answers word around that rather
+  // than state a number we might not charge.
+  const { data: fee } = useFeeSettings();
   const number = useMarketplaceWhatsAppNumber();
   const [tab, setTab] = useState<Tab>("buying");
   const [search, setSearch] = useState("");
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
-  const buyer = useMemo(() => (s ? buyerFaq(s) : []), [s]);
+  const buyer = useMemo(() => (s ? buyerFaq(s, fee ?? null) : []), [s, fee]);
   const seller = useMemo(() => (s ? sellerFaq(s) : []), [s]);
   const items = tab === "buying" ? buyer : seller;
   const filtered = useMemo(() => items.filter((it) => matches(it, search)), [items, search]);

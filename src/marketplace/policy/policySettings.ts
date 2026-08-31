@@ -14,18 +14,11 @@ import { mdb } from "../data/mdb";
  * guessed number.
  */
 export interface MarketplacePolicySettings {
-  /** A PERCENTAGE of the item price, floored and capped, charged on EVERY
-   * order. Never compute the fee from these: marketplace_service_fee() is
-   * the single place the rule lives and is what both order paths charge
-   * from. These exist only so the policy pages can STATE the rule.
-   *
-   * The old flat tiers (marketplace_service_fee_threshold/below/at_or_above)
-   * and the once-per-buyer-per-day rule are dead. A flat fee took 34% on top
-   * of a cheap item and 1% on an expensive one, and the daily rule only
-   * existed to make buying several cheap things bearable. */
-  serviceFeePercent: number;
-  serviceFeeMinNaira: number;
-  serviceFeeMaxNaira: number;
+  /** The service fee is NOT here any more. It has five settings and two caps,
+   * and reading three of them from site_settings while a fourth and fifth
+   * existed is how the FAQ came to promise a cap that was false for anyone
+   * buying above the threshold. It now comes from marketplace_fee_settings()
+   * via useFeeSettings, which returns all five or nothing. */
   markupPercent: number;
   /** null when the setting has not resolved, so the caller can word around
    * the missing number rather than show a stale guess (see maxDiscountPercent
@@ -44,9 +37,6 @@ export interface MarketplacePolicySettings {
 }
 
 const KEYS = [
-  "marketplace_service_fee_percent",
-  "marketplace_service_fee_min_naira",
-  "marketplace_service_fee_max_naira",
   "marketplace_markup_percent",
   "marketplace_max_discount_percent",
   "marketplace_dispute_window_days",
@@ -85,17 +75,6 @@ export function useMarketplacePolicySettings() {
         return typeof v === "string" && v.trim() ? v.trim() : null;
       };
       return {
-        // The fee is a percentage of the item price with a floor and a cap,
-        // charged on EVERY order. The old flat tiers (below/at-or-above a
-        // threshold, once per buyer per day) are dead settings and are no
-        // longer read anywhere: a flat fee took 34% on top of a cheap item
-        // and 1% on an expensive one.
-        // These three fallbacks are the SAME ones marketplace_service_fee()
-        // coalesces to, so if a setting ever goes missing the page states
-        // exactly what the function would charge rather than a second guess.
-        serviceFeePercent: num("marketplace_service_fee_percent", 8),
-        serviceFeeMinNaira: num("marketplace_service_fee_min_naira", 200),
-        serviceFeeMaxNaira: num("marketplace_service_fee_max_naira", 1500),
         markupPercent: num("marketplace_markup_percent", 10),
         maxDiscountPercent: numOrNull("marketplace_max_discount_percent"),
         disputeWindowDays: num("marketplace_dispute_window_days", 3),

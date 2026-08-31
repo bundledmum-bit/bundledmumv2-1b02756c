@@ -10386,3 +10386,96 @@ the design account: the view joins `customers`, of which it sees one row, and no
 consented seller exists to point at. Those two were verified by serving the real
 payload shape to the real components, as in §177, and that is said plainly
 rather than glossed.
+
+## 182. Two caps, and the cart that promised one fee (2026-08-31)
+
+The fee is now tiered: 8% of the item price, floor ₦200, capped at ₦1,000 up to
+₦50,000 and ₦2,000 above it, with a deliberate cliff at the threshold. Verified
+live from `marketplace_service_fee`: 50,000 pays ₦1,000 and 50,001 pays ₦2,000.
+
+### The cart was lying, and that came first
+
+`CartPage.tsx` said **"Service fee, once"**, under a comment reading "the fee is
+charged once for the whole cart, not per item and not per seller". §172 made the
+fee per item and updated the checkout sub-line but missed the cart, so from 29
+August a buyer with three items was told ONE fee and charged THREE, confirmed
+against live orders as three separate fees totalling ₦2,400.
+
+That is exactly what §172's own FAQ answer was written to prevent, being
+contradicted one screen earlier, mid-purchase. It was the only one of the eight
+surfaces that actively misled someone while they were spending money, so it was
+fixed before any copy work.
+
+It now reads "Service fee, 3 items", with "A service fee is charged on each
+item, so there are 3. Checkout shows every fee before you pay." The COUNT is
+stated because the buyer already knows how many items they have, so it is
+checkable on the spot rather than a surprise at the next screen.
+
+### Every literal removed
+
+  policySettings.ts:98   serviceFeeMaxNaira fallback of 1500, the last
+                         hardcoded fee number in the codebase
+  policySettings.ts      serviceFeePercent / MinNaira / MaxNaira removed
+                         entirely, along with the three site_settings keys it
+                         read. Reading three of five keys is HOW the FAQ came
+                         to promise a cap that was false above the threshold.
+  MarketplaceSettings    feePercent / feeMin / feeMax locals and the summary
+                         line built from them
+
+No fee value is hardcoded anywhere in `src/marketplace` now. The only surviving
+`50000` is the browse price filter's "Over ₦50k" chip, an unrelated coincidence.
+
+**The four dead settings were already gone**, removed in §172. Re-grepped `src/`
+and `supabase/functions/`: zero references. Nothing to clean up there.
+
+### One sentence, built from the settings
+
+`feeSettings.ts` calls `marketplace_fee_settings()` and returns **all five or
+null** — a half-resolved fee cannot be described honestly, and choosing which
+half to state is how a wrong number ships. No numeric fallbacks: a fallback that
+matches today's value just resets the same drift for next time.
+
+`feeRuleSentence()` is the one description, so the FAQ and Terms cannot drift:
+
+  "8% of its price, never less than ₦200. It is capped at ₦1,000 for items up to
+  ₦50,000, and at ₦2,000 for anything above that."
+
+Both caps and the threshold are named, then it stops. The cliff is not
+dramatised, because a buyer does not need it explained, but nor is a cap hidden
+from the people who pay it. Rendered live in both FAQ answers and the Terms
+charges paragraph, with no ₦1,500 anywhere.
+
+### The admin controls
+
+Five editors now, not three. **All five help lines were rewritten**: they still
+described the flat-tier scheme that died in §172, with percent labelled as the
+threshold and min/max as two flat fees selected by it. An operator would have
+set them as two prices rather than a floor and a cap.
+
+The worked example prices five items through `marketplace_service_fee` itself,
+so the preview cannot drift from what is charged: ₦1,200 → ₦200, ₦18,000 →
+₦1,000, ₦50,000 → ₦1,000, ₦50,001 → ₦2,000, ₦75,000 → ₦2,000. The two either
+side of the threshold are chosen deliberately, since an operator will get the
+threshold wrong before the percentage.
+
+### A silent failure found while testing the refusal
+
+The brief said to show the controls and let the database refuse, as in §177. But
+§177's refusals were RPCs, which RAISE. **An UPDATE refused by RLS returns no
+error and zero rows** — PostgREST has nothing to complain about, the row simply
+did not match the policy. `confirmSave` checked only `error`, so it reported a
+successful save, closed the editor, then refetched the old value and let the
+number snap back with no explanation.
+
+Same shape as the ok-field bug in §167: the absence of an error is not success
+for a table write. Both `confirmSave` and the category toggle now `.select()`
+and treat zero rows as a refusal. Verified as the design account: "That was not
+saved. This account cannot change settings.", and all five settings unchanged
+afterwards.
+
+### Untouched
+
+Both order paths, the checkout total and the cart's server-computed fee: no file
+in those paths was edited. The storefront's own "service fee" in `PackagePage`,
+`QuoteTotalsCard` and `AdminLandingPages` is a different fee entirely and was
+left alone.

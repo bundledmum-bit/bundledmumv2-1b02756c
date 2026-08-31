@@ -228,12 +228,28 @@ export default function CartPage() {
               <aside className="mkt-cart-summary">
                 <div className="h">Order summary</div>
                 <div className="row"><span>Items ({itemCount})</span><b>{formatNaira(itemsTotal)}</b></div>
-                {/* The fee is charged once for the whole cart, not per item
-                    and not per seller — worth stating where the number is. */}
-                <div className="row"><span>Service fee, once</span><b>Shown at checkout</b></div>
+                {/* ONE FEE PER ITEM, not one per cart.
+                    This said "Service fee, once" from before the fee became a
+                    percentage per item, and it kept saying it afterwards. So a
+                    buyer with three items was told one fee here and charged
+                    three at checkout: three separate fees totalling N2,400 on
+                    a real three-item order. That is the exact thing the FAQ
+                    answer was written to prevent, being contradicted one screen
+                    earlier, mid-purchase.
+                    The count is stated because the buyer already knows how many
+                    items they have, so "3 items, 3 fees" is checkable on the
+                    spot rather than a surprise at the next screen. */}
+                <div className="row">
+                  <span>Service fee{itemCount > 1 ? `, ${itemCount} items` : ""}</span>
+                  <b>Shown at checkout</b>
+                </div>
                 <div className="rule" />
                 <div className="row total"><span>Total</span><b>{formatNaira(itemsTotal)}</b></div>
-                <div className="note">Service fee and Paystack fee are added at checkout.</div>
+                <div className="note">
+                  {itemCount > 1
+                    ? "A service fee is charged on each item, so there are " + itemCount + ". Checkout shows every fee before you pay."
+                    : "The service fee and Paystack fee are added at checkout."}
+                </div>
                 {/* Blocked while anything in the cart cannot reach them.
                     Disabled rather than hidden, with the reason named, so
                     it is obvious what to do rather than mysteriously
