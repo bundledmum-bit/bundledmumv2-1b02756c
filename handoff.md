@@ -1,5 +1,33 @@
 # Handoff
 
+## Finance — arm AGE / launch-period framing (DONE, this turn)
+Additive layer on top of the existing three-view dashboard + company report: both surfaces now
+know how OLD each arm is, so a 24-day-old marketplace is not read as a trend and its launch
+spend is not read as failed payback. Source: the `business_context` view (storefront 105 days
+live; marketplace 24 days, launched 2026-08-07, first paid 2026-08-11, `marketplace_is_launch_period=true`).
+- **Dashboard ([src/pages/admin/AdminFinance.tsx](src/pages/admin/AdminFinance.tsx)):** `DashboardTab`
+  fetches `business_context` (snapshot, not range-filtered) once and passes it to both sub-views.
+  Storefront view shows "Storefront live 105 days (launched 2026-05-18)". `MarketplaceView` gains
+  an amber **LAUNCH PERIOD** header (days live + launch date + first paid order) and, while
+  `marketplace_is_launch_period`, the direct-spend-vs-revenue callout is reframed (amber, not red)
+  as "launch-period acquisition spend … not a payback failure". `CompanyView`'s month-by-month
+  note now says the arms launched nearly three months apart, so a given month is NOT like-for-like.
+  All null-safe (`acqCount`/`acqNgn` → n/a).
+- **Edge function `generate-financial-report` → v28** (deployed from deployed v27 + edits; repo
+  byte-identical): reads `business_context` and adds it to the figures payload; system prompt gains
+  an ARM-AGE/LAUNCH-PERIOD block — the model must state each arm's age before judging it, must not
+  judge the marketplace on payback/trend/steady-state while in the launch period, must not compare
+  the arms month-on-month as like-for-like, but MUST still report conversion + reliability defects
+  (`pct_checkout_to_paid`, `avg_attempts_per_paid_order`, `worst_attempts_to_pay`).
+- **NOTE:** the three-view dashboard + the six company views in the report already existed
+  (commits c1d7ca6 / v26–v27); this turn is only the age/launch additions. PDF and cron untouched.
+- **Verified live** (dev, isolated mount, real numbers): Storefront 105-days line; Marketplace
+  LAUNCH-PERIOD badge + reframed callout (direct spend ₦341,915.42 vs kept ₦9,800, framed as
+  acquisition spend), funnel 229→96→3 / 45→4, 5.0 attempts; Company revenue ₦1,541,102, net profit
+  −₦4,240,832.93, monthly note "nearly three months apart … NOT like-for-like". `business_context`
+  is RLS-limited for the read-only QA account, so its real values were fed as the prop to verify
+  rendering; the edge function reads it via service role. `npm run build` passes.
+
 ## Finance DASHBOARD screen — Storefront / Marketplace / Company views (DONE, this turn)
 The on-screen finance dashboard (not the PDF) now splits into three views. **Only file:
 [src/pages/admin/AdminFinance.tsx](src/pages/admin/AdminFinance.tsx).** Pattern: an inner

@@ -30,6 +30,12 @@ const SYSTEM_PROMPT = `You are writing the narrative sections of an investor fin
 4. For projections, only restate the provided scenario figures and always name their assumption (e.g. 'at a 20% month-on-month growth assumption').
 5. No em dashes anywhere. Use commas or full stops.
 
+ARM AGE AND LAUNCH PERIOD, absolute, never violate (use the business_context figures):
+- The two arms are very different ages. BEFORE you comment on either arm's performance you MUST state how long it has been live: the storefront (business_context.storefront_days_live days) and the marketplace (business_context.marketplace_days_live days, business_context.marketplace_months_live months, first paid order business_context.marketplace_first_paid_order).
+- While business_context.marketplace_is_launch_period is true, you MUST NOT judge the marketplace on payback, on trend, or on steady-state efficiency. Its early direct spend (marketplace_direct_costs) is CUSTOMER ACQUISITION for a brand-new channel, not a return-on-spend failure. State this explicitly whenever you mention that spend or the marketplace contribution.
+- You MUST NOT compare the storefront and the marketplace month-on-month as like for like: they launched nearly three months apart. Any cross-arm monthly comparison must carry that caveat.
+- Being young excuses LOW VOLUME. It does NOT excuse operational failures that are independent of age. You MUST still report conversion and reliability problems plainly: checkouts started versus paid (pct_checkout_to_paid) and the average payment attempts per paid order (avg_attempts_per_paid_order, worst_attempts_to_pay). A checkout that fails most attempts is a defect at any age and is not excused by the launch period.
+
 BUSINESS MODEL, absolute, never violate:
 - The STOREFRONT and the MARKETPLACE are DIFFERENT businesses under one company. The storefront buys inventory and marks it up (COGS-based retail). The marketplace never owns inventory; it matches buyer and seller and takes a commission. NEVER blend their unit economics and NEVER quote a single blended margin across the two.
 - Marketplace GMV is NOT revenue. Most of it is buyers' money passing through escrow to sellers. Marketplace revenue is the TAKE only: markup plus service fee. NEVER add GMV to revenue.
@@ -48,9 +54,9 @@ COST MODEL, one company with shared staff and tools, THREE layers, never violate
 BENCHMARKS for context: a marketplace take rate is normally 10 to 30 percent; contribution margin per order is the metric that shows whether a transaction actually pays; GMV alone is a vanity metric; liquidity (fill rate / sell-through) is the metric most predictive of marketplace survival.
 
 REPORT SECTIONS you must produce (in addition to the existing keys below):
-- storefront_section: STOREFRONT only. Revenue, gross profit, direct costs, and CONTRIBUTION (not profit). Use company_finance_monthly store_* fields. Keep it strictly storefront; never mention marketplace here.
-- marketplace_section: MARKETPLACE only. Make the GMV vs revenue-kept distinction explicit (GMV is pass-through, revenue is the take only). Split markup vs service fee (marketplace_revenue_split). State the take rate and contribution PER ORDER (marketplace_unit_economics). Walk the funnel from marketplace_funnel: seller activation (registered -> listed -> sold), buyer conversion (checkouts started -> paid -> paid out), sell-through, and the reliability signals avg_attempts_per_paid_order and pct_checkout_to_paid. EXPLICITLY compare marketplace direct spend against marketplace revenue kept (marketplace_direct_costs vs marketplace_net_revenue in company_finance_monthly), and say whether the take covers the arm's own direct costs. Call every figure here contribution, never profit.
-- company_combined_section: COMPANY level. Total company revenue must be shown as a clearly-labelled SUM of TWO DIFFERENT revenue types (storefront retail revenue plus marketplace take), never GMV. Then shared overhead and payroll, then company NET PROFIT (this is the only place "profit" is allowed). State ONE shared runway using company_runway_months_structural from company_runway (never a per-arm runway). Then present the pipeline from company_pipeline split by kind into incoming, supply, and liability, noting liabilities (escrow, pending payouts) are owed to sellers, not company money.
+- storefront_section: STOREFRONT only. State how long the storefront has been live first. Revenue, gross profit, direct costs, and CONTRIBUTION (not profit). Use company_finance_monthly store_* fields. Keep it strictly storefront; never mention marketplace here.
+- marketplace_section: MARKETPLACE only. State how long the marketplace has been live FIRST (days/months live and first paid order), and that these are LAUNCH-PERIOD figures, not steady state, while marketplace_is_launch_period is true. Make the GMV vs revenue-kept distinction explicit (GMV is pass-through, revenue is the take only). Split markup vs service fee (marketplace_revenue_split). State the take rate and contribution PER ORDER (marketplace_unit_economics). Walk the funnel from marketplace_funnel: seller activation (registered -> listed -> sold), buyer conversion (checkouts started -> paid -> paid out), sell-through, and the reliability signals avg_attempts_per_paid_order and pct_checkout_to_paid. Present marketplace_direct_costs against marketplace_net_revenue as LAUNCH-PERIOD ACQUISITION SPEND for a new channel, NOT as a payback failure. Call every figure here contribution, never profit.
+- company_combined_section: COMPANY level. Total company revenue must be shown as a clearly-labelled SUM of TWO DIFFERENT revenue types (storefront retail revenue plus marketplace take), never GMV. Then shared overhead and payroll, then company NET PROFIT (this is the only place "profit" is allowed). State ONE shared runway using company_runway_months_structural from company_runway (never a per-arm runway). Then present the pipeline from company_pipeline split by kind into incoming, supply, and liability, noting liabilities (escrow, pending payouts) are owed to sellers, not company money. When you mention the month-by-month trend, note that the two arms launched nearly three months apart, so month-on-month comparison between them is not like for like.
 
 Also keep producing the existing narrative for the storefront-era detail the report already carries:
 6. Explain the storefront margin story honestly if the data supports it: low early markup and high unpredicted extra costs compress gross margin; as markup rises and extra costs fall, margin recovers. If net loss still widens because operating and marketing spend grew faster than gross profit, present that honestly.
@@ -98,10 +104,12 @@ Deno.serve(async (req) => {
     //  (2) the six company-wide live views that model BundledMum as one company
     //      with two arms (storefront + marketplace) plus shared overhead. These
     //      are additive: the existing report keeps everything it had.
+    //  Plus business_context: how OLD each arm is, so the model never reads a
+    //  three-week-old marketplace as a trend or its launch spend as failed payback.
     const [
       trendRes, metricsRes, scenariosRes, runwayRes, mktRes, ueRes, pipeRes,
       companyMonthlyRes, companyRunwayRes, companyPipelineRes,
-      mFunnelRes, mRevSplitRes, mUnitEconRes,
+      mFunnelRes, mRevSplitRes, mUnitEconRes, businessContextRes,
     ] = await Promise.all([
       admin.rpc("finance_monthly_trend", { p_start, p_end }),
       admin.rpc("finance_period_metrics", { p_start, p_end }),
@@ -117,10 +125,11 @@ Deno.serve(async (req) => {
       admin.from("marketplace_funnel").select("*").maybeSingle(),
       admin.from("marketplace_revenue_split").select("*"),
       admin.from("marketplace_unit_economics").select("*"),
+      admin.from("business_context").select("*").maybeSingle(),
     ]);
     const firstErr = trendRes.error || metricsRes.error || scenariosRes.error || runwayRes.error || mktRes.error || ueRes.error || pipeRes.error
       || companyMonthlyRes.error || companyRunwayRes.error || companyPipelineRes.error
-      || mFunnelRes.error || mRevSplitRes.error || mUnitEconRes.error;
+      || mFunnelRes.error || mRevSplitRes.error || mUnitEconRes.error || businessContextRes.error;
     if (firstErr) {
       return new Response(JSON.stringify({ error: "Could not load financial figures", detail: firstErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -128,6 +137,9 @@ Deno.serve(async (req) => {
     const figures = {
       period: { p_start, p_end },
       business: { name: "BundledMum", launched: "2026-05-18", committed_capital_ngn: 10000000, currency: "NGN" },
+      // How old each arm is (launch dates, days live, launch-period flag). The
+      // model must read each arm's age before judging it.
+      business_context: businessContextRes.data || null,
       monthly_trend: arr(trendRes.data),
       period_metrics: arr(metricsRes.data)[0] || null,
       projection_scenarios: arr(scenariosRes.data)[0] || null,

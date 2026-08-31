@@ -359,6 +359,20 @@ function DashboardTab() {
   });
   const cfp = cfpRows?.[0];
 
+  // Business context (launch dates, days live, launch-period flag). A snapshot,
+  // NOT range-filtered. Passed to every sub-view so the AGE of each arm frames
+  // its numbers: a 24-day-old marketplace is a launch, not a trend, and its
+  // launch spend is customer acquisition, not a failed payback.
+  const { data: ctx } = useQuery({
+    queryKey: ["business-context"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("business_context").select("*").maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+
   // Switch to a preset, or reveal custom inputs seeded from the current range
   // (and keep the cards on that range until the user edits + Applies).
   const selectRange = (k: PmSelectorKey) => {
@@ -578,6 +592,12 @@ function DashboardTab() {
 
       {subView === "storefront" && (<>
       <SourceLegend />
+
+      {ctx?.storefront_days_live != null && (
+        <p className="text-[11px] text-text-med">
+          Storefront live <strong>{acqCount(ctx.storefront_days_live)} days</strong> (launched {ctx.storefront_launch_date ?? "n/a"}).
+        </p>
+      )}
 
       {/* Storefront contribution — range-driven, from company_finance_period.
           Contribution is revenue less this arm's OWN direct costs; it is not
@@ -854,8 +874,8 @@ function DashboardTab() {
       <TaxAlertBox position={taxPosition} />
       </>)}
 
-      {subView === "marketplace" && <MarketplaceView pmRange={pmRange} />}
-      {subView === "company" && <CompanyView pmRange={pmRange} cfp={cfp} />}
+      {subView === "marketplace" && <MarketplaceView pmRange={pmRange} ctx={ctx} />}
+      {subView === "company" && <CompanyView pmRange={pmRange} cfp={cfp} ctx={ctx} />}
     </div>
   );
 }
@@ -875,7 +895,7 @@ function NotFilteredNote({ children = "Not filtered by the date range (latest sn
 // not revenue; seller share is a pass-through liability; every arm figure is
 // CONTRIBUTION, never profit.
 // ════════════════════════════════════════════════════════════════════════
-function MarketplaceView({ pmRange }: { pmRange: PmRange }) {
+function MarketplaceView({ pmRange, ctx }: { pmRange: PmRange; ctx: any }) {
   // Range-driven: company_finance_period (marketplace_* fields) + funnel.
   const { data: cfpRows } = useQuery({
     queryKey: ["company-finance-period", pmRange?.start, pmRange?.end],
@@ -922,12 +942,29 @@ function MarketplaceView({ pmRange }: { pmRange: PmRange }) {
   const directCosts = toNum(cfp?.marketplace_direct_costs);
   const netRevenue = toNum(cfp?.marketplace_net_revenue);
   const covers = directCosts !== null && netRevenue !== null ? netRevenue >= directCosts : null;
+  // During the launch period, direct spend is customer acquisition for a brand
+  // new channel, NOT a payback failure. That reframes the whole view.
+  const isLaunch = ctx?.marketplace_is_launch_period === true;
 
   return (
     <div className="space-y-4">
-      {/* THE POINT OF THE VIEW: does the take cover the arm's own direct costs? */}
-      <div className={`rounded-xl border p-4 ${covers === false ? "border-red-300 bg-red-50" : covers === true ? "border-forest/40 bg-forest/[0.05]" : "border-border bg-card"}`}>
-        <h3 className="text-sm font-bold mb-2">Marketplace direct spend vs revenue kept</h3>
+      {/* Age header — a marketplace this young is a launch, not a trend. */}
+      <div className={`rounded-xl border p-3 ${isLaunch ? "border-amber-300 bg-amber-50" : "border-border bg-card"}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {isLaunch && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white uppercase tracking-wide">Launch period</span>}
+          <span className="text-sm font-semibold">Marketplace live {acqCount(ctx?.marketplace_days_live)} days</span>
+          <span className="text-[11px] text-text-med">launched {ctx?.marketplace_launch_date ?? "n/a"}, first paid order {ctx?.marketplace_first_paid_order ?? "n/a"}.</span>
+        </div>
+        {isLaunch && (
+          <p className="text-[11px] text-text-med mt-1">
+            These are LAUNCH-PERIOD figures, not steady state. Low volume is early-days, and the direct spend below is customer acquisition for a new channel, not a payback failure. Judge conversion and reliability, not immediate return on spend.
+          </p>
+        )}
+      </div>
+
+      {/* Direct spend vs revenue kept. During launch this is acquisition spend. */}
+      <div className={`rounded-xl border p-4 ${isLaunch ? "border-amber-300 bg-amber-50" : covers === false ? "border-red-300 bg-red-50" : covers === true ? "border-forest/40 bg-forest/[0.05]" : "border-border bg-card"}`}>
+        <h3 className="text-sm font-bold mb-2">{`Marketplace direct spend vs revenue kept${isLaunch ? " — launch-period acquisition spend" : ""}`}</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <div className="text-[11px] uppercase tracking-wide text-text-light font-semibold">Marketplace direct spend</div>
@@ -943,7 +980,9 @@ function MarketplaceView({ pmRange }: { pmRange: PmRange }) {
           </div>
         </div>
         <p className="text-[11px] text-text-med mt-2">
-          {covers === null ? "Waiting for figures in this range." : covers ? "The take currently covers the marketplace's own direct costs." : "The take does NOT yet cover the marketplace's own direct costs. The arm's true cost is worse still, because it also consumes shared staff and tools charged at company level."}
+          {isLaunch
+            ? "In the launch period this is customer-acquisition spend for a brand-new channel, not a payback failure. It is expected to exceed the take while the channel is being seeded; judge it on volume growth and reliability, not on immediate return on spend."
+            : covers === null ? "Waiting for figures in this range." : covers ? "The take currently covers the marketplace's own direct costs." : "The take does NOT yet cover the marketplace's own direct costs. The arm's true cost is worse still, because it also consumes shared staff and tools charged at company level."}
         </p>
       </div>
 
@@ -987,7 +1026,7 @@ function MarketplaceView({ pmRange }: { pmRange: PmRange }) {
 // a SUM of two different revenue types (storefront retail + marketplace take).
 // Shared overhead and payroll belong to neither arm. ONE company runway.
 // ════════════════════════════════════════════════════════════════════════
-function CompanyView({ pmRange, cfp }: { pmRange: PmRange; cfp: any }) {
+function CompanyView({ pmRange, cfp, ctx }: { pmRange: PmRange; cfp: any; ctx: any }) {
   // Snapshot / month-based (NOT range-filtered).
   const { data: crw } = useQuery({
     queryKey: ["company-runway"],
@@ -1104,7 +1143,9 @@ function CompanyView({ pmRange, cfp }: { pmRange: PmRange; cfp: any }) {
         <NotFilteredNote>Pipeline is a live snapshot (not earned revenue), not filtered by the date range. Liabilities are owed to sellers, not company money.</NotFilteredNote>
       </div>
 
-      {/* Month-by-month company trend. Month-based, not range-filtered. */}
+      {/* Month-by-month company trend. Month-based, not range-filtered. The two
+          arms launched nearly three months apart, so a given month is not a
+          like-for-like comparison between them. */}
       <div className={cardCls}>
         <h3 className="text-sm font-bold mb-2">Month-by-month (company)</h3>
         {(monthly || []).length === 0 ? (
@@ -1135,7 +1176,9 @@ function CompanyView({ pmRange, cfp }: { pmRange: PmRange; cfp: any }) {
             </table>
           </div>
         )}
-        <NotFilteredNote>Month-by-month trend is month-based, not filtered by the date range.</NotFilteredNote>
+        <NotFilteredNote>
+          Month-by-month trend is month-based, not filtered by the date range. Storefront launched {ctx?.storefront_launch_date ?? "n/a"} and the marketplace {ctx?.marketplace_launch_date ?? "n/a"}, nearly three months apart, so a given month is NOT a like-for-like comparison between the two arms.
+        </NotFilteredNote>
       </div>
     </div>
   );
