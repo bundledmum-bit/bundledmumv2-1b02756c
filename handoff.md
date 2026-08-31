@@ -37,7 +37,24 @@ so a zero is never shown without that context. It stays labelled PIPELINE, never
 
 Deployed generate-financial-report **v30**; repo byte-identical. financePdf.ts + repo edge copy
 committed. `npm run build` passes. No cron changed. (The temporary `diag-anthropic` function was
-neutralised to an inert 410 stub after diagnosis; there is no MCP delete-function tool.)
+neutralised after diagnosis and the owner then set `verify_jwt` on it.)
+
+**NEXT LIMIT IS WALL-CLOCK, NOT max_tokens — do NOT just raise the cap again.** The narrative
+call now generates ~3,943 output tokens in ~95s, against the edge function's ~150s wall-clock
+limit. Generation time tracks OUTPUT LENGTH, not the max_tokens cap. A test with an ~8,000-token
+output already hit the 150s idle timeout. So once the report's output grows past roughly 5,000
+tokens (more months of data, more sections, longer prose), it will start TIMING OUT instead of
+truncating, and bumping max_tokens will not help. The real levers then are: shorten the prompt's
+per-section length ("1 to 2 short paragraphs"), drop stale months from `company_finance_monthly`
+sent to the model, split the generation into two smaller calls, or stream. Diagnose via
+`stop_reason` / the `console.error(narrative_error)` line (a timeout surfaces as a request error,
+not `stop_reason: "max_tokens"`).
+
+**PROCESS:** edge-function DEPLOYS are the owner's side of the split. Make the repo change and
+keep the repo copy byte-identical, then hand the deploy to the owner; do not call
+deploy_edge_function directly. Repo/deployed drift has bitten more than once, and a public
+diagnostic function holding an API key is a real risk even briefly. A needed diagnostic should be
+deployed by the owner, gated (`verify_jwt` on) from the start.
 
 ## Finance — arm AGE / launch-period framing (DONE, this turn)
 Additive layer on top of the existing three-view dashboard + company report: both surfaces now
