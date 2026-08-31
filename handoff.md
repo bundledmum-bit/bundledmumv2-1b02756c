@@ -1,5 +1,35 @@
 # Handoff
 
+## generate-financial-report — company-wide (two arms) context (DONE, this turn, v26)
+Rebuilt the edge function's DATA + system prompt (not the delivery) so the report models
+BundledMum as one company with two arms plus shared overhead.
+- **Reads BEFORE:** storefront-era only — `finance_monthly_trend`, `finance_period_metrics`,
+  `finance_projection_scenarios`, `finance_marketing_by_channel`, `finance_unit_economics`
+  (RPCs) + `finance_runway`, `finance_quote_pipeline` (views).
+- **Reads NOW:** all of the above (kept, so the existing PDF still populates) PLUS the six
+  company views, added to `figures`: `company_finance_monthly` (6 rows, ordered by month),
+  `company_runway` (snapshot), `company_pipeline` (5 rows), `marketplace_funnel` (snapshot),
+  `marketplace_revenue_split`, `marketplace_unit_economics`. All read server-side via service
+  role; no figure computed in code or by the model.
+- **System prompt now carries** the BUSINESS MODEL rules (storefront ≠ marketplace, never
+  blend; GMV ≠ revenue; take = markup + service fee reported separately; no marketplace COGS;
+  escrow/pending payouts are liabilities; quotes/unpaid = pipeline) and the THREE-LAYER COST
+  MODEL (storefront-direct, marketplace-direct, shared overhead never charged to an arm) plus
+  the benchmarks. Arm-level figures are described as **contribution, never profit**; "profit"
+  is reserved for the company figure. ONE shared runway = `company_runway_months_structural`.
+- **Sections:** the model now returns three new keys `storefront_section`,
+  `marketplace_section`, `company_combined_section` (STOREFRONT / MARKETPLACE / COMPANY
+  COMBINED) in ADDITION to the existing seven keys (nothing that currently renders breaks).
+  `max_tokens` raised 2600 → 4000 to fit them.
+- **SCOPE FLAG:** the delivered PDF ([src/lib/financePdf.ts](src/lib/financePdf.ts)) renders
+  only the seven original narrative keys + storefront figure tables. Per the task's "keep
+  delivery unchanged, not a redesign", the PDF was NOT touched — so the three new sections and
+  the six views are produced in the report PAYLOAD (returned `narrative` + `figures`) but are
+  not yet drawn in the PDF. Wiring them into the PDF is a deliberate follow-up (a delivery
+  change the task scoped out).
+- **repo == deployed:** repo `supabase/functions/generate-financial-report/index.ts` is
+  byte-identical to deployed **v26**. No cron changed.
+
 ## meta-catalog-feed availability — AUDITED, already correct (NO CHANGE, this turn)
 Asked to set `availability` per row from `brands.in_stock` and keep OOS rows. **The
 deployed feed (v31) already does exactly this** — no code change was needed or made.
