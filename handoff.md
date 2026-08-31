@@ -1,5 +1,34 @@
 # Handoff
 
+## Finance PDF — three company-wide sections now RENDER (DONE, this turn)
+Wired the v26 edge function's three new narrative keys + six company views into the
+delivered PDF (the delivery change scoped out last time). **Only file:
+[src/lib/financePdf.ts](src/lib/financePdf.ts)** — appended THREE sections after all
+existing content in `generateFinancialStatusReportPdf`, reusing the existing helpers
+(`heading`/`para`/`afterTable`) and `autoTable` styling so it reads as the same document.
+- **Storefront:** `storefront_section` narrative + grid table (latest + prior month):
+  Revenue, Gross profit, Direct costs, **Contribution** (store_* from company_finance_monthly).
+- **Marketplace:** `marketplace_section` + two tables — (a) revenue: **GMV (volume, not
+  revenue)**, seller share (pass-through liability), markup revenue, service fee revenue,
+  revenue kept, blended take rate, **contribution per order**; (b) funnel: sellers
+  registered/listed, % listers sold, listings live/sold, checkouts started/paid/paid out,
+  sell-through %, checkout-to-paid %, avg payment attempts. Plus a muted line comparing
+  marketplace_direct_costs vs marketplace_net_revenue, labelled contribution.
+- **Company Combined:** `company_combined_section` + table (company revenue labelled
+  storefront retail + marketplace take, shared overhead, shared payroll, **company net
+  profit** [only "profit"; red if negative], company-wide runway months) + pipeline grid
+  grouped by kind (incoming → supply → liability) with a "liabilities owed to sellers" note.
+- **Graceful absence:** each section renders only if its narrative key OR its view is present;
+  an older cached report (none of them) omits all three with no empty headings and no crash.
+  Individual missing cells show "n/a" (the money/pct/count helpers already do this), never
+  "undefined". Money uses "NGN " (no ₦ tofu).
+- **Original seven sections unchanged** (appended-only; nothing above moved).
+- **Verified live** (dev server, real jsPDF path, real view numbers): 4-page PDF generates
+  with all three sections and real figures (NGN 43,800 GMV, NGN 9,800 revenue kept, NGN 2,198
+  contribution/order, 22.4% take, 8.3 months runway, funnel 1.4/80.0%/44.4%); parenthesised
+  labels confirmed via inner-text search. Old-shape payload → 3 pages, zero new sections, no
+  crash. `npm run build` passes.
+
 ## generate-financial-report — company-wide (two arms) context (DONE, this turn, v26)
 Rebuilt the edge function's DATA + system prompt (not the delivery) so the report models
 BundledMum as one company with two arms plus shared overhead.

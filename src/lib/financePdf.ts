@@ -338,6 +338,20 @@ export async function generateFinancialStatusReportPdf(
   const ue = figures?.unit_economics || {};
   const pipe = figures?.quote_pipeline || {};
 
+  // ── Company-wide views (two arms + shared overhead + combined). Optional:
+  // an older cached report has none of these, so every section below is gated
+  // on presence and simply omitted when absent (never an empty heading). ──
+  const cfm: any[] = Array.isArray(figures?.company_finance_monthly) ? figures.company_finance_monthly : [];
+  const cfmLatest: any = cfm.length ? cfm[cfm.length - 1] : null;
+  const cfmPrior: any = cfm.length > 1 ? cfm[cfm.length - 2] : null;
+  const crw = figures?.company_runway || null;
+  const cpipe: any[] = Array.isArray(figures?.company_pipeline) ? figures.company_pipeline : [];
+  const mrev = figures?.marketplace_revenue_split || null;
+  const mfunnel = figures?.marketplace_funnel || null;
+  const mue = figures?.marketplace_unit_economics || null;
+  const attemptsFmt = (v: any): string => { const n = num(v); return n === null ? "n/a" : n.toFixed(1); };
+  const humanize = (v: any): string => String(v ?? "").replace(/_/g, " ").trim();
+
   heading("Executive Summary");
   para(narrative?.executive_summary || naNote, { muted: !narrative?.executive_summary });
 
@@ -500,6 +514,145 @@ export async function generateFinancialStatusReportPdf(
   });
   afterTable();
   para(`Based on ${countFmt(sc.months_of_data)} months of data; indicative, not predictive. Forward figures are scenarios, not forecasts.`, { muted: true });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // COMPANY-WIDE SECTIONS (two arms + shared overhead + combined). Appended
+  // AFTER all existing content so nothing above moves. Each is gated on its
+  // narrative key OR its underlying view, and skipped entirely when neither is
+  // present (older cached reports render as if these sections never existed).
+  // Arm-level money is CONTRIBUTION, never profit; GMV is labelled volume.
+  // ════════════════════════════════════════════════════════════════════════
+
+  // 1. STOREFRONT ──────────────────────────────────────────────────────────
+  if (narrative?.storefront_section || cfmLatest) {
+    heading("Storefront");
+    para(narrative?.storefront_section || naNote, { muted: !narrative?.storefront_section });
+    if (cfmLatest) {
+      const twoCol = !!cfmPrior;
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        theme: "grid",
+        headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+        styles: { font: "helvetica", fontSize: 9, cellPadding: 2.2, textColor: BODY },
+        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" } },
+        head: [twoCol
+          ? ["Storefront (NGN)", monthLabel(cfmLatest.month), monthLabel(cfmPrior.month)]
+          : ["Storefront (NGN)", monthLabel(cfmLatest.month)]],
+        body: [
+          ["Revenue", money(cfmLatest.store_revenue), ...(twoCol ? [money(cfmPrior.store_revenue)] : [])],
+          ["Gross profit", money(cfmLatest.store_gross_profit), ...(twoCol ? [money(cfmPrior.store_gross_profit)] : [])],
+          ["Direct costs", money(cfmLatest.store_direct_costs), ...(twoCol ? [money(cfmPrior.store_direct_costs)] : [])],
+          ["Contribution", money(cfmLatest.store_contribution), ...(twoCol ? [money(cfmPrior.store_contribution)] : [])],
+        ],
+        didParseCell: (d) => {
+          if (/^Contribution/.test(String((d.row.raw as any[])?.[0] || ""))) d.cell.styles.fontStyle = "bold";
+        },
+      });
+      afterTable();
+    }
+  }
+
+  // 2. MARKETPLACE ─────────────────────────────────────────────────────────
+  if (narrative?.marketplace_section || mrev || mfunnel || mue || cfmLatest) {
+    heading("Marketplace");
+    para(narrative?.marketplace_section || naNote, { muted: !narrative?.marketplace_section });
+    const L = cfmLatest || {};
+    // (a) Revenue kept vs GMV volume.
+    autoTable(doc, {
+      startY: y,
+      margin: { left: MARGIN, right: MARGIN },
+      theme: "plain",
+      styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+      columnStyles: { 0: { textColor: MUTED }, 1: { halign: "right", fontStyle: "bold" } },
+      body: [
+        ["GMV (volume, not revenue)", money(mrev?.gmv ?? L.marketplace_gmv_volume)],
+        ["less: Seller share (pass-through liability)", money(L.marketplace_seller_share)],
+        ["Markup revenue", money(mrev?.markup_revenue)],
+        ["Service fee revenue", money(mrev?.service_fee_revenue)],
+        ["Revenue kept (take)", money(mrev?.total_platform_revenue ?? L.marketplace_net_revenue)],
+        ["Blended take rate", pct(mrev?.blended_take_pct ?? L.marketplace_take_rate_pct)],
+        ["Contribution per order", money(mue?.contribution_per_order)],
+      ],
+      didParseCell: (d) => {
+        const l0 = String((d.row.raw as any[])?.[0] || "");
+        if (d.column.index === 0 && l0.startsWith("less:")) d.cell.styles.textColor = MUTED;
+        if (/^Contribution per order/.test(l0)) d.cell.styles.fontStyle = "bold";
+      },
+    });
+    afterTable();
+    // (b) Funnel.
+    autoTable(doc, {
+      startY: y,
+      margin: { left: MARGIN, right: MARGIN },
+      theme: "grid",
+      headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+      styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.2, textColor: BODY },
+      columnStyles: { 1: { halign: "right" } },
+      head: [["Marketplace funnel", "Value"]],
+      body: [
+        ["Sellers registered", countFmt(mfunnel?.sellers_registered)],
+        ["Sellers who listed", countFmt(mfunnel?.sellers_who_listed)],
+        ["% of listers who sold", pct(mfunnel?.pct_listers_who_sold)],
+        ["Listings live", countFmt(mfunnel?.listings_live)],
+        ["Listings sold", countFmt(mfunnel?.listings_sold)],
+        ["Checkouts started", countFmt(mfunnel?.checkouts_started)],
+        ["Orders paid", countFmt(mfunnel?.orders_paid)],
+        ["Orders paid out", countFmt(mfunnel?.orders_paid_out)],
+        ["Sell-through rate", pct(mfunnel?.listing_sell_through_pct)],
+        ["Checkout to paid", pct(mfunnel?.pct_checkout_to_paid)],
+        ["Avg payment attempts per paid order", attemptsFmt(mfunnel?.avg_attempts_per_paid_order)],
+      ],
+    });
+    afterTable();
+    para(`Marketplace direct spend ${money(L.marketplace_direct_costs)} against revenue kept ${money(L.marketplace_net_revenue)}, leaving a contribution of ${money(L.marketplace_contribution)}. This is contribution, not profit: the arm also consumes shared staff and tools charged at company level.`, { muted: true });
+  }
+
+  // 3. COMPANY COMBINED ────────────────────────────────────────────────────
+  if (narrative?.company_combined_section || crw || cpipe.length || cfmLatest) {
+    heading("Company Combined");
+    para(narrative?.company_combined_section || naNote, { muted: !narrative?.company_combined_section });
+    const L = cfmLatest || {};
+    autoTable(doc, {
+      startY: y,
+      margin: { left: MARGIN, right: MARGIN },
+      theme: "plain",
+      styles: { font: "helvetica", fontSize: 9.5, cellPadding: 2.2, textColor: BODY },
+      columnStyles: { 0: { textColor: MUTED }, 1: { halign: "right", fontStyle: "bold" } },
+      body: [
+        ["Company revenue (storefront retail + marketplace take)", money(L.company_revenue)],
+        ["less: Shared overhead", money(L.shared_overhead)],
+        ["less: Shared payroll", money(L.shared_payroll)],
+        ["Company net profit", money(L.company_net_profit)],
+        ["Runway (structural, company-wide)", monthsFmt(crw?.company_runway_months_structural)],
+      ],
+      didParseCell: (d) => {
+        const l0 = String((d.row.raw as any[])?.[0] || "");
+        if (d.column.index === 0 && l0.startsWith("less:")) d.cell.styles.textColor = MUTED;
+        if (/^Company net profit/.test(l0)) d.cell.styles.fontStyle = "bold";
+        if (d.column.index === 1 && /^Company net profit/.test(l0) && isNeg(L.company_net_profit)) d.cell.styles.textColor = NEG;
+      },
+    });
+    afterTable();
+    if (cpipe.length) {
+      const kindOrder: Record<string, number> = { incoming: 0, supply: 1, liability: 2 };
+      const pipeRows = [...cpipe].sort((a, b) => (kindOrder[String(a.kind)] ?? 9) - (kindOrder[String(b.kind)] ?? 9));
+      autoTable(doc, {
+        startY: y,
+        margin: { left: MARGIN, right: MARGIN },
+        theme: "grid",
+        headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+        styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.2, textColor: BODY },
+        columnStyles: { 3: { halign: "right" }, 4: { halign: "right" } },
+        head: [["Kind", "Arm", "Source", "Items", "Value"]],
+        body: pipeRows.map((r) => [
+          humanize(r.kind), humanize(r.arm), humanize(r.source), countFmt(r.items), money(r.value_naira),
+        ]),
+      });
+      afterTable();
+      para("Pipeline is not earned revenue. Liabilities (escrow held, pending seller payouts, referral commissions owed) are money held on behalf of sellers, not company funds.", { muted: true });
+    }
+  }
 
   drawFooter(doc);
   return doc;
