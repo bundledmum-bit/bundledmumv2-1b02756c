@@ -10176,3 +10176,87 @@ outline on the body and screenshotted again: it never appeared, proving the
 pane was not painting. A fresh tab captured the real page immediately. Same
 lesson as §171, in a new place: check the instrument records a known-true
 change before believing what it shows.
+
+## 180. The marketplace expense flag had nowhere to be set (2026-08-31)
+
+`finance_expenses.is_marketplace` existed, and the marketplace finance
+dashboard read it correctly: one row set straight in the database showed as
+₦341,915 on the Marketing card exactly as it should. But it was the ONLY row
+ever true. Three expenses logged through the real admin form the same day,
+Branded T-shirts, Roll-up banner and Storefront Meta ads, all arrived false,
+because the form had no field for it. **The display side was right and the
+capture side did not exist.**
+
+Confirmed genuinely absent rather than hidden: zero occurrences of
+`is_marketplace` in AdminFinance.tsx, zero in useFinance.ts, and not even on
+the `Expense` interface. It appeared only in the generated Supabase types and
+in one sentence on the marketplace screen describing the gap.
+
+### The label, and the default
+
+> **This is a marketplace expense**
+> Leave off for storefront spend, which is nearly all of it. On means it counts
+> towards the marketplace finance dashboard instead.
+
+Defaults OFF. 39 of the 40 expenses recorded are storefront, so defaulting the
+rare case to on would mislabel far more often than it would help, and a wrong
+tag here quietly moves money onto a dashboard someone makes decisions from.
+
+Sits by the category field, since Marketing and Advertising is where it will be
+used most, but available on EVERY category: a marketplace-only software or
+delivery cost is perfectly possible, and hiding it for those would recreate
+this exact gap somewhere else.
+
+On BOTH forms, one shared component, so a misclassified row can be corrected
+in either direction and the two can never drift apart in wording.
+
+### The verification problem, and what was done about it
+
+The QA design account has neither `finance:view` nor `finance:edit`, so the
+finance screen does not load for it and the toggle could not be clicked. Rather
+than fall back to a code read, the payload construction was pulled out of both
+forms into `financeExpensePayload.ts` and tested: 10 cases, including that
+`is_marketplace` is `false` and not `undefined` when the form never had the
+field, because undefined would let the column fall back to its default instead
+of recording the choice, and on an edit that would silently refuse to turn a
+tag OFF. Both forms now call that builder, so the tests cover the real path
+rather than a copy of it.
+
+**Still not verified by clicking.** Nobody has exercised the actual control in
+a browser. To do that the QA account would need `finance:view`, which is a
+permissions decision, not a code one.
+
+### The authorised write test, and what it left behind
+
+Before: **40 rows, 1 marketplace, ₦341,915.**
+
+Created two rows of ₦1 each under Marketing and Advertising, using the exact
+shape the builder produces: "ZZ TEST toggle on, delete me" with
+`is_marketplace` true, and "ZZ TEST toggle off, delete me" with it false. Both
+saved with the values given. The edit path was then proven in BOTH directions:
+the true row was set to false, and the false row to true.
+
+With one test row tagged, the reading side moved from ₦341,915 to ₦341,916 and
+from 1 marketplace row to 2, which is the whole point: a newly tagged expense
+reaches the dashboard with nothing else changed.
+
+Both rows were then deleted by id. After: **40 rows, 1 marketplace, ₦341,915,
+and zero rows matching 'ZZ TEST%'.** Identical to before.
+
+### A note that this made untrue
+
+MarketplaceFinance.tsx told the operator under Known gaps that "the storefront
+finance screen has no field to set it, so it's false on every expense today".
+That was already half wrong, since one row was true, and shipping this made it
+fully wrong. Replaced with something that will still be true next month: the
+control exists, it was only added on 30 August 2026, exactly ONE real
+marketplace expense has ever been recorded, and so cost per order and cost per
+buyer are arithmetic on a single number rather than a trend. Whoever opens that
+dashboard next month should not read one entry as a pattern.
+
+### Not changed
+
+July, June and May Meta Ads rows were flagged as possible misclassifications
+and left alone. Confirmed afterwards that no marketplace campaign existed
+before August, so they are correctly storefront. Flagging rather than assuming
+was the right call; so was not touching the data.

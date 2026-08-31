@@ -159,7 +159,7 @@ export default function MarketplaceFinance() {
       <SectionLabel>Known gaps</SectionLabel>
       <div className="rounded-2xl border p-4 mt-2 text-xs text-text-med space-y-2" style={{ borderColor: "#F0DDD2" }}>
         <p><b className="text-foreground">Payment method breakdown</b> — not available. Marketplace orders don't record a payment method column, and every payment currently goes through Paystack card, so there's nothing to break down by method today.</p>
-        <p><b className="text-foreground">Marketplace-tagged marketing spend</b> — <code className="text-[11px]">finance_expenses</code> gained an <code className="text-[11px]">is_marketplace</code> flag, but the storefront finance screen has no field to set it, so it's false on every expense today. The Marketing section above will start showing real numbers once tagging is possible.</p>
+        <p><b className="text-foreground">Marketplace marketing spend is one data point, not a trend</b> — expenses are tagged as marketplace or storefront on the finance screen, under Log an expense and on the edit form. That control was only added on 30 August 2026, and exactly ONE real marketplace expense has been recorded so far, from that day. Whatever the Marketing card shows above is that single entry, so cost per order and cost per buyer are arithmetic on one number rather than anything to read a pattern from. Give it a few months of tagged spend before treating the direction as real.</p>
       </div>
 
       <SectionLabel>Monthly history</SectionLabel>

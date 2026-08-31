@@ -70,6 +70,12 @@ export interface Expense {
   vendor: string | null;
   receipt_url: string | null;
   notes: string | null;
+  /** Whether this expense belongs to the MARKETPLACE rather than the
+   * storefront. The marketplace finance dashboard reads it to build its
+   * Marketing card; everything else ignores it. Defaults false in the
+   * database, which is the right default: 39 of the 40 expenses recorded so
+   * far are storefront. */
+  is_marketplace: boolean;
   category?: ExpenseCategory | null;
 }
 

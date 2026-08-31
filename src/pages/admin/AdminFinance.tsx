@@ -26,6 +26,7 @@ import {
   type Expense, type CogsEntry, type PayrollEntry, type TaxSettings, type FinanceAsset, type PayeBand, type PLRow,
   NTA_2025_PAYE_BANDS,
 } from "@/hooks/useFinance";
+import { buildExpensePayload, clearedAfterSave } from "./financeExpensePayload";
 
 // ---------- Mobile card helper ----------
 // On mobile, wide finance tables render as stacked cards: one row = one card,
@@ -1329,6 +1330,49 @@ function fmtLongDate(iso: string | null | undefined): string {
   } catch { return iso; }
 }
 
+/**
+ * Which side of the business an expense belongs to.
+ *
+ * finance_expenses.is_marketplace has existed for a while and the marketplace
+ * finance dashboard already reads it correctly, but there was nowhere in this
+ * form to set it, so every expense logged here arrived false. One row had ever
+ * been true, set straight in the database. The display side was right and the
+ * capture side simply did not exist.
+ *
+ * DEFAULTS OFF, and that is not laziness. 39 of the 40 expenses recorded so
+ * far are storefront, so defaulting the rare case to on would mislabel far
+ * more often than it would help, and a wrong tag here quietly moves money onto
+ * a dashboard someone makes decisions from.
+ *
+ * Available on EVERY category, not just Marketing and Advertising. Marketing
+ * is where it will be used most, which is why it sits by the category field,
+ * but a marketplace-only software or delivery cost is perfectly possible and
+ * hiding the control for those would just recreate this gap somewhere else.
+ *
+ * One component used by both the create form and the edit modal, so an
+ * expense can be corrected later and the two can never drift apart in wording.
+ */
+function MarketplaceExpenseToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-2.5">
+      <label className="flex items-start gap-2 text-xs cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={e => onChange(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="font-semibold">This is a marketplace expense</span>
+          <span className="block text-[10px] text-text-light mt-0.5">
+            Leave off for storefront spend, which is nearly all of it. On means it counts towards the marketplace finance dashboard instead.
+          </span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function ExpensesTab() {
   const isMobile = useIsMobile();
   const p = usePeriod("this_month");
@@ -1344,7 +1388,7 @@ function ExpensesTab() {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<any>({
     expense_date: today, category_id: "", description: "", amount: "",
-    vendor: "", is_recurring: false, recurrence_unit: "monthly", recurrence_interval: 1,
+    vendor: "", is_marketplace: false, is_recurring: false, recurrence_unit: "monthly", recurrence_interval: 1,
     recurrence_end_date: "", notes: "",
   });
 
@@ -1369,28 +1413,11 @@ function ExpensesTab() {
 
   const canSave = form.expense_date && form.category_id && form.description.trim() && Number(form.amount) > 0;
 
+  // Built by the shared, tested builder rather than assembled here, so the
+  // create form and the edit modal cannot disagree about what gets written.
   const handleSave = () => {
-    const isRec = !!form.is_recurring;
-    const unit  = form.recurrence_unit || "monthly";
-    const interval = isRec ? Math.max(1, Number(form.recurrence_interval) || 1) : null;
-    const nextDate = isRec ? calculateNextDate(form.expense_date, unit, interval || 1) : null;
-    addE.mutate({
-      expense_date: form.expense_date,
-      category_id: form.category_id,
-      description: form.description.trim(),
-      amount: toKobo(Number(form.amount)),
-      vendor: form.vendor?.trim() || null,
-      is_recurring: isRec,
-      // Mirror to the legacy `recurrence` column for any downstream
-      // readers that haven't migrated yet.
-      recurrence: isRec ? unit : null,
-      recurrence_unit: isRec ? unit : null,
-      recurrence_interval: interval,
-      recurrence_next_date: nextDate,
-      recurrence_end_date: isRec ? (form.recurrence_end_date || null) : null,
-      notes: form.notes?.trim() || null,
-    } as any, {
-      onSuccess: () => setForm({ ...form, description: "", amount: "", vendor: "", notes: "" }),
+    addE.mutate(buildExpensePayload(form, calculateNextDate) as any, {
+      onSuccess: () => setForm(clearedAfterSave(form)),
     });
   };
 
@@ -1428,6 +1455,10 @@ function ExpensesTab() {
                 ))}
               </select>
             </div>
+            <MarketplaceExpenseToggle
+              checked={!!form.is_marketplace}
+              onChange={v => setForm({ ...form, is_marketplace: v })}
+            />
             <div>
               <label className={labelCls}>Description</label>
               <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={inputCls} />
@@ -1672,6 +1703,9 @@ function EditExpenseModal({
     amount: String(Math.round((expense.amount || 0) / 100)),
     vendor: expense.vendor || "",
     notes: expense.notes || "",
+    // Opens on what the row actually is, so an existing misclassified expense
+    // can be corrected either way rather than only ever turned on.
+    is_marketplace: !!expense.is_marketplace,
     is_recurring: isRecurring,
     recurrence_unit: (expense.recurrence_unit ?? expense.recurrence ?? "monthly") as "daily" | "weekly" | "monthly" | "annually" | "custom",
     recurrence_interval: Number(expense.recurrence_interval) || 1,
@@ -1681,25 +1715,8 @@ function EditExpenseModal({
 
   const save = async () => {
     setBusy(true);
-    const isRec = !!form.is_recurring;
-    const unit = form.recurrence_unit;
-    const interval = isRec ? Math.max(1, Number(form.recurrence_interval) || 1) : null;
-    const nextDate = isRec ? calculateNextDate(form.expense_date, unit, interval || 1) : null;
     try {
-      await onSave({
-        expense_date: form.expense_date,
-        category_id: form.category_id || null,
-        description: form.description.trim(),
-        amount: toKobo(Number(form.amount)),
-        vendor: form.vendor?.trim() || null,
-        notes: form.notes?.trim() || null,
-        is_recurring: isRec,
-        recurrence: isRec ? unit : null,
-        recurrence_unit: isRec ? unit : null,
-        recurrence_interval: interval,
-        recurrence_next_date: nextDate,
-        recurrence_end_date: isRec ? (form.recurrence_end_date || null) : null,
-      });
+      await onSave(buildExpensePayload(form, calculateNextDate));
     } finally { setBusy(false); }
   };
 
@@ -1747,6 +1764,10 @@ function EditExpenseModal({
               ))}
             </select>
           </div>
+          <MarketplaceExpenseToggle
+            checked={!!form.is_marketplace}
+            onChange={v => setForm({ ...form, is_marketplace: v })}
+          />
           <div>
             <label className={labelCls}>Description</label>
             <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className={inputCls} />
