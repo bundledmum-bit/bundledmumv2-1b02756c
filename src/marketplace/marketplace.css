@@ -3295,3 +3295,46 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   font: 800 12.5px/1 'Nunito', sans-serif; color: var(--mkt-muted);
 }
 .mkt-acct-clear:disabled { opacity: .6; cursor: default; }
+
+/* ── Listing for someone else, admin only ─────────────────────────────────
+   Never shown to a seller listing their own item: the whole block only
+   renders when ?for= names another seller. */
+.mkt-listing-as { border: 1.5px solid #2D6A4F; background: #D8EFE5; border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; }
+.mkt-listing-as p { font-size: 13px; line-height: 1.5; color: #1A4A33; margin: 4px 0 0; }
+.mkt-listing-as-title { font-family: Nunito, sans-serif; font-weight: 800; font-size: 14.5px; color: #1A1A1A; }
+.mkt-listing-as-sub { color: #6B5B54 !important; font-size: 12px !important; }
+.mkt-listing-as-blocked { border-color: #C0392B; background: #FCEBE9; }
+.mkt-listing-as-blocked p { color: #8C2A1F; }
+.mkt-listing-as-ok { margin-top: 10px; background: #fff; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; color: #1A4A33; }
+.mkt-listing-as-warn { margin-top: 10px; background: #FFF3E8; border: 1px solid #F4845F; border-radius: 10px; padding: 10px; }
+.mkt-listing-as-warn-title { font-size: 12.5px; line-height: 1.5; color: #8A5A2B; font-weight: 600; }
+.mkt-listing-as-link { margin-top: 6px; background: none; border: 0; padding: 0; font-size: 12.5px; color: #D4613C; text-decoration: underline; font-weight: 700; }
+.mkt-listing-as-form { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.mkt-listing-as-q { font-family: Nunito, sans-serif; font-weight: 800; font-size: 12px; color: #6B5B54; }
+.mkt-listing-as-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.mkt-listing-as-choice { min-height: 44px; text-align: left; background: #fff; border: 1.5px solid #E3D4CB; border-radius: 10px; padding: 8px 12px; font-size: 12.5px; font-weight: 700; color: #1A1A1A; }
+.mkt-listing-as-choice.on { border-color: #2D6A4F; background: #D8EFE5; }
+.mkt-listing-as-choice.wide { display: block; width: 100%; font-weight: 600; }
+.mkt-listing-as-choice.wide b { display: block; font-family: Nunito, sans-serif; font-weight: 800; font-size: 12.5px; }
+.mkt-listing-as-choice.wide span { display: block; font-size: 11px; color: #8A7A72; margin-top: 2px; }
+.mkt-listing-as-note { border: 1.5px solid #E3D4CB; border-radius: 10px; padding: 8px 10px; font-size: 13px; font-family: Lato, sans-serif; resize: vertical; }
+.mkt-listing-as-err { background: #FCEBE9; color: #8C2A1F; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+.mkt-listing-as-save { min-height: 44px; background: #2D6A4F; color: #fff; border: 0; border-radius: 10px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 13px; }
+.mkt-listing-as-save:disabled { background: #E0DAD5; color: #8A7A72; }
+
+/* ── A managed seller's first sign in ─────────────────────────────────── */
+.mkt-managed-welcome { position: fixed; inset: 0; z-index: 80; background: rgba(26,26,26,0.55); display: flex; align-items: flex-end; justify-content: center; padding: 0; }
+.mkt-managed-card { background: #FFF8F4; width: 100%; max-width: 520px; border-radius: 20px 20px 0 0; padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); max-height: 92svh; overflow-y: auto; }
+.mkt-managed-card h2 { font-family: Nunito, sans-serif; font-weight: 900; font-size: 21px; line-height: 1.25; color: #1A1A1A; margin: 0 0 10px; }
+.mkt-managed-card p { font-family: Lato, sans-serif; font-size: 14.5px; line-height: 1.6; color: #4A3F3A; margin: 0 0 12px; }
+.mkt-managed-card p b { font-family: Nunito, sans-serif; font-weight: 800; color: #1A1A1A; }
+.mkt-managed-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.mkt-managed-primary { min-height: 52px; background: #2D6A4F; color: #fff; border: 0; border-radius: 14px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 15px; }
+.mkt-managed-secondary { min-height: 52px; background: #fff; color: #1A1A1A; border: 1.5px solid #E3D4CB; border-radius: 14px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 14px; }
+.mkt-managed-danger { min-height: 52px; background: #C0392B; color: #fff; border: 0; border-radius: 14px; font-family: Nunito, sans-serif; font-weight: 800; font-size: 15px; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+@media (min-width: 640px) {
+  .mkt-managed-welcome { align-items: center; padding: 16px; }
+  .mkt-managed-card { border-radius: 20px; }
+  .mkt-managed-actions { flex-direction: row-reverse; }
+  .mkt-managed-actions button { flex: 1; }
+}

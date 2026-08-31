@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useMarketplaceWhatsAppNumber, waContextHref } from "../lib/whatsapp";
 import { useSeller } from "./useSeller";
+import ManagedSellerWelcome, { hasSeenManagedWelcome } from "./ManagedSellerWelcome";
+import { useQuery as useManagedFlagQuery } from "@tanstack/react-query";
+import { sdb as managedDb } from "./sellData";
 import { sdb, formatNaira, maskAccount, missingNameParts, parseBankNameMismatch, previewDisplayName, parseLegalNameLockError, sellerRelistListing, genericErrorMessage } from "./sellData";
 import { fetchSellerOrders, groupSellerOrders, type SellerOrder } from "./sellerOrders";
 import { sendToMarketplaceLogin } from "../auth/marketplaceLogin";
@@ -65,6 +68,27 @@ function OrderRow({ o, coral, pill, onClick }: { o: SellerOrder; coral?: boolean
  */
 export default function SellerDashboardPage() {
   const { loading, isLoggedIn, seller, refresh, user } = useSeller();
+
+  /**
+   * A managed seller arriving for the first time.
+   *
+   * We opened this account and their items are already up, so landing on a
+   * normal dashboard with no explanation would be a surprise at best. Only
+   * ever true for is_admin_managed sellers; every ordinary seller, including
+   * the 133 who asked us to list for them, sees nothing different here.
+   */
+  const { data: isManaged } = useManagedFlagQuery({
+    queryKey: ["mkt-seller-managed", seller?.id],
+    enabled: !!seller?.id,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<boolean> => {
+      const { data } = await managedDb.from("marketplace_sellers")
+        .select("is_admin_managed").eq("id", seller!.id).maybeSingle();
+      return (data as { is_admin_managed?: boolean } | null)?.is_admin_managed === true;
+    },
+  });
+  const [welcomeDone, setWelcomeDone] = useState(false);
+  const showManagedWelcome = !!seller && isManaged === true && !welcomeDone && !hasSeenManagedWelcome(seller.id);
   const navigate = useNavigate();
   const waNumber = useMarketplaceWhatsAppNumber();
   const [editing, setEditing] = useState(false);
@@ -148,6 +172,9 @@ export default function SellerDashboardPage() {
   return (
     <div className="mkt-dashboard-page">
       <MarketplaceTitle title="Seller dashboard" />
+      {showManagedWelcome && (
+        <ManagedSellerWelcome sellerId={seller.id} onDone={() => setWelcomeDone(true)} />
+      )}
       <div className="mkt-sell-head">
         <div className="inner">
           <div className="row">

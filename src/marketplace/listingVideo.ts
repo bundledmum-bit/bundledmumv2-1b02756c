@@ -304,6 +304,27 @@ export async function attachStagedListingVideo(input: {
   return { ok: true };
 }
 
+/**
+ * The same attach, when an ADMIN is listing for a seller.
+ *
+ * seller_stage_listing_video resolves the seller from auth.uid() and raises
+ * "Not authenticated as a seller" for anyone else, so an admin listing on
+ * someone's behalf cannot use it. admin_add_listing_video exists for exactly
+ * this, takes the note every on-behalf action takes, and records who did it.
+ *
+ * Without this branch the video requirement would appear to work and then
+ * fail at the last step, on the one flow built to get items listed.
+ */
+export async function attachStagedListingVideoAsAdmin(input: {
+  listingId: string; storagePath: string; note: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const { error } = await sdb.rpc("admin_add_listing_video", {
+    p_listing_id: input.listingId, p_storage_path: input.storagePath, p_note: input.note,
+  });
+  if (error) return { ok: false, message: error.message || "That could not be saved. Please try again." };
+  return { ok: true };
+}
+
 export async function stageListingVideo(input: {
   listingId: string;
   sellerAuthUid: string;

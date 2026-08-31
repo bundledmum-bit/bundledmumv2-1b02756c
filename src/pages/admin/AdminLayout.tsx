@@ -15,7 +15,7 @@ import {
   Inbox, Video, FolderOpen, Wrench, CreditCard, Clock, Film, Search as SearchIcon, PhoneCall,
   type LucideIcon,
 } from "lucide-react";
-import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone, History, Languages } from "lucide-react";
+import { Tag, Boxes, MapPin, FileText as PageIcon, Layout, Shield, ShieldCheck, RotateCcw, Megaphone, History, Languages, UserPlus } from "lucide-react";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
@@ -138,6 +138,9 @@ function AdminLayoutInner() {
         { label: "Did not finish paying", to: "/admin/marketplace/pending-payments", icon: CreditCard },
         { label: "Abandoned checkouts", to: "/admin/marketplace/abandoned", icon: ShoppingCart },
         { label: "Waiting on the buyer", to: "/admin/marketplace/awaiting-confirmation", icon: Clock },
+        // Clearing it means messaging someone, so Follow up by §169's rule.
+        // 133 sellers who set up bank details and never listed.
+        { label: "Never listed", to: "/admin/marketplace/never-listed", icon: UserPlus },
       ],
     },
     {

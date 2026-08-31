@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams} from "react-router-dom";
 import ListingVideoField from "./ListingVideoField";
 import ListingVideoPicker from "./ListingVideoPicker";
 import { useCategoryVideoRule } from "../listingVideo";
@@ -9,6 +9,8 @@ import { attachUploadToListing, getListingVideoUpload, uploadIsComplete } from "
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { useSeller, hasCompleteDeliveryPrefs } from "./useSeller";
+import { useAdminListingFor, onBehalfListingNote, ADMIN_LISTING_FOR_PARAM } from "./adminListingFor";
+import ListingAsBanner from "./ListingAsBanner";
 import {
   sdb, LISTING_BUCKET, buyerPrice, formatNaira, hasContactLeak, processListingImage, describeUploadError, genericErrorMessage, parseListingEditError, UnsupportedImageError, ImageTimeoutError, ImageTooLargeError, IMAGE_UPLOAD_TIMEOUT_MS,
   LISTING_VIDEO_BUCKET, processListingVideo, describeVideoUploadError, readVideoMetadata, VideoTooLongError,
@@ -127,8 +129,22 @@ const MAX_PHOTOS = 8;
  * the dashboard), those are handled by SellerPriceEditPage.tsx instead.
  */
 function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
-  const { loading, isLoggedIn, seller, user, refresh } = useSeller();
+  const { loading, isLoggedIn, seller: ownSeller, user, refresh } = useSeller();
   const navigate = useNavigate();
+  // ?for=<sellerId> means an admin is listing for someone who asked us to.
+  // Everything below is unchanged: the ONLY difference is whose account the
+  // listing lands in, so the photos, crop, watermark, location rules,
+  // delivery terms, category questions and video requirement all still apply
+  // exactly as they do for a seller doing it themselves.
+  const [listingForParams] = useSearchParams();
+  const listingForId = listingForParams.get(ADMIN_LISTING_FOR_PARAM);
+  const { data: actingFor, isLoading: actingLoading } = useAdminListingFor(listingForId);
+  const adminMode = !!listingForId;
+  // Blocked means blocked: an unresolved verdict, a needs_consent or a
+  // not_found never falls through to the admin's own seller row, which would
+  // silently post the item to the WRONG account.
+  const seller = adminMode ? (actingFor?.verdict.allowed ? actingFor.seller : null) : ownSeller;
+  const adminBlocked = adminMode && !actingLoading && !actingFor?.verdict.allowed;
   const queryClient = useQueryClient();
   const { id: editId } = useParams<{ id?: string }>();
   const isEditMode = !!editId;
@@ -205,7 +221,18 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   // Inline, and it cannot be skipped: the form itself does not render
   // until it is answered.
   const { data: sellerListingInfo } = useSellerListingInfo(seller?.id);
-  const askDelivery = !!seller
+  // NEVER in admin mode. This gate is written to the seller as "you" and
+  // writes through seller_set_delivery_prefs, which resolves the seller from
+  // auth.uid(): an admin answering it would either fail or answer as
+  // themselves. Found by running it, not by reading it, since the gate simply
+  // takes over the page and the listing form never appears.
+  //
+  // The admin has their own way to record the same two answers, in the
+  // banner above, through admin_set_delivery_prefs_for_seller with the note
+  // every on-behalf action takes. So the question still gets asked, by the
+  // person who is actually on WhatsApp with her.
+  const askDelivery = !adminMode
+    && !!seller
     && !hasCompleteDeliveryPrefs(seller)
     && !isEditMode
     && sellerListingInfo?.count === 0;
@@ -274,8 +301,12 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   useEffect(() => {
     if (loading) return;
     if (!isLoggedIn) { sendToMarketplaceLogin("/sell", "sell"); return; }
+    // In admin mode the signed-in person is an admin, not a seller, so the
+    // "you are not set up to sell" redirect must not fire. A blocked verdict
+    // renders its own explanation instead.
+    if (adminMode) return;
     if (!seller) navigate("/sell/setup", { replace: true });
-  }, [loading, isLoggedIn, seller, navigate]);
+  }, [loading, isLoggedIn, seller, navigate, adminMode]);
 
   // No fallback: a guessed markup would show the seller a wrong "buyers see"
   // price, so the price card shows a loading placeholder instead below.
@@ -661,6 +692,10 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
   async function submit(opts?: { skipVideoNow?: boolean }) {
     const skippedNow = opts?.skipVideoNow === true || videoSkipped;
     setError(null); setContactBlocked(false); setRecovery(null);
+    // A blocked verdict must stop the write, not just grey a banner. Without
+    // this the admin's own (absent) seller row would be used and the insert
+    // would either fail confusingly or land somewhere unintended.
+    if (adminBlocked) { setError("We cannot list for this seller yet. Record how they asked first."); return; }
     if (!seller || !user) return;
     if (photos.length < MIN_PHOTOS) {
       setError(`Add at least ${MIN_PHOTOS} photos. Buyers cannot ask questions before buying, so different angles do the explaining for you.`);
@@ -866,7 +901,16 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
         // .select() so the new row's id comes back: a video cannot be
         // staged until the listing exists, so the success screen needs the
         // id to offer one. "Seller reads own listings" makes this readable.
-        : await sdb.from("marketplace_listings").insert({ ...payload, seller_id: seller.id }).select("id").single();
+        : await sdb.from("marketplace_listings").insert({
+            ...payload,
+            seller_id: seller.id,
+            // Recorded on anything created this way, so the row itself says
+            // who typed it and why. Null for a seller listing their own item,
+            // which leaves normal listing byte for byte unchanged.
+            ...(adminMode && user
+              ? { listed_by_admin: actingFor?.adminUserId ?? null, listed_on_behalf_note: onBehalfListingNote(seller.display_name) }
+              : {}),
+          }).select("id").single();
       if (writeErr) throw writeErr;
       if (!isEditMode) {
         const newId = (writeRow as { id?: string } | null)?.id;
@@ -1023,7 +1067,8 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
               just done the work, and it avoids holding a 40MB file through
               a submission that might fail. */}
           {createdId && user?.id && (
-            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} categoryId={categoryId} />
+            <ListingVideoField listingId={createdId} sellerAuthUid={user.id} categoryId={categoryId}
+              onBehalfNote={adminMode && seller ? onBehalfListingNote(seller.display_name) : null} />
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1165,6 +1210,18 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
       </div>
 
       <div className="mkt-sell-body">
+        {/* Whose account this lands in, kept on screen the whole way down.
+            Posting an item into the wrong person's account is the worst
+            thing this could do, so it is never inferred from a quiet URL
+            param alone. */}
+        {adminMode && !actingLoading && actingFor && (
+          <ListingAsBanner
+            displayName={actingFor.seller?.display_name ?? null}
+            verdict={actingFor.verdict}
+            sellerId={listingForId as string}
+            onDeliveryRecorded={() => void queryClient.invalidateQueries({ queryKey: ["admin-listing-for", listingForId] })}
+          />
+        )}
         {/* Rejection reason leads (design 21a E5), the seller is here
             specifically to fix what this says. */}
         {isEditMode && existingListing?.status === "rejected" && existingListing.rejection_reason && (

@@ -25,11 +25,16 @@ import {
  * limit and the extracted poster, both of which required reading the video.
  * YouTube supplies the thumbnail.
  */
-export default function ListingVideoField({ listingId, sellerAuthUid, categoryId }: {
+export default function ListingVideoField({ listingId, sellerAuthUid, categoryId, onBehalfNote }: {
   listingId: string;
   sellerAuthUid: string;
   /** So the seller reads what to film for THIS kind of item. */
   categoryId?: string;
+  /** Set only when an ADMIN is listing for a seller. The seller's own staging
+   * RPC resolves the seller from auth.uid() and would refuse an admin, so the
+   * attach step swaps to admin_add_listing_video. Without this the video
+   * requirement would look like it worked and fail at the last step. */
+  onBehalfNote?: string | null;
 }) {
   const notice = useListingVideoNotice();
   const guidance = useListingVideoGuidance();
@@ -58,7 +63,7 @@ export default function ListingVideoField({ listingId, sellerAuthUid, categoryId
     // NOTHING is rejected. A longer video is a better video; the only
     // ceiling is the bucket's own, enforced by Supabase, and reported
     // honestly if it fires. Nothing is read from the file here at all.
-    startListingVideoUpload({ listingId, file: f, sellerAuthUid });
+    startListingVideoUpload({ listingId, file: f, sellerAuthUid, onBehalfNote });
   }
 
   const mine = up && up.listingId === listingId ? up : null;

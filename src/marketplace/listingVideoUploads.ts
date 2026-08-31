@@ -1,6 +1,6 @@
 import * as tus from "tus-js-client";
 import { supabase } from "@/integrations/supabase/client";
-import { attachStagedListingVideo, LISTING_VIDEO_STAGING_BUCKET } from "./listingVideo";
+import { attachStagedListingVideo, attachStagedListingVideoAsAdmin, LISTING_VIDEO_STAGING_BUCKET } from "./listingVideo";
 
 /**
  * The listing-video upload, held ABOVE the router so it survives a seller
@@ -97,11 +97,28 @@ export function uploadIsComplete(s: UploadState | null): boolean {
   return !!s && (s.status === "uploaded" || s.status === "done");
 }
 
+/** Null for a seller uploading their own, a note when an admin is doing it
+ * for them. Module state, matching how sellerAuthUid is already held. */
+let onBehalfNote: string | null = null;
+
+/** One attach, so the admin branch cannot be applied at one call site and
+ * missed at the other. */
+async function attachEither(listingId: string, storagePath: string) {
+  return onBehalfNote
+    ? attachStagedListingVideoAsAdmin({ listingId, storagePath, note: onBehalfNote })
+    : attachStagedListingVideo({ listingId, storagePath });
+}
+
 export function startListingVideoUpload(input: {
   file: File; sellerAuthUid: string; listingId?: string | null;
+  /** Set only when an ADMIN is listing for a seller. Carried through to the
+   * attach step, which must then use admin_add_listing_video: the seller's
+   * own RPC resolves the seller from auth.uid() and would refuse. */
+  onBehalfNote?: string | null;
 }): void {
   currentFile = input.file;
   sellerAuthUid = input.sellerAuthUid;
+  onBehalfNote = input.onBehalfNote ?? null;
   void begin(input.listingId ?? null, input.file, input.sellerAuthUid, input.file.name);
 }
 
@@ -118,7 +135,7 @@ export async function attachUploadToListing(listingId: string): Promise<void> {
   state = { ...state, listingId };
   emit();
   if (state.status === "uploaded" && state.objectPath) {
-    const res = await attachStagedListingVideo({ listingId, storagePath: state.objectPath });
+    const res = await attachEither(listingId, state.objectPath);
     if (!res.ok) { fail(res.message ?? "That could not be saved."); return; }
     if (!state) return;
     state = { ...state, status: "done" };
@@ -198,7 +215,7 @@ async function begin(listingId: string | null, file: File, authUid: string, file
         emit();
         return;
       }
-      const res = await attachStagedListingVideo({ listingId: target, storagePath: objectName });
+      const res = await attachEither(target, objectName);
       if (!res.ok) { fail(res.message ?? "That could not be saved."); return; }
       if (!state) return;
       state = { ...state, progress: 100, bytesSent: state.bytesTotal, status: "done" };

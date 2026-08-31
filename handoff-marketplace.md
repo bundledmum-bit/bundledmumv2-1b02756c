@@ -10260,3 +10260,129 @@ July, June and May Meta Ads rows were flagged as possible misclassifications
 and left alone. Confirmed afterwards that no marketplace campaign existed
 before August, so they are correctly storefront. Flagging rather than assuming
 was the right call; so was not touching the data.
+
+## 181. Listing for the 133 who never listed (2026-08-31)
+
+133 registered sellers have never listed anything, and **every one of them set
+up their bank details first**. Nobody enters bank details casually: all 133
+reached the step that says "this is where your money goes" and stopped at
+listing. That is friction, not disinterest. Verified live: 133 rows, 133 with
+bank details, 0 consented, 0 managed, 0 admin-listed.
+
+### Sign in was already right
+
+Supabase is on **OTP codes, not magic link** — switched in §61 and hardened in
+§63, template sending a bare `{{ .Token }}`, both apps on
+`signInWithOtp`/`verifyOtp`. So a managed seller can claim their account today
+and nothing in the dashboard needed changing.
+
+### Two relationships, never conflated
+
+ASSISTED is someone who signed up themselves, owns their account, has a login,
+and delegated one job. All 133. MANAGED is someone never on the platform, whose
+account we opened. `admin_record_assisted_consent` does NOT set
+`is_admin_managed`, because marking a seller managed would misrepresent both the
+relationship and the consent behind it.
+
+`can_admin_list_for` gates it, and **absence is treated as blocked, never
+permission**: `not_found` and `needs_consent` are both refused whatever
+`allowed` says, and an unreadable response falls back to blocked.
+
+### One form, one swapped seller
+
+No second form was built. `?for=<sellerId>` on the existing create flow swaps
+only WHICH seller it acts for, so the photos, crop, watermark, location rules,
+delivery terms, category questions and video requirement all still apply. The id
+lives in the URL so it survives a refresh mid-listing and so an admin can see
+whose account they are about to post to.
+
+`listed_by_admin` and `listed_on_behalf_note` are stamped on the insert, and
+only in admin mode, so ordinary listing is byte for byte unchanged.
+
+### Three things only running it found
+
+**1. The seller delivery gate took over the whole page.** It is written to the
+seller as "you" and writes through `seller_set_delivery_prefs`, which resolves
+the seller from `auth.uid()`, so an admin would have answered it as themselves
+or failed. It simply replaced the listing form and the banner never appeared.
+Now suppressed in admin mode, with the same two questions offered in the banner
+instead through `admin_set_delivery_prefs_for_seller`, which takes the note
+every on-behalf action takes.
+
+**2. The video requirement would have failed at the last step.**
+`seller_stage_listing_video` also resolves the seller from `auth.uid()` and
+raises "Not authenticated as a seller" for an admin. The attach now branches to
+`admin_add_listing_video`. One shared `attachEither` helper, so the branch
+cannot be applied at one call site and missed at the other.
+
+**3. An unreadable seller row was discarding an accurate verdict.** A missing
+row returned the generic "we could not check this seller" and threw away the
+server's own "this seller has not asked us to list for them. Record how they
+asked first", which is the difference between telling an admin what to do next
+and telling them nothing. The real reason is now kept and only `allowed` is
+overridden.
+
+### Delivery: surfaced, not gated
+
+104 of the 133 have never said where they will send to, and `can_admin_list_for`
+does not gate on it. Blocking would be the wrong shape: we are already on
+WhatsApp with these sellers getting their items, so it is one more question in
+that conversation, not a separate errand. The warning is shown prominently with
+the answer capturable inline, and the listing still goes up if it cannot be
+answered in the moment. **A live listing with an incomplete delivery answer is
+worth more than an item that never gets listed**, and it can be completed the
+moment they reply. The friction points at us, not the seller.
+
+There is NO delivery-prefs trigger on `marketplace_listings`; the comment in
+`useSeller.ts` says one "will shortly" reject such inserts and it never landed.
+Checked all 19 triggers.
+
+### Emails: nothing changed, and here is why
+
+Every seller-facing email resolves its recipient as
+`seller_id → marketplace_sellers.customer_id → customers.email`, inside the edge
+function: `send-marketplace-listing-email:91`, `-offer-email:73`,
+`-question-email:63`, `-seller-email:56`. **None reads who created the row.** So
+mail reaches the seller's own inbox by construction. No file in that path was
+edited.
+
+### The managed seller's first sign in
+
+Wording approved before shipping. The heading says the account IS THEIRS before
+it says who typed it, so someone who did ask reads no apology and someone who
+did not reaches the exit in one tap. The way out promises payment for anything
+already sold, because believing that objecting costs you money you earned is
+what turns a misunderstanding into a complaint. No retention attempt behind it.
+
+**Two invented RPCs were caught before they shipped.** The first draft called
+`seller_ack_managed_welcome` and `seller_reject_managed_account`, neither of
+which exists. A fabricated RPC fails silently in production, so the welcome
+would have reappeared on every sign in and the objection would have gone
+nowhere. Rewritten to use only what is deployed: seen-once in localStorage
+(per device, stated in the code), and the objection opens WhatsApp through the
+existing `useMarketplaceWhatsAppNumber`, which is where every other conversation
+with these sellers already happens.
+
+### Verified as the design account
+
+Working list renders with the tiles (2 never listed, 1 asked us, 1 no delivery
+answer), the consent note shown, and **the listing link offered ONLY for the
+consented seller**. The consent note minimum is exact: 9 characters disabled, 10
+enabled. Recording was refused with "This is a read-only account for design
+work", and nothing was written: still 0 consented, 0 managed.
+
+Blocked route, against a real unconsented seller, live end to end: no redirect
+to /sell/setup, and the server's own reason shown verbatim.
+
+Allowed route: "Listing for Chioma A.", the line that every email reaches them
+not us, the delivery warning, and the three handover choices with the note
+field, Record disabled until answered.
+
+Normal path untouched: `/sell/new` with no `?for=` still redirects a non-seller
+to `/sell/setup` and renders no banner at all.
+
+The populated list and the allowed banner could not be driven from real data as
+the design account: the view joins `customers`, of which it sees one row, and no
+consented seller exists to point at. Those two were verified by serving the real
+payload shape to the real components, as in §177, and that is said plainly
+rather than glossed.

@@ -1441,3 +1441,107 @@ export async function fetchSearchMisses(): Promise<SearchMissRow[]> {
   if (error) throw error;
   return (data ?? []) as SearchMissRow[];
 }
+
+/* ── Listing for a seller who never listed ───────────────────────────────
+ *
+ * 133 registered sellers have never listed anything, and every one of them
+ * set up their bank details first. Nobody enters bank details casually: all
+ * 133 reached the step that says "this is where your money goes" and then
+ * stopped at listing. That is friction, not disinterest.
+ *
+ * TWO DIFFERENT RELATIONSHIPS, deliberately never conflated. An ASSISTED
+ * seller signed up themselves, owns their account, has a login, and asked us
+ * to do one job. All 133 are here. A MANAGED seller was never on the
+ * platform at all and we opened the account for them. Marking an assisted
+ * seller as managed would misrepresent both the relationship and the consent
+ * behind it, so the two RPCs are separate and so is everything below.
+ */
+
+export interface NeverListedSeller {
+  seller_id: string;
+  display_name: string | null;
+  email: string | null;
+  full_name: string | null;
+  phone: string | null;
+  registered_at: string;
+  days_since_registering: number;
+  assisted_listing_ok: boolean;
+  assisted_consent_note: string | null;
+  answered_delivery: boolean;
+  has_bank_details: boolean;
+  how_far_they_got: string;
+}
+
+export async function fetchNeverListedSellers(): Promise<NeverListedSeller[]> {
+  const { data, error } = await adb.from("marketplace_sellers_never_listed").select("*");
+  if (error) throw error;
+  // The view is already ordered by how far they got. Not re-sorted here, so
+  // the screen and the view can never disagree about who to work first.
+  return ((data ?? []) as NeverListedSeller[]).filter((r) => !isTestAccountId(r.seller_id));
+}
+
+/**
+ * Whether an admin may list for this seller, and why not when they may not.
+ *
+ * `not_found` and `needs_consent` are BOTH blocked. An unknown id used to
+ * return no row at all, which a client reading "no answer" as "no objection"
+ * would have treated as permission; it now always returns exactly one row,
+ * and this treats a missing row as blocked regardless.
+ */
+export interface ListForVerdict {
+  allowed: boolean;
+  reason: string;
+  route: "managed" | "assisted" | "needs_consent" | "not_found";
+  needs_delivery_prefs: boolean;
+  /** Already worded server side, null when not needed. Shown verbatim. */
+  delivery_warning: string | null;
+}
+
+const BLOCKED_FALLBACK: ListForVerdict = {
+  allowed: false,
+  reason: "We could not check this seller. Refresh and try again.",
+  route: "not_found",
+  needs_delivery_prefs: false,
+  delivery_warning: null,
+};
+
+export async function canAdminListFor(sellerId: string): Promise<ListForVerdict> {
+  const { data, error } = await adb.rpc("can_admin_list_for", { p_seller_id: sellerId });
+  if (error) return BLOCKED_FALLBACK;
+  const row = (Array.isArray(data) ? data[0] : data) as ListForVerdict | undefined;
+  // Absence is blocked, never permission.
+  if (!row) return BLOCKED_FALLBACK;
+  return { ...row, allowed: row.allowed === true && row.route !== "not_found" && row.route !== "needs_consent" };
+}
+
+/** Records that an existing seller asked us to list for them. Does NOT mark
+ * them admin managed: they own their account and delegated one job. */
+export async function adminRecordAssistedConsent(input: {
+  sellerId: string; note: string;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_record_assisted_consent", {
+    p_seller_id: input.sellerId, p_note: input.note,
+  }, "That could not be saved. Please try again.");
+}
+
+/** Creates a customer and a seller for someone who was never on the platform.
+ * NO auth user is created: they claim the account by signing in with this
+ * email, which link_auth_user_to_customer connects on first sign in. */
+export async function adminCreateManagedSeller(input: {
+  email: string; fullName: string; phone: string; displayName: string;
+  consentNote: string; whatsapp?: string | null;
+}): Promise<RpcResult> {
+  return rpcAction(adb, "admin_create_managed_seller", {
+    p_email: input.email.trim().toLowerCase(),
+    p_full_name: input.fullName.trim(),
+    p_phone: input.phone.trim(),
+    p_display_name: input.displayName.trim(),
+    p_consent_note: input.consentNote,
+    p_whatsapp: input.whatsapp?.trim() || null,
+  }, "That account could not be created. Please try again.");
+}
+
+/** The note minimums the two functions enforce. Restated only so the form can
+ * disable its own button rather than let the database do the rejecting. */
+export const ASSISTED_CONSENT_NOTE_MIN = 10;
+export const MANAGED_CONSENT_NOTE_MIN = 15;
