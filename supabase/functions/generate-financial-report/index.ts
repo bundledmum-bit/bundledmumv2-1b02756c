@@ -29,6 +29,7 @@ const SYSTEM_PROMPT = `You are writing the narrative sections of an investor fin
 3. Do NOT spin negative figures positively. If a contribution or the company net profit is negative, or marketing ROI is negative, state it plainly.
 4. For projections, only restate the provided scenario figures and always name their assumption (e.g. 'at a 20% month-on-month growth assumption').
 5. No em dashes anywhere. Use commas or full stops.
+6. CAPITAL REMAINING / cash remaining: whenever you state the capital or cash remaining, use ONLY figures.runway.capital_remaining. That is the authoritative live value shown in the report's Burn and Runway table. Do NOT use figures.company_runway.company_capital_remaining or any other field for capital remaining; those figures differ slightly and citing them creates a mismatch with the table.
 
 ARM AGE AND LAUNCH PERIOD, absolute, never violate (use the business_context figures):
 - The two arms are very different ages. BEFORE you comment on either arm's performance you MUST state how long it has been live: the storefront (business_context.storefront_days_live days) and the marketplace (business_context.marketplace_days_live days, business_context.marketplace_months_live months, first paid order business_context.marketplace_first_paid_order).

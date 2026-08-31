@@ -327,10 +327,31 @@ export async function generateFinancialStatusReportPdf(
   const afterTable = () => { y = ((doc as any).lastAutoTable?.finalY ?? y) + 8; };
   const naNote = "AI narrative unavailable; the verified figures below are shown.";
 
-  const trend: any[] = Array.isArray(figures?.monthly_trend) ? figures.monthly_trend : [];
-  // Skip empty trailing months (0 orders AND 0 revenue), e.g. a current month
-  // with no trading yet, so the table never shows a Jul-2026-all-zeros row.
-  const shownTrend = trend.filter((r) => !(Number(r.paid_orders) === 0 && Number(r.revenue) === 0));
+  // Monthly Trend uses the TWO-ARM company_finance_monthly (was the
+  // storefront-only finance_monthly_trend). Suppress ONLY genuinely-empty
+  // months: no orders on EITHER arm AND no meaningful company net profit. A
+  // truly-empty trailing/future month is still hidden, but pre-trading months
+  // with a real cash net loss (Mar/Apr) and zero-storefront-revenue months that
+  // still carry marketplace activity and/or a pending-orders story (Jul/Aug) now
+  // appear, each flagged rather than silently dropped.
+  const cfmTrend: any[] = Array.isArray(figures?.company_finance_monthly) ? figures.company_finance_monthly : [];
+  const launchMonth = String(figures?.business_context?.storefront_launch_date || "2026-05-18").slice(0, 7);
+  const trendRows = cfmTrend.filter((r) => {
+    const activity = (Number(r.store_orders) || 0) > 0 || (Number(r.marketplace_orders) || 0) > 0;
+    const meaningfulNet = Math.round(Number(r.company_net_profit) || 0) !== 0;
+    return activity || meaningfulNet;
+  });
+  // Flag a storefront-revenue-zero month: "pre" = pre-trading (before launch,
+  // no orders on either arm); "pending" = zero storefront revenue but real
+  // activity / a pending-orders story (unpaid orders correctly excluded).
+  const rowFlag = (r: any): "" | "pre" | "pending" => {
+    if ((Number(r.store_revenue) || 0) !== 0) return "";
+    const pre = (Number(r.store_orders) || 0) === 0 && (Number(r.marketplace_orders) || 0) === 0
+      && String(r.month).slice(0, 7) < launchMonth;
+    return pre ? "pre" : "pending";
+  };
+  const anyPending = trendRows.some((r) => rowFlag(r) === "pending");
+  const anyPre = trendRows.some((r) => rowFlag(r) === "pre");
   const m = figures?.period_metrics || {};
   const sc = figures?.projection_scenarios || {};
   const rw = figures?.runway || {};
@@ -366,23 +387,38 @@ export async function generateFinancialStatusReportPdf(
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
     theme: "grid",
-    headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 8 },
-    styles: { font: "helvetica", fontSize: 8, cellPadding: 2, textColor: BODY },
+    headStyles: { fillColor: FOREST, textColor: 255, fontStyle: "bold", fontSize: 7.5 },
+    styles: { font: "helvetica", fontSize: 7.5, cellPadding: 2, textColor: BODY },
     columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" } },
-    head: [["Month", "Orders", "Revenue", "COGS", "Extra Costs", "Gross Profit", "Gross Margin", "Avg Markup"]],
-    body: shownTrend.length
-      ? shownTrend.map((r) => [
-          monthLabel(r.month), countFmt(r.paid_orders), money(r.revenue), money(r.cogs),
-          money(r.extra_costs), money(r.gross_profit), pct(r.gross_margin_pct), pct(r.avg_markup_pct),
-        ])
+    head: [["Month", "Store Orders", "Store Revenue", "Store Gross Profit", "Mkt Orders", "Mkt GMV (volume)", "Mkt Revenue (take)", "Company Net Profit"]],
+    body: trendRows.length
+      ? trendRows.map((r) => {
+          const flag = rowFlag(r);
+          const marker = flag === "pending" ? " *" : flag === "pre" ? " **" : "";
+          return [
+            monthLabel(r.month) + marker,
+            countFmt(r.store_orders), money(r.store_revenue), money(r.store_gross_profit),
+            countFmt(r.marketplace_orders), money(r.marketplace_gmv_volume), money(r.marketplace_net_revenue),
+            money(r.company_net_profit),
+          ];
+        })
       : [["No trading months in range", "", "", "", "", "", "", ""]],
+    didParseCell: (d: any) => {
+      // Company net loss shown in red (matches the P&L / Company Combined tables).
+      if (d.section === "body" && d.column.index === 7) {
+        const raw = trendRows[d.row.index];
+        if (raw && isNeg(raw.company_net_profit)) d.cell.styles.textColor = NEG;
+      }
+    },
   });
   afterTable();
+  if (anyPending) para("* Storefront revenue NGN 0 this month: revenue counts paid orders only, so unpaid or pending orders are correctly excluded. See the pending orders pipeline in the Company Combined section; that value is pipeline, not earned revenue.", { muted: true });
+  if (anyPre) para("** Pre-trading month (before the storefront launch on " + monthLabel(launchMonth) + "), with no orders on either arm; the net loss is committed cost ahead of first sales.", { muted: true });
 
   heading("Margin & Cost Analysis");
   para(narrative?.margin_and_cost_analysis || naNote, { muted: !narrative?.margin_and_cost_analysis });
 
-  heading("Profit & Loss (selected period)");
+  heading("Profit & Loss (storefront only, selected period)");
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
@@ -395,9 +431,9 @@ export async function generateFinancialStatusReportPdf(
       [`Gross Profit  (margin ${pct(m.gross_margin_pct)})`, money(m.gross_profit)],
       ["less: Total Expenses", money(m.total_expenses)],
       ["less: Total Payroll", money(m.total_payroll)],
-      ["EBITDA", money(m.ebitda)],
+      ["EBITDA (storefront only)", money(m.ebitda)],
       ["less: Depreciation", money(m.depreciation)],
-      [`Net Profit  (margin ${pct(m.net_margin_pct)})`, money(m.net_profit)],
+      [`Net Profit, storefront only  (margin ${pct(m.net_margin_pct)})`, money(m.net_profit)],
     ],
     didParseCell: (d) => {
       const label0 = String((d.row.raw as any[])?.[0] || "");
@@ -408,6 +444,7 @@ export async function generateFinancialStatusReportPdf(
     },
   });
   afterTable();
+  para("This Profit and Loss is STOREFRONT ONLY. The company-wide net profit, which also includes the marketplace take and shared overhead across both arms, is shown separately in the Company Combined section and is a different, larger loss.", { muted: true });
 
   heading("Burn & Runway");
   para(narrative?.burn_and_runway || naNote, { muted: !narrative?.burn_and_runway });

@@ -1,5 +1,35 @@
 # Handoff
 
+## Finance report — 3 reconciliation fixes (this turn)
+**FIX 1 — Monthly Trend now two-arm.** [financePdf.ts](src/lib/financePdf.ts) Monthly Trend read
+`figures.monthly_trend` (finance_monthly_trend, storefront-only) and suppressed any month with
+storefront paid_orders=0 AND revenue=0 — which wrongly hid Jul and Aug. Now reads
+`company_finance_monthly` with columns Month, Store Orders, Store Revenue, Store Gross Profit, Mkt
+Orders, Mkt GMV (volume), Mkt Revenue (take), Company Net Profit. New suppression: hide ONLY months
+with 0 orders on BOTH arms AND ~0 company_net_profit (still hides a truly-empty trailing month).
+Pre-trading months (Mar/Apr, before launch, flagged `**`) and zero-storefront-revenue months with
+activity/pending story (Jul/Aug, flagged `*` "revenue counts paid orders only, see pending pipeline")
+now show. Verified: 6 rows Mar–Aug render incl. Jul & Aug.
+
+**FIX 2 — two net-loss figures on page 1 now labelled by scope.** The P&L block (finance_period_metrics,
+storefront-only, net profit -4,744,801) and the Company Combined net profit (company_finance_period,
+both arms, -4,675,833) were two different unlabelled figures. Chose approach (b) (smaller/safer;
+(a) would break the storefront P&L waterfall): heading now "Profit & Loss (storefront only, selected
+period)", the Net Profit/EBITDA lines say "storefront only", and a note points to Company Combined
+for the company-wide loss.
+
+**FIX 3 — two Capital Remaining figures reconciled.** The Burn & Runway TABLE reads
+`figures.runway.capital_remaining` = finance_runway.capital_remaining = **NGN 3,904,993** (correct).
+The prose showed **NGN 3,914,793**, which is `company_runway.company_capital_remaining` (a second live
+field in the payload, exactly +9,800 = the marketplace take) — the model cited it because nothing
+pinned capital remaining. Fix: a system-prompt rule in generate-financial-report pins capital/cash
+remaining to `figures.runway.capital_remaining` only. **This is the ONLY edge-function change and it
+is NOT yet deployed** — repo copy updated byte-identical, deploy handed to the owner per the process
+boundary. Deployed generate-financial-report is still v30; deploying the repo copy applies FIX 3.
+
+financePdf.ts smoke-tested by rendering the PDF with the real figures (6-row trend, storefront-only
+P&L labels, capital 3,904,993 in the table all verified). `npm run build` passes. No cron changed.
+
 ## Finance report — Company Combined figures + AI narrative fixed (DONE, this turn)
 Two bugs in generate-financial-report / financePdf, plus a zero-revenue prompt rule.
 
