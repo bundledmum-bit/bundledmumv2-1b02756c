@@ -1,5 +1,44 @@
 # Handoff
 
+## Finance report — Company Combined figures + AI narrative fixed (DONE, this turn)
+Two bugs in generate-financial-report / financePdf, plus a zero-revenue prompt rule.
+
+**BUG 1 (Company Combined showed wrong company_revenue / net_profit).** The PDF's Company
+Combined table read `cfmLatest` = the LAST month of `company_finance_monthly`. In a month the
+storefront booked no paid revenue, that latest month carries only the marketplace take, so it
+showed company_revenue NGN 9,800 and net_profit NGN -834,654 (marketplace-only, latest month),
+not the period totals. Fix: the edge function now also pulls `company_finance_period(p_start,
+p_end)` (the range aggregate) into `figures.company_finance_period`, and financePdf's arm +
+company-combined summary tables read that (`const cper = figures.company_finance_period; const L
+= cper || cfmLatest || {}`), falling back to the latest month only for older cached reports.
+Verified: `company_finance_period('2026-05-01', CURRENT_DATE)` → company_revenue **1,541,102**
+(= storefront 1,531,302 + marketplace take 9,800), company_net_profit **-4,675,832.93**.
+
+**BUG 2 (every section = "AI narrative unavailable"). ROOT CAUSE FROM A FAITHFUL REPRO (not a
+guess):** the model id `claude-sonnet-4-6` is VALID (200 OK) and the API key is fine, so those
+weren't it. Reproducing the exact production call (real system prompt + real figures) via a
+throwaway `diag-anthropic` function showed the ten-section JSON output runs ~3,900-4,000 tokens
+against `max_tokens: 4000` — right at the ceiling. On any run that writes a hair more (and output
+grows as more months of data accrue: input was already 5,988 tokens), the response is cut off
+(`stop_reason: "max_tokens"`), the JSON never closes, `extractJson` throws, and the WHOLE
+`narrative` is nulled, so every section reads "AI narrative unavailable". The failure text was
+only ever returned in the response body, never logged, so nothing appeared in function logs.
+Fix: `max_tokens` 4000 → **6000** (verified: `stop_reason: end_turn`, output 3,943 tokens,
+JSON parses, ~95s wall-clock, under the 150s edge limit; time is driven by output length not the
+cap, so this is not slower). Also: on a parse failure the function now sets a precise
+`narrative_error` (naming a max_tokens cutoff) AND `console.error`s it so future failures are
+diagnosable in logs.
+
+**ADDITIONAL (0 storefront revenue with no context).** System prompt now instructs: revenue
+counts PAID orders only; whenever storefront revenue is 0 for a month/period, explain that unpaid/
+pending orders are correctly excluded and reference the pending pipeline from `company_pipeline`
+(the incoming / unpaid_orders row, value_naira + items, currently NGN 9,327,510 across 49 orders)
+so a zero is never shown without that context. It stays labelled PIPELINE, never added to revenue.
+
+Deployed generate-financial-report **v30**; repo byte-identical. financePdf.ts + repo edge copy
+committed. `npm run build` passes. No cron changed. (The temporary `diag-anthropic` function was
+neutralised to an inert 410 stub after diagnosis; there is no MCP delete-function tool.)
+
 ## Finance — arm AGE / launch-period framing (DONE, this turn)
 Additive layer on top of the existing three-view dashboard + company report: both surfaces now
 know how OLD each arm is, so a 24-day-old marketplace is not read as a trend and its launch

@@ -344,6 +344,12 @@ export async function generateFinancialStatusReportPdf(
   const cfm: any[] = Array.isArray(figures?.company_finance_monthly) ? figures.company_finance_monthly : [];
   const cfmLatest: any = cfm.length ? cfm[cfm.length - 1] : null;
   const cfmPrior: any = cfm.length > 1 ? cfm[cfm.length - 2] : null;
+  // PERIOD aggregate over the whole report range (true company / per-arm totals).
+  // The arm and company-combined summary tables MUST read these, not the latest
+  // MONTH row: in a month the storefront booked no paid revenue, the latest month
+  // reports only the marketplace take (e.g. NGN 9,800), which is NOT company revenue.
+  // Falls back to the latest month for older cached reports that predate this field.
+  const cper: any = figures?.company_finance_period || null;
   const crw = figures?.company_runway || null;
   const cpipe: any[] = Array.isArray(figures?.company_pipeline) ? figures.company_pipeline : [];
   const mrev = figures?.marketplace_revenue_split || null;
@@ -557,7 +563,7 @@ export async function generateFinancialStatusReportPdf(
   if (narrative?.marketplace_section || mrev || mfunnel || mue || cfmLatest) {
     heading("Marketplace");
     para(narrative?.marketplace_section || naNote, { muted: !narrative?.marketplace_section });
-    const L = cfmLatest || {};
+    const L = cper || cfmLatest || {};
     // (a) Revenue kept vs GMV volume.
     autoTable(doc, {
       startY: y,
@@ -612,7 +618,7 @@ export async function generateFinancialStatusReportPdf(
   if (narrative?.company_combined_section || crw || cpipe.length || cfmLatest) {
     heading("Company Combined");
     para(narrative?.company_combined_section || naNote, { muted: !narrative?.company_combined_section });
-    const L = cfmLatest || {};
+    const L = cper || cfmLatest || {};
     autoTable(doc, {
       startY: y,
       margin: { left: MARGIN, right: MARGIN },

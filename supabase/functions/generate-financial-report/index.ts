@@ -54,7 +54,7 @@ COST MODEL, one company with shared staff and tools, THREE layers, never violate
 BENCHMARKS for context: a marketplace take rate is normally 10 to 30 percent; contribution margin per order is the metric that shows whether a transaction actually pays; GMV alone is a vanity metric; liquidity (fill rate / sell-through) is the metric most predictive of marketplace survival.
 
 REPORT SECTIONS you must produce (in addition to the existing keys below):
-- storefront_section: STOREFRONT only. State how long the storefront has been live first. Revenue, gross profit, direct costs, and CONTRIBUTION (not profit). Use company_finance_monthly store_* fields. Keep it strictly storefront; never mention marketplace here.
+- storefront_section: STOREFRONT only. State how long the storefront has been live first. Revenue, gross profit, direct costs, and CONTRIBUTION (not profit). Use company_finance_monthly store_* fields. Keep it strictly storefront; never mention marketplace here. IMPORTANT: revenue counts PAID orders only. Whenever storefront revenue is 0 for a month or for the period, you MUST NOT show that zero without explaining it: say plainly that unpaid or pending orders are correctly EXCLUDED from revenue, and reference the pending orders pipeline from company_pipeline (the incoming / unpaid_orders row, citing its value_naira and items verbatim, currently the pending storefront orders awaiting payment) so the reader understands a 0 revenue figure reflects payment timing, not an absence of demand. This pending value is PIPELINE, not earned revenue, and must never be added to revenue.
 - marketplace_section: MARKETPLACE only. State how long the marketplace has been live FIRST (days/months live and first paid order), and that these are LAUNCH-PERIOD figures, not steady state, while marketplace_is_launch_period is true. Make the GMV vs revenue-kept distinction explicit (GMV is pass-through, revenue is the take only). Split markup vs service fee (marketplace_revenue_split). State the take rate and contribution PER ORDER (marketplace_unit_economics). Walk the funnel from marketplace_funnel: seller activation (registered -> listed -> sold), buyer conversion (checkouts started -> paid -> paid out), sell-through, and the reliability signals avg_attempts_per_paid_order and pct_checkout_to_paid. Present marketplace_direct_costs against marketplace_net_revenue as LAUNCH-PERIOD ACQUISITION SPEND for a new channel, NOT as a payback failure. Call every figure here contribution, never profit.
 - company_combined_section: COMPANY level. Total company revenue must be shown as a clearly-labelled SUM of TWO DIFFERENT revenue types (storefront retail revenue plus marketplace take), never GMV. Then shared overhead and payroll, then company NET PROFIT (this is the only place "profit" is allowed). State ONE shared runway using company_runway_months_structural from company_runway (never a per-arm runway). Then present the pipeline from company_pipeline split by kind into incoming, supply, and liability, noting liabilities (escrow, pending payouts) are owed to sellers, not company money. When you mention the month-by-month trend, note that the two arms launched nearly three months apart, so month-on-month comparison between them is not like for like.
 
@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     const [
       trendRes, metricsRes, scenariosRes, runwayRes, mktRes, ueRes, pipeRes,
       companyMonthlyRes, companyRunwayRes, companyPipelineRes,
-      mFunnelRes, mRevSplitRes, mUnitEconRes, businessContextRes,
+      mFunnelRes, mRevSplitRes, mUnitEconRes, businessContextRes, companyPeriodRes,
     ] = await Promise.all([
       admin.rpc("finance_monthly_trend", { p_start, p_end }),
       admin.rpc("finance_period_metrics", { p_start, p_end }),
@@ -126,10 +126,15 @@ Deno.serve(async (req) => {
       admin.from("marketplace_revenue_split").select("*"),
       admin.from("marketplace_unit_economics").select("*"),
       admin.from("business_context").select("*").maybeSingle(),
+      // Company-wide PERIOD aggregate (range-driven, single row). The Company
+      // Combined section must use these TRUE company totals (company_revenue,
+      // company_net_profit, ...), not the latest month of company_finance_monthly
+      // (which is marketplace-only in a month the storefront booked no paid revenue).
+      admin.rpc("company_finance_period", { p_start, p_end }),
     ]);
     const firstErr = trendRes.error || metricsRes.error || scenariosRes.error || runwayRes.error || mktRes.error || ueRes.error || pipeRes.error
       || companyMonthlyRes.error || companyRunwayRes.error || companyPipelineRes.error
-      || mFunnelRes.error || mRevSplitRes.error || mUnitEconRes.error || businessContextRes.error;
+      || mFunnelRes.error || mRevSplitRes.error || mUnitEconRes.error || businessContextRes.error || companyPeriodRes.error;
     if (firstErr) {
       return new Response(JSON.stringify({ error: "Could not load financial figures", detail: firstErr.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -148,6 +153,10 @@ Deno.serve(async (req) => {
       unit_economics: arr(ueRes.data)[0] || null,
       quote_pipeline: pipeRes.data || null,
       // ── Company-wide (two arms + shared overhead + combined). ──
+      // PERIOD aggregate over the whole report range (single row): the true
+      // company_revenue / company_net_profit / shared_* the Company Combined
+      // section must show, distinct from the per-month company_finance_monthly.
+      company_finance_period: arr(companyPeriodRes.data)[0] || null,
       company_finance_monthly: arr(companyMonthlyRes.data),
       company_runway: companyRunwayRes.data || null,
       company_pipeline: arr(companyPipelineRes.data),
@@ -169,23 +178,43 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({
             model: MODEL,
-            max_tokens: 4000,
+            // The ten narrative sections (1 to 3 short paragraphs each) run to
+            // roughly 4,000 output tokens, and grow as more months of data
+            // accrue. At max_tokens 4000 the JSON was being truncated mid-string
+            // on higher-output runs; extractJson then threw and the WHOLE
+            // narrative was nulled, so every section showed "AI narrative
+            // unavailable". 6,000 leaves comfortable headroom; the prose is
+            // still bounded by the prompt, so generation time stays well within
+            // the edge function's wall-clock limit.
+            max_tokens: 6000,
             system: SYSTEM_PROMPT,
             messages: [{ role: "user", content: "VERIFIED FINANCIAL FIGURES:\n" + JSON.stringify(figures) }],
           }),
         });
         if (!aiResp.ok) {
-          narrative_error = "Claude API call failed: " + (await aiResp.text()).slice(0, 300);
+          narrative_error = "Claude API call failed (HTTP " + aiResp.status + "): " + (await aiResp.text()).slice(0, 300);
         } else {
           const aiData = await aiResp.json();
+          const stopReason = aiData?.stop_reason;
           const aiText = (aiData.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
-          try { narrative = extractJson(aiText); }
-          catch { narrative_error = "Could not parse Claude response"; }
+          try {
+            narrative = extractJson(aiText);
+          } catch {
+            // A truncated response (stop_reason "max_tokens") is the usual cause:
+            // the JSON never closes, so parsing fails. Name it precisely.
+            narrative_error = stopReason === "max_tokens"
+              ? "Claude response was cut off at max_tokens before the JSON closed (raise max_tokens)."
+              : "Could not parse Claude response (stop_reason: " + String(stopReason) + ")";
+          }
         }
       } catch (e) {
         narrative_error = e instanceof Error ? e.message : "Claude request error";
       }
     }
+    // Surface any narrative failure in the FUNCTION LOGS. Previously the error
+    // was only returned in the response body, so it never appeared in logs and
+    // "AI narrative unavailable" had no diagnosable trace.
+    if (narrative_error) console.error("[generate-financial-report] narrative_error:", narrative_error);
 
     // ── Step C: return figures + narrative (narrative may be null on AI failure).
     return new Response(JSON.stringify({ figures, narrative, narrative_error }), {
