@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { writeRows } from "@/lib/tableWrite";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb } from "./data";
@@ -97,17 +98,19 @@ export default function MarketplaceFeaturedCategories() {
     const other = rows[index + dir];
     if (!cur || !other) return;
     setError(null);
-    await Promise.all([
-      adb.from("marketplace_featured_categories").update({ sort_order: other.sort_order }).eq("id", cur.id),
-      adb.from("marketplace_featured_categories").update({ sort_order: cur.sort_order }).eq("id", other.id),
+    const swaps = await Promise.all([
+      writeRows(adb.from("marketplace_featured_categories").update({ sort_order: other.sort_order }).eq("id", cur.id).select("id")),
+      writeRows(adb.from("marketplace_featured_categories").update({ sort_order: cur.sort_order }).eq("id", other.id).select("id")),
     ]);
+    if (swaps.some((r) => !r.ok)) { setError(swaps.find((r) => !r.ok)?.message ?? ""); return; }
     refetchAll();
   }
 
   async function removeRow(id: string) {
     setError(null);
-    const { error } = await adb.from("marketplace_featured_categories").delete().eq("id", id);
-    if (error) { setError("Could not remove that category. Please try again."); return; }
+    const res = await writeRows(adb.from("marketplace_featured_categories").delete().eq("id", id).select("id"),
+      "Could not remove that category. Please try again.");
+    if (!res.ok) { setError(res.message ?? ""); return; }
     refetchAll();
   }
 

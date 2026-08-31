@@ -1,4 +1,5 @@
 import { sdb } from "./sellData";
+import { writeRows } from "@/lib/tableWrite";
 
 /**
  * Where a seller is willing to sell, and how a nearby buyer gets the item.
@@ -163,10 +164,15 @@ export function isStateOnly(terms: DeliveryTerms | null | undefined): boolean {
  * trigger owns that column.
  */
 export async function saveLocalHandover(sellerId: string, value: LocalHandover): Promise<SaveResult> {
-  const { error } = await sdb
-    .from("marketplace_sellers")
-    .update({ local_handover: value, delivery_prefs_set_at: new Date().toISOString() })
-    .eq("id", sellerId);
-  if (error) return { ok: false, message: error.message || "We could not save that just now. Please try again." };
-  return { ok: true };
+  // .select() and a row count, not just the error: an UPDATE refused by RLS
+  // returns neither, so checking `error` alone reported a saved preference
+  // that was never written. See lib/tableWrite.
+  const res = await writeRows(
+    sdb.from("marketplace_sellers")
+      .update({ local_handover: value, delivery_prefs_set_at: new Date().toISOString() })
+      .eq("id", sellerId)
+      .select("id"),
+    "We could not save that just now. Please try again.",
+  );
+  return res.ok ? { ok: true } : { ok: false, message: res.message };
 }

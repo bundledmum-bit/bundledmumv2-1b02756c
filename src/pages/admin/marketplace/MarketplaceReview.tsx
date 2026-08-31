@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { writeRows } from "@/lib/tableWrite";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
@@ -96,13 +97,13 @@ export default function MarketplaceReview() {
   async function approve() {
     if (!current) return;
     setBusy(true); setError(null);
-    const { error } = await adb.from("marketplace_listings").update({
+    const res = await writeRows(adb.from("marketplace_listings").update({
       status: "live",
       reviewed_by: adminUser?.id ?? null,
       reviewed_at: new Date().toISOString(),
-    }).eq("id", current.id);
+    }).eq("id", current.id).select("id"));
     setBusy(false);
-    if (error) { setError(error.message); return; }
+    if (!res.ok) { setError(res.message ?? ""); return; }
     await afterAction();
   }
 
@@ -110,12 +111,12 @@ export default function MarketplaceReview() {
     if (!current) return;
     if (!rejectReason.trim()) { setError("A rejection reason is required."); return; }
     setBusy(true); setError(null);
-    const { error } = await adb.from("marketplace_listings").update({
+    const res = await writeRows(adb.from("marketplace_listings").update({
       status: "rejected",
       rejection_reason: rejectReason.trim(),
       reviewed_by: adminUser?.id ?? null,
       reviewed_at: new Date().toISOString(),
-    }).eq("id", current.id);
+    }).eq("id", current.id).select("id"));
     setBusy(false);
     if (error) { setError(error.message); return; }
     await afterAction();

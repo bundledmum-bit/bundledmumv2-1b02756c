@@ -1,3 +1,4 @@
+import { useCartServiceFee } from "../feeSettings";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -122,6 +123,10 @@ export default function CartPage() {
   }, [available]);
 
   const itemsTotal = available.reduce((s, r) => s + r.price, 0);
+  // The ONE fee for this cart, priced by the server. Never summed from the
+  // items: the fee is charged once on the order total, and a cart's orders
+  // carry the whole fee on the first row and zero on the rest.
+  const { data: cartFee } = useCartServiceFee(available.map((r) => r.listing_id));
   const sellerCount = groups.length;
   const itemCount = available.length;
 
@@ -228,26 +233,24 @@ export default function CartPage() {
               <aside className="mkt-cart-summary">
                 <div className="h">Order summary</div>
                 <div className="row"><span>Items ({itemCount})</span><b>{formatNaira(itemsTotal)}</b></div>
-                {/* ONE FEE PER ITEM, not one per cart.
-                    This said "Service fee, once" from before the fee became a
-                    percentage per item, and it kept saying it afterwards. So a
-                    buyer with three items was told one fee here and charged
-                    three at checkout: three separate fees totalling N2,400 on
-                    a real three-item order. That is the exact thing the FAQ
-                    answer was written to prevent, being contradicted one screen
-                    earlier, mid-purchase.
-                    The count is stated because the buyer already knows how many
-                    items they have, so "3 items, 3 fees" is checkable on the
-                    spot rather than a surprise at the next screen. */}
+                {/* ONE FEE FOR THE WHOLE CART, on the order total.
+                    This line has now been wrong in both directions. It said
+                    "once" while the fee was per item, and it said "3 items"
+                    once the fee went back to once per order. Both times it was
+                    a sentence describing the rule rather than the number, so
+                    it went stale the moment the rule moved.
+                    It now shows the ACTUAL FEE, priced by the server for this
+                    exact cart, so there is no rule to restate and nothing to
+                    go stale. A number cannot contradict the next screen. */}
                 <div className="row">
-                  <span>Service fee{itemCount > 1 ? `, ${itemCount} items` : ""}</span>
-                  <b>Shown at checkout</b>
+                  <span>Service fee, once</span>
+                  <b>{cartFee == null ? "Shown at checkout" : formatNaira(cartFee)}</b>
                 </div>
                 <div className="rule" />
-                <div className="row total"><span>Total</span><b>{formatNaira(itemsTotal)}</b></div>
+                <div className="row total"><span>Total</span><b>{formatNaira(itemsTotal + (cartFee ?? 0))}</b></div>
                 <div className="note">
                   {itemCount > 1
-                    ? "A service fee is charged on each item, so there are " + itemCount + ". Checkout shows every fee before you pay."
+                    ? "One service fee for the whole cart, however many items or sellers. Paystack's own fee is added at checkout."
                     : "The service fee and Paystack fee are added at checkout."}
                 </div>
                 {/* Blocked while anything in the cart cannot reach them.

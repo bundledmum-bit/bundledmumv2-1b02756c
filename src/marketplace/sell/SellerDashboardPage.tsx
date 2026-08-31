@@ -533,13 +533,13 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
     // names and overwrites anything sent. Legal names are only sent when this
     // seller does not have them locked yet, they are read-only inputs
     // otherwise so their values here are already unchanged from seller.*.
-    const { error } = await sdb.from("marketplace_sellers").update({
+    const { data: savedRows, error } = await sdb.from("marketplace_sellers").update({
       legal_first_name: legalFirstName.trim(),
       legal_last_name: legalLastName.trim(),
       bank_name: bankName.trim(),
       bank_account_name: bankAcctName.trim(),
       bank_account_number: bankAcctNumber.trim(),
-    }).eq("id", seller.id);
+    }).eq("id", seller.id).select("id");
     setBusy(false);
     if (error) {
       // Two specific rejections the database can raise here, neither ever
@@ -552,6 +552,12 @@ function EditProfile({ seller, onDone, onCancel }: { seller: NonNullable<ReturnT
       const locked = parseLegalNameLockError(error.message);
       if (locked) { setErr(locked); return; }
       setErr(genericErrorMessage("seller profile update", error));
+      return;
+    }
+    // No error and no rows means the update was refused. Bank details are the
+    // worst possible place to report a save that did not happen.
+    if (!savedRows || savedRows.length === 0) {
+      setErr("Those details could not be saved. Refresh and try again.");
       return;
     }
     onDone();

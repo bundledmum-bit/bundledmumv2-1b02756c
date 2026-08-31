@@ -897,7 +897,10 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
       // never touched, and status is always exactly 'pending_review', never
       // 'live' — only BundledMum can do that.
       const { data: writeRow, error: writeErr } = isEditMode
-        ? await sdb.from("marketplace_listings").update(payload).eq("id", editId as string)
+        // .select() here too. Without it an edit refused by RLS returned no
+        // error and no rows, and the seller was shown a saved listing that was
+        // never written.
+        ? await sdb.from("marketplace_listings").update(payload).eq("id", editId as string).select("id")
         // .select() so the new row's id comes back: a video cannot be
         // staged until the listing exists, so the success screen needs the
         // id to offer one. "Seller reads own listings" makes this readable.
@@ -912,6 +915,12 @@ function CreateListingForm({ onListAnother }: { onListAnother: () => void }) {
               : {}),
           }).select("id").single();
       if (writeErr) throw writeErr;
+      // An edit that matched no row was refused or is gone. Throwing here
+      // routes it through the same error handling as a raised failure, rather
+      // than showing the success screen for a listing that never changed.
+      if (isEditMode && (!writeRow || (Array.isArray(writeRow) && writeRow.length === 0))) {
+        throw new Error("That listing could not be saved. Refresh and check it is still yours to edit.");
+      }
       if (!isEditMode) {
         const newId = (writeRow as { id?: string } | null)?.id;
         if (newId) {

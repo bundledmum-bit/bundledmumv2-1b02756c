@@ -10479,3 +10479,116 @@ Both order paths, the checkout total and the cart's server-computed fee: no file
 in those paths was edited. The storefront's own "service fee" in `PackagePage`,
 `QuoteTotalsCard` and `AdminLandingPages` is a different fee entirely and was
 left alone.
+
+## 183. Once per order, and the third variant of one mistake (2026-08-31)
+
+The fee moved again: it is now charged ONCE on the ORDER TOTAL, not per item.
+A 3-item ₦30,000 cart pays ₦1,000, where yesterday it paid ₦2,400. Verified:
+`marketplace_cart_service_fee` on 3 real listings totalling ₦1,836 returns 200,
+identical to `marketplace_service_fee(1836)`.
+
+### The cart line has now been wrong in both directions
+
+It said "Service fee, once" while the fee was per item (§182), and after §182 it
+said "Service fee, 3 items" just as the fee went back to once per order. Both
+times it was **a sentence describing the rule** rather than the number, so it
+went stale the moment the rule moved.
+
+It now shows the ACTUAL FEE for that exact cart, priced by
+`marketplace_cart_service_fee`:
+
+  Items (3)            ₦30,000
+  Service fee, once     ₦1,000
+  Total                ₦31,000
+  "One service fee for the whole cart, however many items or sellers.
+   Paystack's own fee is added at checkout."
+
+There is no rule left to restate and nothing to go stale. A number cannot
+contradict the next screen.
+
+**Never sum service_fee_naira across a cart's orders.** A cart makes one order
+per listing and the whole fee sits on the FIRST one with zero on the rest, so
+summing would be right by accident today and wrong the moment that changes.
+
+### The copy, rebuilt from settings
+
+`feeRuleSentence()` now reads "of the order total" rather than "of its price",
+so both pages moved together from one edit.
+
+  FAQ, what do you charge:
+  "One service fee on your order, 8% of the order total, never less than ₦200.
+  It is capped at ₦1,000 on totals up to ₦50,000, and at ₦2,000 above that. You
+  see the exact amount at checkout before you pay anything."
+
+  FAQ, do I pay it more than once:
+  "No. One fee for the whole order, however many items and however many
+  sellers. It is 8% of the order total... Your cart shows the exact amount
+  before you pay."
+
+  Terms:
+  "Buyers also pay one service fee on the order... It is charged once per
+  order, however many items or sellers the order covers."
+
+The "Yes" answer became "No", which is a better answer. Checkout's sub-line went
+from "Charged on each item in this order" to "Charged once on this order, not
+per item".
+
+**No fee value is hardcoded.** All five come from `marketplace_fee_settings()`.
+The only numbers typed anywhere are the worked example's INPUT prices (₦1,200,
+₦18,000, a ₦30,000 cart); the threshold pair derives from `tier_naira`, and
+every FEE is priced by the real function.
+
+### FOR A WRITE, ONLY A CONFIRMED CHANGE IS SUCCESS
+
+Third variant of one mistake in three days, and they look nothing alike:
+
+  §167  an `ok` field invented by the client that no function returned
+  §180  a flag sent as undefined, so a tag could not be turned OFF
+  §182  an RLS refusal returning no error at all
+
+Every time, a write did not happen and the interface said it did. **Not the
+absence of an error. A confirmed change.**
+
+### The sweep, measured first
+
+Before fixing anything, measured what each verb actually does against a guarded
+table, as the design account:
+
+  UPDATE  ->  error null, 0 rows      silently "succeeds"
+  DELETE  ->  error null, 0 rows      silently "succeeds"
+  INSERT  ->  error 42501             correctly raises
+
+That measurement halved the work: **inserts were never affected** and 14 insert
+call sites did not need touching. Guessing would have churned them all.
+
+Diffed both lists: 44 writes to the 21 guarded tables, of which 20 are
+UPDATE/DELETE. **18 were error-only.** One, `CreateListingPage:900`, was scored
+"row-checked" by the script and was NOT: only the insert branch had `.select()`,
+so a seller resubmitting a rejected listing would have been shown a save that
+never happened. Reading would have accepted it.
+
+Fixed, all 20 now confirm a row:
+
+  marketplace/sell/SellerDashboardPage.tsx      bank details
+  marketplace/sell/SellerPriceEditPage.tsx      price edit
+  marketplace/sell/deliveryPrefs.ts             local handover
+  marketplace/sell/sellData.ts                  delist for edit
+  marketplace/sell/CreateListingPage.tsx        listing edit
+  admin/MarketplaceCategoryFields.tsx           update, delete, x2 reorder
+  admin/MarketplaceFeaturedCategories.tsx       x2 reorder, delete
+  admin/MarketplaceListingEdit.tsx              listing patch
+  admin/MarketplaceListings.tsx                 delist
+  admin/MarketplaceReview.tsx                   approve, reject
+  admin/MarketplaceSellers.tsx                  suspend, reinstate, verify
+  admin/opsData.ts                              delete alias
+  admin/MarketplaceSettings.tsx                 already done in §182, x2
+
+`lib/tableWrite.ts` holds the rule with 6 tests. Both halves of a reorder swap
+are checked: one refused would silently leave two rows sharing a sort order.
+
+The seller-side ones matter as much as the admin ones. Bank details reporting a
+save that did not happen is the worst place in the product for this bug.
+
+### Untouched
+
+Both order paths, the server-computed checkout total, and every insert.

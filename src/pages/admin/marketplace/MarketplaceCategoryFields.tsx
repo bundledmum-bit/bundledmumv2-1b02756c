@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { writeRows } from "@/lib/tableWrite";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -348,9 +349,9 @@ function CategoryEditor({ category, group, fields, uniqueForThisCategory, onChan
         help_text: draft.help_text.trim() || null,
       };
       if (draft.keyUnlocked) patch.field_key = v.key;
-      const { error } = await adb.from("marketplace_category_fields").update(patch).eq("id", editingId);
+      const res = await writeRows(adb.from("marketplace_category_fields").update(patch).eq("id", editingId).select("id"));
       setBusy(false);
-      if (error) { setError(error.message); return; }
+      if (!res.ok) { setError(res.message ?? ""); return; }
     } else {
       const maxSort = Math.max(-1, ...fields.map((f) => f.sort_order));
       const { error } = await adb.from("marketplace_category_fields").insert({
@@ -375,20 +376,23 @@ function CategoryEditor({ category, group, fields, uniqueForThisCategory, onChan
     const cur = fields[index];
     if (!other) return;
     setBusy(true);
-    await Promise.all([
-      adb.from("marketplace_category_fields").update({ sort_order: other.sort_order }).eq("id", cur.id),
-      adb.from("marketplace_category_fields").update({ sort_order: cur.sort_order }).eq("id", other.id),
+    // Both halves of a swap must land. One refused would silently leave two
+    // fields sharing a sort order.
+    const swaps = await Promise.all([
+      writeRows(adb.from("marketplace_category_fields").update({ sort_order: other.sort_order }).eq("id", cur.id).select("id")),
+      writeRows(adb.from("marketplace_category_fields").update({ sort_order: cur.sort_order }).eq("id", other.id).select("id")),
     ]);
     setBusy(false);
+    if (swaps.some((r) => !r.ok)) { setError(swaps.find((r) => !r.ok)?.message ?? ""); return; }
     onChanged();
   }
 
   async function confirmRemove() {
     if (!removeTarget) return;
     setBusy(true);
-    const { error } = await adb.from("marketplace_category_fields").delete().eq("id", removeTarget.id);
+    const res = await writeRows(adb.from("marketplace_category_fields").delete().eq("id", removeTarget.id).select("id"));
     setBusy(false);
-    if (error) { setError(error.message); setRemoveTarget(null); return; }
+    if (!res.ok) { setError(res.message ?? ""); setRemoveTarget(null); return; }
     setRemoveTarget(null);
     onChanged();
   }

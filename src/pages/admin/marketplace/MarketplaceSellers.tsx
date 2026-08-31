@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { writeRows } from "@/lib/tableWrite";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import { adb, formatNaira, formatDateTime, STRIKE_THRESHOLD, toIntlPhone } from "./opsData";
@@ -154,9 +155,9 @@ function SellerDetail({ s, onBack, onChanged }: { s: SellerRow; onBack: () => vo
     if (action === "suspend") patch = { status: "suspended", suspended_at: new Date().toISOString() };
     if (action === "reinstate") patch = { status: "active", suspended_at: null };
     if (action === "verify") patch = { verification_tier: "verified" };
-    const { error: err } = await adb.from("marketplace_sellers").update(patch).eq("id", s.id);
+    const res = await writeRows(adb.from("marketplace_sellers").update(patch).eq("id", s.id).select("id"));
     setBusy(false);
-    if (err) { setError(err.message); return; }
+    if (!res.ok) { setError(res.message ?? ""); return; }
     setAction(null); onChanged();
   }
 

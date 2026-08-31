@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { writeRows } from "@/lib/tableWrite";
 import { uploadWithProgress } from "@/marketplace/lib/uploadWithProgress";
 import { adb, formatNaira } from "./data";
 import { isTestAccountId } from "@/lib/testAccounts";
@@ -1419,9 +1420,11 @@ export async function saveSearchAlias(input: { term: string; mapsTo: string }): 
 }
 
 export async function deleteSearchAlias(term: string): Promise<RpcResult> {
-  const { error } = await adb.from("marketplace_search_aliases").delete().eq("term", term);
-  if (error) return { ok: false, message: error.message || "That could not be removed." };
-  return { ok: true };
+  const res = await writeRows(
+    adb.from("marketplace_search_aliases").delete().eq("term", term).select("term"),
+    "That could not be removed.",
+  );
+  return res.ok ? { ok: true } : { ok: false, message: res.message };
 }
 
 /** What people searched for and did not find, with how many the search WOULD

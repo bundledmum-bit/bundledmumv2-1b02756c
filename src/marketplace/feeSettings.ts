@@ -77,7 +77,34 @@ const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
  * cap hidden from the people it applies to.
  */
 export function feeRuleSentence(f: FeeSettings): string {
-  return `${f.percent}% of its price, never less than ${naira(f.minNaira)}. `
-    + `It is capped at ${naira(f.maxNaira)} for items up to ${naira(f.tierNaira)}, `
-    + `and at ${naira(f.maxHighNaira)} for anything above that.`;
+  return `${f.percent}% of the order total, never less than ${naira(f.minNaira)}. `
+    + `It is capped at ${naira(f.maxNaira)} on totals up to ${naira(f.tierNaira)}, `
+    + `and at ${naira(f.maxHighNaira)} above that.`;
+}
+
+/**
+ * The ONE fee for a whole cart, from the server.
+ *
+ * The fee moved from per item to once per order, on the ORDER TOTAL. A cart
+ * still creates one order per listing and the entire fee sits on the FIRST
+ * one, zero on the rest, because splitting it would round badly and make each
+ * row's platform_share wrong. So NEVER sum service_fee_naira across a cart's
+ * orders for display: ask for the cart's fee instead.
+ *
+ * Priced by marketplace_cart_service_fee, so the number shown before an order
+ * exists is the number the order will carry.
+ */
+export function useCartServiceFee(listingIds: string[]) {
+  const key = [...listingIds].sort().join(",");
+  return useQuery<number | null>({
+    queryKey: ["mkt-cart-service-fee", key],
+    enabled: listingIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async (): Promise<number | null> => {
+      const { data, error } = await mdb.rpc("marketplace_cart_service_fee", { p_listing_ids: listingIds });
+      if (error) return null;
+      const n = Number(data);
+      return isFinite(n) ? n : null;
+    },
+  });
 }

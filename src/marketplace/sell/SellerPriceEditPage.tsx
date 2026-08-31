@@ -95,16 +95,23 @@ export default function SellerPriceEditPage() {
     // is_negotiable is exempt from the live-listing content-change guard (it
     // changes nothing about the item itself), so it saves in the same update
     // as the price, no separate write needed.
-    const { error: updErr } = await sdb.from("marketplace_listings")
+    const { data: updRows, error: updErr } = await sdb.from("marketplace_listings")
       .update({
         price_naira: Math.round(priceNum),
         original_price_naira: originalPrice.trim() !== "" && originalPriceNum > 0 ? Math.round(originalPriceNum) : null,
         is_negotiable: negotiable ?? listing.is_negotiable,
       })
-      .eq("id", listing.id);
+      .eq("id", listing.id)
+      .select("id");
     setBusy(false);
     if (updErr) {
       setError(parseListingEditError(updErr.message) || genericErrorMessage("update price", updErr));
+      return;
+    }
+    // Zero rows is a refusal, not a success. Navigating away on one would
+    // send the seller back to a dashboard still showing the old price.
+    if (!updRows || updRows.length === 0) {
+      setError("That price could not be saved. Refresh and check the listing is still yours to edit.");
       return;
     }
     navigate("/sell/dashboard");

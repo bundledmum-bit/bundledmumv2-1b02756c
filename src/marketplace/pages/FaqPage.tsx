@@ -58,8 +58,8 @@ function buyerFaq(s: MarketplacePolicySettings, fee: FeeSettings | null): FaqIte
     {
       q: "What does BundledMum charge me?",
       a: fee
-        ? `A service fee on each item you buy, ${feeRuleSentence(fee)} You see the exact amount at checkout before you pay anything.`
-        : "A service fee on each item you buy, and Paystack's own processing fee. You see the exact amount at checkout before you pay anything.",
+        ? `One service fee on your order, ${feeRuleSentence(fee)} You see the exact amount at checkout before you pay anything.`
+        : "One service fee on your order, and Paystack's own processing fee. You see the exact amount at checkout before you pay anything.",
     },
     {
       q: "Do I need an account to buy?",
@@ -76,8 +76,8 @@ function buyerFaq(s: MarketplacePolicySettings, fee: FeeSettings | null): FaqIte
     {
       q: "Do I pay the fee more than once if I buy several things?",
       a: fee
-        ? `Yes. The fee is charged on each item, so three items means three fees. Your cart says how many, and checkout shows every one before you pay, so there is nothing to discover afterwards. Each is ${feeRuleSentence(fee)}`
-        : "Yes. The fee is charged on each item, so three items means three fees. Your cart says how many, and checkout shows every one before you pay, so there is nothing to discover afterwards.",
+        ? `No. One fee for the whole order, however many items and however many sellers. It is ${feeRuleSentence(fee)} Your cart shows the exact amount before you pay.`
+        : "No. One fee for the whole order, however many items and however many sellers. Your cart shows the exact amount before you pay.",
     },
     {
       q: "Can I pay without a card?",

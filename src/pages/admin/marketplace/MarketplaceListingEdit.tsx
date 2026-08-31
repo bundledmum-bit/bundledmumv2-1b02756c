@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { writeRows } from "@/lib/tableWrite";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -174,9 +175,9 @@ export default function MarketplaceListingEdit() {
       image_url: photos[0] ?? null,
       gallery_urls: photos.slice(1),
     };
-    const { error: err } = await adb.from("marketplace_listings").update(patch).eq("id", form.id);
+    const res = await writeRows(adb.from("marketplace_listings").update(patch).eq("id", form.id).select("id"));
     setBusy(false);
-    if (err) { setError(err.message); return; }
+    if (!res.ok) { setError(res.message ?? ""); return; }
     setSaved(true);
     listingQ.refetch(); editsQ.refetch(); ordersQ.refetch();
     setTimeout(() => setSaved(false), 2500);

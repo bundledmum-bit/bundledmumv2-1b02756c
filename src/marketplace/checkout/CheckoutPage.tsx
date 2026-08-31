@@ -532,8 +532,13 @@ export default function CheckoutPage() {
       return Number(data ?? 0);
     },
   });
-  // In cart mode the server has already totalled the per-item fees for this
-  // cart, so that figure is used rather than anything derived here.
+  // In cart mode this is the ONE fee for the whole cart, which
+  // create-marketplace-cart-order returns directly. Never summed from the
+  // orders: a cart makes one order per listing and the entire fee sits on the
+  // FIRST one with zero on the rest, so adding them up per item would be
+  // right by accident today and wrong the moment that changes.
+  // In single mode the item price IS the order total, so the same function
+  // gives the same answer.
   const serviceFee = isCart
     ? Number(cartOrderQ.data?.service_fee_naira ?? 0)
     : Number(singleFeeQ.data ?? 0);
@@ -819,7 +824,7 @@ export default function CheckoutPage() {
               <div className="mkt-brk">
                 <div className="line"><span>Items, {cartItems.length}</span><b>{formatNaira(itemPrice)}</b></div>
                 <div className="line">
-                  <div><span>Service fee</span><div className="sub">Charged on each item in this order</div></div>
+                  <div><span>Service fee</span><div className="sub">Charged once on this order, not per item</div></div>
                   <b>{cartOrderQ.data ? formatNaira(serviceFee) : "..."}</b>
                 </div>
                 {payQ.data && feeAdded && (

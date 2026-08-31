@@ -63,7 +63,7 @@ export default function TermsPage() {
 
           <div className="mkt-policy-section" id={SECTIONS[3].id}>
             <h2>4. Prices, markup and fees</h2>
-            <p>A seller sets their own asking price. BundledMum adds a markup, currently {s.markupPercent}%, and that marked up price is what buyers see and pay. Buyers also pay a service fee on each item, which is non refundable, plus Paystack's own processing fee. {fee ? `The service fee is ${feeRuleSentence(fee)} It applies to every item in an order rather than once per order.` : "The service fee applies to every item in an order rather than once per order, and the exact amount is shown at checkout before anything is paid."} Sellers pay nothing to list and receive their full asking price.</p>
+            <p>A seller sets their own asking price. BundledMum adds a markup, currently {s.markupPercent}%, and that marked up price is what buyers see and pay. Buyers also pay one service fee on the order, which is non refundable, plus Paystack's own processing fee. {fee ? `The service fee is ${feeRuleSentence(fee)} It is charged once per order, however many items or sellers the order covers.` : "The service fee is charged once per order, however many items or sellers the order covers, and the exact amount is shown at checkout before anything is paid."} Sellers pay nothing to list and receive their full asking price.</p>
           </div>
 
           <div className="mkt-policy-section" id={SECTIONS[4].id}>

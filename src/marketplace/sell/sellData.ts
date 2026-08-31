@@ -829,8 +829,12 @@ export async function sellerRelistListing(listingId: string): Promise<boolean> {
  * one operation and its error handling can't drift between them.
  */
 export async function sellerDelistForEdit(listingId: string): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await sdb.from("marketplace_listings").update({ status: "delisted" }).eq("id", listingId);
+  const { data, error } = await sdb.from("marketplace_listings")
+    .update({ status: "delisted" }).eq("id", listingId).select("id");
   if (error) return { ok: false, error: parseListingEditError(error.message) || genericErrorMessage("delist listing", error) };
+  // Zero rows means the update matched nothing: refused, or already gone. It
+  // is NOT a success, and reporting one leaves the listing live on screen.
+  if (!data || data.length === 0) return { ok: false, error: "That listing could not be taken down. Refresh and check it is still live." };
   return { ok: true };
 }
 

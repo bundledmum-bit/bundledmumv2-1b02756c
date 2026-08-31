@@ -868,11 +868,12 @@ function FeeWorkedExample() {
   });
 
   // Either side of the threshold, plus a cheap item on the floor and a
-  // mid-priced one already on the lower cap.
+  // mid-priced one already on the cap. The two across the cliff matter most:
+  // an operator will misjudge the threshold long before the percentage.
   const tier = Number(fee?.tier_naira);
   const prices = useMemo(() => {
     const t = isFinite(tier) && tier > 1 ? tier : null;
-    return [1200, 18000, ...(t ? [t, t + 1] : []), 75000];
+    return [1200, 18000, ...(t ? [t, t + 1] : [])];
   }, [tier]);
 
   const { data: examples } = useQuery({
@@ -880,13 +881,31 @@ function FeeWorkedExample() {
     enabled: prices.length > 0,
     staleTime: 10_000,
     queryFn: async () => {
-      const out: Array<{ price: number; fee: number | null }> = [];
+      const out: Array<{ label: string; fee: number | null }> = [];
       for (const price of prices) {
         const { data } = await adb.rpc("marketplace_service_fee", { p_item_price_naira: price });
         const n = Number(data);
-        out.push({ price, fee: isFinite(n) ? n : null });
+        out.push({ label: `One item at ${formatNaira(price)}`, fee: isFinite(n) ? n : null });
       }
       return out;
+    },
+  });
+
+  /**
+   * A CART, which is the case that just changed and the one an operator will
+   * misjudge. The fee is charged ONCE on the order total, so three items at
+   * N10,000 pay one fee on N30,000, not three fees.
+   *
+   * Priced with marketplace_service_fee on the total, the same call the cart
+   * order path makes, rather than any arithmetic here.
+   */
+  const { data: cartExample } = useQuery({
+    queryKey: ["mkt-fee-example-cart"],
+    staleTime: 10_000,
+    queryFn: async () => {
+      const { data } = await adb.rpc("marketplace_service_fee", { p_item_price_naira: 30000 });
+      const n = Number(data);
+      return isFinite(n) ? n : null;
     },
   });
 
@@ -899,16 +918,27 @@ function FeeWorkedExample() {
       </div>
       <div className="text-[11px] mt-0.5" style={{ color: "#1A4A33" }}>
         Priced by the same function the checkout charges from, so this cannot disagree with a real order.
+        The fee is charged ONCE on the order total, so a cart pays one fee however many items it holds.
       </div>
       <div className="mt-2 rounded-xl border divide-y bg-white" style={{ borderColor: "#D8EFE5" }}>
         {examples.map((e) => (
-          <div key={e.price} className="flex items-center justify-between gap-3 px-3 py-2">
-            <span className="text-[12.5px] text-text-med tabular-nums">An item at {formatNaira(e.price)}</span>
+          <div key={e.label} className="flex items-center justify-between gap-3 px-3 py-2">
+            <span className="text-[12.5px] text-text-med tabular-nums">{e.label}</span>
             <span className="font-heading font-extrabold text-[13px] tabular-nums" style={{ color: "#1A4A33" }}>
               {e.fee == null ? "—" : formatNaira(e.fee)}
             </span>
           </div>
         ))}
+        {cartExample != null && (
+          <div className="flex items-center justify-between gap-3 px-3 py-2" style={{ background: "#FFF8F4" }}>
+            <span className="text-[12.5px] text-text-med tabular-nums">
+              A cart of 3 items totalling {formatNaira(30000)}
+            </span>
+            <span className="font-heading font-extrabold text-[13px] tabular-nums" style={{ color: "#1A4A33" }}>
+              {formatNaira(cartExample)}
+            </span>
+          </div>
+        )}
       </div>
       {isFinite(tier) && tier > 1 && (
         <div className="text-[11px] mt-2" style={{ color: "#6B5B54" }}>
