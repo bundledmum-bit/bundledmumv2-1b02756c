@@ -5,20 +5,21 @@ import logoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 
 /**
  * AUDIENCE CHOOSER — a one-screen "which of three things did you come for?"
- * overlay shown ONLY to visitors who land directly on the storefront homepage
- * ("/") by typing the domain / a bookmark, or from an organic search result.
+ * overlay shown to ANY visitor who lands on the bare storefront homepage "/",
+ * regardless of source (typed, bookmark, organic search, ad, referral link),
+ * as long as they have no remembered choice.
  *
- * It is deliberately gated hard so it NEVER interferes with paid traffic or
- * internal navigation:
- *   - only when the LANDING path was "/" (captured once at page load, so
- *     clicking the logo/Home later can never trigger it — internal SPA
- *     navigation does not change ENTRY)
- *   - only when the landing URL carried NO ad/referral params
- *     (fbclid, gclid, utm_source, utm_medium, utm_campaign, ref)
- *   - only when the referrer was empty (typed/bookmark) or a search engine
- *   - only once per session (guests: sessionStorage) or ever (signed-in
- *     customers: customers.audience_preference via the set_audience_preference
- *     RPC)
+ * The only gate is: LANDING path is "/" AND it is a real landing (not internal
+ * navigation) AND no choice is remembered. Specifically it NEVER shows:
+ *   - on any path other than "/" (product pages, /quiz, /list/:token,
+ *     /quote/:token, /marketplace and every deep link go straight through)
+ *   - on internal navigation — clicking the logo/Home from within the site
+ *     loads the homepage normally. Guaranteed by the module-level ENTRY.path
+ *     snapshot: it is the LANDING path, and client-side route changes never
+ *     re-run module init, so navigating to "/" later keeps the original
+ *     (non-"/") ENTRY.path and the chooser stays hidden.
+ *   - once a choice is remembered (guests: sessionStorage; signed-in customers:
+ *     customers.audience_preference via the set_audience_preference RPC)
  *
  * It fires NO pixel events and fetches NO data before painting for guests, so
  * it appears instantly rather than as a loading wall.
@@ -26,44 +27,24 @@ import logoGreen from "@/assets/logos/BM-LOGO-GREEN.svg";
 
 const SESSION_KEY = "bm_audience_choice";
 
-// Snapshot the TRUE entry state once, at module load. This is what makes
+// Snapshot the TRUE entry PATH once, at module load. This is what makes
 // "first landing, not internal navigation" reliable: the module initialises
 // exactly once per full page load; later client-side route changes (logo,
-// Home link) never re-run this, so ENTRY keeps describing how the visitor
-// actually arrived.
+// Home link) never re-run this, so ENTRY.path keeps describing where the
+// visitor actually landed.
 const ENTRY = {
   path: typeof window !== "undefined" ? window.location.pathname : "",
-  search: typeof window !== "undefined" ? window.location.search : "",
-  referrer: typeof document !== "undefined" ? document.referrer : "",
 };
-
-const AD_PARAMS = ["fbclid", "gclid", "utm_source", "utm_medium", "utm_campaign", "ref"];
-const SEARCH_ENGINE_HOSTS = ["google.", "bing.", "yahoo.", "duckduckgo.", "ecosia."];
-
-function hasAdParams(search: string): boolean {
-  const params = new URLSearchParams(search);
-  return AD_PARAMS.some((k) => params.has(k));
-}
-
-function referrerIsDirectOrSearch(referrer: string): boolean {
-  if (!referrer) return true; // typed / bookmark
-  try {
-    const host = new URL(referrer).hostname.toLowerCase();
-    return SEARCH_ENGINE_HOSTS.some((s) => host.includes(s));
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Synchronous eligibility from the immutable ENTRY snapshot + sessionStorage.
  * Everything here is instant (no network), so a guest sees the chooser paint
  * on first frame. The signed-in cross-session check is layered on top, async.
+ * Source (ad/organic/referral) is intentionally NOT gated: the chooser now
+ * shows for any real landing on "/".
  */
 function syncEligible(): boolean {
   if (ENTRY.path !== "/") return false;
-  if (hasAdParams(ENTRY.search)) return false;
-  if (!referrerIsDirectOrSearch(ENTRY.referrer)) return false;
   try {
     if (sessionStorage.getItem(SESSION_KEY)) return false;
   } catch {
@@ -80,6 +61,11 @@ export default function AudienceChooser() {
   // a single time, so remounts (theme, etc.) can't re-trigger the overlay.
   const [eligible] = useState<boolean>(syncEligible);
   const [open, setOpen] = useState<boolean>(false);
+  // Whether the SIGNED-IN visitor is an active marketplace seller. Only ever
+  // flips to true; drives the third option's label + destination. Never gates
+  // rendering — the chooser paints with the default "Sell" label and upgrades
+  // if/when this resolves true.
+  const [isSeller, setIsSeller] = useState<boolean>(false);
 
   useEffect(() => {
     if (!eligible) return;
@@ -118,6 +104,22 @@ export default function AudienceChooser() {
     return () => { cancelled = true; };
   }, [eligible, authLoading, user]);
 
+  // Seller check — only for a SIGNED-IN visitor and only once the chooser is
+  // actually shown. Guests (no user) never call it, so they see no loading
+  // state and no failed/forbidden anon RPC. Fire-and-forget: it only upgrades
+  // the third option's label; a false result or an error keeps the default.
+  useEffect(() => {
+    if (!open || !user) return;
+    let cancelled = false;
+    supabase.rpc("is_marketplace_seller").then(
+      ({ data, error }: { data: unknown; error: unknown }) => {
+        if (!cancelled && !error && data === true) setIsSeller(true);
+      },
+      () => { /* ignore — keep the default "Sell my baby items" label */ },
+    );
+    return () => { cancelled = true; };
+  }, [open, user]);
+
   if (!eligible || !open) return null;
 
   const remember = (choice: Choice) => {
@@ -139,7 +141,8 @@ export default function AudienceChooser() {
       // from window.location at mount, so the client router cannot reach it.
       window.location.assign("/marketplace");
     } else if (choice === "sell") {
-      window.location.assign("/marketplace/sell");
+      // An active seller goes to their dashboard; everyone else to onboarding.
+      window.location.assign(isSeller ? "/marketplace/sell/dashboard" : "/marketplace/sell");
     } else {
       // "new" — stay on the storefront homepage, just dismiss.
       setOpen(false);
@@ -207,8 +210,8 @@ export default function AudienceChooser() {
           />
           <ChooserCard
             emoji="🏷️"
-            title="Sell my baby items"
-            subtitle="Start selling"
+            title={isSeller ? "Go to your Seller Dashboard" : "Sell my baby items"}
+            subtitle={isSeller ? "Manage your listings" : "Start selling"}
             accent="#F4845F"
             onClick={() => choose("sell")}
           />

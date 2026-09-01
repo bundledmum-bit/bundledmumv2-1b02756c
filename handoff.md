@@ -318,7 +318,32 @@ deployed feed (v31) already does exactly this** — no code change was needed or
 - **repo == deployed:** repo `supabase/functions/meta-catalog-feed/index.ts` is
   byte-identical to deployed v31 (ezbr_sha256 5a897057…). Nothing to deploy; cron untouched.
 
-## Audience chooser — direct/organic homepage entry splitter (DONE, this turn)
+## Audience chooser — show to everyone on "/", seller-aware 3rd option (this turn)
+Two changes to [src/components/AudienceChooser.tsx](src/components/AudienceChooser.tsx) only (no
+marketplace/edge/DB changes).
+- **CHANGE 1 — show on any real landing at "/".** Removed the ad-param and referrer gates from
+  `syncEligible()`; the only gates left are `ENTRY.path === "/"` AND no remembered choice. Deleted
+  the now-dead `hasAdParams`/`referrerIsDirectOrSearch`/`AD_PARAMS`/`SEARCH_ENGINE_HOSTS` and trimmed
+  `ENTRY` to `{ path }`. Internal-nav guard preserved (it rests only on the ENTRY.path landing
+  snapshot). Verified: `/?fbclid=test` now SHOWS (previously hidden); `/products/...`, `/quiz`, and a
+  logo click from another page still do NOT show; guest choose→remember→reload does not reappear.
+- **CHANGE 2 — seller-aware third option.** Added `isSeller` state; an effect gated on `open && user`
+  fire-and-forgets `supabase.rpc('is_marketplace_seller')` and sets `isSeller` only on `data===true`
+  (error/false → keep default). Guests (no `user`) NEVER call it → verified no RPC in network, no
+  loading state (the chooser paints instantly; the brief splash seen is the app's normal bootstrap,
+  not the chooser). When `isSeller`: third card label → "Go to your Seller Dashboard", subtitle →
+  "Manage your listings", destination → **`/marketplace/sell/dashboard`** (SellerDashboardPage; route
+  `/sell/dashboard` under basename `/marketplace`). Else unchanged: "Sell my baby items" / "Start
+  selling" → `/marketplace/sell`. The remembered choice value stays `"sell"` either way; the other
+  two options are untouched. Sellers are NOT auto-routed — they still choose.
+- **RPC confirmed:** `is_marketplace_seller()` — no args, boolean, SECURITY DEFINER, true when the
+  signed-in customer has an ACTIVE `marketplace_sellers` row (joined via `auth.uid()`); the browser
+  never touches `marketplace_sellers` directly.
+- Cross-app links are still full-page `window.location.assign` (marketplace is a separate tree).
+  `npm run build` passes. NOTE: the seller-TRUE visual wasn't exercised live (no seller account to
+  hand); it's a deterministic boolean swap and the dashboard route is confirmed to exist.
+
+## Audience chooser — direct/organic homepage entry splitter (prior turn; CHANGE 1 above supersedes the source gate)
 A one-screen overlay asking direct/organic homepage visitors which of three
 things they came for, routing them to the right place. **New file
 [src/components/AudienceChooser.tsx](src/components/AudienceChooser.tsx)**; mounted
