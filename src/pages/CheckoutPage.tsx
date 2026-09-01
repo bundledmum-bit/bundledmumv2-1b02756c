@@ -1758,6 +1758,11 @@ export default function CheckoutPage() {
             // the same way). Referral and spend are stored in their own fields.
             discount_amount: (couponDiscount + (orderData.promoDiscount || 0)) > 0 ? (couponDiscount + (orderData.promoDiscount || 0)) : 0,
             coupon_id: appliedCoupon?.id || null,
+            // Sent so place-order can re-derive the landing promo SERVER-SIDE and
+            // validate discount_amount against it (it caps the client figure to
+            // the server-computed promo). Used only for validation; place-order
+            // strips it before insert (orders has no landing_page_id column).
+            landing_page_id: landingPageId,
             referral_code_used: appliedReferral?.code || null,
             // Marketplace partner-referral free gift. Sent only when a valid
             // partner code is attributed AND a gift was picked; null otherwise

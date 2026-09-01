@@ -115,25 +115,114 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 3. Fees and discounts.
-    //    Fees can only ADD to the total and are clamped non-negative (they can
-    //    never be used to push the total below the true product cost). NOTE:
-    //    full server-side re-derivation of delivery/service fees from courier
-    //    logic is a planned follow-up; for now they are accepted as non-negative
-    //    additive fees, which cannot be used for the price-tampering attack
-    //    (that attack is on product prices, now server-authoritative).
+    // 3. Fees and discounts — server-validated so the TOTAL cannot be gamed.
+    //
+    //    ADDITIVE FEES (delivery / service / gift-wrap) are clamped non-negative.
+    //    They can only ever INCREASE the total, so trusting the client figure can
+    //    at worst let a buyer under-declare a fee (a minor revenue matter) — it
+    //    can NEVER be used to pay less than a product costs.
     const deliveryFee = n(order.delivery_fee);
     const serviceFee = n(order.service_fee);
     const giftWrapFee = n(order.gift_wrap_fee);
-    // Discounts are re-validated by DB triggers (coupon/spend/etc.) at insert;
-    // we pass through the client-declared discount but the triggers overwrite it
-    // with the true server value, so it cannot be inflated to reduce the charge
-    // dishonestly. Clamp non-negative and never exceed subtotal.
-    const declaredDiscount = Math.min(n(order.discount_amount ?? order.discount), serverSubtotal);
 
+    // Observability only: cross-check the delivery fee against the server zone
+    // fee and log a material under-declaration. We do NOT force it: the
+    // customer-facing fee legitimately comes from get_courier_assignment
+    // (weight / bundle tier / courier free-delivery promos that are NOT in this
+    // payload), so forcing the flat zone fee here would wrongly strip legitimate
+    // free delivery / overcharge real orders. Delivery is additive => not a
+    // theft vector, so logging is the right level of response.
+    try {
+      const { data: zoneRows } = await supabase.rpc("get_delivery_fee", {
+        p_city: customer?.city ?? null,
+        p_state: customer?.state ?? null,
+        p_subtotal: serverSubtotal,
+      });
+      const zoneFee = Array.isArray(zoneRows)
+        ? Number(zoneRows[0]?.fee)
+        : Number((zoneRows as any)?.fee);
+      if (isFinite(zoneFee) && zoneFee > 0 && deliveryFee + 1 < zoneFee) {
+        console.warn(
+          `[place-order] delivery fee under-declared: client ${deliveryFee} vs server zone ${zoneFee} (city=${customer?.city}, state=${customer?.state}). Additive, not blocking.`
+        );
+      }
+    } catch (_e) {
+      /* never block checkout on a delivery cross-check */
+    }
+
+    // ---- DISCOUNTS: the real theft vector. ------------------------------
+    // The DB coupon trigger (validate_order_coupon) recomputes discount + total
+    // ONLY when coupon_id IS NOT NULL; with NO coupon it returns the row
+    // untouched. So a client-supplied discount_amount / spend_discount_amount on
+    // a no-coupon order would otherwise flow straight into orders.total and let
+    // an attacker pay ~0 for a large order. We therefore compute the ALLOWED
+    // discount for each component SERVER-SIDE and CAP the client figure to it:
+    // a legitimate buyer keeps their real discount (client == server => min is a
+    // no-op) while an inflated one is capped (and logged). Coupon orders are
+    // still finalised by the trigger, which reads the sanitised
+    // spend_discount_amount + server fees set below.
+
+    // (a) Landing-page promo — the SAME RPC the storefront uses, so a legitimate
+    //     promo value matches exactly.
+    let landingPromoServer = 0;
+    const landingPageId = toUuidOrNull(order.landing_page_id);
+    if (landingPageId) {
+      try {
+        const { data: lp } = await supabase.rpc("checkout_landing_promo_discount", {
+          p_landing_page_id: landingPageId,
+          p_subtotal: serverSubtotal,
+        });
+        landingPromoServer = n((lp as any)?.discount_amount ?? (lp as any)?.discount ?? 0);
+      } catch (_e) {
+        landingPromoServer = 0;
+      }
+    }
+
+    // (b) Spend-threshold discount — recomputed from spend_threshold_discounts
+    //     with the SAME rule the storefront uses: the highest active threshold
+    //     the SERVER subtotal meets; percent of subtotal, capped at max_discount.
+    let spendServer = 0;
+    try {
+      const { data: tiers } = await supabase
+        .from("spend_threshold_discounts")
+        .select("threshold_amount, discount_percent, max_discount_amount, is_active")
+        .eq("is_active", true);
+      let best: any = null;
+      for (const t of tiers || []) {
+        if (
+          serverSubtotal >= Number(t.threshold_amount) &&
+          (!best || Number(t.threshold_amount) > Number(best.threshold_amount))
+        ) {
+          best = t;
+        }
+      }
+      if (best) {
+        const raw = Math.round((serverSubtotal * Number(best.discount_percent)) / 100);
+        const cap = best.max_discount_amount != null ? Number(best.max_discount_amount) : raw;
+        spendServer = Math.max(0, Math.min(raw, cap));
+      }
+    } catch (_e) {
+      spendServer = 0;
+    }
+
+    // Cap the client-declared figures by the server maxima. For a NO-coupon
+    // order the only legitimate discount_amount component is the landing promo
+    // (a coupon discount is applied by the trigger from coupon_id, not here).
+    const clientDiscount = n(order.discount_amount ?? order.discount);
+    const clientSpend = n(order.spend_discount_amount);
+    const discountAmount = Math.min(clientDiscount, landingPromoServer);
+    const spendAmount = Math.min(clientSpend, spendServer);
+    if (clientDiscount > discountAmount || clientSpend > spendAmount) {
+      console.warn(
+        `[place-order] discount CAPPED server-side: discount_amount ${clientDiscount}->${discountAmount}, spend_discount ${clientSpend}->${spendAmount} (subtotal ${serverSubtotal}).`
+      );
+    }
+
+    // Server total (no-coupon path). When coupon_id is present the DB trigger
+    // recomputes discount_amount + total using these sanitised figures.
     const serverTotal = Math.max(
       0,
-      serverSubtotal + deliveryFee + serviceFee + giftWrapFee - declaredDiscount
+      serverSubtotal + deliveryFee + serviceFee + giftWrapFee - discountAmount - spendAmount
     );
 
     // 4. Sanitize the order object: strip payment assertions AND client money
@@ -143,6 +232,11 @@ Deno.serve(async (req) => {
       paystack_amount: _pa, paystack_fee: _pf, express_payment_reference: _epr,
       gross_profit: _gp,
       subtotal: _cSub, total: _cTot, // ignore client subtotal/total
+      // ignore client discount fields — they are re-derived + capped server-side above
+      discount_amount: _cDisc, discount: _cDisc2, spend_discount_amount: _cSpend,
+      // landing_page_id is used ONLY to re-derive the promo above; never inserted
+      // (orders has no such column — passing it through would fail the insert).
+      landing_page_id: _clp,
       ...safeOrder
     } = order || {};
 
@@ -152,6 +246,8 @@ Deno.serve(async (req) => {
       delivery_fee: deliveryFee,
       service_fee: serviceFee,
       gift_wrap_fee: giftWrapFee,
+      discount_amount: discountAmount,      // server-validated (capped to server max)
+      spend_discount_amount: spendAmount,   // server-validated (capped to server max)
       total: serverTotal,
       payment_status: "pending", // never trust client payment state
     };

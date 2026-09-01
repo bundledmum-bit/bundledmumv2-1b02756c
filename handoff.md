@@ -1,5 +1,137 @@
 # Handoff
 
+## Payment-path security audit — Finding 1 FALSE, Finding 2 PARTLY REAL + fixed (this turn)
+Audited the DEPLOYED source (source of truth) of **process-payment (v71)**, **verify-payment (v70)**,
+**place-order (v102)** via get_edge_function, plus the `orders` triggers and discount/courier RPCs.
+
+- **FINDING 1 (payment bypass) = FALSE POSITIVE against deployed code.** Both payment functions
+  already: verify the reference with Paystack server-side; require `txn.status === "success"`; read
+  `orders.total` FROM THE DB and require `paystackAmountKobo >= order.total * 100` (NAIRA→kobo, refuse
+  on `amount_mismatch`); are idempotent (`payment_status === "paid"` guard + `.neq("payment_status",
+  "paid")`); and tie the reference to the order — **verify-payment finds the order BY the reference**
+  (`payment_reference/paystack_reference/express_payment_reference .eq`), **process-payment** takes a
+  client `order_id` but additionally refuses a reference already attached to a DIFFERENT order. So the
+  amount check is the load-bearing protection and it is present in BOTH. **No change made to either.**
+- **FINDING 2 (client prices) = PARTLY REAL.** Product `unit_price`/`line_total`/`subtotal` and the
+  client's `subtotal`/`total` were ALREADY server-authoritative in place-order (recomputed from
+  `brands_public.price`; client subtotal/total stripped; `payment_status` forced `"pending"`) — so the
+  literal "totals from the client" claim is outdated. **BUT the deployed comment "DB triggers overwrite
+  the discount" was FALSE for no-coupon orders:** `validate_order_coupon` only recomputes
+  discount+total when `coupon_id IS NOT NULL`; with no coupon it returns the row untouched. A
+  client-supplied `discount_amount`/`spend_discount_amount` on a no-coupon order flowed straight into
+  `orders.total` (clamped only to `≤ subtotal`) → attacker sets `discount_amount = subtotal`, total → 0
+  (+fees), pays that, `verify-payment` sees paid ≥ (tiny) total → marks paid. **Real theft vector.**
+  (`apply_referral_redemption` never touches `orders.total`, so referral is NOT a vector; delivery/
+  service/gift-wrap fees are additive — a client-lowered fee is a minor revenue leak, not product
+  theft.)
+
+**FIX (place-order only — payment funcs left unchanged because already correct):**
+- Discounts now **server-validated + capped**. Landing promo is re-derived server-side via the SAME
+  RPC the client uses (`checkout_landing_promo_discount(landing_page_id, serverSubtotal)`); spend
+  discount re-derived from `spend_threshold_discounts` (highest active threshold the SERVER subtotal
+  meets; percent capped at `max_discount_amount`). `discount_amount` is capped to the server landing
+  promo, `spend_discount_amount` to the server spend value; both client discount fields are STRIPPED
+  from the insert and replaced with the capped server values; `total` recomputed from them. A
+  legitimate buyer's client value equals the server value → `min` is a no-op (no overcharge); an
+  inflated value is capped (and `console.warn`-logged). **Coupon orders stay finalised by the existing
+  trigger** (now fed the sanitised spend + server fees), so coupon behaviour is unchanged.
+- **Client change (`src/pages/CheckoutPage.tsx`):** the order payload now sends `landing_page_id`
+  (from `landingOrigin`) so the server can re-derive the landing promo. Without it the server would
+  compute promo=0 and **overcharge legitimate promo customers** — this is why the client change was
+  required. place-order **strips `landing_page_id` before insert** (orders has no such column; passing
+  it through would fail the insert) — used only for validation.
+- **DELIVERY fee — deliberate reasoned deviation from the prompt** (which asked to recompute via
+  `get_courier_assignment`): NOT force-recomputed. The courier fee legitimately depends on
+  weight / bundle-tier / courier free-delivery promos that are NOT in the payload (client derives
+  weight from `product.weight_kg`+0.5 fallback and tier from localStorage), so a server recompute
+  would risk **stripping legitimate free delivery / overcharging real orders** — violating the
+  "don't break checkout" constraint — for ZERO theft-prevention benefit (delivery is additive). Kept
+  clamped non-negative and added a server-side `get_delivery_fee` cross-check that only **logs** a
+  material under-declaration. Flagged for the owner: to enforce it strictly, send weight+tier in the
+  payload and call `get_courier_assignment` server-side.
+- **Pre-existing, NOT a theft vector, left alone (flagged):** referral discount and free-items-promo
+  "converted" totals are not subtracted from place-order's server total, so those orders may be
+  charged more than the banner shows. Non-exploitable (over-, not under-charge); out of scope here.
+- **Anonymous checkout preserved:** all changes are price/discount math on the existing guest path;
+  no auth added; `payment_status` still forced `"pending"`; single caller is CheckoutPage (guest-safe).
+- Build passes (`npm run build`). Deploy: repo copy updated byte-identical and pushed to main so the
+  Lovable git-sync redeploys place-order from the repo (verify `get_edge_function` shows the
+  `landingPromoServer` / "discount CAPPED" markers; MCP-redeploy if git-sync lags). process-payment /
+  verify-payment repo copies UNCHANGED (== deployed v71 / v70). No cron/trigger/courier-logic changed.
+
+## Disk-IO / temp-file / WAL burn — AUDIT ONLY (prior turn, NO code changed)
+Both app trees audited (storefront + admin: `src/`, entry `src/StorefrontApp.tsx`; marketplace:
+`src/marketplace/`, entry `MarketplaceApp.tsx`, chosen by `isMarketplace()` in `src/App.tsx`).
+Marketplace has its OWN QueryClient (`MarketplaceApp.tsx:69`, `refetchOnWindowFocus:false, retry:1`,
+no global staleTime/interval). Storefront QueryClient `StorefrontApp.tsx:190` (`staleTime 5min`,
+`refetchOnWindowFocus:true`).
+
+**HONEST HEADLINE:** a temp file every ~30s, 4.7 MB, CONSTANT regardless of user/admin/client-count,
+**cannot be produced by anything in either frontend.** Every frontend DB path is event-driven
+(navigation / focus / realtime-invalidation / search / submit) and scales with traffic. The only
+fixed-30s things in the frontend are the realtime **heartbeat** (a WebSocket ping — NOT a DB query,
+no temp files/WAL) and the admin `useFinancePL` 30s poll (admin-gated — ruled out by "rate unchanged
+when admin traffic stopped"). **The constant cadence almost certainly originates server-side
+(pg_cron, the realtime WAL poller `realtime.list_changes()`, an edge/YouTube worker, or autovacuum)
+— out of frontend scope. I could not determine a frontend cause for the fixed cadence, and say so
+rather than guess.** What the frontend DOES contribute is *volume* of wide spilling reads + WAL
+churn when humans are actually active.
+
+**RANKED frontend contributors (volume, not the fixed cadence):**
+1. **`useProducts` / `useAllProducts` ([useSupabaseData.ts:7-45](src/hooks/useSupabaseData.ts:7))** —
+   the anon TWIN of the admin-products bug that was "fixed". `products.*` (incl. long text
+   description/why_included/contents/safety_info/allergen_info) + `brands_public!fk(20 cols incl
+   image_url, stored_image_url, thumbnail_url, logo_url, images[], compare_at_price)` + FOUR `(*)`
+   embeds (`product_sizes/product_colors/product_tags/product_images`), `.eq(is_active).is(deleted_at,
+   null).order("display_order")`, **NO limit, ~613 rows.** Same Sort Key (`products.display_order`)
+   and wider payload than the admin query that showed `external merge Disk: 3512kB` — so it spills at
+   least as much, on the ANON side. Feeds Home/Shop/Cart/Checkout/Quiz/FlashDeals/GiftResults/
+   BundleDetail (`useAllProducts` consumers). Invalidated by realtime on 6 tables (all map to key
+   `products` in [realtime.ts:14-30](src/lib/realtime.ts)) + `refetchOnWindowFocus:true`. **This is
+   the most likely reason the admin-only fix "did NOT reduce the rate": the identical customer query
+   was left wide.** CONFIRM: EXPLAIN ANALYZE the exact select; expect `Sort Method: external merge`.
+2. **Marketplace catalogue reads — unbounded + ordered, heavy columns.** `useLiveListings`
+   ([useListings.ts:45-49](src/marketplace/data/useListings.ts:45)) and `useBrowseListings`/
+   `useBrowseCount` ([useListings.ts:123-145](src/marketplace/data/useListings.ts:123)) select the
+   shared `LISTING_SELECT` (mdb.ts:19 — pulls `description, display_description, condition_notes,
+   attributes` jsonb, `gallery_urls` array, `video_url`, `video_poster_url` that a card never shows),
+   `.eq(status,"live").order(created_at|final_price_naira)`, **no `.limit`/`.range`**, ~240 wide rows;
+   browse also forces `count:"exact"` every call and `.in("id", …up to 500 uuids)`. Runs on every
+   BrowsePage. Sorting ~240 array+jsonb+longtext rows is a classic >work_mem spill.
+3. **Trigram search RPCs (invisible to pg_stat_statements).** `search_products`
+   ([ShopPage.tsx:327](src/pages/ShopPage.tsx:327), debounced 280ms) and
+   `search_marketplace_listings` ([useListings.ts:112](src/marketplace/data/useListings.ts:112),
+   debounced 350ms, called twice/search). Both are 3-pass alias + trigram fuzzy + ORDER BY over the
+   catalogue — exactly what spills sorts/hashes — and the spill is INSIDE the function so nothing
+   shows in pg_stat_statements. User-driven, not constant. CONFIRM: EXPLAIN the function bodies (SQL
+   side, out of this scope).
+4. **Realtime WAL/subscription churn (shared).** ONE anon-facing schema-wide subscription
+   ([realtime.ts:47-58](src/lib/realtime.ts): `.channel("storefront-sync").on("postgres_changes",
+   {event:"*",schema:"public"})` — NO table filter), mounted UNCONDITIONALLY for every storefront
+   visitor incl. anon via `RealtimeProvider` ([StorefrontApp.tsx:208-217,511](src/StorefrontApp.tsx:208)).
+   Supabase expands a schema-wide anon subscription to ONE `realtime.subscription` row per
+   publication table the anon role can read = the 19 rows with identical created_at (answers A2). The
+   client uses realtime-js **defaults** (no config in [authStorage.ts](src/integrations/supabase/authStorage.ts))
+   → 30s heartbeat; a missed heartbeat/idle disconnect reconnects and tears down+recreates all 19 rows
+   → the "~one re-subscribe/min, 19 ins + 19 del/min" churn and the 1.27M lifetime ins/del + 11.6k
+   autovacuums on realtime.subscription (a WAL source). **NOT a React effect** — the effect dep is a
+   stable `[qc]`; it mounts once. The loop is transport-level (WebSocket), matching the dev-preview
+   `ERR_CONNECTION_CLOSED` note. Marketplace tree has **ZERO** realtime (definitive).
+5. **Per-view / per-nav WAL writes (scale with traffic, not constant):** storefront `upsert_session`
+   on every route change ([analytics.ts:307](src/lib/analytics.ts:307)), `analytics_events` insert
+   on session_start/events, `increment_landing_page_view` on each PackagePage mount
+   ([PackagePage.tsx:162](src/pages/PackagePage.tsx:162)), `upsert_cart_capture` debounced ~1s while
+   typing checkout ([CheckoutPage.tsx:994-1013](src/pages/CheckoutPage.tsx:994)); marketplace
+   `record_listing_view` per listing view ([ListingDetailPage.tsx:289](src/marketplace/pages/ListingDetailPage.tsx:289)),
+   `record_checkout_attempt` debounced 1.2s, `record_marketplace_search`.
+
+**Section-by-section (A–E) answers, both trees, are in the turn report.** Key negatives (verified):
+all per-table storefront channels (SectionBrandsCategoryRow, useOrderPicking, AdminLayout, AdminOrders,
+AdminQuizEngine, useAdminNotifications) are admin/staff-only; marketplace has no realtime and no 30s
+poll (its only interval is `listingVideo.ts:216` 60s, confined to the seller create-listing form with
+a queued video); no download-then-reupload in either tree; storefront storage writes are admin-only;
+both trees serve full-size images (egress, not disk-IO). **No code changed; no build; no commit.**
+
 ## Products Excel export — own on-click query; list query embeds removed (this turn)
 Fixes the 7c4a19f regression AND completes the embed removal, by giving the export its own fetch.
 - **ExportButton ([ExcelImportExport.tsx](src/components/admin/ExcelImportExport.tsx)) now fetches on
