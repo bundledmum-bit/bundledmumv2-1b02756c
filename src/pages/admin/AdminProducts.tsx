@@ -56,16 +56,15 @@ export default function AdminProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        // brands is narrowed to only the columns this screen reads (search,
-        // duplicate, PackInfoCell, COGS coverage). Selecting brands(*) dragged
-        // brands' long text columns (description, image_url, stored_image_url,
-        // logo_url, thumbnail_url, images[]) plus cost/vendor columns into the
-        // display_order sort, blowing it past work_mem into an on-disk external
-        // merge (~3.5MB) on every refetch. This query is refetched heavily
-        // (realtime-invalidated by 6 tables + refetchOnWindowFocus), so the
-        // narrower row keeps the sort in memory. Behaviour is unchanged: no
-        // dropped column is read anywhere on this screen.
-        .select("*, brands!brands_product_id_fkey(id, brand_name, price, cost_price, tier, is_default_for_tier, display_order, sku, in_stock, pack_count, diaper_type, weight_range_kg), product_sizes(*), product_colors(*), product_tags(*)")
+        // Hot query: refetched ~2,390x/day (realtime-invalidated by 6 tables +
+        // refetchOnWindowFocus), so it carries ONLY what this screen renders.
+        // brands is an explicit column list (never brands(*)) to keep the
+        // display_order sort in memory — brands(*) spilled to an on-disk
+        // external merge (~3.5MB) on every refetch. The product_sizes/colors/
+        // tags embeds were removed: their only consumer was the Excel export,
+        // which now fetches its own full-width data on click (see ExportButton).
+        // No remaining consumer on this screen reads those embeds.
+        .select("*, brands!brands_product_id_fkey(id, brand_name, price, cost_price, tier, is_default_for_tier, display_order, sku, in_stock, pack_count, diaper_type, weight_range_kg)")
         .order("display_order");
       if (error) throw error;
       return data;
@@ -115,7 +114,10 @@ export default function AdminProducts() {
   });
 
   const duplicateProduct = async (p: any) => {
-    const { brands, product_sizes, product_colors, product_tags, id, created_at, updated_at, deleted_at, ...rest } = p;
+    // product_sizes/colors/tags are no longer fetched by the list query (the
+    // export fetches its own copy), so they are not destructured here. `...rest`
+    // is unchanged: p never carried those keys, so they were never in rest.
+    const { brands, id, created_at, updated_at, deleted_at, ...rest } = p;
     const { data, error } = await supabase.from("products").insert({ ...rest, name: `${rest.name} (Copy)`, slug: `${rest.slug}-copy-${Date.now()}` }).select("id").single();
     if (error) { toast.error(error.message); return; }
     if (brands?.length) {
@@ -192,7 +194,7 @@ export default function AdminProducts() {
               <TrendingUp className="w-4 h-4" /> View Margins
             </Link>
           )}
-          {can("products", "export") && <ExportButton products={allProducts} />}
+          {can("products", "export") && <ExportButton />}
           {can("products", "import") && <ImportButton />}
           {can("products", "create") && (
             <button onClick={() => { setEditingProduct(null); setShowForm(true); }}

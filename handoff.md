@@ -1,6 +1,37 @@
 # Handoff
 
-## AdminProducts embeds — NOT removed; they ARE used by the Excel export (audit, this turn)
+## Products Excel export — own on-click query; list query embeds removed (this turn)
+Fixes the 7c4a19f regression AND completes the embed removal, by giving the export its own fetch.
+- **ExportButton ([ExcelImportExport.tsx](src/components/admin/ExcelImportExport.tsx)) now fetches on
+  click** (async, `busy` state) instead of taking a `products` prop. Its query:
+  `*, brands!brands_product_id_fkey(brand_name, tier, price, compare_at_price, cost_price,
+  cogs_percent, image_url, logo_url, size_variant, stock_quantity, in_stock),
+  product_sizes(size_label), product_colors(color_name, color_hex), product_tags(tag_type,
+  tag_value)` ordered by display_order. `*` kept on products (guarantees byte-identical output; runs
+  a few times/month so width is irrelevant); brands is an EXPLICIT list (never brands(*)) so the
+  dependency is visible and a future list-query narrowing can't silently blank a column again. On
+  fetch error → `toast.error`, and `writeFile` only runs after a successful fetch, so no partial
+  file. Row-building loop, EXPORT_COLUMNS, product/brand/embed order, and filename are unchanged.
+- **Regression fixed (verified live):** cogs_percent is never null (0/1595), so `b.cogs_percent ?? 40`
+  now emits the stored value for every row; 430/1595 brands regain their real non-40 % (range
+  0.45–40). compare_at_price (632), image_url (1406), logo_url (556), size_variant (354) repopulated.
+  stock_quantity is null for all brands (blank both before and after — data-driven, not a regression).
+- **List query ([AdminProducts.tsx](src/pages/admin/AdminProducts.tsx)) — embeds removed.** Select
+  before: `*, brands!...(12 cols), product_sizes(*), product_colors(*), product_tags(*)`; after:
+  `*, brands!...(12 cols)` (the three embeds gone). `duplicateProduct` destructure dropped
+  product_sizes/colors/tags; `...rest` and the inserted payload are byte-identical (p never carried
+  those keys after removal, so they were never in rest). `<ExportButton>` no longer receives a prop.
+- **Consumers of ["admin-products"] data (STEP 5, traced into every child):** ExportButton (now
+  self-fetches, uses none), CogsCoverageBanner (brands.cost_price — kept), PackInfoCell (brand
+  price/pack_count/diaper_type/weight_range_kg/in_stock — kept), table rows + search +
+  duplicateProduct (product `*` + brands — kept). None read the three embeds → safe to remove.
+- **Types:** none — the query data and ExportButton prop were all `any`; the unused `Props` interface
+  was deleted (nothing shared to make optional).
+- **Out of scope (unchanged, flagged):** realtime.ts still lists product_sizes/colors/tags as
+  invalidators of ["admin-products"]; those invalidations are now unnecessary but were left per the
+  task. No customer query, QueryClient setting, getBrandImage, or backend object touched. Build passes.
+
+## AdminProducts embeds — NOT removed; they ARE used by the Excel export (RESOLVED above; prior audit)
 Asked to remove `product_sizes(*)/product_colors(*)/product_tags(*)` from the `["admin-products"]`
 query (previously flagged unused). **Re-traced from scratch: all three ARE read**, so per the
 task's own rule none were removed. **No code change made this turn.**

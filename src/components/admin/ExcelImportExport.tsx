@@ -5,10 +5,6 @@ import { toast } from "sonner";
 import { Download, Upload, X, Check, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 
-interface Props {
-  products: any[];
-}
-
 const EXPORT_COLUMNS = [
   "Product ID", "SKU", "Product Name", "Slug", "Description", "Category", "Subcategory", "Priority", "Badge",
   "Pack Info", "Material", "Contents", "Allergen Info", "Safety Info", "Why Mums Love This",
@@ -19,58 +15,82 @@ const EXPORT_COLUMNS = [
   "Sizes", "Colours", "Tags", "Meta Title", "Meta Description",
 ];
 
-export function ExportButton({ products }: Props) {
-  const handleExport = () => {
-    const rows: any[][] = [EXPORT_COLUMNS];
+export function ExportButton() {
+  const [busy, setBusy] = useState(false);
 
-    for (const p of products) {
-      const brands = p.brands || [];
-      const sizes = (p.product_sizes || []).map((s: any) => s.size_label).join(", ");
-      const colours = (p.product_colors || []).map((c: any) => `${c.color_name}${c.color_hex ? ` (${c.color_hex})` : ""}`).join(", ");
-      const tags = (p.product_tags || []).map((t: any) => `${t.tag_type}:${t.tag_value}`).join(", ");
+  const handleExport = async () => {
+    setBusy(true);
+    try {
+      // The export fetches its OWN full-width data on click (runs a handful of
+      // times a month), so the hot ["admin-products"] list query — refetched
+      // ~2,390x/day — no longer has to carry export-only columns/embeds.
+      // brands uses an EXPLICIT column list (never brands(*)): that is what
+      // makes the export's dependency visible, so a future narrowing of the
+      // list query cannot silently blank a column again (the 7c4a19f
+      // regression). products keeps * to guarantee byte-identical output.
+      const { data: products, error } = await supabase
+        .from("products")
+        .select("*, brands!brands_product_id_fkey(brand_name, tier, price, compare_at_price, cost_price, cogs_percent, image_url, logo_url, size_variant, stock_quantity, in_stock), product_sizes(size_label), product_colors(color_name, color_hex), product_tags(tag_type, tag_value)")
+        .order("display_order");
+      if (error) throw error;
 
-      if (brands.length === 0) {
-        rows.push([
-          p.id, p.sku || "", p.name, p.slug, p.description, p.category, p.subcategory || "", p.priority, p.badge || "",
-          p.pack_count || "", p.material || "", p.contents || "", p.allergen_info || "",
-          p.safety_info || "", p.why_included || "", p.rating, p.review_count,
-          p.gender_relevant ? "Yes" : "No", p.multiples_bump, p.first_baby === true ? "Yes" : p.first_baby === false ? "No" : "",
-          p.display_order, p.is_active ? "Yes" : "No", p.emoji || "", p.image_url || "",
-          "", "", "", "", "", "",
-          "", "", "", "", "",
-          sizes, colours, tags, p.meta_title || "", p.meta_description || "",
-        ]);
-      } else {
-        for (const b of brands) {
+      const rows: any[][] = [EXPORT_COLUMNS];
+
+      for (const p of (products || [])) {
+        const brands = p.brands || [];
+        const sizes = (p.product_sizes || []).map((s: any) => s.size_label).join(", ");
+        const colours = (p.product_colors || []).map((c: any) => `${c.color_name}${c.color_hex ? ` (${c.color_hex})` : ""}`).join(", ");
+        const tags = (p.product_tags || []).map((t: any) => `${t.tag_type}:${t.tag_value}`).join(", ");
+
+        if (brands.length === 0) {
           rows.push([
             p.id, p.sku || "", p.name, p.slug, p.description, p.category, p.subcategory || "", p.priority, p.badge || "",
             p.pack_count || "", p.material || "", p.contents || "", p.allergen_info || "",
             p.safety_info || "", p.why_included || "", p.rating, p.review_count,
             p.gender_relevant ? "Yes" : "No", p.multiples_bump, p.first_baby === true ? "Yes" : p.first_baby === false ? "No" : "",
             p.display_order, p.is_active ? "Yes" : "No", p.emoji || "", p.image_url || "",
-            b.brand_name, b.tier, b.price, b.compare_at_price || "", b.cost_price || 0, b.cogs_percent ?? 40,
-            b.image_url || "", b.logo_url || "", b.size_variant || "",
-            b.stock_quantity ?? "", b.in_stock !== false ? "Yes" : "No",
+            "", "", "", "", "", "",
+            "", "", "", "", "",
             sizes, colours, tags, p.meta_title || "", p.meta_description || "",
           ]);
+        } else {
+          for (const b of brands) {
+            rows.push([
+              p.id, p.sku || "", p.name, p.slug, p.description, p.category, p.subcategory || "", p.priority, p.badge || "",
+              p.pack_count || "", p.material || "", p.contents || "", p.allergen_info || "",
+              p.safety_info || "", p.why_included || "", p.rating, p.review_count,
+              p.gender_relevant ? "Yes" : "No", p.multiples_bump, p.first_baby === true ? "Yes" : p.first_baby === false ? "No" : "",
+              p.display_order, p.is_active ? "Yes" : "No", p.emoji || "", p.image_url || "",
+              b.brand_name, b.tier, b.price, b.compare_at_price || "", b.cost_price || 0, b.cogs_percent ?? 40,
+              b.image_url || "", b.logo_url || "", b.size_variant || "",
+              b.stock_quantity ?? "", b.in_stock !== false ? "Yes" : "No",
+              sizes, colours, tags, p.meta_title || "", p.meta_description || "",
+            ]);
+          }
         }
       }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Products");
+
+      // Branded header styling
+      ws["!cols"] = EXPORT_COLUMNS.map((_, i) => ({ wch: Math.max(14, EXPORT_COLUMNS[i].length + 2) }));
+
+      XLSX.writeFile(wb, `BundledMum_Products_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast.success(`Exported ${(products || []).length} products`);
+    } catch (e: any) {
+      // Surface the failure; never write a partial file (writeFile only runs
+      // after a successful fetch above).
+      toast.error(`Export failed: ${e?.message || "could not load products"}`);
+    } finally {
+      setBusy(false);
     }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Products");
-
-    // Branded header styling
-    ws["!cols"] = EXPORT_COLUMNS.map((_, i) => ({ wch: Math.max(14, EXPORT_COLUMNS[i].length + 2) }));
-
-    XLSX.writeFile(wb, `BundledMum_Products_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast.success(`Exported ${products.length} products`);
   };
 
   return (
-    <button onClick={handleExport} className="flex items-center gap-1.5 border border-border px-3 py-2 rounded-lg text-sm font-semibold hover:bg-muted">
-      <Download className="w-4 h-4" /> Export
+    <button onClick={handleExport} disabled={busy} className="flex items-center gap-1.5 border border-border px-3 py-2 rounded-lg text-sm font-semibold hover:bg-muted disabled:opacity-50">
+      <Download className="w-4 h-4" /> {busy ? "Exporting..." : "Export"}
     </button>
   );
 }
