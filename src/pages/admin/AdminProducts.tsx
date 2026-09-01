@@ -56,7 +56,16 @@ export default function AdminProducts() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("*, brands!brands_product_id_fkey(*), product_sizes(*), product_colors(*), product_tags(*)")
+        // brands is narrowed to only the columns this screen reads (search,
+        // duplicate, PackInfoCell, COGS coverage). Selecting brands(*) dragged
+        // brands' long text columns (description, image_url, stored_image_url,
+        // logo_url, thumbnail_url, images[]) plus cost/vendor columns into the
+        // display_order sort, blowing it past work_mem into an on-disk external
+        // merge (~3.5MB) on every refetch. This query is refetched heavily
+        // (realtime-invalidated by 6 tables + refetchOnWindowFocus), so the
+        // narrower row keeps the sort in memory. Behaviour is unchanged: no
+        // dropped column is read anywhere on this screen.
+        .select("*, brands!brands_product_id_fkey(id, brand_name, price, cost_price, tier, is_default_for_tier, display_order, sku, in_stock, pack_count, diaper_type, weight_range_kg), product_sizes(*), product_colors(*), product_tags(*)")
         .order("display_order");
       if (error) throw error;
       return data;

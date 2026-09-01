@@ -1,5 +1,39 @@
 # Handoff
 
+## AdminProducts query — narrowed brands(*) to stop the on-disk sort (this turn)
+The Disk-IO hog (EXPLAIN: `external merge Disk: 3512kB`, `Sort Key: products.display_order`) is
+**[AdminProducts.tsx:59](src/pages/admin/AdminProducts.tsx:59)** — the `admin-products` react-query.
+It selected `*, brands!brands_product_id_fkey(*), product_sizes(*), product_colors(*), product_tags(*)`
+ordered by display_order. `brands(*)` dragged brands' long text columns (description, image_url,
+stored_image_url, logo_url, thumbnail_url, images[]) + cost/vendor columns into the sort over all
+613 products, exceeding work_mem (2184kB) → on-disk external merge, ~10GB/day of temp files.
+- **Fix (frontend-only, one line):** narrowed the brands embed to the 12 columns this screen
+  actually reads — `id, brand_name, price, cost_price, tier, is_default_for_tier, display_order,
+  sku, in_stock, pack_count, diaper_type, weight_range_kg` (traced: search L136-137, duplicate
+  L113, PackInfoCell L446-455, COGS coverage L530). All dropped columns confirmed unread on this
+  screen, so behaviour is unchanged. Ordering/filtering/pagination untouched. All 12 columns
+  verified to exist on `brands`. `npm run build` passes.
+- **Why it runs so often (~2,390/day, not human browsing):** `["admin-products"]` is realtime-
+  invalidated by SIX tables (products, brands, product_sizes/colors/tags, product_images —
+  [realtime.ts:14-30](src/lib/realtime.ts)) plus `refetchOnWindowFocus: true`
+  ([StorefrontApp.tsx:194](src/StorefrontApp.tsx:194)); any write to those tables while the tab is
+  open refetches the full-width query.
+- **Flagged, NOT changed (per the task's report-don't-touch rules):**
+  1. **`image_url` shown to customers (data/behaviour bug).** `getBrandImage` ([brandImage.ts](src/lib/brandImage.ts))
+     intentionally falls back to the external `image_url` when `stored_image_url` is empty (~12/1150
+     brands) and it renders on customer surfaces. Removing it would break those images, so it was
+     left. Proper fix: re-host the ~12 failed `stored_image_url`, then drop `image_url` from the
+     customer selects.
+  2. `product_sizes(*)/product_colors(*)/product_tags(*)` on `admin-products` are fetched but never
+     read (only destructured-to-discard in `duplicateProduct`). Recommend removing those 3 embeds
+     separately.
+  3. Customer product-list queries (useProducts/useAllProducts/CategoryPage/SubcategoryPage/
+     PushGiftsPage) are already narrowed to `brands_public`; only `product_id` + `is_default_for_tier`
+     are unused there (tiny, non-text) — not worth a behaviour-risking change.
+- **RLS:** no customer-facing site reads `brands` directly (all use `brands_public`); site A is
+  admin and legitimately needs `cost_price`. All embeds were already FK-qualified
+  (`!brands_product_id_fkey`). No SQL/RLS/edge/cron change.
+
 ## Finance report — 3 reconciliation fixes (this turn)
 **FIX 1 — Monthly Trend now two-arm.** [financePdf.ts](src/lib/financePdf.ts) Monthly Trend read
 `figures.monthly_trend` (finance_monthly_trend, storefront-only) and suppressed any month with
