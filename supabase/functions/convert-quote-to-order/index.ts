@@ -5,6 +5,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Authorise a privileged caller WITHOUT a naive string compare that would break
+// the Vault key. Accepts: (1) the runtime service-role env key (exact match, the
+// fast path for edge-to-edge calls); (2) any GENUINE service_role JWT — e.g. the
+// Vault 'service_role_key' the DB triggers/cron use, which is a DIFFERENT STRING
+// from the env var — verified by performing a service-role-only operation with
+// it, so a FORGED token fails at Supabase (GoTrue) rather than at an unverified
+// decode; (3) a signed-in ACTIVE admin (their user access token). False otherwise.
+async function isPrivilegedCaller(req: Request, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
+  const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!bearer) return false;
+  if (bearer === serviceRoleKey) return true;
+  try {
+    const asKey = createClient(supabaseUrl, bearer, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error } = await asKey.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if (!error) return true; // only a valid service_role key can list users
+  } catch (_e) { /* fall through */ }
+  try {
+    const svc = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: userRes } = await svc.auth.getUser(bearer);
+    const uid = userRes?.user?.id;
+    if (uid) {
+      const { data: adminRow } = await svc
+        .from("admin_users").select("id").eq("auth_user_id", uid).eq("is_active", true).maybeSingle();
+      if (adminRow) return true;
+    }
+  } catch (_e) { /* fall through */ }
+  return false;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -33,6 +62,18 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // SECURITY: creating a real order (and overriding the delivery name/email/
+    // address) is an ADMIN-ONLY operation. Previously this endpoint ran with no
+    // caller check, so anyone with a quote_id could mint orders. Require a
+    // privileged caller (service-role, incl. the Vault key, or a signed-in active
+    // admin). The admin quotes UI calls this with the admin's session token.
+    if (!(await isPrivilegedCaller(req, supabaseUrl, serviceRoleKey))) {
+      return new Response(JSON.stringify({ error: "Admin authorization required" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // 1. Load quote

@@ -122,23 +122,37 @@ async function sendViaResend(
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-// Decode a JWT payload and return its `role` claim. This is an UNVERIFIED decode —
-// enough to distinguish a Supabase service_role token from the public anon key,
-// which is exactly the authorisation signal we need (verify_jwt is false and the
-// DB triggers/cron authenticate with a service_role JWT). Returns null if the
-// token is not a well-formed JWT.
-function jwtRole(token: string): string | null {
-  const parts = token.split('.');
-  if (parts.length !== 3 || !parts[1]) return null;
+// Authorise a privileged caller by VERIFYING the token, not by an unsigned
+// decode. The old jwtRole() only base64-decoded the payload and trusted its
+// `role` claim, so a FORGED token like `<hdr>.{"role":"service_role"}.<junk>`
+// passed. Instead: (1) accept the runtime service-role env key (exact match);
+// (2) accept any GENUINE service_role JWT — e.g. the Vault 'service_role_key'
+// the DB triggers/cron use, which is a DIFFERENT STRING from the env var — by
+// performing a service-role-only operation with it, so a forged/anon token
+// fails at Supabase (GoTrue) where the signature is actually checked; (3) accept
+// a signed-in ACTIVE admin. This keeps BOTH the Vault key and the env key working
+// while rejecting forged tokens, and never reintroduces a naive string compare
+// as the sole check.
+async function isPrivilegedCaller(req: Request, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
+  const bearer = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!bearer) return false;
+  if (bearer === serviceRoleKey) return true;
   try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-    const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
-    const payload = JSON.parse(new TextDecoder().decode(bytes));
-    return typeof payload?.role === 'string' ? payload.role : null;
-  } catch {
-    return null;
-  }
+    const asKey = createClient(supabaseUrl, bearer, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error } = await asKey.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if (!error) return true; // only a valid service_role key can list users
+  } catch (_e) { /* fall through */ }
+  try {
+    const svc = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: userRes } = await svc.auth.getUser(bearer);
+    const uid = userRes?.user?.id;
+    if (uid) {
+      const { data: adminRow } = await svc
+        .from('admin_users').select('id').eq('auth_user_id', uid).eq('is_active', true).maybeSingle();
+      if (adminRow) return true;
+    }
+  } catch (_e) { /* fall through */ }
+  return false;
 }
 
 // --- handler ---------------------------------------------------------------
@@ -151,18 +165,13 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const resendKey      = Deno.env.get('RESEND_API_KEY');
 
-    // AUTH: internal callers only. The DB triggers/cron authenticate with a
-    // service_role JWT taken from the Supabase Vault secret 'service_role_key',
-    // which is a DIFFERENT string from this runtime's SUPABASE_SERVICE_ROLE_KEY
-    // env var — so an exact string compare against that env var wrongly rejected
-    // the legitimate caller (401). Instead authorise on the bearer's JWT role
-    // claim: 'service_role' is allowed; the public anon key (role 'anon') and any
-    // token without that claim are rejected. verify_jwt is false so we enforce it
-    // here. This mirrors trusting the same service_role credential the working
-    // internal notifier is called with, without a brittle key-string match.
-    const authHeader = req.headers.get('Authorization') || '';
-    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (jwtRole(bearer) !== 'service_role') {
+    // AUTH: internal callers only, VERIFIED (see isPrivilegedCaller). The DB
+    // triggers/cron authenticate with the Vault 'service_role_key' (a valid
+    // service_role JWT, a different string from SUPABASE_SERVICE_ROLE_KEY); both
+    // it and the env key are accepted, a signed-in active admin is accepted, and
+    // a forged token is rejected because the check is verified at Supabase rather
+    // than by an unsigned decode. verify_jwt is false so we enforce it here.
+    if (!(await isPrivilegedCaller(req, supabaseUrl, serviceRoleKey))) {
       return json({ error: 'Unauthorized: service role required' }, 401);
     }
     if (!resendKey) return json({ error: 'RESEND_API_KEY required' }, 500);

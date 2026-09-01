@@ -1,6 +1,51 @@
 # Handoff
 
-## Payment-path security audit — Finding 1 FALSE, Finding 2 PARTLY REAL + fixed (this turn)
+## Security wave two — PII/auth/XSS audit (this turn): 3 real, 3 false positives
+Audited DEPLOYED source of 5 edge fns + PrintInvoice.tsx. All 5 edge fns were last deployed by the
+git-sync at 1788292513399 (repo == deployed going in).
+
+**Verdicts & evidence:**
+1. **get-order-confirmation (v76) — FALSE POSITIVE.** Already requires the unguessable `share_token`
+   AND `order_number` (`.eq("order_number",…).eq("share_token",…)`), and the phone→address lookup is
+   removed (returns HTTP 410). A bare order number returns `share_token is required`. No PII on order
+   number or phone. **No change.** Guest flow intact: `OrderConfirmedPage` invokes it with
+   `{ order_number, share_token }` and send-transactional-email builds the confirmation URL with
+   `&token=${share_token}`, so a guest has the token immediately after checkout.
+2. **convert-quote-to-order (v39) — REAL.** No caller auth; anyone with a quote_id could mint orders
+   and override name/email/address. **FIXED:** gate whole handler with `isPrivilegedCaller` (403
+   otherwise). Sole caller is the admin quotes UI ([AdminQuotes.tsx:2983](src/pages/admin/AdminQuotes.tsx:2983))
+   which sends the admin's session token → passes as active admin. No cron/trigger calls it.
+3. **send-transactional-email (v82) — FALSE POSITIVE.** The `test_email` (arbitrary-recipient) path is
+   already gated: requires the service-role key OR a signed-in active admin (`isTestMode` block). The
+   non-test path only emails the order's own customer/admin and returns no PII body. **No change.**
+4. **send-reorder-reminders (v59) — REAL.** The `test_email` path had no auth → leaked the latest
+   paying customer's first name + items to any caller. **FIXED:** gate ONLY the `test_email` branch
+   with `isPrivilegedCaller`. The daily cron (`daily-reorder-reminders`, 08:00) posts with **no
+   Authorization header** and no caller-chosen recipient, so the sweep path is left open (gating it
+   would break the cron); the sweep emails real customers matched by date window, deduped via
+   marketing_email_log.
+5. **send-referral-email (v32) — REAL** (own recent code). Gated on `jwtRole(bearer)!=='service_role'`
+   where `jwtRole` was an UNSIGNED base64 decode → a forged `{"role":"service_role"}` token passed.
+   **FIXED:** replaced with `isPrivilegedCaller` (verified). `run_referral_daily()` calls it with the
+   Vault `service_role_key` as `Authorization: Bearer …` (confirmed via the function body) → still
+   works.
+6. **PrintInvoice.tsx — FALSE POSITIVE.** Already escapes every customer field: `esc()` (escapes
+   `& < > " '`, ampersand-first) is applied to `product_name`, `brand_name`, `image_data_url`, and the
+   address parts ([PrintInvoice.tsx:190,203,206](src/components/admin/PrintInvoice.tsx:190)); the name
+   uses `textContent`. **No change; no frontend change this turn → no build needed.**
+
+**The shared auth helper `isPrivilegedCaller(req, url, serviceRoleKey)`** (added byte-identically to the
+three fixed fns): returns true if (1) bearer === env `SUPABASE_SERVICE_ROLE_KEY` (fast path), OR (2)
+the bearer is a GENUINE service_role JWT — verified by calling `auth.admin.listUsers` WITH the bearer,
+so the Vault key works and a FORGED token fails at GoTrue (signature), not at an unsigned decode — OR
+(3) the bearer is a signed-in ACTIVE admin (`auth.getUser` + `admin_users.is_active`). Never a naive
+string compare as the sole check; both the Vault key and the env key pass; forged/anon/authenticated-
+non-admin fail. Same pattern as the existing send-transactional-email test guard.
+
+**Deploy:** MCP `deploy_edge_function` still hits the harness Zod/serialization bug (verify_jwt/files
+coerced to strings), so deploy is via push-to-main → Lovable git-sync from the byte-identical repo
+copies; re-fetch each fn to confirm the version bumps and carries `isPrivilegedCaller`. Payment fns
+(process-payment/verify-payment/place-order) NOT touched. No cron/trigger changed.
 Audited the DEPLOYED source (source of truth) of **process-payment (v71)**, **verify-payment (v70)**,
 **place-order (v102)** via get_edge_function, plus the `orders` triggers and discount/courier RPCs.
 

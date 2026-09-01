@@ -156,17 +156,54 @@ async function sendReorderEmail(supabase: any, order: any, sendTo: string, isTes
   return response.ok;
 }
 
+// Authorise a privileged caller WITHOUT a naive string compare that would break
+// the Vault key. Accepts: (1) the runtime service-role env key (exact); (2) any
+// GENUINE service_role JWT (e.g. the Vault key), verified by a service-role-only
+// operation so a FORGED token fails at Supabase, not at an unverified decode;
+// (3) a signed-in ACTIVE admin. False otherwise.
+async function isPrivilegedCaller(req: Request, supabaseUrl: string, serviceRoleKey: string): Promise<boolean> {
+  const bearer = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (!bearer) return false;
+  if (bearer === serviceRoleKey) return true;
+  try {
+    const asKey = createClient(supabaseUrl, bearer, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { error } = await asKey.auth.admin.listUsers({ page: 1, perPage: 1 });
+    if (!error) return true;
+  } catch (_e) { /* fall through */ }
+  try {
+    const svc = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data: userRes } = await svc.auth.getUser(bearer);
+    const uid = userRes?.user?.id;
+    if (uid) {
+      const { data: adminRow } = await svc
+        .from("admin_users").select("id").eq("auth_user_id", uid).eq("is_active", true).maybeSingle();
+      if (adminRow) return true;
+    }
+  } catch (_e) { /* fall through */ }
+  return false;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const RK = Deno.env.get("RESEND_API_KEY");
     if (!RK) throw new Error("Missing API keys");
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
     const body = await req.json().catch(() => ({}));
     const { test_email } = body;
     const isTest = !!test_email;
 
     if (isTest) {
+      // SECURITY: test_email lets the caller choose the recipient and leaks the
+      // latest paying customer's first name + purchased items. Lock it to a
+      // privileged caller. The daily cron sweep below sends NO Authorization and
+      // takes no caller-chosen recipient (it emails real customers matched by
+      // date window, deduped), so it stays open — only the test path is gated.
+      if (!(await isPrivilegedCaller(req, supabaseUrl, serviceRoleKey))) {
+        return new Response(JSON.stringify({ error: "Admin authorization required for test sends" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
       const { data: latest } = await supabase.from("orders").select("id, order_number, customer_name, customer_email").eq("payment_status", "paid").order("created_at", { ascending: false }).limit(1).single();
       if (!latest) return new Response(JSON.stringify({ error: "No paid orders found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const ok = await sendReorderEmail(supabase, latest, test_email, true, RK);
