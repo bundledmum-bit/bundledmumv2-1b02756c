@@ -1,6 +1,34 @@
 # Handoff
 
-## AdminProducts query — narrowed brands(*) to stop the on-disk sort (this turn)
+## AdminProducts embeds — NOT removed; they ARE used by the Excel export (audit, this turn)
+Asked to remove `product_sizes(*)/product_colors(*)/product_tags(*)` from the `["admin-products"]`
+query (previously flagged unused). **Re-traced from scratch: all three ARE read**, so per the
+task's own rule none were removed. **No code change made this turn.**
+- **Consumer missed before:** `allProducts` (the `["admin-products"]` result) is passed to
+  `<ExportButton products={allProducts} />` ([AdminProducts.tsx:195](src/pages/admin/AdminProducts.tsx:195)).
+  `ExportButton` ([ExcelImportExport.tsx:28-30](src/components/admin/ExcelImportExport.tsx:28)) reads
+  `p.product_sizes` (size_label → "Sizes" column), `p.product_colors` (color_name/color_hex →
+  "Colours"), `p.product_tags` (tag_type/tag_value → "Tags"). Sole consumer of the three embeds;
+  within AdminProducts they otherwise only appear in the select and in `duplicateProduct`'s
+  discard-destructure (L118).
+- **The prompt's premise (and my earlier report/handoff) were WRONG** to call them unused — both
+  missed that the admin-products result feeds the export component.
+- **REGRESSION I introduced in 7c4a19f (flagged, not yet fixed):** the narrowed brands embed
+  dropped `compare_at_price, cogs_percent, image_url, logo_url, size_variant, stock_quantity`,
+  which `ExportButton` also reads ([ExcelImportExport.tsx:51-53](src/components/admin/ExcelImportExport.tsx:51)).
+  So since 7c4a19f the Products Excel export emits blank for Compare-at Price / Brand Image URL /
+  Brand Logo URL / Size Variant / Stock Quantity, and **COGS % exports the default 40 instead of
+  the real value** (`b.cogs_percent ?? 40`). Data-integrity regression, live.
+- **Why not just re-add those columns:** `image_url`/`logo_url` are the wide text columns whose
+  removal fixed the on-disk sort; re-adding them re-inflates it. Perf-vs-correctness trade-off =
+  owner's call. **Recommended fix (separate work): give `ExportButton` its OWN on-click full-width
+  query** (`brands(*)` + the three embeds) so the export is complete while the constantly-refetched
+  list query stays narrow. That both un-breaks the export AND lets the three embeds finally leave
+  the list query.
+- Untouched: ordering/filtering/pagination/query key, all customer queries, realtime.ts,
+  QueryClient settings, getBrandImage, all backend objects. `npm run build` passes.
+
+## AdminProducts query — narrowed brands(*) to stop the on-disk sort (prior turn, 7c4a19f)
 The Disk-IO hog (EXPLAIN: `external merge Disk: 3512kB`, `Sort Key: products.display_order`) is
 **[AdminProducts.tsx:59](src/pages/admin/AdminProducts.tsx:59)** — the `admin-products` react-query.
 It selected `*, brands!brands_product_id_fkey(*), product_sizes(*), product_colors(*), product_tags(*)`
