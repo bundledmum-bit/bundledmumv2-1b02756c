@@ -11346,3 +11346,78 @@ the form §179 writes and reads. Verified: it loads browse filtered to 26 cots.
 Both were found by clicking the button rather than by reading the RPC output,
 which is the whole argument for crossing the link at least once. A
 `destination_url` that looks plausible in a SQL result is not a destination.
+
+## 193. The quiz advert restyled to the cross-sell card (2026-09-02)
+
+§191 shipped the quiz advert as a slim green strip. It is now the **same card
+as the two cross-sell banners** — same rounded 16px card, 1.5px border and
+shadow, same emoji accent, same pill CTA with the same animated arrow, same
+dismissible ×.
+
+That is the right call because all three do the same job: send someone from the
+app they are in to the other one. There are now **three near-identical files**
+differing only in their data source:
+
+| | Where | Points at | Data |
+|---|---|---|---|
+| `MarketplaceCrossSellBanner` | storefront category + product pages | marketplace | `get_marketplace_crosssell` |
+| `StorefrontCrossSellBanner` | marketplace browse, filtered to one category | storefront | `get_storefront_crosssell` |
+| `PregnancyQuizBanner` | marketplace listing pages, pregnancy-adjacent only | storefront `/quiz` | `listing_shows_pregnancy_promo` |
+
+**They are a good candidate for one shared presentational component.** That was
+NOT done here only because the other two are being edited in parallel and a
+refactor would have collided with that work — three commits touched them during
+this task alone, one of them a conflict on this very file. Until that happens,
+**restyle one and you must restyle all three.**
+
+**WHAT DID NOT CHANGE.** Still one page in four, still gated on
+`listing_shows_pregnancy_promo`, still never on a sold page (SoldListingPage
+never mounts it), still in the seam where the buy bar comes to rest, still no
+`img`/`svg`/`video` anywhere in it, still green and never coral. Re-verified all
+of it: absent on a baby-clothing listing with 0 quiz links, absent on a sold page
+which also carries no buy bar and no sell prompt, and Buy now / Add to cart
+intact.
+
+**THE ANIMATED ARROW DOES NOT BREAK §191's "STATIC" RULE.** That rule was about
+DATA — buyers are on paid Nigerian mobile data and a decorative GIF costs them
+money. A CSS keyframe downloads nothing. It is gated on
+`prefers-reduced-motion` like the other two.
+
+**NEW: it can be dismissed**, which the strip could not. Its own key,
+`bm_quiz_promo_dismissed` — never the other two, because all three are served
+from the same origin and a shared key would make dismissing one hide the others.
+Verified: dismissing this set only its own key, left both cross-sell keys null,
+and the browse banner still rendered afterwards.
+
+**NEW: the crossing is tagged** `utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz`.
+Without it this banner's traffic would be indistinguishable from the browse
+banner's, which is a problem created by making them look the same. The CTA stays
+an `<a>` rather than the `<button>` the cross-sell banners use: they navigate to
+an arbitrary `destination_url` that only arrives at runtime, this one has a
+fixed destination, so it can be a real link and still be a full page load.
+
+**TWO MEASUREMENTS THE SET MUST NOT SHARE.** Both were wrong first and caught by
+measuring, not reading.
+
+1. **1200, not 1240.** Browse's column is 1240 with a 16px gutter; the listing
+   page's is 1200 (`.mkt-related`, `.mkt-sellprompt`).
+2. **The gutter stops at 1024 here.** The listing page's blocks sit flush on the
+   1200 column at desktop while browse keeps its gutter at every width. With a
+   gutter this card sat 16px inside the related row directly below it — measured
+   134 against 118.
+
+Now asserted as equalities at three widths: 375 `[16, 359]`, 768 `[16, 747]`,
+1440 `[118, 1318]`, each identical to `.mkt-sellprompt` / `.mkt-related` on the
+same page. Heights 140 / 73 / 73.
+
+**A shorthand that silently cancelled a class.** The wrapper first used
+`style={{ padding: "18px 0 0" }}` with `className="px-4 lg:px-0"`. The `padding`
+SHORTHAND also sets `padding-left/right: 0`, and an inline style beats a class,
+so `px-4` did nothing and the card ran edge to edge at 375 and 768 — `[0, 375]`
+against the sell prompt's `[16, 359]`. Fixed by setting `paddingTop` only. Same
+family as §192's flex-margin bug: a property quietly switching off another one,
+invisible in the source and obvious the moment anything is measured.
+
+**Dead CSS removed:** the 50-line `.mkt-quizad` block in `marketplace.css` has
+no users left and is gone. The card is self-contained inline styles now, exactly
+like its two siblings.
