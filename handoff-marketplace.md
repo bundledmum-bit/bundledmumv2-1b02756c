@@ -10701,3 +10701,47 @@ looking for a React event-delegation problem that did not exist. A passing
 familiar 4: commit `d89463e` added `AudienceChooser.tsx`, which calls an
 `is_marketplace_seller` RPC absent from the generated types. Stale types, same
 class as §140, and left alone rather than fixed inside a category task.
+
+## 185. The three ways an instrument has lied, and the different check each needs
+
+Three times now a measurement has been confidently wrong, and they are NOT the
+same failure. Each needs its own check, so they are gathered here rather than
+left buried in the section that happened to hit them.
+
+**1. The instrument was not recording** (§176, the network panel; §184, a
+`PerformanceObserver` attached after load had already settled). It reported
+nothing and nothing looked wrong, because an empty result reads exactly like a
+clean one.
+
+  CHECK: make it record something KNOWN TRUE first. A `window.fetch` spy proved
+  itself against a favicon request before its silence on the video bytes meant
+  anything.
+
+**2. The instrument was not measuring the real thing** (§171, a zero-width
+viewport made a card measure 30px; §184, the Browser pane reported
+`innerWidth: 0` and later served three identical stale screenshots).
+
+  CHECK: assert a known dimension or force a visible change and confirm it
+  appears. Setting a magenta outline on the body and screenshotting again is
+  what proved the pane was not painting.
+
+**3. The instrument was measuring code that no longer exists** (§184). HMR died
+on a stray double comma and kept serving the old bundle while the source on disk
+was correct and `npm run build` PASSED. Four consecutive tests said hover was
+broken, and all four were true of code that had already been replaced.
+
+  This is the worst of the three, because everything looked coherent. There was
+  no silence and no impossible number to notice; the page simply behaved exactly
+  as the previous version did.
+
+  CHECK: a passing build says NOTHING about what the dev server is serving.
+  Before trusting behaviour, read the console for an HMR failure and re-fetch
+  the module (`fetch('/src/.../File.tsx?t=' + Date.now())`) to confirm what is
+  actually being served contains the change.
+
+**The shared rule.** Before a measurement is allowed to mean anything, prove the
+instrument is recording, that it is pointed at the real thing, and that the
+thing it is pointed at is the code you just wrote.
+
+Related in kind, for writes rather than measurements: §183, only a confirmed
+change is success, never the absence of an error.
