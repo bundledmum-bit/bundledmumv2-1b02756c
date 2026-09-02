@@ -1,6 +1,38 @@
 # Handoff
 
-## Security wave two — PII/auth/XSS audit (this turn): 3 real, 3 false positives
+## Marketplace cross-sell banner on storefront category pages (this turn)
+Adds a coral banner at the TOP of storefront category listings (after the header, before the
+listing) pointing shoppers at the SAME category on the secondhand marketplace.
+- **New component [MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx).**
+  Self-contained: fire-and-forget `supabase.rpc('get_marketplace_crosssell', { p_subcategory })`,
+  renders `{ destination_url, headline, has_category }` verbatim — NO hardcoded mapping/category
+  list/copy. Renders null on error/empty/dismissed; never blocks the page.
+- **Mounted on the two subcategory listing pages, between `<ShopPageHeader>` and the
+  `max-w-[1200px]` content div** (full-width, outside the container):
+  [SubcategoryPage.tsx](src/pages/SubcategoryPage.tsx) (`/shop/baby/:category`, `/shop/mum/:category`)
+  passing `subcategory={category}`, and [CategoryPage.tsx](src/pages/CategoryPage.tsx) (`/shop/:slug`,
+  rendered when the legacy redirect is off/unmapped) passing `subcategory={slug}`. Both params ARE the
+  storefront subcategory slug (each page does `.eq("subcategory", …)` with it) = what the RPC expects.
+  ShopPage (`/shop`, `/shop/baby`, `/shop/mum`) is a browse-all tab with no single subcategory → no
+  banner (correctly not on non-category pages).
+- **Design:** marketplace coral palette via INLINE styles (coral #F4845F on coral-light #FDE8DF,
+  coral-dark #D4613C text) so it can't disturb storefront green tokens; one compact row on mobile;
+  headline from RPC; CTA "Shop used" when `has_category`, else "Click here"; gently animated arrow
+  (`@keyframes bmXsellArrow`, disabled under `prefers-reduced-motion`); `×` close. No "Ad"/"Sponsored"
+  label; NO pixel events.
+- **Behaviour:** CTA is a `<button>` calling `window.location.assign(destination_url)` — FULL-PAGE nav
+  (marketplace is a separate app tree). Dismiss writes `sessionStorage['bm_marketplace_xsell_dismissed']`
+  = "1" (session-wide, never nags again that session).
+- **Verified live (dev 8097, mobile + desktop):** `baby-clothing` → "Would you rather buy neatly used
+  and cheaper Baby Clothing?" + "Shop used" (has_category true); `maternity-clothing` → generic "Buy
+  neatly used baby items from other Nigerian mums" + "Click here" (has_category false, → `/marketplace`).
+  Placement after header confirmed. CTA → full document reload to `/marketplace/category/baby-clothing`
+  (window marker wiped, marketplace tree mounted) = full-page nav proven. Dismiss removes it and
+  persists across navigation to another category. RPC verified: baby-clothing has_category true,
+  maternity-clothing/unknown → false + `/marketplace`. `npm run build` passes. No header/listing/style
+  change; no DB object created.
+
+## Security wave two — PII/auth/XSS audit (prior turn): 3 real, 3 false positives
 Audited DEPLOYED source of 5 edge fns + PrintInvoice.tsx. All 5 edge fns were last deployed by the
 git-sync at 1788292513399 (repo == deployed going in).
 

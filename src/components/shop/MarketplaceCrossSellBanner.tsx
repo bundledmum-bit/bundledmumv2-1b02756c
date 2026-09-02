@@ -1,0 +1,169 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * Cross-sell banner shown at the TOP of a storefront category page (immediately
+ * after the header, before the listing) that points shoppers at the SAME
+ * category on the secondhand marketplace — so people browsing new items discover
+ * the cheaper used ones.
+ *
+ * All mapping/fallback/copy decisions live in the DB: `get_marketplace_crosssell`
+ * takes the storefront subcategory slug and returns { destination_url, headline,
+ * has_category }. This component hardcodes NO mapping, NO category list and NO
+ * copy — it renders exactly what the RPC returns, or nothing at all.
+ *
+ * - Fires no pixel events.
+ * - Never blocks or delays the page (fire-and-forget; renders null until/unless
+ *   a row resolves; renders null on any error or empty result).
+ * - Crossing to the marketplace is a FULL-PAGE navigation (window.location.assign)
+ *   because the marketplace is a separate app tree chosen from window.location at
+ *   mount — a client route would leave it unmounted.
+ * - Dismissible, remembered in sessionStorage for the whole session so it never
+ *   nags again until the tab is closed.
+ */
+
+// Marketplace palette (deliberately distinct from the storefront's green).
+const CORAL = "#F4845F";
+const CORAL_LIGHT = "#FDE8DF";
+const CORAL_DARK = "#D4613C";
+const INK = "#1A1A1A";
+
+const DISMISS_KEY = "bm_marketplace_xsell_dismissed";
+
+type CrossSell = {
+  destination_url: string;
+  headline: string;
+  has_category: boolean;
+};
+
+export default function MarketplaceCrossSellBanner({ subcategory }: { subcategory: string }) {
+  const [data, setData] = useState<CrossSell | null>(null);
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
+  });
+
+  useEffect(() => {
+    if (!subcategory || dismissed) return;
+    let cancelled = false;
+    // Fire-and-forget: the page never waits on this.
+    (supabase as any)
+      .rpc("get_marketplace_crosssell", { p_subcategory: subcategory })
+      .then(
+        ({ data: rows, error }: { data: unknown; error: unknown }) => {
+          if (cancelled || error) return;
+          // The RPC returns a single row; supabase-js gives an array for a
+          // set-returning function. Accept either shape defensively.
+          const row = Array.isArray(rows) ? rows[0] : rows;
+          if (row && typeof row.destination_url === "string" && typeof row.headline === "string") {
+            setData(row as CrossSell);
+          }
+        },
+        () => { /* ignore — render nothing on failure */ },
+      );
+    return () => { cancelled = true; };
+  }, [subcategory, dismissed]);
+
+  if (dismissed || !data) return null;
+
+  const dismiss = () => {
+    try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* private mode — just hide */ }
+    setDismissed(true);
+  };
+
+  const go = () => {
+    // FULL-PAGE navigation into the separate marketplace app tree.
+    window.location.assign(data.destination_url);
+  };
+
+  const ctaText = data.has_category ? "Shop used" : "Click here";
+
+  return (
+    <div
+      role="complementary"
+      aria-label="Also available used on the BundledMum marketplace"
+      style={{
+        width: "100%",
+        background: CORAL_LIGHT,
+        borderBottom: `1px solid ${CORAL}`,
+      }}
+    >
+      {/* Scoped keyframes; disabled under prefers-reduced-motion. */}
+      <style>{`
+        @keyframes bmXsellArrow { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+        .bm-xsell-arrow { display: inline-block; animation: bmXsellArrow 1.1s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) {
+          .bm-xsell-arrow { animation: none; }
+        }
+      `}</style>
+
+      <div
+        style={{
+          maxWidth: 1200,
+          margin: "0 auto",
+          padding: "10px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          fontFamily: "'Nunito', system-ui, -apple-system, Arial, sans-serif",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            flex: 1,
+            minWidth: 0,
+            color: CORAL_DARK,
+            fontWeight: 800,
+            fontSize: 14,
+            lineHeight: 1.3,
+          }}
+        >
+          {data.headline}
+        </p>
+
+        <button
+          type="button"
+          onClick={go}
+          style={{
+            flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: CORAL,
+            color: "#FFFFFF",
+            border: "none",
+            borderRadius: 100,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 800,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {ctaText}
+          <span className="bm-xsell-arrow" aria-hidden>→</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss"
+          style={{
+            flexShrink: 0,
+            background: "transparent",
+            border: "none",
+            color: CORAL_DARK,
+            fontSize: 18,
+            lineHeight: 1,
+            fontWeight: 700,
+            cursor: "pointer",
+            padding: 4,
+            opacity: 0.7,
+          }}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}

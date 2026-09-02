@@ -8,6 +8,7 @@ import { useMerchandisedRanking } from "@/hooks/useMerchandising";
 import Seo from "@/components/Seo";
 import ProductCard from "@/components/shop/ProductCard";
 import ShopPageHeader from "@/components/shop/ShopPageHeader";
+import MarketplaceCrossSellBanner from "@/components/shop/MarketplaceCrossSellBanner";
 import CategoryNav from "@/components/shop/CategoryNav";
 import { ChevronLeft } from "lucide-react";
 
@@ -91,6 +92,8 @@ export default function SubcategoryPage({ tab }: { tab: "baby" | "mum" }) {
         count={products?.length}
         breadcrumbs={[{ label: shopLabel, href: shopHref }, { label: name }]}
       />
+
+      {category && <MarketplaceCrossSellBanner subcategory={category} />}
 
       <div className="max-w-[1200px] mx-auto px-4 md:px-10 py-5">
         {/* Sibling category quick-nav */}
