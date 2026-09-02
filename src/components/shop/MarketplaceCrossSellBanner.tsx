@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import CrossAppBanner, {
+  bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
+} from "@/components/CrossAppBanner";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
@@ -22,11 +25,15 @@ import { supabase } from "@/integrations/supabase/client";
  *   nags again until the tab is closed.
  */
 
-// Marketplace palette (deliberately distinct from the storefront's green).
-const CORAL = "#F4845F";
-const CORAL_LIGHT = "#FDE8DF";
-const CORAL_DARK = "#D4613C";
-const INK = "#1A1A1A";
+// Marketplace palette, deliberately distinct from the storefront's green: a
+// cross-sell should look like where it is GOING, not like the page it sits on.
+const PALETTE: BannerPalette = {
+  accent: "#F4845F",
+  surface: "#FDE8DF",
+  ink: "#D4613C",
+  // The one value that cannot follow the others: a shadow needs an alpha channel.
+  accentRgb: "212,97,60",
+};
 
 const DISMISS_KEY = "bm_marketplace_xsell_dismissed";
 
@@ -39,9 +46,7 @@ type CrossSell = {
 
 export default function MarketplaceCrossSellBanner({ subcategory }: { subcategory: string }) {
   const [data, setData] = useState<CrossSell | null>(null);
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
-  });
+  const [dismissed, dismiss] = useBannerDismiss(DISMISS_KEY);
 
   useEffect(() => {
     if (!subcategory || dismissed) return;
@@ -65,11 +70,6 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
   }, [subcategory, dismissed]);
 
   if (dismissed || !data) return null;
-
-  const dismiss = () => {
-    try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* private mode — just hide */ }
-    setDismissed(true);
-  };
 
   const go = () => {
     // Tag the crossing for internal attribution (source=storefront, medium=banner)
@@ -107,106 +107,28 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
         : "Click here";
 
   return (
-    // Full-width wrapper so the banner sits in its own row (with breathing room
-    // above the listing), but the banner itself is a self-contained CARD aligned
-    // to the product-grid width — so it reads as a distinct standalone banner,
-    // not a strip glued to the header.
-    <div
-      role="complementary"
-      aria-label="Also available used on the BundledMum marketplace"
-      className="w-full px-4 md:px-10 pt-4 md:pt-5"
-    >
-      {/* Scoped keyframes; disabled under prefers-reduced-motion. */}
-      <style>{`
-        @keyframes bmXsellArrow { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
-        .bm-xsell-arrow { display: inline-block; animation: bmXsellArrow 1.1s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) {
-          .bm-xsell-arrow { animation: none; }
-        }
-      `}</style>
-
-      <div
-        className="max-w-[1200px] mx-auto flex flex-col md:flex-row md:items-center gap-3 md:gap-4"
-        style={{
-          position: "relative",
-          background: CORAL_LIGHT,
-          border: `1.5px solid ${CORAL}`,
-          borderRadius: 16,
-          boxShadow: "0 2px 14px rgba(212,97,60,0.16)",
-          padding: "14px 16px",
-          fontFamily: "'Nunito', system-ui, -apple-system, Arial, sans-serif",
-        }}
-      >
-        {/* Headline block: recycle accent + copy. The recycle mark signals
-            "used" and gives the banner its own identity (not ad chrome). */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-7 md:pr-0">
-          <span aria-hidden style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>♻️</span>
-          <p
-            style={{
-              margin: 0,
-              minWidth: 0,
-              color: CORAL_DARK,
-              fontWeight: 800,
-              fontSize: 14,
-              lineHeight: 1.3,
-            }}
-          >
-            {data.headline}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={go}
-          className="w-full md:w-auto"
-          style={{
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            background: CORAL,
-            color: "#FFFFFF",
-            border: "none",
-            borderRadius: 100,
-            padding: "11px 18px",
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            boxShadow: "0 1px 4px rgba(212,97,60,0.35)",
-          }}
-        >
+    <CrossAppBanner
+      ariaLabel="Also available used on the BundledMum marketplace"
+      palette={PALETTE}
+      /* The recycle mark signals "used" and gives the banner its own identity
+         (not ad chrome). Its mirror on the marketplace side is a shopping bag. */
+      accent="♻️"
+      headline={data.headline}
+      onDismiss={dismiss}
+      /* Full-width wrapper so the banner sits in its own row with breathing room
+         above the listing, while the CARD itself is capped to the product-grid
+         width — so it reads as a distinct standalone banner, not a strip glued
+         to the header. That is why the cap is on the card here and on the
+         wrapper in the two marketplace banners: this page puts its gutter
+         OUTSIDE the 1200 column and they put theirs inside. */
+      wrapperClassName="w-full px-4 md:px-10 pt-4 md:pt-5"
+      cardClassName="max-w-[1200px] mx-auto"
+      cta={
+        <button type="button" onClick={go} className={BANNER_CTA_CLASS} style={bannerCtaStyle(PALETTE)}>
           {ctaText}
-          <span className="bm-xsell-arrow" aria-hidden>→</span>
+          <span className={BANNER_ARROW_CLASS} aria-hidden>→</span>
         </button>
-
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Dismiss"
-          className="absolute md:static top-2.5 right-2.5"
-          style={{
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            background: "transparent",
-            border: "none",
-            color: CORAL_DARK,
-            fontSize: 18,
-            lineHeight: 1,
-            fontWeight: 700,
-            cursor: "pointer",
-            padding: 0,
-            opacity: 0.7,
-          }}
-        >
-          ×
-        </button>
-      </div>
-    </div>
+      }
+    />
   );
 }

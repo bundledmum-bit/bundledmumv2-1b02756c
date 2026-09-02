@@ -11538,3 +11538,65 @@ why.
 marketplace-to-storefront direction entirely — both `browse_crosssell` and, if it
 ever routes through a redirect, the quiz link. It is the more consequential of
 the two and belongs to the storefront builder.
+
+## 195. One card for all three cross-app banners (2026-09-02)
+
+The three banners that send someone from one BundledMum app to the other were
+three near-identical files that had to be restyled together. They now share
+`src/components/CrossAppBanner.tsx`.
+
+| | Where | Points at | CTA |
+|---|---|---|---|
+| `MarketplaceCrossSellBanner` | storefront category + product pages | marketplace | `<button>` |
+| `StorefrontCrossSellBanner` | marketplace browse, one category selected | storefront shop | `<button>` |
+| `PregnancyQuizBanner` | marketplace listing pages, pregnancy-adjacent only | storefront `/quiz` | **`<a>`** |
+
+669 lines became 571 across four files, but the number that matters is that the
+card chrome exists **once**: wrapper, card, emoji accent, headline, dismiss, and
+the arrow keyframes. Where the data comes from, whether to render at all, and
+where the CTA goes stay with each caller, because those genuinely differ.
+
+**THE `<a>` VERSUS `<button>` SPLIT IS PRESERVED, AND THERE IS NO PROP CHOOSING
+BETWEEN THEM.** Two of the three navigate to a `destination_url` that only
+arrives at runtime, so they must be buttons calling `window.location.assign`.
+The quiz banner's destination is fixed, so it is a real link — openable in a new
+tab, right-clickable — and still a full page load. The component takes the CTA
+as a **ReactNode**; the shared styling reaches it through `bannerCtaStyle(palette)`,
+`BANNER_CTA_CLASS` and `BANNER_ARROW_CLASS`, which callers spread onto whatever
+element they are actually using. So the pill is shared without the element type
+being. There is deliberately no `renderAs` prop and no boolean: a shared
+component with a switch inside it would have been worse than three duplicated
+files.
+
+**GEOMETRY IS PER PAGE AND STAYS THAT WAY.** A single set of numbers would
+misalign two of the three, so `wrapperClassName` / `wrapperStyle` /
+`cardClassName` are passed in. The storefront page puts its gutter OUTSIDE the
+1200 column, so the cap sits on the CARD there; both marketplace pages put the
+gutter inside, so the cap sits on the WRAPPER. Browse is 1240 with a gutter at
+every width; a listing page is 1200 with the gutter stopping at 1024.
+
+**Every measurement was taken BEFORE the extraction and re-taken after. All nine
+are identical**, and each is also equal to its own page's neighbour:
+
+| Banner | 375 | 768 | 1440 | Neighbour |
+|---|---|---|---|---|
+| Storefront | `[16, 359]` h140 | `[40, 723]` h73 | `[118, 1318]` h73 | listing container (content, then box at 1440) |
+| Browse | `[16, 359]` h121 | `[16, 747]` h73 | `[114, 1322]` h73 | `.mkt-fbar` content, all three |
+| Quiz | `[16, 359]` h140 | `[16, 747]` h73 | `[118, 1318]` h73 | `.mkt-sellprompt`, `.mkt-related` at 1440 |
+
+Before-and-after equality is the real test of an extraction; neighbour equality
+is the one that keeps holding afterwards. The two heights that differ (121 vs
+140 at 375) are headline length, not chrome.
+
+Also verified after: the CTA elements are still `BUTTON` / `BUTTON` / `A` with
+the quiz href and its campaign intact, the quiz banner still contains **0**
+`img`/`svg`/`video`, and the three dismiss keys are still independent —
+dismissing the quiz set only `bm_quiz_promo_dismissed`, browse still appeared and
+set only its own, and the storefront banner still appeared with both others set.
+`useBannerDismiss(key)` makes that harder to get wrong by taking the key as its
+only argument, but the keys must still never be shared: all three are served from
+one origin.
+
+**One value cannot follow a token.** `accentRgb` is the accent as `"r,g,b"`,
+because the two shadows need an alpha channel and neither a hex nor a CSS
+variable can supply one. It is the one thing to retune by hand if a palette moves.

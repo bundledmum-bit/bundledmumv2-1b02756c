@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import CrossAppBanner, {
+  bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
+} from "@/components/CrossAppBanner";
 import { mdb } from "../data/mdb";
 
 /**
@@ -55,12 +58,14 @@ import { mdb } from "../data/mdb";
  * The two box-shadows below stay literal rgba: a shadow needs an alpha channel
  * and there is no token carrying one. They are --mkt-green at low opacity, so
  * if that token is ever retuned, retune them with it. */
-const GREEN = "var(--mkt-green)";
-const GREEN_LIGHT = "var(--mkt-green-light)";
-const GREEN_DARK = "var(--mkt-green-dark)";
+const PALETTE: BannerPalette = {
+  accent: "var(--mkt-green)",
+  surface: "var(--mkt-green-light)",
+  ink: "var(--mkt-green-dark)",
+  // The one value that cannot follow a token: a shadow needs an alpha channel.
+  accentRgb: "45,106,79",
+};
 
-// Deliberately NOT the storefront banner's key. Both apps are served from the
-// same origin, so a shared key would make dismissing one hide the other.
 const DISMISS_KEY = "bm_storefront_xsell_dismissed";
 
 type CrossSell = {
@@ -75,9 +80,7 @@ type CrossSell = {
 
 export default function StorefrontCrossSellBanner({ category }: { category: string }) {
   const [data, setData] = useState<CrossSell | null>(null);
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
-  });
+  const [dismissed, dismiss] = useBannerDismiss(DISMISS_KEY);
 
   useEffect(() => {
     if (!category || dismissed) return;
@@ -101,11 +104,6 @@ export default function StorefrontCrossSellBanner({ category }: { category: stri
   }, [category, dismissed]);
 
   if (dismissed || !data) return null;
-
-  const dismiss = () => {
-    try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* private mode — just hide */ }
-    setDismissed(true);
-  };
 
   const go = () => {
     // Tag the crossing for internal attribution. This banner ORIGINATES on the
@@ -148,108 +146,27 @@ export default function StorefrontCrossSellBanner({ category }: { category: stri
         : "Click here";
 
   return (
-    <div
-      role="complementary"
-      aria-label="Also available new on the BundledMum shop"
-      className="w-full"
-      style={{
+    <CrossAppBanner
+      ariaLabel="Also available new on the BundledMum shop"
+      palette={PALETTE}
+      /* Shopping-bag accent, the mirror of the storefront banner's recycle
+         mark: that one says "used", this one says "new". */
+      accent="🛍️"
+      headline={data.headline}
+      onDismiss={dismiss}
+      wrapperClassName="w-full"
+      wrapperStyle={{
         maxWidth: 1240,
         margin: "0 auto",
         padding: "2px 16px 12px",
         boxSizing: "border-box",
       }}
-    >
-      {/* Scoped keyframes; disabled under prefers-reduced-motion. */}
-      <style>{`
-        @keyframes bmSfXsellArrow { 0%,100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
-        .bm-sf-xsell-arrow { display: inline-block; animation: bmSfXsellArrow 1.1s ease-in-out infinite; }
-        @media (prefers-reduced-motion: reduce) {
-          .bm-sf-xsell-arrow { animation: none; }
-        }
-      `}</style>
-
-      <div
-        className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4"
-        style={{
-          position: "relative",
-          background: GREEN_LIGHT,
-          border: `1.5px solid ${GREEN}`,
-          borderRadius: 16,
-          boxShadow: "0 2px 14px rgba(45,106,79,0.16)",
-          padding: "14px 16px",
-          fontFamily: "'Nunito', system-ui, -apple-system, Arial, sans-serif",
-        }}
-      >
-        {/* Shopping-bag accent, the mirror of the storefront banner's recycle
-            mark: that one says "used", this one says "new". */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-7 md:pr-0">
-          <span aria-hidden style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>🛍️</span>
-          <p
-            style={{
-              margin: 0,
-              minWidth: 0,
-              color: GREEN_DARK,
-              fontWeight: 800,
-              fontSize: 14,
-              lineHeight: 1.3,
-            }}
-          >
-            {data.headline}
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={go}
-          className="w-full md:w-auto"
-          style={{
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            background: GREEN,
-            color: "#FFFFFF",
-            border: "none",
-            borderRadius: 100,
-            padding: "11px 18px",
-            fontSize: 14,
-            fontWeight: 800,
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            boxShadow: "0 1px 4px rgba(45,106,79,0.35)",
-          }}
-        >
+      cta={
+        <button type="button" onClick={go} className={BANNER_CTA_CLASS} style={bannerCtaStyle(PALETTE)}>
           {ctaText}
-          <span className="bm-sf-xsell-arrow" aria-hidden>→</span>
+          <span className={BANNER_ARROW_CLASS} aria-hidden>→</span>
         </button>
-
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Dismiss"
-          className="absolute md:static top-2.5 right-2.5"
-          style={{
-            flexShrink: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 24,
-            height: 24,
-            background: "transparent",
-            border: "none",
-            color: GREEN_DARK,
-            fontSize: 18,
-            lineHeight: 1,
-            fontWeight: 700,
-            cursor: "pointer",
-            padding: 0,
-            opacity: 0.7,
-          }}
-        >
-          ×
-        </button>
-      </div>
-    </div>
+      }
+    />
   );
 }
