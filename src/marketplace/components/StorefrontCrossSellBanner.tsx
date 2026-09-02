@@ -117,6 +117,12 @@ export default function StorefrontCrossSellBanner({ category }: { category: stri
       const u = new URL(data.destination_url, window.location.origin);
       u.searchParams.set("utm_source", "marketplace");
       u.searchParams.set("utm_medium", "banner");
+      // Campaign names WHICH marketplace banner this was. PregnancyQuizBanner
+      // also sends source=marketplace / medium=banner from the same app and now
+      // looks identical, so without this the two are separable only by one of
+      // them having no campaign at all, which reads as missing data rather than
+      // as a distinct source.
+      u.searchParams.set("utm_campaign", "browse_crosssell");
       target = u.pathname + u.search + u.hash;
     } catch {
       /* keep the raw destination_url */

@@ -11138,7 +11138,8 @@ The hook defaults to false while loading and on any error, so the advert appears
 only on a definite yes. A page that fails the call is a page with no banner,
 never one with a wrongly-placed banner.
 
-**THE CSS BUG ONLY RUNNING IT CAUGHT.** On desktop the banner first rendered
+**THE CSS BUG ONLY RUNNING IT CAUGHT** (first of the pair — see "One property
+switching off another" at the end of §193). On desktop the banner first rendered
 **601px wide instead of 1200**, centred but collapsed to its content. `.mkt-main`
 is a column flex container, so `.mkt-quizad` is a flex item, and the `auto` side
 margins that centre it **switch off the cross-axis stretch** that would have
@@ -11389,7 +11390,14 @@ from the same origin and a shared key would make dismissing one hide the others.
 Verified: dismissing this set only its own key, left both cross-sell keys null,
 and the browse banner still rendered afterwards.
 
-**NEW: the crossing is tagged** `utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz`.
+**NEW: the crossing is tagged** `utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz`,
+and the other two were given campaigns to match — **`browse_crosssell`** on
+StorefrontCrossSellBanner and **`shop_crosssell`** on the storefront's
+MarketplaceCrossSellBanner. Neither had one. The browse banner is the one that
+needed it: it sends `source=marketplace` / `medium=banner` from the same app as
+the quiz banner and now looks identical to it, so without a campaign the two
+were separable only by one of them having no campaign at all, which reads as
+missing data rather than as a distinct source.
 Without it this banner's traffic would be indistinguishable from the browse
 banner's, which is a problem created by making them look the same. The CTA stays
 an `<a>` rather than the `<button>` the cross-sell banners use: they navigate to
@@ -11410,14 +11418,72 @@ Now asserted as equalities at three widths: 375 `[16, 359]`, 768 `[16, 747]`,
 1440 `[118, 1318]`, each identical to `.mkt-sellprompt` / `.mkt-related` on the
 same page. Heights 140 / 73 / 73.
 
-**A shorthand that silently cancelled a class.** The wrapper first used
-`style={{ padding: "18px 0 0" }}` with `className="px-4 lg:px-0"`. The `padding`
-SHORTHAND also sets `padding-left/right: 0`, and an inline style beats a class,
-so `px-4` did nothing and the card ran edge to edge at 375 and 768 — `[0, 375]`
-against the sell prompt's `[16, 359]`. Fixed by setting `paddingTop` only. Same
-family as §192's flex-margin bug: a property quietly switching off another one,
-invisible in the source and obvious the moment anything is measured.
+### One property switching off another
+
+Two layout bugs in two tasks, the same shape both times, and the same check
+finds both:
+
+- **§192** — `margin: 0 auto` on a flex item **switches off the cross-axis
+  stretch** that would have given it full width, so the card collapsed to its
+  content: 601px instead of 1200.
+- **§193** — the `padding` SHORTHAND also sets `padding-left/right: 0`, and an
+  inline style beats a class, so it **silently cancelled** `px-4` and the card
+  ran edge to edge: `[0, 375]` against the sell prompt's `[16, 359]`.
+
+Neither is visible in the source. Both read as correct: one asks to be centred,
+the other to have a top padding, and each quietly disables something it never
+mentions.
+
+**The rule: when a layout is wrong and the source looks right, read the computed
+value rather than re-reading the rule.** `getBoundingClientRect` against the
+neighbour it has to line up with settles in one call what re-reading the
+stylesheet will not settle at all — which is why anything that must align with a
+neighbour is now asserted as an EQUALITY against that neighbour at every
+breakpoint, not eyeballed and not inferred from the CSS.
 
 **Dead CSS removed:** the 50-line `.mkt-quizad` block in `marketplace.css` has
 no users left and is gone. The card is self-contained inline styles now, exactly
 like its two siblings.
+
+### 193a. Both RPCs fixed, and two of the three tags are stripped on arrival
+
+The `destination_url` bug in §192a is **fixed on both sides**, exactly as
+recommended: `get_storefront_crosssell` now returns `/shop/nursery-furniture`
+and `get_marketplace_crosssell` returns `/marketplace/?category=cots-and-cribs`.
+Verified by clicking through: the browse banner lands on
+`/shop/baby/nursery-furniture` with 15 products, no 404.
+
+**But the UTM tags do not survive the trip.** All three banners now set
+`utm_source` / `utm_medium` / `utm_campaign`, and two of the three are discarded
+before anything can record them:
+
+| Banner | Campaign | Tag survives? |
+|---|---|---|
+| `PregnancyQuizBanner` → `/quiz` | `listing_quiz` | **yes** |
+| `StorefrontCrossSellBanner` → `/shop/<slug>` | `browse_crosssell` | **no** |
+| `MarketplaceCrossSellBanner` → `/marketplace/?category=` | `shop_crosssell` | **no** |
+
+Two different causes, one on each side:
+
+- **Storefront.** `/shop/:slug` is wrapped in `LegacyShopRedirect`, which sends
+  the browser to `/shop/baby/<slug>` and **drops the query string**. Measured:
+  `/shop/nursery-furniture?utm_source=marketplace&utm_medium=banner&utm_campaign=browse_crosssell`
+  arrives as `/shop/baby/nursery-furniture`. Ironically this is a consequence of
+  the §192a fix — the old `/shop/category/<slug>` 404'd but at least kept its
+  query.
+- **Marketplace.** §179's `writeBrowseUrl` builds a **fresh** `URLSearchParams`
+  from the filters and the browse effect writes it with `replace: true`, so any
+  param the module does not own is gone on first render. Measured:
+  `?category=cots-and-cribs&utm_source=storefront&...` arrives as
+  `?category=cots-and-cribs`.
+
+The quiz link survives only because `/quiz` has neither a redirect nor a
+URL-rewriting effect.
+
+**Neither was fixed here** — the storefront redirect is not marketplace code,
+and making `writeBrowseUrl` carry unknown params changes a §179 contract with 15
+tests around it, which is more than "add a campaign value" should quietly drag
+in. The marketplace-side fix is contained: preserve `utm_*` keys from the
+incoming params rather than starting from an empty set. Until both are done the
+campaign values are correct but inert, so **do not read anything into an empty
+campaign report.**

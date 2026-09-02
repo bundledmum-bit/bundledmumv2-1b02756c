@@ -81,6 +81,11 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
       const u = new URL(data.destination_url, window.location.origin);
       u.searchParams.set("utm_source", "storefront");
       u.searchParams.set("utm_medium", "banner");
+      // Campaign names WHICH banner this was, matching the two on the
+      // marketplace side (browse_crosssell, listing_quiz). Source alone already
+      // separates this one, but naming it keeps every crossing readable in a
+      // report without knowing which app each source belongs to.
+      u.searchParams.set("utm_campaign", "shop_crosssell");
       target = u.pathname + u.search + u.hash;
     } catch {
       /* keep the raw destination_url */
