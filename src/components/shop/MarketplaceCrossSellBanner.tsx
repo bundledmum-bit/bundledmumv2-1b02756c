@@ -72,8 +72,20 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
   };
 
   const go = () => {
-    // FULL-PAGE navigation into the separate marketplace app tree.
-    window.location.assign(data.destination_url);
+    // Tag the crossing for internal attribution (source=storefront, medium=banner)
+    // then FULL-PAGE navigate into the separate marketplace app tree. Built with
+    // URL so an existing query string / hash on the destination is preserved and
+    // the params are de-duplicated; falls back to the raw URL if parsing fails.
+    let target = data.destination_url;
+    try {
+      const u = new URL(data.destination_url, window.location.origin);
+      u.searchParams.set("utm_source", "storefront");
+      u.searchParams.set("utm_medium", "banner");
+      target = u.pathname + u.search + u.hash;
+    } catch {
+      /* keep the raw destination_url */
+    }
+    window.location.assign(target);
   };
 
   // Make the promise concrete with the live listing count when we have one.

@@ -1,6 +1,23 @@
 # Handoff
 
-## Cross-sell banner on PRODUCT pages + live_count CTA (this turn)
+## Cross-sell banner — UTM tagging for internal tracking (this turn)
+The banner's CTA now tags every crossing to the marketplace with
+`utm_source=storefront&utm_medium=banner`. **Only file:
+[MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx)** — the `go()`
+handler builds the target with `new URL(destination_url, origin)`, `searchParams.set`s the two UTMs
+(preserving any existing query/hash, de-duping), then `window.location.assign`es it. Applies to all
+mounts (category + product pages) since it's the one shared component.
+- **Verified live:** category deep-link → `/marketplace/category/baby-clothing?utm_source=storefront&utm_medium=banner`;
+  fallback → navigates to `/marketplace?utm_source=storefront&utm_medium=banner`.
+- **Tracking actually lands via GTM.** The marketplace SPA does NOT read UTMs and `BrowsePage`
+  rewrites the query from its own filter state, so the params are stripped from the VISIBLE url after
+  load (the marketplace home shows a bare `/marketplace`). That's cosmetic: **GTM `GTM-T8Q87PTT`
+  (site-wide in [index.html](index.html)) fires on the full-page load and captures the UTMs from the
+  landing URL before React normalises it** — so GA4 records source=storefront/medium=banner on the
+  marketplace landing pageview for both destinations. No pixel event is fired from the banner (spec).
+- Only utm_source + utm_medium were added (as requested); no utm_campaign. `npm run build` passes.
+
+## Cross-sell banner on PRODUCT pages + live_count CTA (prior turn)
 Extends the marketplace cross-sell banner to storefront product detail pages and makes the CTA
 concrete with the live listing count (both category and product pages).
 - **[MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx):** added
