@@ -11009,3 +11009,61 @@ believing the assertion.
 The sell prompt from §186 is not on the sold page. It was not asked for, and a
 sold page is arguably the best place for it, but adding it unasked is scope
 this task did not carry. Worth considering separately.
+
+## 190. The sold page stripped to the name and the video (2026-09-01)
+
+§189 kept the sold item's photos, description, price, condition and location on
+the page. That is now reversed: a sold page carries the NAME and the VIDEO and
+nothing else of the item. **The alternatives are the page.**
+
+The reasoning, and it is better than §189's: none of the stripped detail is
+buyable, and all of it competes with the part that is. Someone arriving from a
+YouTube video does not need the sold item's condition; they need the same item
+from someone who still has one.
+
+Built as a LANDING PAGE rather than an error state. For many of these visitors
+it is the first thing they ever see of BundledMum, so there is no apology, no
+dead end, and nothing that reads as a failure.
+
+  SOLD
+  Baby Bouncer
+  This one has been sold. Here is what is still available.
+  [ the video ]
+  Other sellers have this one   -> 2 cards
+  More items you might like     -> 8 cards
+
+Removed: photos, gallery, description, price, condition, location, and the
+"Browse everything" call to action. Verified all seven absent on the live page,
+alongside no buy bar, no Buy now and no Add to cart.
+
+No price and no Product schema anywhere on a sold page. Nothing there is
+purchasable, so InStock would lie to a crawler and SoldOut invites a rich result
+nobody can act on.
+
+### Sold listings still cannot appear anywhere they should not
+
+Confirmed rather than assumed, at the data layer and against real queries:
+
+  sold rows returned by search_marketplace_listings    0
+  sold rows returned by related_listings               0
+  sold rows returned by same_item_other_sellers        0
+
+And underneath all three, RLS is still `Public read live listings → status =
+'live'`, so a sold row is unreadable by anon whatever any client does. The
+browse query also filters `status='live'` in seven places.
+
+### A discrepancy worth recording
+
+This brief said "everything else in the previous brief stands" and then
+described stripping the page, but no such brief was received: the previous one
+said the opposite, that the photos, video and description should STAY, and
+`get_gone_listing_context` was widened by hand specifically so they could. The
+instruction here was explicit and self-contained, so it was followed.
+
+The consequence, flagged rather than acted on: `gallery_urls`,
+`display_description`, `condition`, `location_state` and `location_city` on
+`get_gone_listing_context` are now **unused by the frontend**. Only
+`youtube_video_id`, `title`, `image_url` (the video poster) and `status` are
+read. Those five columns were added one turn earlier for the requirement this
+turn removed. They are harmless, and the prerender may well want them, so
+nothing was reverted, but the RPC is now wider than the page needs.
