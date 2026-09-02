@@ -11094,3 +11094,104 @@ every one was public while the item was live. The standing rule lives in that
 comment too: **never add `price_naira` or `seller_id`**, which is the whole
 reason an RPC was chosen over widening the RLS policy. Narrow it if the sold page
 stays as it is for a while.
+
+## 191. A quiz advert in the seam where the buy bar comes to rest (2026-09-02)
+
+An advert for the storefront quiz on marketplace listing pages, designed before
+it was built because a listing page is where the money is and the marketplace
+has five sales in total. A banner in the wrong place interrupts a purchase in
+order to advertise a different one.
+
+**WHERE, AND WHY THERE.** Directly after `.mkt-detail` closes and before
+`RelatedListings`. The buy bar is `position: sticky; bottom: 0` and is the last
+child of `.mkt-detail` (§187), so it follows the buyer for the whole purchase
+and then comes to rest. **The page marks its own boundary there**: above the
+line the buyer is deciding about this item, below it the page is already about
+other things. Measured on mobile at 375px: `.mkt-detail` ends at 1484, the
+banner sits 1502–1578, the related row starts 1596.
+
+Claude Design was given a written brief describing the page as it actually is —
+every block in document order with its real measured height, what is
+conditional and how often, and both breakpoints — and agreed with this seam.
+
+**ONE PAGE IN FOUR, AND THE SERVER DECIDES.** `listing_shows_pregnancy_promo(p_listing_id)`
+returns a boolean, anon callable, driven by `marketplace_categories.shows_pregnancy_promo`.
+**No slug list exists on the frontend and none may be added** — the targeting is
+widened or narrowed by flipping a column, with no deploy. Today: 13 categories,
+**68 of 281 live listings, 24%**. Cots and cribs (26), Breast pump motors (10)
+and Baby carriers and wraps (9) are two thirds of it.
+
+Clothing and shoes are deliberately out. Measured, those four categories are
+**146 of 281**, and someone buying a toddler dress is as likely to be shopping
+for a two year old as expecting. Including them would put the advert on half the
+catalogue and turn it into wallpaper.
+
+**TWO LOCKS ON SOLD PAGES.** A sold listing renders `SoldListingPage`, which
+never mounts this component, so it cannot appear there. Independently, the RPC's
+own query is filtered to `status = 'live'`, so a non-live id resolves to **null,
+not false** — verified against the one delisted listing that sits in a promo
+category (flag true, RPC null). §190 stripped that page to name, video and
+alternatives with every call to action removed; a quiz advert would have been
+the only CTA left on it.
+
+The hook defaults to false while loading and on any error, so the advert appears
+only on a definite yes. A page that fails the call is a page with no banner,
+never one with a wrongly-placed banner.
+
+**THE CSS BUG ONLY RUNNING IT CAUGHT.** On desktop the banner first rendered
+**601px wide instead of 1200**, centred but collapsed to its content. `.mkt-main`
+is a column flex container, so `.mkt-quizad` is a flex item, and the `auto` side
+margins that centre it **switch off the cross-axis stretch** that would have
+given it full width. `.mkt-related` gets away with the same `margin: auto`
+because its four-column grid is intrinsically wide enough to reach the cap. The
+fix is an explicit `width: 100%`, and the comment in the stylesheet says why so
+nobody removes it as redundant. It now measures 1200px at left 118, exactly
+aligned with the related row and the sell prompt.
+
+**FORM.** Green-light `#D8EFE5` on a `#BFDECB` border, green `#2D6A4F` eyebrow
+and arrow. **Never coral**: the sell prompt two blocks below is a solid coral
+block and the two would have merged into one mass of things asking the buyer for
+something. Green-light is also the delivery and protection colour, so the
+eyebrow ("From the BundledMum shop") and the arrow do the work of saying this is
+an advert for somewhere else rather than another reassurance note about this
+item — those blocks sit inside the panel above the buy bar and never name a
+destination.
+
+**Static, and it contains no image at all**: 0 `img`/`svg`/`video` elements,
+`animation-name: none`, `transition-duration: 0s`. Buyers are on paid Nigerian
+mobile data and a decorative loop costs them money.
+
+Heights: **76px on mobile** (two lines of copy plus the eyebrow), 58px at 768px
+where the copy fits one line, 71px on desktop. Slightly over the ~64px target on
+a phone, because the copy is 72 characters and was kept verbatim rather than
+trimmed to hit a round number.
+
+A plain `<a href="/quiz">` — a real link, openable in a new tab, and a full page
+load because `/quiz` is the storefront app tree the marketplace router must not
+handle. **Relative, not the absolute `https://bundledmum.com/quiz`**, so a
+preview build stays on the origin it is served from instead of jumping to
+production. On production the two resolve identically.
+
+**Files:** `pregnancyPromo.ts` (new), `components/PregnancyQuizBanner.tsx` (new),
+`marketplace.css`, `pages/ListingDetailPage.tsx` (import + one line in the seam).
+No Supabase changes.
+
+**Verified by loading all four:** breast pump (renders), cot (renders), baby
+clothing (absent), sold (absent, and the page carries no buy bar and no sell
+prompt). The negative case was confirmed as a resolved `false` from an anon
+client rather than an unresolved query, because "not rendered yet" and "must not
+render" look identical in the DOM.
+
+**A note on the instrument.** Screenshots came back blank cream at emulated
+widths above ~800px in this pane while the DOM reported the banner painted.
+`document.elementFromPoint` at the banner's centre returned its own text, which
+is what settled it — the capture was failing, not the page. Preset widths
+(mobile, tablet) screenshot fine; custom ones did not. Fourth distinct way an
+instrument has lied here, after the network panel, the zero-width viewport and
+the stale HMR bundle.
+
+**Not fixed here, raised separately.** The desktop right column is written
+`position: sticky; top: 24px` but is 995–1170px tall against a 900px viewport,
+so it never engages and desktop has no persistent buy affordance at all; and
+Buy now sits at 917px on first paint, below the fold. With five sales those are
+a bigger conversion problem than this banner.

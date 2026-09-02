@@ -39,6 +39,7 @@ import DeliveryTermsBlock from "../components/DeliveryTermsBlock";
 import ListingVideoCard from "../components/ListingVideoCard";
 import ListingVideoPlayer from "../components/ListingVideoPlayer";
 import RelatedListings from "../components/RelatedListings";
+import PregnancyQuizBanner from "../components/PregnancyQuizBanner";
 import SoldListingPage from "../components/SoldListingPage";
 import SellYourItemsPrompt from "../components/SellYourItemsPrompt";
 import { useListingVideo } from "../listingVideo";
@@ -897,6 +898,12 @@ export default function ListingDetailPage() {
           They also give the buy bar somewhere to come to rest: the bar is the
           last thing inside .mkt-detail and sticks to the bottom of the screen
           until this section arrives. */}
+      {/* The seam: the buy bar has just come to rest above this, so the
+          purchase decision is over and everything below is about something
+          else. Renders nothing on the 213 of 281 listings whose category is
+          not pregnancy-adjacent, and is never mounted on a sold page, which
+          returns SoldListingPage far above. */}
+      <PregnancyQuizBanner listingId={listing.id} />
       <RelatedListings listingId={listing.id} />
       <SellYourItemsPrompt />
 

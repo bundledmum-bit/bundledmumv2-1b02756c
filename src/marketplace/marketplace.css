@@ -3407,6 +3407,56 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-related-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 }
 
+/* ── The quiz advert, in the seam where the buy bar comes to rest ──────────
+   Between .mkt-detail (which ends with the buy bar) and .mkt-related. Green,
+   never coral: the coral sell prompt is two blocks below and the two must not
+   merge. Green-light is also the delivery/protection colour, so the eyebrow
+   and the arrow do the work of saying this is an advert for somewhere else
+   rather than another reassurance note about this item.
+   Static by design — no animation at all, since buyers are on paid mobile
+   data. See PregnancyQuizBanner.tsx. */
+.mkt-quizad {
+  display: flex; align-items: center; gap: 12px;
+  margin: 18px 16px 0;
+  padding: 12px 14px;
+  border: 1px solid #BFDECB; border-radius: 14px;
+  background: var(--mkt-green-light);
+  text-decoration: none;
+  color: var(--mkt-green-dark);
+}
+.mkt-quizad-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mkt-quizad .eyebrow {
+  font: 800 10px/1 'Nunito', sans-serif;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--mkt-green);
+}
+.mkt-quizad .line { font: 400 13px/1.4 'Lato', sans-serif; color: var(--mkt-green-dark); }
+.mkt-quizad .line b { font: 800 13px/1.4 'Nunito', sans-serif; }
+.mkt-quizad-go {
+  flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--mkt-green); color: #fff;
+  font: 700 15px/30px 'Lato', sans-serif; text-align: center;
+}
+.mkt-quizad:hover { background: #CDE9DC; }
+
+@media (min-width: 1024px) {
+  /* Full width under BOTH columns, matching .mkt-related's own 1200px cap, so
+     it never sits inside the right-hand panel. */
+  .mkt-quizad {
+    /* width:100% is load-bearing. .mkt-main is a column flex container, so this
+       is a flex item, and the `auto` side margins that centre it also switch
+       OFF the cross-axis stretch that would otherwise give it full width — it
+       collapses to its content, about 600px, instead of filling the 1200 cap
+       and lining up with the related row below. */
+    width: 100%; max-width: 1200px; margin: 26px auto 0; padding: 16px 22px;
+    box-sizing: border-box; gap: 16px;
+  }
+  .mkt-quizad .line { font-size: 15px; }
+  .mkt-quizad .line b { font-size: 15px; }
+  .mkt-quizad .eyebrow { font-size: 11px; }
+  .mkt-quizad-go { flex-basis: 34px; width: 34px; height: 34px; line-height: 34px; font-size: 17px; }
+}
+
 /* ── The sell prompt, last on the page ─────────────────────────────────────
    Coral and full width because it is meant to be unmissable, but the words
    are about their store room rather than about us. Sits above the sticky buy
