@@ -61,9 +61,23 @@ export default function LegacyShopRedirect({ children }: { children: React.React
   const catParent = cat.parent_category === "mum" ? "mum" : "baby"; // baby/both/null -> baby
   const parent = (categoryParam && tabParent) ? tabParent : catParent;
 
-  const target = `/shop/${parent}/${cat.slug}`;
+  const targetPath = `/shop/${parent}/${cat.slug}`;
   // Loop guard: never redirect onto the current path.
-  if (location.pathname === target) return <>{children}</>;
+  if (location.pathname === targetPath) return <>{children}</>;
+
+  // Carry the query string THROUGH the redirect. Rebuilding the path alone
+  // dropped everything after the "?", so a tagged link like
+  // /shop/nursery-furniture?utm_source=marketplace&utm_campaign=shop_crosssell
+  // arrived as bare /shop/baby/nursery-furniture and lost all attribution
+  // (the marketplace->storefront banner relies on this). We drop only the two
+  // params the redirect itself consumes — `category` and `tab` are now encoded
+  // in the target PATH, so leaving them on would be stale/redundant — and keep
+  // everything else (utm_*, gclid, ...). The hash is preserved too.
+  const forwarded = new URLSearchParams(location.search);
+  forwarded.delete("category");
+  forwarded.delete("tab");
+  const qs = forwarded.toString();
+  const target = `${targetPath}${qs ? `?${qs}` : ""}${location.hash || ""}`;
 
   return <Navigate to={target} replace />;
 }

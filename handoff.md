@@ -1,6 +1,31 @@
 # Handoff
 
-## Cross-sell banner — UTM tagging for internal tracking (this turn)
+## LegacyShopRedirect dropped the query string — UTMs now carried through (this turn)
+`LegacyShopRedirect` ([src/components/shop/LegacyShopRedirect.tsx](src/components/shop/LegacyShopRedirect.tsx))
+rebuilt the redirect target as the PATH alone (`<Navigate to={`/shop/${parent}/${cat.slug}`}>`),
+dropping everything after the `?`. So a tagged marketplace→storefront link like
+`/shop/nursery-furniture?utm_source=marketplace&utm_medium=banner&utm_campaign=shop_crosssell` arrived
+as bare `/shop/baby/nursery-furniture` — killing all attribution on the reverse banner (the campaign
+values were set but inert, so an empty campaign report reads as "nobody clicked", not "nobody
+tracked").
+- **Fix:** carry `location.search` through the redirect, deleting only the two params the redirect
+  itself CONSUMES (`category`, `tab` — now encoded in the target path), keeping everything else
+  (`utm_*`, `gclid`, …); the hash is preserved too. Loop guard still compares `location.pathname` to
+  the target PATH (unchanged semantics).
+- **Scope:** all five routes that wrap this gate are covered by the one fix — `/shop`, `/shop/baby`,
+  `/shop/mum`, `/shop/other` (ShopPage, redirect fires on the `?category=` query form) and
+  `/shop/:slug` (CategoryPage). Anything tagged that lands on any of them keeps its attribution now.
+- **Verified live (redirects_enabled=true):** `/shop/nursery-furniture?utm_source=marketplace&utm_medium=banner&utm_campaign=shop_crosssell`
+  → `/shop/baby/nursery-furniture?utm_source=marketplace&utm_medium=banner&utm_campaign=shop_crosssell`
+  (full query kept); `/shop?category=nursery-furniture&tab=baby&utm_source=marketplace&utm_campaign=shop_crosssell`
+  → `/shop/baby/nursery-furniture?utm_source=marketplace&utm_campaign=shop_crosssell` (category+tab
+  dropped, UTMs kept). `npm run build` passes.
+- NOTE: this is the client-side redirect fix; GTM already captured UTMs on the initial full-page load,
+  but the landed URL now also retains them (and any downstream storefront attribution reads them).
+  Still-open, separate: the resolver RPCs' `has_category` deep-link PATHS (`/marketplace/category/…`,
+  `/shop/category/…`) 404 and need a destination_url fix (see the UTM section below).
+
+## Cross-sell banner — UTM tagging for internal tracking (prior turn)
 The banner's CTA now tags every crossing to the marketplace with
 `utm_source=storefront&utm_medium=banner`. **Only file:
 [MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx)** — the `go()`
