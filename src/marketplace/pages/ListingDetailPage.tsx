@@ -39,6 +39,7 @@ import DeliveryTermsBlock from "../components/DeliveryTermsBlock";
 import ListingVideoCard from "../components/ListingVideoCard";
 import ListingVideoPlayer from "../components/ListingVideoPlayer";
 import RelatedListings from "../components/RelatedListings";
+import SoldListingPage from "../components/SoldListingPage";
 import SellYourItemsPrompt from "../components/SellYourItemsPrompt";
 import { useListingVideo } from "../listingVideo";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
@@ -318,12 +319,22 @@ export default function ListingDetailPage() {
       );
     }
 
+    // A SOLD item, seen by anyone other than its own seller, keeps its page:
+    // photos, the video they probably arrived from, and the description, with
+    // nothing buyable on it. The seller's own view (ownSold, below) is a
+    // different conversation and is unchanged.
+    if (!ownListing && goneContext?.status === "sold") {
+      return <SoldListingPage listingId={id as string} c={goneContext} />;
+    }
+
     let notFoundCase: NotFoundCase;
     if (ownListing) {
       notFoundCase = ownListing.status === "sold"
         ? { kind: "ownSold", title: ownListing.title, price: ownListing.final_price_naira, imageUrl: ownListing.image_url }
         : { kind: "ownRemoved", title: ownListing.title, imageUrl: ownListing.image_url, rejectionReason: ownListing.status === "rejected" ? ownListing.rejection_reason : null };
     } else if (goneContext?.status === "sold") {
+      // Handled below by SoldListingPage, which keeps the item on screen.
+      // Left in the switch so the other three cases read unchanged.
       notFoundCase = { kind: "sold", listingId: id as string, title: goneContext.title, price: goneContext.final_price_naira, categoryId: goneContext.category_id, categoryName: goneContext.category_name, imageUrl: goneContext.image_url };
     } else if (goneContext?.status === "delisted" || goneContext?.status === "rejected") {
       notFoundCase = { kind: "removed", listingId: id as string, title: goneContext.title, categoryId: goneContext.category_id, categoryName: goneContext.category_name, imageUrl: goneContext.image_url };
@@ -342,13 +353,30 @@ export default function ListingDetailPage() {
   const multi = qty > 1;
 
   // Belt and braces: a live listing with no stock left (should not happen, the
-  // trigger flips it to 'sold') still shows the sold state rather than a dead
-  // Buy. All the data the sold case needs is already in hand, no RPC needed.
+  // trigger flips it to 'sold') gets the same sold page rather than a dead Buy.
+  // Everything it needs is already in hand, so no RPC call is made here.
   if (available <= 0) {
     return (
-      <NotFoundOrGoneScreen
-        c={{ kind: "sold", listingId: listing.id, title: listing.title, price: listing.final_price_naira, categoryId: listing.category_id, categoryName: listing.category?.name ?? null, imageUrl: listing.image_url }}
-        waNumber={waNumber}
+      <SoldListingPage
+        listingId={listing.id}
+        c={{
+          title: listing.title,
+          image_url: listing.image_url,
+          gallery_urls: listing.gallery_urls ?? null,
+          display_description: listing.display_description ?? null,
+          // listing_video owns whether a video is watchable; this path has the
+          // live row, so it reads the same column the RPC exposes.
+          youtube_video_id: (listing as unknown as { youtube_video_id?: string | null }).youtube_video_id ?? null,
+          condition: listing.condition,
+          final_price_naira: listing.final_price_naira,
+          status: "sold",
+          category_id: listing.category_id,
+          category_name: listing.category?.name ?? null,
+          category_icon: null,
+          location_state: listing.location_state,
+          location_city: listing.location_city,
+          sold_at: null,
+        }}
       />
     );
   }

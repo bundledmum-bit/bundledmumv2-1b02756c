@@ -13,11 +13,21 @@ import { mdb } from "../data/mdb";
 export interface GoneListingContext {
   title: string;
   image_url: string | null;
+  /** The rest of the photos. A visitor arriving from the item's own YouTube
+   * video wants to see what they clicked on, not a thumbnail. */
+  gallery_urls: string[] | null;
+  display_description: string | null;
+  /** Set only when youtube_status is 'ready', the same rule listing_video
+   * itself applies, so a half-uploaded video never appears here. */
+  youtube_video_id: string | null;
+  condition: "almost_new" | "good" | "fair" | null;
   final_price_naira: number;
   status: "sold" | "delisted" | "rejected";
   category_id: string | null;
   category_name: string | null;
   category_icon: string | null;
+  location_state: string | null;
+  location_city: string | null;
   sold_at: string | null;
 }
 

@@ -10919,3 +10919,93 @@ rather than false or zero silently takes the wrong branch.
 
 Fixed with `counts.get(c.id) ?? 0`. Verified after: Bibs and mats 0 and Plates,
 bowls and cutlery 0, both showing the count and both dimmed.
+
+## 189. A sold listing keeps its page (2026-09-01)
+
+Sold videos now stay PUBLIC on YouTube permanently rather than being unlisted on
+sale, so a sold item's video keeps ranking and keeps sending people here. 52
+videos are up today and the number grows with every seller who uploads.
+
+### What a sold page showed before
+
+A stub. `useListing` filters `.eq("status","live")`, so a sold listing returned
+null, the page fell into its gone branch and early-returned
+`NotFoundOrGoneScreen`: a headline, the title, the sold price and up to four
+similar thumbnails. No gallery, no video, no description, because
+`get_gone_listing_context` returned only eight columns.
+
+**No buy action rendered, and none does now.** The whole page early-returns
+before the buy bar, the offer, ask and video-request actions ever mount. Asked
+to report it as a bug if the sticky bar survived: it does not, and did not.
+
+### The thing that was not buildable, and how it became buildable
+
+RLS is `Public read live listings → status = 'live'`, so anon cannot read a sold
+ROW at all. Dropping the client-side filter would have changed nothing. Flagged
+rather than quietly shipping less, and `get_gone_listing_context` was then
+widened to return `gallery_urls`, `display_description`, `youtube_video_id`,
+`condition`, `location_state`, `location_city`.
+
+**The RPC was widened rather than the policy, deliberately.** Widening the
+policy would have exposed the whole sold row including `price_naira`, which is
+the SELLER'S SHARE and must never be public. The RPC is a controlled surface
+returning exactly what is chosen. `youtube_video_id` is returned only when
+`youtube_status` is 'ready', matching listing_video's own rule, so a
+half-uploaded video never appears.
+
+### The sold page now
+
+A separate `SoldListingPage`, not a branch inside the five-case screen, so the
+other four states are untouched. Nothing buyable exists in that component at
+all: not suppressed one control at a time, simply never built.
+
+  Sold banner, unmissable and first
+  Photos, then the video, then condition, location and description
+  The SAME item from another seller, when one genuinely exists
+  Related items, which always fills
+
+The copy, matter of fact rather than apologetic, since they came to buy
+something and the useful thing is what is still available:
+
+  **This one has been sold**
+  It went for ₦18,000. Everything below is still available.
+
+"Everything below is still available" is the line doing the work: it holds true
+whether or not the same-item row appears, which matters because that row is
+absent about a fifth of the time.
+
+### Two rows, in this order
+
+`same_item_other_sellers` first, because it answers what the visitor actually
+arrived with. It only returns genuine matches: raw title similarity fails here
+since "Baby Walker" scores 0.33 against "Baby Bouncer" purely on the word
+"Baby", so it strips the same noise words the search strips. Verified on the
+sold Baby Bouncer: **Baby Rocker and Bouncer** (Afusat A.) and **East Coost Baby
+Bouncer** (Titilayo O.), both closeness 1.000, no walkers, beds or strollers.
+`closeness` never reaches the client.
+
+It is rendered ONLY when it has results and is never padded, because a row
+promising the same item and holding something else is worse than no row.
+Verified on Honey Babywears, which has no match: the row is absent and
+`related_listings` still fills 8. That is why the general row is the guarantee.
+
+Both hydrate ids through LISTING_SELECT and reuse ListingCard, same as §186.
+
+### Verified
+
+Sold Baby Bouncer: sold page, banner, 4 photos, the YouTube video, the
+description, "Other sellers have this one" with 2 cards, 8 related, and **no
+buy, cart, offer, video request or sticky bar anywhere**. Honey Babywears: same,
+with the same-item row correctly absent. A live listing is unchanged: buy bar,
+Buy now, Add to cart, related row and sell prompt all still there.
+
+**A test of mine was wrong, not the code.** `description: false` came back
+because I checked `includes("About this item")` while CSS uppercases it to
+ABOUT THIS ITEM. The element was there the whole time. Checked the DOM before
+believing the assertion.
+
+### Not done, deliberately
+
+The sell prompt from §186 is not on the sold page. It was not asked for, and a
+sold page is arguably the best place for it, but adding it unasked is scope
+this task did not carry. Worth considering separately.
