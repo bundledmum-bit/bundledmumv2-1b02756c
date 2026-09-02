@@ -22,8 +22,14 @@ tracked").
   dropped, UTMs kept). `npm run build` passes.
 - NOTE: this is the client-side redirect fix; GTM already captured UTMs on the initial full-page load,
   but the landed URL now also retains them (and any downstream storefront attribution reads them).
-  Still-open, separate: the resolver RPCs' `has_category` deep-link PATHS (`/marketplace/category/…`,
-  `/shop/category/…`) 404 and need a destination_url fix (see the UTM section below).
+- **SEQUENCE / irony worth recording:** the tags were never actually working — they just failed
+  DIFFERENTLY before. The OLD resolver path `/shop/category/<slug>` 404'd but *preserved* its query
+  string; fixing that 404 (resolver now emits `/shop/<slug>`) is what routed the link through
+  `LegacyShopRedirect`, which then silently stripped the query. Closing the 404 is what exposed this
+  bug. Both are now closed.
+- **Both directions end-to-end:** this storefront-side redirect fix + the marketplace side's
+  `writeBrowseUrl`/BrowsePage rewrite fix (c546dfe) close the SAME class of bug on opposite sides, so
+  the campaign values are no longer inert — a campaign report now means something.
 
 ## Cross-sell banner — UTM tagging for internal tracking (prior turn)
 The banner's CTA now tags every crossing to the marketplace with
@@ -49,17 +55,14 @@ mounts (category + product pages) since it's the one shared component.
   value the request named, because tagging a marketplace-origin banner as source=storefront would
   misattribute the direction.)
 
-**⚠️ SEPARATE PRE-EXISTING REGRESSION found while verifying (NOT caused by the UTM change, needs a
-resolver/DB fix — flagged, not fixed):** BOTH cross-sell banners' `has_category` deep-links 404,
-because the resolver RPCs emit destination paths that are not real routes:
-  - `get_marketplace_crosssell` returns `/marketplace/category/<slug>`, but the marketplace browse URL
-    was refactored to query params — the only route is `/` (BrowsePage); the correct URL is
-    **`/marketplace/?category=<slug>`**. `/marketplace/category/...` now hits the `*` NotFound route.
-  - `get_storefront_crosssell` returns `/shop/category/<slug>`, which matches no storefront route
-    (storefront category routes are `/shop/:slug` e.g. **`/shop/<slug>`**, or `/shop/baby|mum/:category`).
-  Fix is in the two RPCs' `destination_url` only (frontend must not decide the URL); once corrected,
-  the UTMs ride along unchanged (both banners build the link via `new URL`, so query-param
-  destinations work). The generic FALLBACK links (`/marketplace`, storefront home) are fine.
+**✅ RESOLVED (correction to an earlier note that called this "still open" — it is NOT):** the
+resolver RPCs were fixed earlier the same day to emit real routes; neither emits a `/category/` path
+any more. Verified live: `get_marketplace_crosssell('baby-clothing')` → **`/marketplace/?category=baby-clothing`**
+(fallback → `/marketplace`); `get_storefront_crosssell('cots-and-cribs')` → **`/shop/nursery-furniture`**,
+`get_storefront_crosssell('baby-clothing')` → **`/shop/baby-clothing`**. The UTMs ride along unchanged
+(both banners build the link via `new URL`, so query-param destinations work). Do NOT hunt this — the
+deep-links resolve. (This RPC fix is exactly why the storefront banner's link is `/shop/<slug>`, which
+routes through `LegacyShopRedirect` — see the redirect-query fix at the top of this file.)
 
 ## Cross-sell banner on PRODUCT pages + live_count CTA (prior turn)
 Extends the marketplace cross-sell banner to storefront product detail pages and makes the CTA
