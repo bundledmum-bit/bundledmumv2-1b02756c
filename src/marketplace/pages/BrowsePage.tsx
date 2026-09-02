@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { recordMarketplaceSearch } from "../searchDemand";
 import { readBrowseUrl, writeBrowseUrl, browseUrlKey } from "../browseUrl";
-import CategoryMenu from "../browse/CategoryMenu";
 import CategoryPicker from "../browse/CategoryPicker";
+import { groupsByStock } from "../browse/categoryOrder";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -415,19 +415,6 @@ export default function BrowsePage() {
         </div>
       </div>
 
-      {/* Sticky desktop category bar. Its height is fixed in CSS from first
-          paint and its contents render only once the final order is known,
-          so it fills in once and never pushes the listings. Mobile gets the
-          searchable dropdown on the filter row instead. */}
-      <CategoryMenu
-        categories={categories}
-        groups={groups}
-        counts={categoryCounts}
-        ready={!categoriesLoading && !groupsLoading && !!categoryCounts}
-        activeCategoryId={filters.categoryId}
-        onPick={chooseCategory}
-      />
-
       {/* An unrecognised ?category= or ?group= slug (a typo in an ad, or a
           group renamed since the link went out): shown unfiltered, honestly
           told why, never an error and never a silent empty result that
@@ -611,7 +598,7 @@ export default function BrowsePage() {
       <div className="mkt-browse">
         {/* Desktop persistent panel */}
         <aside className="mkt-fpanel">
-          <FilterControls value={filters} onChange={setFilters} categories={categories} groups={groups} showCategory />
+          <FilterControls value={filters} onChange={setFilters} categories={categories} groups={groups} counts={categoryCounts} showCategory />
         </aside>
 
         <div className="mkt-browse-main">
@@ -687,18 +674,21 @@ export default function BrowsePage() {
 
 /** The filter controls, shared by the desktop panel and the mobile sheet. Location
  * is NOT here, it lives beside the search bar in its own state-then-city control. */
-function FilterControls({ value, onChange, categories, groups, showCategory }: {
+function FilterControls({ value, onChange, categories, groups, counts, showCategory }: {
   value: BrowseFilters;
   onChange: (next: BrowseFilters) => void;
   categories: CategoryOption[];
   groups: CategoryGroup[];
+  /** Live listing counts, so the category filter can order by stock and say
+   * how much is in each. Undefined until they load. */
+  counts?: Map<string, number>;
   showCategory?: boolean;
 }) {
   const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
   const toggleCond = (c: string) => set({ conditions: value.conditions.includes(c) ? value.conditions.filter((x) => x !== c) : [...value.conditions, c] });
   return (
     <div className="mkt-fgroups">
-      {showCategory && <CategoryFilter value={value} onChange={onChange} categories={categories} groups={groups} />}
+      {showCategory && <CategoryFilter value={value} onChange={onChange} categories={categories} groups={groups} counts={counts} />}
 
       <div className="mkt-fgroup">
         <div className="mkt-fgroup-h">Price</div>
@@ -739,14 +729,28 @@ function FilterControls({ value, onChange, categories, groups, showCategory }: {
  * Headers are 48px tall (thumb sized); the chevron rotates and the body fades in,
  * both stilled under prefers-reduced-motion (see marketplace.css).
  */
-function CategoryFilter({ value, onChange, categories, groups }: {
+function CategoryFilter({ value, onChange, categories, groups, counts }: {
   value: BrowseFilters;
   onChange: (next: BrowseFilters) => void;
   categories: CategoryOption[];
   groups: CategoryGroup[];
+  counts?: Map<string, number>;
 }) {
   const set = (patch: Partial<BrowseFilters>) => onChange({ ...value, ...patch });
-  const { grouped, ungrouped } = useMemo(() => groupCategories(categories, groups), [categories, groups]);
+  // Ordered by LIVE STOCK, most first, then by name so ties are stable. 21 of
+  // the 49 allowed categories are empty, and a fixed order buries the 131
+  // clothing listings below categories nobody is selling in. Falls back to the
+  // old group ordering only until the counts arrive, so the list never renders
+  // blank while it waits.
+  const byStock = useMemo(
+    () => (counts ? groupsByStock(categories, groups, counts) : []),
+    [categories, groups, counts],
+  );
+  const legacy = useMemo(() => groupCategories(categories, groups), [categories, groups]);
+  const grouped = counts
+    ? byStock.map((g) => ({ group: g.group, items: g.categories }))
+    : legacy.grouped;
+  const ungrouped = counts ? [] : legacy.ungrouped;
   const selectedGroupId = useMemo(
     () => categories.find((c) => c.id === value.categoryId)?.group_id ?? null,
     [categories, value.categoryId],
@@ -763,11 +767,29 @@ function CategoryFilter({ value, onChange, categories, groups }: {
   const toggle = (id: string) =>
     setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
-  const catBtn = (c: CategoryOption) => (
-    <button key={c.id} className={value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt"} onClick={() => set({ categoryId: c.id, groupId: "", categoryIds: null })}>
-      <span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>{c.name}
-    </button>
-  );
+  /* The count is the LIVE LISTING count, and it is shown on every category
+     including the empty ones. An empty category is DIMMED rather than hidden:
+     hiding makes the catalogue look thinner than it is and makes the list
+     change shape as stock moves, while dimming tells the truth, we have this
+     category and nobody is selling one right now. It stays clickable, and the
+     empty result names it. */
+  const catBtn = (c: CategoryOption) => {
+    // ABSENT MEANS ZERO. useCategoryCounts only has entries for categories
+    // that HAVE listings, so an empty one returns undefined, not 0. Reading it
+    // raw left every empty category with no count and no dimming, which is the
+    // exact opposite of the point: they are the ones a buyer most needs
+    // warning about. categoryOrder.ts already coalesces the same way.
+    const n = counts ? (counts.get(c.id) ?? 0) : undefined;
+    const empty = n === 0;
+    const cls = [value.categoryId === c.id ? "mkt-fopt on" : "mkt-fopt", empty ? "empty" : ""].filter(Boolean).join(" ");
+    return (
+      <button key={c.id} className={cls} onClick={() => set({ categoryId: c.id, groupId: "", categoryIds: null })}>
+        <span className="fopt-ic" aria-hidden>{c.icon || CATEGORY_FALLBACK_ICON}</span>
+        <span className="fopt-nm">{c.name}</span>
+        {n != null && <span className="fopt-ct">{n}</span>}
+      </button>
+    );
+  };
 
   return (
     <div className="mkt-fgroup">
@@ -791,7 +813,11 @@ function CategoryFilter({ value, onChange, categories, groups }: {
                 onClick={() => toggle(group.id)}
               >
                 <span className="nm">{group.name}</span>
-                <span className="ct">{items.length}</span>
+                {/* LISTINGS in the group, not categories. This read
+                    items.length, so "Feeding 7" meant seven categories while
+                    Feeding actually holds 24 items, and a buyer had every
+                    reason to read it as seven things to buy. */}
+                <span className="ct">{counts ? items.reduce((t, c) => t + (counts.get(c.id) ?? 0), 0) : items.length}</span>
                 <span className={isOpen ? "chev open" : "chev"} aria-hidden>▾</span>
               </button>
               {isOpen && <div className="mkt-catgroup-body" id={bodyId}>{items.map(catBtn)}</div>}

@@ -3366,37 +3366,12 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-catpick-opt.empty .nm, .mkt-catpick-opt.empty .ct { color: var(--mkt-muted-2); }
 .mkt-catpick-none { padding: 10px; font: 400 12.5px/1.4 'Lato', sans-serif; color: var(--mkt-muted); }
 
-/* ── Desktop sticky category bar ───────────────────────────────────────────
-   Hidden on mobile, which has the dropdown above. The HEIGHT IS FIXED so the
-   bar occupies the same space before and after its contents arrive: the
-   order depends on live counts, so rendering early would reshuffle in front
-   of the buyer, and rendering late without a reserved height would push the
-   listings down. */
-.mkt-catbar { display: none; }
+/* The desktop category bar was removed: the side filter panel already had a
+   category accordion, and two category navigations on one page is one too
+   many. The counts, the stock ordering and the dimmed empties moved into that
+   panel instead. The searchable dropdown below stays, and is mobile only,
+   since the side panel is hidden there. */
 @media (min-width: 1024px) {
-  .mkt-catbar {
-    display: block; position: sticky; top: 0; z-index: 30;
-    height: 48px; box-sizing: border-box;
-    background: var(--mkt-cream); border-bottom: 1px solid var(--mkt-border);
-  }
-  .mkt-catbar-inner { max-width: 1240px; margin: 0 auto; padding: 0 16px; height: 100%; display: flex; align-items: stretch; gap: 2px; box-sizing: border-box; }
-  .mkt-catbar-grp { position: relative; display: flex; align-items: stretch; }
-  .mkt-catbar-grpbtn { display: flex; align-items: center; gap: 6px; height: 100%; padding: 0 12px; border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent; }
-  .mkt-catbar-grpbtn .nm { font: 800 13px/1 'Nunito', sans-serif; color: var(--mkt-black); white-space: nowrap; }
-  .mkt-catbar-grpbtn .ct { font: 700 11px/1 'Lato', sans-serif; color: var(--mkt-muted); font-variant-numeric: tabular-nums; }
-  .mkt-catbar-grp.open .mkt-catbar-grpbtn { border-bottom-color: var(--mkt-coral); }
-  .mkt-catbar-grp.open .mkt-catbar-grpbtn .nm { color: var(--mkt-coral-dark); }
-  .mkt-catbar-panel { position: absolute; top: 100%; left: 0; min-width: 300px; max-width: 460px; background: #fff; border: 1px solid var(--mkt-border); border-radius: 0 0 14px 14px; box-shadow: 0 16px 38px rgba(26,26,26,0.16); padding: 12px; z-index: 31; }
-  .mkt-catbar-panel-h { font: 700 10.5px/1 'Lato', sans-serif; letter-spacing: 0.07em; text-transform: uppercase; color: var(--mkt-muted-2); padding: 2px 6px 8px; }
-  .mkt-catbar-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
-  .mkt-catbar-cat { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: none; border-radius: 9px; background: none; cursor: pointer; text-align: left; }
-  .mkt-catbar-cat:hover { background: var(--mkt-cream); }
-  .mkt-catbar-cat .nm { flex: 1; min-width: 0; font: 600 13px/1.25 'Lato', sans-serif; color: var(--mkt-black); }
-  .mkt-catbar-cat .ct { font: 700 11px/1 'Lato', sans-serif; color: var(--mkt-muted); font-variant-numeric: tabular-nums; }
-  .mkt-catbar-cat.on { background: var(--mkt-green-light); }
-  .mkt-catbar-cat.on .nm { color: var(--mkt-green-dark); font-weight: 800; }
-  .mkt-catbar-cat.empty .nm, .mkt-catbar-cat.empty .ct { color: var(--mkt-muted-2); }
-  /* The dropdown is mobile only: desktop has the bar. */
   .mkt-catpick { display: none; }
 }
 
@@ -3455,3 +3430,12 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-sellprompt p { margin: 0; max-width: 560px; }
   .mkt-sellprompt-cta { width: auto; min-width: 230px; padding: 0 28px; flex: none; }
 }
+
+/* ── Category filter rows in the side panel ────────────────────────────────
+   The live listing count sits at the end of each row, and an empty category
+   is dimmed rather than hidden. */
+.mkt-fopt .fopt-nm { flex: 1; min-width: 0; }
+.mkt-fopt .fopt-ct { font: 700 11px/1 'Lato', sans-serif; color: var(--mkt-muted); font-variant-numeric: tabular-nums; }
+.mkt-fopt.on .fopt-ct { color: var(--mkt-green-dark); }
+.mkt-fopt.empty .fopt-nm, .mkt-fopt.empty .fopt-ct { color: var(--mkt-muted-2); }
+.mkt-fopt.empty .fopt-ic { opacity: 0.5; }

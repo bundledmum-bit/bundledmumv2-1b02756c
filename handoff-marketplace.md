@@ -10877,3 +10877,45 @@ at 1200px matching the layout above it.
 Worth keeping: the first fix (span both columns) looked right in a screenshot
 and was wrong. Sampling every 120px of scroll is what caught it, because the
 overlap only appears once the panel has had room to slide.
+
+## 188. The desktop category bar removed, its work moved into the side filter (2026-09-01)
+
+§184 added a sticky category bar across the top of desktop browse. The side
+filter panel ALREADY had a category accordion, so the page carried two category
+navigations, which is one too many. The bar is gone and everything it did now
+lives in the panel that was already there.
+
+`CategoryMenu.tsx` deleted, its 2808 characters of CSS removed. The mobile
+searchable dropdown stays: it sits on the filter row, not at the top, and the
+side panel is hidden on mobile so it is the only category control there.
+
+### The side filter was quietly lying about its counts
+
+Its group header rendered `items.length`, **the number of CATEGORIES in the
+group, not the number of listings**. So it read "Feeding 7" while Feeding holds
+24 items, and a buyer had every reason to read seven as seven things to buy. It
+now sums the live listing counts.
+
+Also brought over from §184: groups and the categories inside them are ordered
+by live stock, most first, tie-broken by name, and every category shows its own
+count with the empty ones dimmed and still clickable. Verified live, group
+order Clothing and shoes 132, Play and learning 33, Nursery 29, Travel and
+carriers 29, Feeding 24, Bath and care 11, Maternity 5, School age 3, with the
+29 tie stable by name.
+
+### Absent is not zero, and it hid exactly the thing it was meant to show
+
+First pass read the count as `counts?.get(c.id)` and tested `n === 0` for empty.
+`useCategoryCounts` only holds entries for categories that HAVE listings, so an
+empty one returns **undefined, not 0**. Every empty category therefore rendered
+with no count and no dimming, which is the precise opposite of the point: they
+are the ones a buyer most needs warning about, and they looked identical to a
+stocked one.
+
+Found by opening a group and reading the rows, not by reading the diff.
+`categoryOrder.ts` had already coalesced with `?? 0`; the new call site had not.
+Same family as the earlier `undefined` flag in §180: a value that is missing
+rather than false or zero silently takes the wrong branch.
+
+Fixed with `counts.get(c.id) ?? 0`. Verified after: Bibs and mats 0 and Plates,
+bowls and cutlery 0, both showing the count and both dimmed.
