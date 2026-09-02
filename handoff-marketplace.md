@@ -10745,3 +10745,90 @@ thing it is pointed at is the code you just wrote.
 
 Related in kind, for writes rather than measurements: §183, only a confirmed
 change is success, never the absence of an error.
+
+## 186. Related items, and the thought a buyer leaves with (2026-09-01)
+
+### Where it went, and why not where it was asked for
+
+The brief said condition notes, then the seller card, then related items. Two
+things were wrong with that and both were confirmed in the code rather than
+argued: the seller card comes BEFORE the condition notes (with the video
+between them, deliberately, from §166), and four blocks follow the condition
+notes anyway (category answers, description, questions and answers, then the
+ask/offer/video actions).
+
+Putting a related row after the seller card would have buried the item's OWN
+description and its questions and answers below other people's items. That
+demotes what the buyer came for in order to promote what they did not, which is
+worse than the problem being solved.
+
+So both sit after the actions block and immediately before the sticky buy bar.
+Verified document order: `mkt-offer-entry` → `mkt-related` → `mkt-sellprompt` →
+`mkt-buybar`.
+
+### Ids, hydrated, not the function's rows
+
+`related_listings` returns nine columns. `ListingCard` reads at least seven
+more: condition, quantity, quantity_sold, video_url, admin_discount_naira,
+price_before_discount_naira, and the seller for the verified badge. Handing it
+the raw rows would render cards with no condition, no badge and no discount,
+visibly second class beside every other card on the site.
+
+So the ids come back in the function's order and are hydrated through the
+existing LISTING_SELECT, exactly as §178 did for search, then re-sorted into
+that original order because a PostgREST `in` filter returns rows in whatever
+order it likes and would otherwise throw away the ranking. **That ranking is
+the point**: the function puts listings WITH A VIDEO first within each step.
+
+`match_reason` is never returned to the caller, so it cannot leak. Confirmed on
+the page: no "category", "group" or "similar price" anywhere in the row.
+
+### It always fills, including the hard case
+
+232 of 266 live listings have four or more siblings, 26 have one to three, and 8
+have none. The function widens from category to group to price and stops at the
+first step that fills. All four listings that are ALONE in their category
+returned a full eight from SQL, and Handheld Garment Steamer rendered **eight
+cards** in the browser.
+
+A short row renders NOTHING rather than one lonely card, since the design
+guarantees eight and a single card under "More items you might like" reads as a
+broken page rather than a thin one.
+
+### A filter I wrote and then removed
+
+The first version excluded QA sellers, copying the outreach queue. That was
+wrong twice over: `useBrowseListings` does not filter them, so the same listing
+would appear in the grid and vanish from this row, and removing one would punch
+a hole in exactly the row this whole widening design exists to keep full.
+`testSellerIdList()` also returns a PostgREST string, not an array, so the check
+would have silently matched nothing anyway.
+
+### The sell prompt
+
+> **You probably have things your baby has outgrown**
+>
+> Most of us do, sitting in a store room. Someone is looking for them right now,
+> the way you have been looking here. Listing is free and takes a few minutes.
+>
+> [ List your own items ]
+
+Written for who is actually reading it. Someone at the bottom of a listing page
+has looked at a used pram and then eight more used things; they came as a buyer
+but they are also a mum with a store room, and that is the moment the thought
+lands. So it is about their store room, not about us: no "join thousands of
+sellers", no "start earning". The two facts that actually stop people are cost
+and effort, so both are answered in one line and neither is oversold.
+
+"the way you have been looking here" is the line doing the work. It reflects
+what they just spent five minutes doing back at them, which is what turns a
+generic pitch into a thought about their own house.
+
+Last on the page, coral, full width to /marketplace/sell.
+
+### Left alone, worth knowing
+
+Browse's "Just listed" row hand-rolls `.mkt-card` markup instead of using
+`ListingCard`, so those cards have no verified badge and no condition while
+every other card does. A buyer can meet the same item presented two ways in one
+session. Flagged, not touched, and being picked up separately.

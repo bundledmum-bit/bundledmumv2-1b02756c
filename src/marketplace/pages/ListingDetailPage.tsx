@@ -38,6 +38,8 @@ import ProtectionBadge from "../components/ProtectionBadge";
 import DeliveryTermsBlock from "../components/DeliveryTermsBlock";
 import ListingVideoCard from "../components/ListingVideoCard";
 import ListingVideoPlayer from "../components/ListingVideoPlayer";
+import RelatedListings from "../components/RelatedListings";
+import SellYourItemsPrompt from "../components/SellYourItemsPrompt";
 import { useListingVideo } from "../listingVideo";
 import { useMarketplaceVideoEnabled } from "../videoSettings";
 import WhatsAppHelpLink, { markContactedUs } from "../components/WhatsAppHelpLink";
@@ -830,6 +832,19 @@ export default function ListingDetailPage() {
           <div className="mkt-offer-used">You asked for a video, waiting for the seller to film it</div>
         )}
       </div>
+
+      {/* AT THE BOTTOM, after the actions and before the sticky buy bar.
+          Not after the seller card, which the brief first suggested: four
+          blocks follow the condition notes (category answers, description,
+          questions and answers, then these actions), so a related row there
+          would bury the item's OWN content below other people's, which is a
+          worse outcome than the one being fixed.
+
+          Related items first, then the sell prompt, because the prompt is the
+          thought a buyer should leave with and putting it above the row would
+          interrupt someone still shopping in order to sell at them. */}
+      <RelatedListings listingId={listing.id} />
+      <SellYourItemsPrompt />
 
       {cartToast && (
         <div className="mkt-cart-toast">

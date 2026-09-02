@@ -3402,3 +3402,42 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-cat-heading { padding: 2px 0 12px; }
   .mkt-cat-heading h2 { font-size: 22px; }
 }
+
+/* ── Related items, at the bottom of a listing page ────────────────────────
+   Two across on a phone, matching the browse grid so a related item reads as
+   the same kind of thing it is, not a different widget. Uses .mkt-card
+   unchanged via the real ListingCard. */
+.mkt-related { padding: 22px 16px 4px; border-top: 1px solid var(--mkt-border); margin-top: 18px; }
+.mkt-related-h { margin: 0 0 12px; font: 900 18px/1.2 'Nunito', sans-serif; color: var(--mkt-black); }
+.mkt-related-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 700px) {
+  .mkt-related-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+}
+@media (min-width: 1024px) {
+  .mkt-related { padding: 30px 0 6px; margin-top: 26px; }
+  .mkt-related-h { font-size: 22px; margin-bottom: 16px; }
+}
+
+/* ── The sell prompt, last on the page ─────────────────────────────────────
+   Coral and full width because it is meant to be unmissable, but the words
+   are about their store room rather than about us. Sits above the sticky buy
+   bar, so it carries bottom padding to clear it. */
+.mkt-sellprompt {
+  margin: 22px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: 22px 18px; border-radius: 18px;
+  background: var(--mkt-coral); color: #fff; text-align: center;
+}
+.mkt-sellprompt h2 { margin: 0 0 8px; font: 900 20px/1.25 'Nunito', sans-serif; color: #fff; }
+.mkt-sellprompt p { margin: 0 0 16px; font: 400 14.5px/1.55 'Lato', sans-serif; color: #fff; opacity: 0.95; }
+.mkt-sellprompt-cta {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; box-sizing: border-box; min-height: 52px;
+  border-radius: 14px; background: #fff; color: var(--mkt-coral-dark);
+  font: 800 16px/1 'Nunito', sans-serif; text-decoration: none;
+}
+@media (min-width: 1024px) {
+  .mkt-sellprompt { margin: 30px 0 40px; padding: 30px; display: flex; align-items: center; justify-content: space-between; gap: 24px; text-align: left; }
+  .mkt-sellprompt h2 { font-size: 24px; }
+  .mkt-sellprompt p { margin: 0; max-width: 560px; }
+  .mkt-sellprompt-cta { width: auto; min-width: 230px; padding: 0 28px; flex: none; }
+}
