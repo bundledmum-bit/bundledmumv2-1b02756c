@@ -10702,11 +10702,12 @@ familiar 4: commit `d89463e` added `AudienceChooser.tsx`, which calls an
 `is_marketplace_seller` RPC absent from the generated types. Stale types, same
 class as §140, and left alone rather than fixed inside a category task.
 
-## 185. The three ways an instrument has lied, and the different check each needs
+## 185. The five ways an instrument has lied, and the different check each needs
 
-Three times now a measurement has been confidently wrong, and they are NOT the
+Five times now a measurement has been confidently wrong, and they are NOT the
 same failure. Each needs its own check, so they are gathered here rather than
-left buried in the section that happened to hit them.
+left buried in the section that happened to hit them. Cases 4 and 5 were added
+later, from §192 and §198; the numbering below is the order they were hit.
 
 **1. The instrument was not recording** (§176, the network panel; §184, a
 `PerformanceObserver` attached after load had already settled). It reported
@@ -10739,9 +10740,36 @@ broken, and all four were true of code that had already been replaced.
   the module (`fetch('/src/.../File.tsx?t=' + Date.now())`) to confirm what is
   actually being served contains the change.
 
+**4. The instrument reported nothing while the thing was plainly there**
+(§192). Screenshots came back blank cream at emulated widths above ~800px in
+the Browser pane, while the DOM said the banner was painted. Preset widths
+(mobile, tablet) captured fine; custom ones did not. Reading it as a rendering
+bug would have sent a whole task chasing a defect that did not exist.
+
+  CHECK: cross-examine with a DIFFERENT instrument that fails differently.
+  `document.elementFromPoint` at the element's centre returned the element's own
+  text, which is paint-level evidence a screenshot cannot argue with. Two
+  instruments that fail the same way are one instrument.
+
+**5. The instrument itself produced a false positive** (§198). A probe that
+flagged a page as not-found by regexing the body for `404` matched the PRICE
+"₦404k" on `/bundles`, and would have reported a working page as broken in an
+audit whose entire purpose was separating working links from broken ones.
+
+  CHECK: when a check fires, look at WHY before believing it. Printing the 60
+  characters either side of the regex match is what exposed it. A checking
+  instrument gets no more trust than the thing it is checking, and a heuristic
+  that can fire on ordinary content will eventually fire on ordinary content.
+
 **The shared rule.** Before a measurement is allowed to mean anything, prove the
-instrument is recording, that it is pointed at the real thing, and that the
-thing it is pointed at is the code you just wrote.
+instrument is recording, that it is pointed at the real thing, that the thing it
+is pointed at is the code you just wrote, and — when it reports a problem — that
+the report is not the instrument's own artefact.
+
+A corollary that has now paid twice (§192a, §198): **a plausible string is not a
+verified result.** A `destination_url` that looks right in a SQL result is not a
+destination, and a page returning 200 is not a page that works. Both times the
+proof was loading the thing and reading what a person would see.
 
 Related in kind, for writes rather than measurements: §183, only a confirmed
 change is success, never the absence of an error.
@@ -11782,3 +11810,69 @@ buyer and for a mum of a three year old, costs nothing, and keeps the reach.
 Re-narrowing instead would cost 213 pages of it, and
 `listing_shows_pregnancy_promo` is still deployed for that if it is ever the
 right call.
+
+## 198. Every cross-sell destination audited against the real router (2026-09-02)
+
+`get_storefront_crosssell` carried 24 destination URLs built without reading the
+router. **13 were wrong.** All are now corrected and deployed.
+
+### The two route shapes, read from StorefrontApp.tsx
+
+| Kind | Route | Line |
+|---|---|---|
+| Product | **`/products/:slug`** | 494 |
+| Subcategory | `/shop/baby/:category`, `/shop/mum/:category` | 446–447 |
+| Legacy subcategory | `/shop/:slug` → `LegacyShopRedirect` → correct tab | 448 |
+
+They are NOT the same shape, and the function now branches three ways:
+`/products/<slug>` for a product, `/shop/<slug>` for a subcategory, and a
+`storefront_direct_path` column taken whole for anything that is neither.
+
+### Why twelve broken links looked healthy
+
+**An unmatched slug at `/shop/:slug` does not 404.** `LegacyShopRedirect` says
+so in its own comment — *"No match -> render the wrapped page (no 404)"* — so a
+PRODUCT slug there renders `CategoryPage` with **the raw slug as the `<h1>`**.
+Twelve links pointed at pages headed `diaper-bag-bm`, `high-chair-bm`,
+`electric-breast-pump-bm`, each with **0 prices and no Add to cart**, all
+returning 200.
+
+That is worse than a 404. A 404 announces itself; this renders as an ordinary
+page and looks like a real result to anything that is not a human reading it.
+
+**The control test is what proved it was the ROUTE and not the data**: a
+made-up slug, `/shop/this-slug-does-not-exist-xyz`, rendered identically — h1 =
+the raw slug, 0 prices, no 404. Without it the finding would have been "these
+twelve products are missing", which is a data bug, and the fix would have been
+aimed at the wrong thing entirely.
+
+### What was wrong
+
+- **12 product links** `/shop/<slug>` → `/products/<slug>`. All 11 distinct
+  slugs verified under the corrected shape, each showing the real product name,
+  prices and Add to cart (Baby Bed & Cot, Baby Swing, Baby Stroller / Pram,
+  Breast Pump, Baby Carrier / Wrap, Baby Walker (Activity), High Chair, Car Seat
+  (Infant), Diaper Bag / Mummy Bag, Bottle Steriliser, Nursing Cover).
+- **`hospital-bag-items` → `/shop/bundles-kits`**, a different failure: there is
+  no `bundles-kits` CATEGORY at all. It is a subcategory tag on 14 products, but
+  not one of the 19 rows in `product_categories` and not a `products.category`
+  value, so there was nothing for the link to resolve to. Now `/hospital-list`
+  ("Build Your Hospital Bag"), which is better than a category page would have
+  been: someone browsing used hospital bag items wants to build a hospital bag.
+
+The other 11 subcategory links and all 4 generic `/shop` links were already
+correct.
+
+### `/shop/<slug>` kept over the canonical form
+
+`/shop/<parent>/<slug>` would save the redirect hop, but only by encoding the
+baby/mum parent lookup in the RPC, which then needs maintaining whenever a
+category moves between tabs. The hop is verified working and now carries the
+query string (`6d02073`), so the simpler form stays.
+
+### The instrument caught lying about the audit itself
+
+The probe used here flagged `/bundles` as not-found because the page contains
+the price **"₦404k"**, which matched its `404` regex — a false positive inside an
+audit whose whole purpose was separating working links from broken ones. See
+§185 case 5. A checking instrument gets no more trust than the thing it checks.
