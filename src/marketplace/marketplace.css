@@ -265,7 +265,9 @@
 .mkt-empty-sub { color: var(--mkt-muted); font-size: 0.9rem; max-width: 22rem; line-height: 1.5; }
 
 /* ==================== DETAIL ==================== */
-.mkt-detail { display: flex; flex-direction: column; padding-bottom: 148px; }
+/* No bottom clearance any more: the buy bar is in flow as the last child, so
+   it takes its own space instead of floating over the end of the page. */
+.mkt-detail { display: flex; flex-direction: column; }
 /* Gallery + panel wrappers are layout-invisible on mobile (display:contents), so the
    hero, thumbs, body and fixed buy bar render exactly as before. They become the two
    columns of the desktop layout at >=1024px (see the media query near the buy bar). */
@@ -428,10 +430,15 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 .mkt-reassure-text { font: 400 12px/1.5 'Lato', sans-serif; color: var(--mkt-green-dark); }
 
 /* Sticky buy bar */
+/* STICKY, not fixed. It stays pinned to the bottom of the screen while there
+   is still item content below it, then comes to rest in its own place just
+   above "More items you might like" rather than following the buyer through
+   a row of other people's items. Being in flow is what lets it land: a fixed
+   bar has no resting place to land in.
+   Desktop overrides this to `static` further down, where it is the right
+   panel's own purchase footer and was never a floating strip. */
 .mkt-buybar {
-  position: fixed;
-  left: 0;
-  right: 0;
+  position: sticky;
   bottom: 0;
   border-top: 1px solid var(--mkt-border);
   background: #fff;
@@ -1298,7 +1305,6 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
 
 /* ── Shared sitewide footer (design R2/R2b, compact, grouped) ── */
 .mkt-ftr { background: var(--mkt-green-dark); color: var(--mkt-cream); padding: 26px 16px 18px; display: flex; flex-direction: column; gap: 22px; }
-.mkt-ftr.clear-bar { padding-bottom: 96px; } /* clear the fixed Buy now bar on listing detail, every breakpoint */
 .mkt-ftr-inner { max-width: 1240px; margin: 0 auto; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px; }
 
 .mkt-ftr-brand { display: flex; flex-direction: column; gap: 10px; }
@@ -3414,8 +3420,16 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   .mkt-related-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 }
 @media (min-width: 1024px) {
-  .mkt-related { padding: 30px 0 6px; margin-top: 26px; }
+  /* OUTSIDE the grid, not a row inside it. As grid rows these made
+     .mkt-detail taller, and .mkt-detail is the sticky right panel's
+     containing block: the extra height became 1114px of slack for the panel
+     to slide down into, painting it straight over this row. Measured, 8
+     scroll positions overlapped by up to 810px. Out here the grid ends with
+     the two columns and the panel has nowhere to slide.
+     Matches .mkt-detail's own 1200px column so the row still lines up. */
+  .mkt-related { max-width: 1200px; margin: 26px auto 0; padding: 30px 32px 6px; box-sizing: border-box; }
   .mkt-related-h { font-size: 22px; margin-bottom: 16px; }
+  .mkt-related-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 }
 
 /* ── The sell prompt, last on the page ─────────────────────────────────────
@@ -3423,7 +3437,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
    are about their store room rather than about us. Sits above the sticky buy
    bar, so it carries bottom padding to clear it. */
 .mkt-sellprompt {
-  margin: 22px 16px calc(96px + env(safe-area-inset-bottom));
+  margin: 22px 16px calc(24px + env(safe-area-inset-bottom));
   padding: 22px 18px; border-radius: 18px;
   background: var(--mkt-coral); color: #fff; text-align: center;
 }
@@ -3436,7 +3450,7 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   font: 800 16px/1 'Nunito', sans-serif; text-decoration: none;
 }
 @media (min-width: 1024px) {
-  .mkt-sellprompt { margin: 30px 0 40px; padding: 30px; display: flex; align-items: center; justify-content: space-between; gap: 24px; text-align: left; }
+  .mkt-sellprompt { max-width: 1200px; margin: 30px auto 40px; padding: 30px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; text-align: left; }
   .mkt-sellprompt h2 { font-size: 24px; }
   .mkt-sellprompt p { margin: 0; max-width: 560px; }
   .mkt-sellprompt-cta { width: auto; min-width: 230px; padding: 0 28px; flex: none; }

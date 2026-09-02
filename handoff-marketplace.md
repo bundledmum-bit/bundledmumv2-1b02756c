@@ -10832,3 +10832,48 @@ Browse's "Just listed" row hand-rolls `.mkt-card` markup instead of using
 `ListingCard`, so those cards have no verified badge and no condition while
 every other card does. A buyer can meet the same item presented two ways in one
 session. Flagged, not touched, and being picked up separately.
+
+## 187. The buy bar comes to rest above the related row (2026-09-01)
+
+The sticky Buy now bar followed the buyer all the way down through the related
+items. It now stops being sticky and lands in its own section immediately above
+"More items you might like", before the heading.
+
+**Sticky, not fixed.** `.mkt-buybar` was `position: fixed; bottom: 0`, which has
+no resting place to land in: a fixed element is never in flow. It is now
+`position: sticky; bottom: 0` and the LAST child of `.mkt-detail`, so it pins to
+the bottom of the screen while item content remains below it and comes to rest
+in flow once the related section arrives. Measured on mobile: at 500px scrolled
+its bottom equals the viewport height exactly (stuck), and once released it
+rests 18px above the related row.
+
+Desktop is untouched. `.mkt-buybar` is already `position: static` there, inside
+the right panel as its purchase footer.
+
+Clearances that existed only for a FIXED bar: `.mkt-detail`'s 148px bottom
+padding and the footer's `clear-bar` 96px are both gone, since the bar now takes
+its own space and rests well above the footer. The install banner's and the
+WhatsApp prompt's offsets are KEPT deliberately: a sticky bar still overlays
+content while stuck, which is most of the page, so those two must still clear it.
+
+### A defect from §186, found by checking the width I had not checked
+
+§186 put the related row inside `.mkt-detail-body`, which at >=1024px sits
+inside `.mkt-detail-panel`, the STICKY 380 to 480px right column. Eight cards
+were being squeezed into **110px each**. I verified §186 on mobile only.
+
+Moving them out exposed a second, worse problem. As direct children of
+`.mkt-detail` they became extra GRID ROWS, and `.mkt-detail` is the sticky
+panel's containing block: the extra height became 1114px of slack for the panel
+to slide down into, painting it over the related row. Measured across the whole
+scroll range, **8 positions overlapped by up to 810px**, which is the entire row
+covered.
+
+Both are fixed by putting the section OUTSIDE `.mkt-detail` entirely, so the
+grid ends with its two columns and the panel has nowhere to slide. Re-measured
+across the full scroll range: **0 overlapping positions**, cards at 271px, row
+at 1200px matching the layout above it.
+
+Worth keeping: the first fix (span both columns) looked right in a screenshot
+and was wrong. Sampling every 120px of scroll is what caught it, because the
+overlap only appears once the panel has had room to slide.

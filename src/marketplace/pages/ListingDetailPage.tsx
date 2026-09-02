@@ -469,6 +469,7 @@ export default function ListingDetailPage() {
   }
 
   return (
+    <>
     <div className="mkt-detail">
       <MarketplaceSeo
         title={listing.title}
@@ -833,19 +834,6 @@ export default function ListingDetailPage() {
         )}
       </div>
 
-      {/* AT THE BOTTOM, after the actions and before the sticky buy bar.
-          Not after the seller card, which the brief first suggested: four
-          blocks follow the condition notes (category answers, description,
-          questions and answers, then these actions), so a related row there
-          would bury the item's OWN content below other people's, which is a
-          worse outcome than the one being fixed.
-
-          Related items first, then the sell prompt, because the prompt is the
-          thought a buyer should leave with and putting it above the row would
-          interrupt someone still shopping in order to sell at them. */}
-      <RelatedListings listingId={listing.id} />
-      <SellYourItemsPrompt />
-
       {cartToast && (
         <div className="mkt-cart-toast">
           <span>✓ {cartToast}</span>
@@ -866,6 +854,23 @@ export default function ListingDetailPage() {
         </div>
       </div>
       </div>
+      </div>
+
+      {/* OUTSIDE .mkt-detail on purpose. Inside it these sat within
+          .mkt-detail-panel, which at >=1024px is the STICKY 380-480px right
+          column, so eight related cards were being squeezed into 110px each.
+          Out here they are full width under both columns, which is where a
+          row of other items belongs.
+
+          Related items first, then the sell prompt, because the prompt is the
+          thought a buyer should leave with and putting it above the row would
+          interrupt someone still shopping in order to sell at them.
+
+          They also give the buy bar somewhere to come to rest: the bar is the
+          last thing inside .mkt-detail and sticks to the bottom of the screen
+          until this section arrives. */}
+      <RelatedListings listingId={listing.id} />
+      <SellYourItemsPrompt />
 
       {/* Opened deliberately, so unlike the install banner / WhatsApp
           prompt / delivery gate it is NOT part of their mutual suppression
@@ -912,6 +917,7 @@ export default function ListingDetailPage() {
           onClose={() => setWatchVideoSheetOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }
+

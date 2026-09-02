@@ -26,11 +26,12 @@ export default function MarketplaceFooter() {
   const onLogin = pathname === "/login";
   if (onCheckout || onDispatch || onOrderAction || onLogin) return null;
 
-  // Listing detail carries a position:fixed Buy now bar; clear it.
-  const hasFixedBar = pathname.startsWith("/listing/");
+  // Listing detail's Buy now bar used to be position:fixed and needed
+  // clearing here. It is sticky now and comes to rest well above the footer,
+  // so the extra padding would only be dead space.
 
   return (
-    <footer className={hasFixedBar ? "mkt-ftr clear-bar" : "mkt-ftr"}>
+    <footer className="mkt-ftr">
       <div className="mkt-ftr-inner">
         <div className="mkt-ftr-brand">
           <div className="mkt-ftr-lockup">
