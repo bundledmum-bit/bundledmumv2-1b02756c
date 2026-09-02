@@ -11282,3 +11282,67 @@ translation into `mkt-` classes.
 **Files:** `components/StorefrontCrossSellBanner.tsx` (new), `pages/BrowsePage.tsx`
 (import, derived slug, one mount line). No Supabase changes. No stylesheet
 changes: the card is self-contained inline styles exactly like its mirror.
+
+### 192a. The RPC shipped, the palette moved to tokens, and both banners point at 404s (2026-09-02)
+
+`get_storefront_crosssell(p_category)` is live, anon callable, and returns
+exactly `TABLE(destination_url text, headline text, has_category boolean,
+live_count integer)` — the stubbed shape was right. It reads
+`storefront_marketplace_category_map` **in reverse** rather than defining its
+own mapping, so the two banners cannot disagree about which category matches
+which. 21 active rows, 13 of them carrying a marketplace slug. A mapped
+subcategory with zero active products falls through to the generic case rather
+than linking to an empty page, the same reasoning as the empty-category
+handling in the browse menu.
+
+Verified end to end against the live function, not a stub: cots and cribs gives
+"Rather buy new cots & nursery furniture?" and **See 11 new items**; breast pump
+motors gives **See 7 new items**; baby walkers is unmapped and gives the generic
+headline, `/shop` and **Browse 254 new items**.
+
+**Palette now tracks the marketplace tokens** (`var(--mkt-green)`,
+`--mkt-green-light`, `--mkt-green-dark`) rather than literal hexes. This banner
+lives on marketplace pages, so it should match its surroundings. Confirmed
+resolving in the browser: background `#D8EFE5`, border `#2D6A4F`, text
+`#1A4A33` — note the text moved, because the brief's `#1E5C44` was **not**
+`--mkt-green-dark`. The two box-shadows stay literal `rgba()` because a shadow
+needs an alpha channel and no token carries one; retune them if the green ever
+moves.
+
+**UTM tagging mirrored** from `ace9ebc`: `utm_source=marketplace`,
+`utm_medium=banner`, built with `URL` so an existing query string or hash
+survives and the params de-duplicate. Verified by clicking through to
+`/shop/category/nursery-furniture?utm_source=marketplace&utm_medium=banner`.
+
+---
+
+**BOTH BANNERS CURRENTLY LINK TO A 404. Neither is a frontend bug and neither
+was worked around here — the `destination_url` is built inside the two RPCs.**
+
+*Marketplace → storefront.* `get_storefront_crosssell` returns
+`/shop/category/<slug>`. **There is no such route.** The storefront has
+`/shop`, `/shop/baby/:category`, `/shop/mum/:category` and `/shop/:slug`; a
+three-segment `/shop/category/x` matches none of them and renders "Oops! This
+page doesn't exist." Affects all 13 mapped categories. The generic `/shop`
+fallback is fine.
+
+The fix is to drop one segment: **`/shop/<storefront_subcategory>`**. Verified
+`/shop/nursery-furniture` → redirects to `/shop/baby/nursery-furniture`, 15
+products, and `/shop/maternity-clothing` → `/shop/mum/maternity-clothing`. The
+`LegacyShopRedirect` on `/shop/:slug` resolves the baby/mum tab by itself, so
+the map needs **no tab column** — which matters, because it has none.
+
+*Storefront → marketplace, the same class of bug and live longer.*
+`get_marketplace_crosssell` returns `/marketplace/category/<slug>`, e.g.
+`/marketplace/category/cots-and-cribs`. **The marketplace has no category route
+at all** — see §192: browse is one page and the category is a query parameter.
+That URL renders the marketplace's own "We can't find that page". This has been
+live since `40cdbd2` on storefront category pages and since `c4d0266` on
+product pages too.
+
+The fix is **`/marketplace/?category=<marketplace_category_slug>`**, which is
+the form §179 writes and reads. Verified: it loads browse filtered to 26 cots.
+
+Both were found by clicking the button rather than by reading the RPC output,
+which is the whole argument for crossing the link at least once. A
+`destination_url` that looks plausible in a SQL result is not a destination.

@@ -45,10 +45,19 @@ import { mdb } from "../data/mdb";
  * banner rather than a broken one.
  */
 
-// The STOREFRONT's greens, so the banner looks like its destination.
-const GREEN = "#2D6A4F";
-const GREEN_LIGHT = "#D8EFE5";
-const GREEN_DARK = "#1E5C44";
+/* The MARKETPLACE's own green tokens, not literal hexes and not the
+ * storefront's. This banner lives on marketplace pages, so it should match its
+ * surroundings; green already reads as "the other side" here because
+ * everything else on browse that matters is coral. Tracking the tokens means a
+ * palette change moves this with it — the earlier literals happened to be
+ * right for --mkt-green but not for --mkt-green-dark (#1A4A33, not #1E5C44).
+ *
+ * The two box-shadows below stay literal rgba: a shadow needs an alpha channel
+ * and there is no token carrying one. They are --mkt-green at low opacity, so
+ * if that token is ever retuned, retune them with it. */
+const GREEN = "var(--mkt-green)";
+const GREEN_LIGHT = "var(--mkt-green-light)";
+const GREEN_DARK = "var(--mkt-green-dark)";
 
 // Deliberately NOT the storefront banner's key. Both apps are served from the
 // same origin, so a shared key would make dismissing one hide the other.
