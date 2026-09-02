@@ -84,10 +84,27 @@ export function readBrowseUrl(params: URLSearchParams): BrowseUrlState {
  *
  * categorySlug and groupSlug are passed in rather than looked up, because
  * this file has no access to the category list and should not fetch.
+ *
+ * `carry` is the URL as it currently stands, and the ONLY thing taken from it
+ * is `utm_*`. Everything here is otherwise built from the filters, which is
+ * why a campaign tag on an inbound link used to vanish: the storefront's
+ * cross-sell banner sends someone to /marketplace/?category=x&utm_campaign=y,
+ * this rebuilt the query from scratch on first render, and the tag was gone
+ * before anything could record it (§193a).
+ *
+ * DELIBERATELY NOT "preserve anything unknown". A browse URL that carries
+ * whatever anyone appends to it is a different and worse problem: it would
+ * make two links to the same view compare unequal, and it would let a pasted
+ * link smuggle arbitrary params into a page that is also a canonical URL.
+ * Only the utm_ prefix, nothing else.
+ *
+ * Optional, so every existing caller and every existing test is unaffected:
+ * with no `carry` this behaves exactly as it did.
  */
 export function writeBrowseUrl(
   filters: BrowseFilters,
   slugs: { categorySlug?: string | null; groupSlug?: string | null },
+  carry?: URLSearchParams | null,
 ): URLSearchParams {
   const p = new URLSearchParams();
   const q = filters.search.trim();
@@ -102,6 +119,17 @@ export function writeBrowseUrl(
   if (filters.maxPrice != null) p.set("max", String(filters.maxPrice));
   if (filters.conditions.length) p.set("condition", filters.conditions.join(","));
   if (filters.sort !== "newest") p.set("sort", filters.sort);
+  // Appended last and in sorted order, so the output stays byte-stable for a
+  // given view — browseUrlKey compares these strings to decide whether to
+  // rewrite history, and an unstable order would rewrite on every render.
+  // First value wins for a repeated key, for the same reason.
+  if (carry) {
+    const utm = new Map<string, string>();
+    for (const [k, v] of carry.entries()) {
+      if (k.startsWith("utm_") && !utm.has(k)) utm.set(k, v);
+    }
+    for (const k of [...utm.keys()].sort()) p.set(k, utm.get(k) as string);
+  }
   return p;
 }
 

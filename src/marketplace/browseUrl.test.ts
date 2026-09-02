@@ -101,3 +101,44 @@ describe("the round trip", () => {
     expect(browseUrlKey(writeBrowseUrl(f, {}))).toBe(browseUrlKey(writeBrowseUrl({ ...f }, {})));
   });
 });
+
+describe("carrying utm through the rewrite", () => {
+  const carry = (qs: string, f: Partial<BrowseFilters> = {}, slugs = {}) =>
+    browseUrlKey(writeBrowseUrl({ ...EMPTY, ...f }, slugs, new URLSearchParams(qs)));
+
+  it("keeps a campaign tag that arrived on the link", () => {
+    // The storefront cross-sell banner's crossing: without this the tag was
+    // gone on first render, before anything could record it.
+    expect(carry("category=cots-and-cribs&utm_source=storefront&utm_medium=banner&utm_campaign=shop_crosssell",
+      { categoryId: "c1" }, { categorySlug: "cots-and-cribs" }))
+      .toBe("category=cots-and-cribs&utm_campaign=shop_crosssell&utm_medium=banner&utm_source=storefront");
+  });
+
+  it("carries NOTHING but utm_, so a pasted link cannot smuggle params in", () => {
+    expect(carry("q=cot&ref=spam&admin=1&utm_source=x", { search: "cot" })).toBe("q=cot&utm_source=x");
+  });
+
+  it("behaves exactly as before when there is nothing to carry", () => {
+    expect(carry("", { search: "cot" })).toBe(write({ search: "cot" }));
+    expect(carry("ref=spam", { search: "cot" })).toBe(write({ search: "cot" }));
+  });
+
+  it("is stable, so carrying a tag never rewrites history on every render", () => {
+    // Feeding the output back in as the incoming URL must be a fixed point,
+    // otherwise the browse effect would rewrite for ever.
+    const once = writeBrowseUrl({ ...EMPTY, search: "cot" }, {}, new URLSearchParams("utm_medium=banner&utm_source=storefront"));
+    const twice = writeBrowseUrl({ ...EMPTY, search: "cot" }, {}, once);
+    expect(browseUrlKey(twice)).toBe(browseUrlKey(once));
+  });
+
+  it("takes the first value when a key is repeated by hand", () => {
+    expect(carry("utm_source=a&utm_source=b")).toBe("utm_source=a");
+  });
+
+  it("does not let a utm param resurrect a filter it does not own", () => {
+    // readBrowseUrl still ignores them entirely: they travel, they never filter.
+    const st = readBrowseUrl(new URLSearchParams("utm_source=storefront&utm_campaign=shop_crosssell"));
+    expect(st.filters.search).toBe("");
+    expect(st.category).toBe("");
+  });
+});

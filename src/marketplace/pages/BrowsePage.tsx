@@ -229,10 +229,14 @@ export default function BrowsePage() {
   useEffect(() => {
     if (categoriesLoading || groupsLoading) return;
     if (pendingCategorySlug != null || pendingGroupSlug != null) return;
+    // searchParams is passed as `carry` so a utm_* tag on an inbound link
+    // survives this rewrite. Without it the storefront cross-sell banner's
+    // campaign was dropped on first render, before anything could record it
+    // (§193a). Only utm_ is carried; see writeBrowseUrl.
     const next = writeBrowseUrl(filters, {
       categorySlug: categories.find((c) => c.id === filters.categoryId)?.slug ?? null,
       groupSlug: groups.find((g) => g.id === filters.groupId)?.slug ?? null,
-    });
+    }, searchParams);
     if (browseUrlKey(next) !== browseUrlKey(searchParams)) setSearchParams(next, { replace: true });
   }, [filters, categories, groups, categoriesLoading, groupsLoading, pendingCategorySlug, pendingGroupSlug, searchParams, setSearchParams]);
 

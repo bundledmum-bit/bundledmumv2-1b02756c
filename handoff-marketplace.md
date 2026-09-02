@@ -11487,3 +11487,54 @@ in. The marketplace-side fix is contained: preserve `utm_*` keys from the
 incoming params rather than starting from an empty set. Until both are done the
 campaign values are correct but inert, so **do not read anything into an empty
 campaign report.**
+
+## 194. Browse carries a utm tag through its own rewrite (2026-09-02)
+
+Half of §193a. The storefront cross-sell banner sends someone to
+`/marketplace/?category=cots-and-cribs&utm_campaign=shop_crosssell`, and §179's
+effect then rewrote the query from the filters with `replace: true` — so the tag
+was gone on first render, before anything could record it. `writeBrowseUrl`
+built a **fresh** `URLSearchParams` and anything it did not own was dropped.
+
+It now takes an optional third argument, the URL as it currently stands, and
+takes **`utm_*` and nothing else** from it.
+
+**Not "preserve anything unknown", deliberately.** A browse URL that carries
+whatever anyone appends is a different and worse problem: it makes two links to
+the same view compare unequal, and it lets a pasted link smuggle arbitrary
+params into a page that is also a canonical URL. Verified still stripping:
+`?q=cot&state=Lagos&ref=spam&admin=1` settles to `?q=cot&state=Lagos`.
+
+**The §179 contract is intact.** The argument is optional, so every existing
+caller behaves exactly as before, and **the 15 original tests pass unchanged** —
+41 lines added to that file, 0 removed. Six new tests cover the carry: the tag
+survives, only `utm_` survives, no `carry` is a no-op, the first value wins for a
+repeated key, `readBrowseUrl` still ignores utm entirely (they travel, they never
+filter), and feeding the output back in is a **fixed point**, which is what stops
+the effect rewriting for ever.
+
+Measured on the real crossing: arriving with a tag settles to
+`?category=cots-and-cribs&utm_campaign=shop_crosssell&utm_medium=banner&utm_source=storefront`
+and stays there; 26 cards, the category chip still applied. Changing the sort
+keeps the tag; Clear all keeps the tag; a plain `/marketplace/` is still bare.
+**`history.length` grew by 0 across all of it** — still replace, never push.
+
+Params are appended last and **sorted**, because `browseUrlKey` compares these
+strings to decide whether to rewrite: an unstable order would rewrite on every
+render.
+
+**A consequence worth knowing, not fixed here.** §179 exists largely because
+people paste browse URLs into WhatsApp. Those pastes now carry whatever tag the
+sharer arrived with, so a link shared by someone who came from the storefront
+banner will attribute every friend who clicks it to that banner. UTM behaves this
+way everywhere and the alternative — stripping the tag after something records
+it — needs a recording step that does not exist here. Flagged rather than
+designed around: if organic shares start looking like banner traffic, this is
+why.
+
+**The other half of §193a is not fixed and is not marketplace code.**
+`LegacyShopRedirect` still drops the query string rewriting `/shop/<slug>` to
+`/shop/baby/<slug>`, which kills the only tracking on the
+marketplace-to-storefront direction entirely — both `browse_crosssell` and, if it
+ever routes through a redirect, the quiz link. It is the more consequential of
+the two and belongs to the storefront builder.
