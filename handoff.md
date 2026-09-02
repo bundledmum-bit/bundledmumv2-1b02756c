@@ -1,6 +1,40 @@
 # Handoff
 
-## Marketplace cross-sell banner on storefront category pages (this turn)
+## Cross-sell banner on PRODUCT pages + live_count CTA (this turn)
+Extends the marketplace cross-sell banner to storefront product detail pages and makes the CTA
+concrete with the live listing count (both category and product pages).
+- **[MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx):** added
+  `live_count?: number` to the `CrossSell` type (the RPC now returns it) and rebuilt the CTA:
+  `liveCount = Math.trunc(Number(data.live_count) || 0)`; when `liveCount > 0` →
+  `has_category ? "See {n} used items" : "Browse {n} used items"`; when 0/missing → the previous
+  wording (`"Shop used"` / `"Click here"`) so it never renders "See 0 used items". Headline still
+  comes verbatim from the RPC. Card styling, ♻️, responsive layout, reduced-motion, full-page
+  `window.location.assign`, and the shared dismiss key are all unchanged — so the count change applies
+  on the category pages too.
+- **[ProductPage.tsx](src/pages/ProductPage.tsx):** mounted `{product.subcategory ?
+  <MarketplaceCrossSellBanner subcategory={product.subcategory} /> : null}` immediately after the
+  breadcrumb block ([ProductPage.tsx:680-684](src/pages/ProductPage.tsx:680)), before the product
+  content. `product.subcategory` is the SAME column the category route param maps to
+  (`.eq("subcategory", …)`), so it's exactly what `get_marketplace_crosssell(p_subcategory)` expects.
+  Empty subcategory → component fetches nothing → renders null (so bundle SKUs without a subcategory
+  show nothing). Not mounted on cart/checkout/quiz/account or any non-product/non-category page.
+- **Dismissal shared:** the single module-level key `bm_marketplace_xsell_dismissed` already covers
+  every mount (same origin), so dismissing on a product page hides it on category pages and vice
+  versa — verified live.
+- **NO product-level / title search** (deliberately): marketplace listings carry only free-text title
+  + category (no product id); a storefront-name title search matched only 12/254 products, so a
+  product-level deep link would dead-end ~95% of the time. Category is the finest honest level; the
+  resolver verifies live listings exist before deep-linking.
+- **Verified live (dev :3000, mobile + desktop):** `/products/baby-vests-newborn` (baby-clothing) →
+  "Would you rather buy neatly used and cheaper Baby Clothing?" + **"See 57 used items →"**;
+  `/products/baby-diapers-size-5` (diapers-nappies) → generic headline + **"Browse 281 used items →"**.
+  Banner sits right after the breadcrumb, before the product title/gallery. CTA from a product page
+  does a FULL document reload to the marketplace (window marker wiped; → `/marketplace`). Dismiss on a
+  product page → hidden on the category page (shared key). count=0/missing degrades to the plain
+  wording (code-guaranteed; no live subcategory returns 0). `npm run build` passes. No product
+  layout/gallery/pricing/add-to-cart change; no pixel events; no DB object created.
+
+## Marketplace cross-sell banner on storefront category pages (prior turn)
 Adds a coral banner at the TOP of storefront category listings (after the header, before the
 listing) pointing shoppers at the SAME category on the secondhand marketplace.
 - **New component [MarketplaceCrossSellBanner.tsx](src/components/shop/MarketplaceCrossSellBanner.tsx).**

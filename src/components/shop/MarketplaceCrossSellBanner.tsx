@@ -34,6 +34,7 @@ type CrossSell = {
   destination_url: string;
   headline: string;
   has_category: boolean;
+  live_count?: number;
 };
 
 export default function MarketplaceCrossSellBanner({ subcategory }: { subcategory: string }) {
@@ -75,7 +76,18 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
     window.location.assign(data.destination_url);
   };
 
-  const ctaText = data.has_category ? "Shop used" : "Click here";
+  // Make the promise concrete with the live listing count when we have one.
+  // If it's 0 or missing, fall back to the plain wording rather than showing
+  // a zero ("See 0 used items" would read as broken).
+  const liveCount = Math.trunc(Number(data.live_count) || 0);
+  const ctaText =
+    liveCount > 0
+      ? data.has_category
+        ? `See ${liveCount} used items`
+        : `Browse ${liveCount} used items`
+      : data.has_category
+        ? "Shop used"
+        : "Click here";
 
   return (
     // Full-width wrapper so the banner sits in its own row (with breathing room

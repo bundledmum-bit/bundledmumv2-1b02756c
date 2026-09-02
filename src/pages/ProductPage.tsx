@@ -32,6 +32,7 @@ import { buildWhatsAppOrderHref, buildProductOrderWhatsAppHref } from "@/lib/wha
 import whatsappLogo from "@/assets/whatsapp-logo.svg";
 import BrandSelect from "@/components/BrandSelect";
 import Breadcrumb from "@/components/Breadcrumb";
+import MarketplaceCrossSellBanner from "@/components/shop/MarketplaceCrossSellBanner";
 import { useProductCategories } from "@/hooks/useProductCategories";
 
 function useProduct(slug: string) {
@@ -682,6 +683,14 @@ function ProductPageContent({ product, raw, settings }: { product: Product; raw:
           <Breadcrumb items={productBreadcrumbs} />
         </div>
       )}
+
+      {/* Cross-sell to the marketplace for this product's category — top of the
+          page, after the breadcrumb, before the product content (same banner and
+          shared session dismissal as the storefront category pages). Passes the
+          product's OWN subcategory; renders nothing when it's absent. */}
+      {product.subcategory ? (
+        <MarketplaceCrossSellBanner subcategory={product.subcategory} />
+      ) : null}
 
       {/* PREMIUM MINIMALIST BUNDLE PAGE — fires for maternity-bundle-*
           AND postpartum-recovery-kit-*. Baby-Shower gift boxes fall
