@@ -11067,3 +11067,30 @@ The consequence, flagged rather than acted on: `gallery_urls`,
 read. Those five columns were added one turn earlier for the requirement this
 turn removed. They are harmless, and the prerender may well want them, so
 nothing was reverted, but the RPC is now wider than the page needs.
+
+### §190 addendum: the crawled sold page is deliberately not the visible one
+
+Worth knowing because it is NOT discoverable from this repo: `marketplace-prerender`
+is deployed but has no source here (§179), so nobody reading the frontend can
+see this.
+
+  visible page:  name, video, alternatives
+  crawled page:  name, one line, then the same alternatives as plain links
+
+The divergence is deliberate. A page saying only "this has sold" is thin content
+Google would likely treat as a soft 404 and drop, so the alternatives are
+rendered into the crawled HTML as links to buyable items. Sold pages ARE
+indexable and are never deleted; there is no noindex on them.
+
+No Product schema and no price in either version, because nothing on a sold page
+is purchasable: InStock would lie to the crawler and SoldOut invites a rich
+result nobody can act on.
+
+**The five unused columns on `get_gone_listing_context` are staying**, with the
+reason written into the function's own comment: the requirement changed twice in
+two turns, so narrowing now and re-widening later is churn on a DROP and CREATE
+that has to be exactly right each time. There is no new exposure either, since
+every one was public while the item was live. The standing rule lives in that
+comment too: **never add `price_naira` or `seller_id`**, which is the whole
+reason an RPC was chosen over widening the RLS policy. Narrow it if the sold page
+stays as it is for a while.
