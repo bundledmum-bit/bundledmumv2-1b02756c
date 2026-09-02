@@ -4,8 +4,8 @@
     {
       "name": "vite-redesign",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "8081"],
-      "port": 8081
+      "runtimeArgs": ["run", "dev"],
+      "autoPort": true
     }
   ]
 }

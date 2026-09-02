@@ -7,7 +7,9 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    // Honour a harness/host-assigned PORT (preview autoPort) so multiple
+    // dev servers don't collide; fall back to 8080 for a plain `npm run dev`.
+    port: Number(process.env.PORT) || 8080,
     hmr: {
       overlay: false,
     },
