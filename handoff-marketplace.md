@@ -11600,3 +11600,99 @@ one origin.
 **One value cannot follow a token.** `accentRgb` is the accent as `"r,g,b"`,
 because the two shadows need an alpha channel and neither a hex nor a CSS
 variable can supply one. It is the one thing to retune by hand if a palette moves.
+
+## 196. Desktop gets a buy affordance that actually sticks (2026-09-02)
+
+The two bugs found while writing the §191 banner brief. Desktop is 23% of
+traffic, so on five sales this was worth more than anything else outstanding.
+
+### The cause was not the one in the brief
+
+The brief said the right column never sticks *because it is taller than the
+900px viewport*. Measured, that is a symptom and not the cause:
+
+```
+containing block content height   1152px   (.mkt-detail, minus its padding)
+.mkt-detail-panel height          1152px
+slack                                0px
+.mkt-detail-gallery height         742px
+```
+
+**A sticky element travels only inside its containing block, and this panel IS
+the taller of the two grid columns, so it sets the row height itself.** Slack is
+exactly 0. `position: sticky; top: 24px` sat on it for months and could never
+move it a single pixel. It would fail identically on a 2000px monitor, so a
+taller screen was never going to help.
+
+That also rules out the obvious fix. The only way to give the PANEL slack is to
+make it shorter than the 742px gallery beside it, which means moving 400px of
+the listing out of the right column. Confirmed on a second listing: no video,
+panel 995 against gallery 867 — still the taller column, still zero slack.
+
+Bug two, measured: the buy bar's natural position is **1075px down a 900px
+viewport** with a video, 917 without. Below the fold on first paint.
+
+### One fix for both
+
+**Stick the bar, not the column.** `.mkt-buybar` is now
+`position: sticky; bottom: 24px` inside the panel, and the panel's dead
+`position: sticky; top: 24px` is gone.
+
+It works where the panel version could not because the bar is **156px inside a
+1152px containing block: 996px of slack against the panel's 0**. And sticking to
+the BOTTOM is what fixes the second bug for free — a sticky-bottom element whose
+natural position is below the viewport is pulled up into view, so Buy now is on
+screen at first paint without reordering the column or moving anything out of it.
+
+Measured at 1440x900, with a video:
+
+| scroll | Buy now top | visible | clickable |
+|---|---|---|---|
+| 0 | 766 | yes | yes |
+| 400 | 720 | yes | yes |
+| 800 | 320 | yes | yes |
+| 1000 | 120 | yes | yes |
+| 1110 | — | last position fully visible | |
+
+Clickability is `elementFromPoint` at the button's centre returning the button,
+not an assumption that nothing overlays it. Without a video: visible at first
+paint at 632. At 1440x1300 (whole panel fits) the bar simply sits at the panel's
+foot, bar bottom 1230 = panel bottom 1230, no stray floating. At 1440x650 it is
+still visible and clickable. The fix is not viewport-height dependent, which was
+the whole problem with the old one.
+
+### Where it comes to rest, and the one thing NOT met literally
+
+The bar rests at **1075–1231**, panel bottom 1230, `.mkt-detail` bottom 1270,
+quiz banner top 1270. So on desktop it comes to rest at the end of the listing
+and just above the quiz banner — **exactly what the mobile bar does** (§187,
+§191).
+
+The brief asked for "reachable at any scroll position". That holds through the
+whole listing, scroll 0 to 1110 of a 2644px page. It does NOT hold over the quiz
+banner, the related row and the sell prompt below. Keeping it stuck there would
+mean floating the buy bar for one item over "More items you might like", which is
+the exact thing §187 removed on mobile, and it would break the seam the quiz
+banner is placed in — which this brief also said to preserve. The two
+instructions conflict, and the mobile-matching behaviour is the one chosen.
+**Flagged rather than silently decided.**
+
+### Mobile and the middle band
+
+**Mobile is untouched**, asserted rather than assumed: `position: sticky`,
+`bottom: 0px`, `z-index: 20`, `flex-direction: row`, `box-shadow: none`, height
+127, and it still rests at **1357–1484 with the quiz banner starting at exactly
+1484** and the related row at 1659. Identical to §193. The desktop shadow is
+inside the `min-width: 1024px` block, which is why mobile reads `none`.
+
+**768–1023** is still the full-width single column and takes none of this: bar
+`sticky`, `bottom: 0`, row direction, no shadow, 763px wide, Buy now visible on
+first paint. Every desktop change is inside the existing 1024 media query.
+
+### Preserved
+
+Quiz banner, related row, sell prompt, video player, delivery terms, protection
+badge and the ask action all present at 1440. The last ask entry is not
+overlapped by the resting bar. **Buy now was never clicked**: Add to cart proved
+the bar is live (wrote the id to `bm-mkt-cart`, routed to the cart, cart then
+cleared). No conversion event was fired from a dev build.

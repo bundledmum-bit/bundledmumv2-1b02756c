@@ -528,12 +528,20 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
     align-items: start;
     max-width: 1200px;
     margin: 0 auto;
-    padding: 24px 32px 40px; /* replaces the 96px bottom padding; no fixed bar on desktop */
+    padding: 24px 32px 40px; /* replaces mobile's 96px bottom padding: the desktop bar sticks inside the panel, not over the page */
     box-sizing: border-box;
   }
   .mkt-detail-gallery { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-  /* The whole right panel sticks 24px from the top as the page scrolls. */
-  .mkt-detail-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; position: sticky; top: 24px; align-self: start; }
+  /* NOT sticky, and it never was in practice. This carried `position: sticky;
+     top: 24px` for months and could not move a single pixel, because a sticky
+     element travels only inside its CONTAINING BLOCK and this panel IS the
+     taller of the two grid columns, so it sets the row height itself. Measured:
+     containing block 1152px, panel 1152px, slack 0. That is not a
+     "taller than the viewport" problem — it would fail the same way on a 2000px
+     screen — and the only way to give the panel slack is to make it shorter
+     than the 742px gallery beside it, which means moving 400px of the listing
+     out of it. The buy bar sticks instead; see .mkt-buybar below. */
+  .mkt-detail-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; align-self: start; }
 
   /* Main photo at a proper size: the same 1:1 crop the images already are, never
      letterboxed, rounded to match the design. */
@@ -545,13 +553,26 @@ button.mkt-tag:focus-visible { outline: 2px solid var(--mkt-coral-dark); outline
   /* Panel body: drop the top padding so the price aligns with the image top. */
   .mkt-detail-body { padding: 0; }
 
-  /* The buy bar stops being a fixed full-width strip and becomes the panel's
-     static purchase footer (same button, same Buy now flow). */
+  /* The buy bar becomes the panel's purchase footer — a bordered card rather
+     than the full-width strip — and STAYS STICKY, now to the bottom of the
+     panel instead of the whole column sticking to the top.
+
+     This is what fixes both desktop bugs at once, and it works where the panel
+     version could not because the bar is 156px inside a 1152px containing
+     block: slack 996px, against the panel's 0. Being sticky to the BOTTOM also
+     pulls it up into view on first paint, where its natural position is 1075px
+     down a 900px viewport — so Buy now is on screen immediately and stays
+     reachable at every scroll position, then comes to rest at the end of the
+     panel exactly as the mobile bar comes to rest at the end of .mkt-detail.
+
+     The shadow is not decoration: this card floats over panel content scrolling
+     underneath it, and white on cream needs the separation. */
   .mkt-buybar {
-    position: static; left: auto; right: auto; bottom: auto; z-index: auto;
+    position: sticky; left: auto; right: auto; bottom: 24px; z-index: 20;
     flex-direction: column; align-items: stretch; gap: 12px;
     border: 1px solid var(--mkt-border); border-radius: 14px;
     background: #fff; padding: 16px;
+    box-shadow: 0 4px 16px rgba(26, 26, 26, 0.10);
   }
   .mkt-buybar-price { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 8px; }
   .mkt-buybar .mkt-buy { flex: 0 0 auto; }
