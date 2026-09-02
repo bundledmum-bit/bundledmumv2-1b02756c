@@ -10592,3 +10592,112 @@ save that did not happen is the worst place in the product for this bug.
 ### Untouched
 
 Both order paths, the server-computed checkout total, and every insert.
+
+## 184. Category navigation, ordered by what is actually in stock (2026-09-01)
+
+### There was no desktop category bar to fix
+
+The brief asked what caused the desktop bar to shift during load. Nothing did,
+because **there was no desktop category navigation at all**. The emoji tiles
+are `display: none` above the mobile breakpoint (§24 made them mobile only),
+`grep "position: sticky"` returned detail panels and the cart footer but
+nothing for categories, and a `PerformanceObserver` for layout-shift at 1280px
+recorded zero entries.
+
+So "stop it moving" was not a bug fix. It was a CONSTRAINT on the bar being
+built, and a real one, because this feature introduces the risk from two
+directions at once: the bar is empty until categories load, and its ORDER
+depends on live counts, so rendering early would reshuffle the groups in front
+of the buyer.
+
+Both are solved the same way. The height is fixed in CSS (`48px`) independent
+of contents, and the contents render only once categories, groups AND counts
+are all in. It fills in once, in its final order, and never moves.
+
+**Proved by removing the contents rather than by watching a load**: emptying
+`.mkt-catbar-inner` entirely left the bar at 48px and the grid top at 693px,
+unchanged, then restoring them changed neither. The height genuinely does not
+depend on what is inside it.
+
+### Ordered by stock, with a tiebreak that is not optional
+
+Count descending, then name ascending, everywhere: groups, categories inside a
+group, and the mobile dropdown. Travel and carriers and Nursery are both on 29,
+so count alone would leave their order to whatever the array happened to hold
+and they would swap between reloads and read as broken. The tiebreak makes the
+order a pure function of the data.
+
+Live, top to bottom: Clothing and shoes 131, Play and learning 32, Nursery 29,
+Travel and carriers 29, Feeding 24, Bath and care 11, Maternity 5, School age 3.
+Matches SQL exactly, with the tie resolved Nursery before Travel by name.
+
+`categoryOrder.ts` is pure with 12 tests. The stability one feeds the SAME
+counts in opposite array orders and asserts identical output, which is the
+actual claim rather than a snapshot of one run.
+
+The accepted cost, not mitigated: the menu reorders as stock moves. At 21 of 49
+empty, surfacing real stock beats positional memory.
+
+### 49 allowed categories, not 51
+
+51 rows exist but only 49 have `is_allowed = true`, and browse reads
+`useAllowedCategories()`. Building against 51 would have put deliberately
+disallowed categories into the navigation.
+
+**Building against is_allowed rather than the number in the brief surfaced a
+live bug**: Breast pump motors was disallowed by oversight, so its 10 listings
+were reachable only by search. It is now allowed, and it is the first entry
+under Feeding, which moved Feeding from 14 to 24 and above Bath and care.
+
+### The 21 empty categories
+
+Count shown beside EVERY category, empties dimmed, still clickable, never
+hidden. Hiding would make the catalogue look thinner than it is and make the
+menu change shape as stock moves. Dimming tells the truth: we have this
+category, nobody is selling one right now.
+
+Verified on Feeding: 10, 6, 4, 3, 1, then Bibs and mats 0 and Plates, bowls and
+cutlery 0 both dimmed and both still listed. Clicking Bibs and mats lands on the
+existing §23 empty state, which already names the category twice and offers the
+notify flow.
+
+### Mobile, on the row that already existed
+
+The dropdown sits on the LEFT of `.mkt-fbar`, in space that was already empty:
+sort and Filters live in `.mkt-fbar-right`, pinned right. Verified two children
+on one 54px row, both at the same y.
+
+It has a search box because 49 categories is too many to scroll on a phone.
+Typing narrows by name only, never listings, so it cannot be confused with the
+main search. "pump" gives Breast pump motors 10 and Breast pump accessories 1;
+"PRAM" gives Strollers and prams 12, so case does not matter; "zzzz" says so
+plainly. Selecting filters the page and closes.
+
+### Hover reveals, click filters
+
+Verified with a real pointer, not a synthetic event: hovering Feeding opened its
+panel and changed NEITHER the grid nor the URL. Clicking Breast pump motors gave
+10 results, closed the panel, named "Breast pump motors, 10 items" above them,
+and set `?category=breast-pump-motors`.
+
+The URL is written by the §179 effect from `filters.categoryId`, never directly.
+Writing it here would fight that effect, which compares its own output against
+the current params and would immediately overwrite anything set behind its back.
+
+### The instrument lied again, and nearly cost a false bug report
+
+Hover appeared broken through four separate tests. It was not: HMR had died on a
+stray double comma in an import, so **the browser was running a stale bundle**
+while the source on disk was correct and the build passed. The console showed
+the 500, and re-fetching the module confirmed it served clean afterwards.
+
+Had I trusted the page, I would have reported working code as broken and gone
+looking for a React event-delegation problem that did not exist. A passing
+`npm run build` says nothing about what the dev server is currently serving.
+
+### Not mine, worth knowing
+
+`npm run build` passes, but `tsc` reports **6** errors on a clean HEAD, not the
+familiar 4: commit `d89463e` added `AudienceChooser.tsx`, which calls an
+`is_marketplace_seller` RPC absent from the generated types. Stale types, same
+class as §140, and left alone rather than fixed inside a category task.

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { recordMarketplaceSearch } from "../searchDemand";
 import { readBrowseUrl, writeBrowseUrl, browseUrlKey } from "../browseUrl";
+import CategoryMenu from "../browse/CategoryMenu";
+import CategoryPicker from "../browse/CategoryPicker";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
 import logoWhite from "@/assets/logos/BM-LOGO-WHITE.svg";
@@ -19,6 +21,7 @@ import {
   type BrowseSort,
   type CategoryOption,
   type CategoryGroup,
+  useCategoryCounts,
 } from "../data/useListings";
 import ListingCard from "../components/ListingCard";
 import MarketplaceHero from "../components/MarketplaceHero";
@@ -152,6 +155,8 @@ export default function BrowsePage() {
   const { data: categories = [], isLoading: categoriesLoading } = useAllowedCategories();
   const { data: groups = [], isLoading: groupsLoading } = useCategoryGroups();
   const { data: states = [] } = useAllowedStates();
+  // Drives the category menu's order, its counts and which entries are dimmed.
+  const { data: categoryCounts } = useCategoryCounts();
   const { data: featured = [] } = useFeaturedCategories("browse_home");
   // Desktop home only (design 38a) — fetched regardless, but only rendered
   // when !anyFilter, same gate the category tiles already use below.
@@ -331,6 +336,24 @@ export default function BrowsePage() {
 
   function clearAll() { setFilters(EMPTY); setSearchInput(""); }
 
+  /**
+   * The one way a category gets chosen, from the desktop menu or the mobile
+   * dropdown.
+   *
+   * Sets filters.categoryId and nothing else. The §179 effect writes
+   * ?category=<slug> from that with replace, so a filtered view stays
+   * shareable and the back button still works. Writing the URL here would
+   * fight that effect, which compares its own output against the current
+   * params and would immediately rewrite whatever this set.
+   *
+   * Clears groupId, because a single category is the finer filter and the
+   * query gives it precedence anyway; leaving a stale group selected would
+   * make the URL and the results disagree.
+   */
+  function chooseCategory(categoryId: string) {
+    setFilters((f) => ({ ...f, categoryId, groupId: "", categoryIds: null }));
+  }
+
   return (
     <>
       <MarketplaceSeo
@@ -391,6 +414,19 @@ export default function BrowsePage() {
           </nav>
         </div>
       </div>
+
+      {/* Sticky desktop category bar. Its height is fixed in CSS from first
+          paint and its contents render only once the final order is known,
+          so it fills in once and never pushes the listings. Mobile gets the
+          searchable dropdown on the filter row instead. */}
+      <CategoryMenu
+        categories={categories}
+        groups={groups}
+        counts={categoryCounts}
+        ready={!categoriesLoading && !groupsLoading && !!categoryCounts}
+        activeCategoryId={filters.categoryId}
+        onPick={chooseCategory}
+      />
 
       {/* An unrecognised ?category= or ?group= slug (a typo in an ad, or a
           group renamed since the link went out): shown unfiltered, honestly
@@ -539,6 +575,16 @@ export default function BrowsePage() {
 
       {/* Count + sort + filters (mobile) */}
       <div className="mkt-fbar">
+        {/* On the LEFT of the row that already existed: sort and Filters sit
+            in .mkt-fbar-right pinned right, so the whole left half was empty
+            and no second row is needed. */}
+        <CategoryPicker
+          categories={categories}
+          counts={categoryCounts}
+          value={filters.categoryId}
+          onChange={chooseCategory}
+          loading={categoriesLoading || !categoryCounts}
+        />
         <div className="mkt-fbar-right">
           <select className="mkt-sortsel" value={filters.sort} onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value as BrowseSort }))} aria-label="Sort">
             <option value="newest">Newest first</option>
@@ -569,6 +615,16 @@ export default function BrowsePage() {
         </aside>
 
         <div className="mkt-browse-main">
+          {/* NAME WHAT WAS CHOSEN, as Jiji does. A buyer who clicks "Prams and
+              strollers" should read that above the results rather than infer
+              it from a changed grid. Shown for a category or a group, with
+              the live count, and only when one is actually chosen. */}
+          {(catName || groupName) && !isLoading && !isError && (
+            <div className="mkt-cat-heading">
+              <h2>{catName || `${groupName} group`}</h2>
+              <span className="n">{count} {count === 1 ? "item" : "items"}</span>
+            </div>
+          )}
           {isLoading ? (
             <div className="mkt-center"><BMLoadingAnimation size={160} /></div>
           ) : isError ? (

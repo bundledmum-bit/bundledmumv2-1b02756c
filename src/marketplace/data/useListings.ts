@@ -229,6 +229,39 @@ export function useCategoryGroups() {
   });
 }
 
+/**
+ * How many LIVE listings each category holds right now.
+ *
+ * Drives the whole category menu: the order (most stock first), the count
+ * shown beside every name, and which ones are dimmed as empty. 21 of the 49
+ * allowed categories have nothing in them, so a menu that did not say so would
+ * send buyers into dead ends by its own navigation.
+ *
+ * One query for every live listing's category_id, counted here. PostgREST has
+ * no GROUP BY, and adding a view would be a Supabase change; at 265 live
+ * listings this is a few kilobytes and one round trip, and it stays honest
+ * because it counts exactly what the grid can show.
+ */
+export function useCategoryCounts() {
+  return useQuery({
+    queryKey: ["marketplace", "category-counts"],
+    staleTime: 60 * 1000,
+    queryFn: async (): Promise<Map<string, number>> => {
+      const { data, error } = await mdb
+        .from("marketplace_listings")
+        .select("category_id")
+        .eq("status", "live");
+      if (error) throw error;
+      const m = new Map<string, number>();
+      for (const r of (data ?? []) as Array<{ category_id: string | null }>) {
+        if (!r.category_id) continue;
+        m.set(r.category_id, (m.get(r.category_id) ?? 0) + 1);
+      }
+      return m;
+    },
+  });
+}
+
 export type FeaturedSurface = "browse_home" | "sell_page";
 export interface FeaturedCategoryRow { category_id: string; sort_order: number; }
 
