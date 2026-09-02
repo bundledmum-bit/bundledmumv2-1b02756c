@@ -16,6 +16,25 @@ mounts (category + product pages) since it's the one shared component.
   landing URL before React normalises it** — so GA4 records source=storefront/medium=banner on the
   marketplace landing pageview for both destinations. No pixel event is fired from the banner (spec).
 - Only utm_source + utm_medium were added (as requested); no utm_campaign. `npm run build` passes.
+- **Also tagged the MARKETPLACE reverse banner** ([StorefrontCrossSellBanner.tsx](src/marketplace/components/StorefrontCrossSellBanner.tsx),
+  which landed this session in d7729b3) so "all the banners" are covered. It ORIGINATES on the
+  marketplace, so its `go()` sets `utm_source=marketplace&utm_medium=banner` (the mirror of the
+  storefront's source=storefront) — same URL-append pattern. Verified live: its CTA → `/shop/...
+  ?utm_source=marketplace&utm_medium=banner`. (Deliberate deviation from the literal "storefront"
+  value the request named, because tagging a marketplace-origin banner as source=storefront would
+  misattribute the direction.)
+
+**⚠️ SEPARATE PRE-EXISTING REGRESSION found while verifying (NOT caused by the UTM change, needs a
+resolver/DB fix — flagged, not fixed):** BOTH cross-sell banners' `has_category` deep-links 404,
+because the resolver RPCs emit destination paths that are not real routes:
+  - `get_marketplace_crosssell` returns `/marketplace/category/<slug>`, but the marketplace browse URL
+    was refactored to query params — the only route is `/` (BrowsePage); the correct URL is
+    **`/marketplace/?category=<slug>`**. `/marketplace/category/...` now hits the `*` NotFound route.
+  - `get_storefront_crosssell` returns `/shop/category/<slug>`, which matches no storefront route
+    (storefront category routes are `/shop/:slug` e.g. **`/shop/<slug>`**, or `/shop/baby|mum/:category`).
+  Fix is in the two RPCs' `destination_url` only (frontend must not decide the URL); once corrected,
+  the UTMs ride along unchanged (both banners build the link via `new URL`, so query-param
+  destinations work). The generic FALLBACK links (`/marketplace`, storefront home) are fine.
 
 ## Cross-sell banner on PRODUCT pages + live_count CTA (prior turn)
 Extends the marketplace cross-sell banner to storefront product detail pages and makes the CTA

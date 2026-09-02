@@ -99,10 +99,23 @@ export default function StorefrontCrossSellBanner({ category }: { category: stri
   };
 
   const go = () => {
+    // Tag the crossing for internal attribution. This banner ORIGINATES on the
+    // marketplace (points back to the storefront), so source=marketplace — the
+    // mirror of the storefront banner's source=storefront/medium=banner. Built
+    // with URL so an existing query/hash is preserved and params de-duped.
+    let target = data.destination_url;
+    try {
+      const u = new URL(data.destination_url, window.location.origin);
+      u.searchParams.set("utm_source", "marketplace");
+      u.searchParams.set("utm_medium", "banner");
+      target = u.pathname + u.search + u.hash;
+    } catch {
+      /* keep the raw destination_url */
+    }
     // FULL-PAGE navigation into the separate storefront app tree. A client
     // route cannot reach it: the marketplace app is chosen from
     // window.location at mount, so the storefront tree is not even mounted.
-    window.location.assign(data.destination_url);
+    window.location.assign(target);
   };
 
   // Mirrors the storefront banner's CTA exactly (c4d0266): make the promise
