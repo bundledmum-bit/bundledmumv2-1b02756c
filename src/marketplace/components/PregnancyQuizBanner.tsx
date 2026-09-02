@@ -1,6 +1,7 @@
 import CrossAppBanner, {
   bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
 } from "@/components/CrossAppBanner";
+import { useCanShowPromo } from "../listingPromo";
 
 /**
  * An advert for the storefront's quiz, on marketplace listing pages.
@@ -22,14 +23,13 @@ import CrossAppBanner, {
  * column are still deployed and now have no caller, so narrowing it again is a
  * hook and one condition, not a migration.
  *
- * NEVER ON A SOLD PAGE, AND THIS IS NOW THE ONLY LOCK. It used to have two: the
- * RPC filtered its own query to status = 'live', so a sold id returned null on
- * top of the structural guard. With the gate gone, the ONLY thing keeping this
- * off a sold page is that a sold listing renders SoldListingPage, which never
- * mounts this component. Do not move this mount above the sold branch in
- * ListingDetailPage. That page was stripped to the name, the video and
- * alternatives with every call to action removed (§190), and a quiz advert
- * would be the only CTA left on it.
+ * NEVER ON A SOLD PAGE, AND THAT IS A CONDITION AGAIN RATHER THAN A COMMENT.
+ * useCanShowPromo is true only for a LIVE listing, so this cannot render on a
+ * sold or delisted one wherever it is mounted. It was briefly guarded only by
+ * position — the mount sits below the branch that returns SoldListingPage — and
+ * a guard that depends on the order of two returns is one refactor away from
+ * being gone. §190 stripped the sold page of every call to action, and a quiz
+ * advert would be the only one left on it.
  *
  * THE CTA IS AN <a>, WHICH IS WHY CrossAppBanner TAKES A NODE. The two
  * cross-sell banners are <button>s calling window.location.assign, because
@@ -61,10 +61,11 @@ const DISMISS_KEY = "bm_quiz_promo_dismissed";
 // identical and lands in the same app.
 const QUIZ_HREF = "/quiz?utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz";
 
-export default function PregnancyQuizBanner() {
+export default function PregnancyQuizBanner({ listingId }: { listingId: string }) {
+  const canShow = useCanShowPromo(listingId);
   const [dismissed, dismiss] = useBannerDismiss(DISMISS_KEY);
 
-  if (dismissed) return null;
+  if (!canShow || dismissed) return null;
 
   return (
     <CrossAppBanner

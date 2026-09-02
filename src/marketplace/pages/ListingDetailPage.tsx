@@ -900,11 +900,10 @@ export default function ListingDetailPage() {
           until this section arrives. */}
       {/* The seam: the buy bar has just come to rest above this, so the
           purchase decision is over and everything below is about something
-          else. On every live listing now, but STILL never on a sold page —
-          this sits below the sold branch, which returns SoldListingPage far
-          above and never reaches here. That ordering is the only thing keeping
-          the advert off a page that deliberately has no call to action. */}
-      <PregnancyQuizBanner />
+          else. On every live listing, and never on a sold one — the banner asks
+          listing_can_show_promo, which is true only for a live listing, so that
+          no longer depends on this mount sitting below the sold branch. */}
+      <PregnancyQuizBanner listingId={listing.id} />
       <RelatedListings listingId={listing.id} />
       <SellYourItemsPrompt />
 

@@ -11737,3 +11737,48 @@ Dismissal matters more now than it did at one page in four: a buyer who is not
 pregnant sees this on every listing until she dismisses it once, and
 `bm_quiz_promo_dismissed` then holds for the session. Confirmed it survives
 navigating between listings.
+
+### 197a. The sold-page lock is a condition again, not a comment
+
+§197 left the advert off sold pages by POSITION: the mount sat below the branch
+returning `SoldListingPage`, so the guard was the order of two returns plus a
+comment asking nobody to move them. One refactor away from gone.
+
+`listing_can_show_promo(p_listing_id)` is now deployed, anon callable, and true
+only for a LIVE listing. `useCanShowPromo` in `src/marketplace/listingPromo.ts`
+wires the banner to it, so the advert cannot render on a sold or delisted
+listing **wherever it is mounted**.
+
+**It returns FALSE, never NULL, for an unknown id.** Verified as a property, not
+a printed value: `listing_can_show_promo('00000000-…') IS NULL` is itself
+`false`. That is deliberate, and it is the direct answer to this project's
+recurring family of bugs — an absent value being read as a decision (an invented
+`ok` field §167, a flag sent as `undefined` so it could not be turned off §180,
+an RLS refusal returning no error and no rows §183). A gate that answered null
+for a listing that does not exist would have been one more.
+
+The client still refuses to infer: `=== true` is the test, and the hook defaults
+to false while loading and on any error, so the banner appears only on a definite
+yes.
+
+**Proved it is the condition doing the work, not the position.** On a genuinely
+LIVE listing page, with the mount untouched, forcing the RPC to `false` in the
+browser removed the banner and every `/quiz` link while Buy now, the related row
+and the sell prompt all stayed. Absence on a sold page proves only that the page
+is different; this proves the gate.
+
+Also verified: true for both live listings including a previously-excluded
+category, false for sold, false for delisted, false for unknown — from SQL and
+again from an anon client inside the page. Geometry unchanged, `[16, 359]` h140
+mobile and `[118, 1318]` h73 at 1440, still equal to `.mkt-related`; Buy now
+still visible and clickable on first paint at 1440 (top 766), so §196 stands.
+
+**On the copy, for whoever reads this next.** "Are you pregnant?" now runs on
+school shoes and toddler clothing, where most readers are not the audience —
+exactly what the §191 targeting existed to avoid. Left as shipped deliberately.
+If it needs softening, the honest fix is **the copy, not the targeting**: a line
+about getting everything for the hospital bag in one go works for a pregnant
+buyer and for a mum of a three year old, costs nothing, and keeps the reach.
+Re-narrowing instead would cost 213 pages of it, and
+`listing_shows_pregnancy_promo` is still deployed for that if it is ever the
+right call.
