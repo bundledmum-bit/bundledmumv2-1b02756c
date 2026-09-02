@@ -78,14 +78,14 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
   const ctaText = data.has_category ? "Shop used" : "Click here";
 
   return (
+    // Full-width wrapper so the banner sits in its own row (with breathing room
+    // above the listing), but the banner itself is a self-contained CARD aligned
+    // to the product-grid width — so it reads as a distinct standalone banner,
+    // not a strip glued to the header.
     <div
       role="complementary"
       aria-label="Also available used on the BundledMum marketplace"
-      style={{
-        width: "100%",
-        background: CORAL_LIGHT,
-        borderBottom: `1px solid ${CORAL}`,
-      }}
+      className="w-full px-4 md:px-10 pt-4 md:pt-5"
     >
       {/* Scoped keyframes; disabled under prefers-reduced-motion. */}
       <style>{`
@@ -97,47 +97,55 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
       `}</style>
 
       <div
+        className="max-w-[1200px] mx-auto flex flex-col md:flex-row md:items-center gap-3 md:gap-4"
         style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "10px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
+          position: "relative",
+          background: CORAL_LIGHT,
+          border: `1.5px solid ${CORAL}`,
+          borderRadius: 16,
+          boxShadow: "0 2px 14px rgba(212,97,60,0.16)",
+          padding: "14px 16px",
           fontFamily: "'Nunito', system-ui, -apple-system, Arial, sans-serif",
         }}
       >
-        <p
-          style={{
-            margin: 0,
-            flex: 1,
-            minWidth: 0,
-            color: CORAL_DARK,
-            fontWeight: 800,
-            fontSize: 14,
-            lineHeight: 1.3,
-          }}
-        >
-          {data.headline}
-        </p>
+        {/* Headline block: recycle accent + copy. The recycle mark signals
+            "used" and gives the banner its own identity (not ad chrome). */}
+        <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-7 md:pr-0">
+          <span aria-hidden style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>♻️</span>
+          <p
+            style={{
+              margin: 0,
+              minWidth: 0,
+              color: CORAL_DARK,
+              fontWeight: 800,
+              fontSize: 14,
+              lineHeight: 1.3,
+            }}
+          >
+            {data.headline}
+          </p>
+        </div>
 
         <button
           type="button"
           onClick={go}
+          className="w-full md:w-auto"
           style={{
             flexShrink: 0,
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 6,
             background: CORAL,
             color: "#FFFFFF",
             border: "none",
             borderRadius: 100,
-            padding: "8px 16px",
-            fontSize: 13,
+            padding: "11px 18px",
+            fontSize: 14,
             fontWeight: 800,
             cursor: "pointer",
             whiteSpace: "nowrap",
+            boxShadow: "0 1px 4px rgba(212,97,60,0.35)",
           }}
         >
           {ctaText}
@@ -148,8 +156,14 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
           type="button"
           onClick={dismiss}
           aria-label="Dismiss"
+          className="absolute md:static top-2.5 right-2.5"
           style={{
             flexShrink: 0,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 24,
+            height: 24,
             background: "transparent",
             border: "none",
             color: CORAL_DARK,
@@ -157,7 +171,7 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
             lineHeight: 1,
             fontWeight: 700,
             cursor: "pointer",
-            padding: 4,
+            padding: 0,
             opacity: 0.7,
           }}
         >
