@@ -11195,3 +11195,90 @@ the stale HMR bundle.
 so it never engages and desktop has no persistent buy affordance at all; and
 Buy now sits at 917px on first paint, below the fold. With five sales those are
 a bigger conversion problem than this banner.
+
+## 192. The storefront cross-sell banner, the mirror of the storefront's own (2026-09-02)
+
+The counterpart of `src/components/shop/MarketplaceCrossSellBanner.tsx`
+(commits `40cdbd2`, `289c019`): that one sits on storefront category pages and
+points at the used item; this one sits on marketplace browse and points at the
+new one. Same card, same layout, same arrow motion, same dismiss, same CTA
+pattern. **Only four things differ by design — palette, RPC, dismiss key, CTA
+label. Change one of them in one file and you must change the other, or the
+pair stops reading as one system.**
+
+**THE PREREQUISITE IS NOT DONE.** `get_storefront_crosssell(p_category)` **does
+not exist** — `PGRST202, Could not find the function public.get_storefront_crosssell(p_category)
+in the schema cache`. It is a DB task on the owner's side and was not created
+here. Until it ships the banner renders nothing, which is the designed failure
+mode, verified: the RPC 404s, the banner is absent and browse renders its 26
+cots normally. `get_marketplace_crosssell` returns a **fourth column,
+`live_count integer`**, that the brief for the mirror omitted.
+
+**The pair diverged within the hour, which is the point.** While this was being
+built, `c4d0266` taught the storefront banner to spend `live_count` in its CTA
+("See 12 used items", falling back to "Shop used" at 0 or missing, because "See
+0 used items" reads as broken). The same logic is mirrored here — "See N new
+items" / "Browse N new items" — so **`get_storefront_crosssell` should return
+`live_count` too**, as the count of live storefront products in that category.
+It is typed optional, so if the RPC ships without it the CTA quietly stays on
+the plain wording. All four branches verified: count present, no-match with a
+count, count 0, count absent.
+
+**THERE ARE NO MARKETPLACE CATEGORY PAGES.** The storefront has real
+`SubcategoryPage`/`CategoryPage` routes. The marketplace has exactly one browse
+surface, `/` → `BrowsePage`, and the category is a **filter** (`filters.categoryId`)
+mirrored to `?category=<slug>` by the §179 effect. So "mount it on category
+pages" has no route to hang on. The gate is a derived `activeCategorySlug`,
+empty on unfiltered browse, empty on a GROUP filter (group selection sets
+`categoryId: ""`), and empty while categories load. That is what keeps it off
+the non-category surfaces without a route test.
+
+**GREEN ON GREEN, AND WHY IT IS NOT MOUNTED UNDER THE HEADER.** The brief's
+premise is that green stands out against the coral marketplace. On browse it
+does not: `.mkt-topbar` is a solid **`#2D6A4F` slab 195px tall**, the exact
+green this card is built from, sitting immediately under the header. Mounted
+"immediately after the header" the card would have been green-on-green.
+
+It is mounted **below the filter bar and the applied chips, directly above the
+grid** — the same position in the reading order (after the controls, before the
+listing) with about 90px of cream and two rows of controls separating the two
+greens. Measured: topbar 50–245, filter bar 245–299, chips 299–337, banner
+337–458, grid 475.
+
+**THE ONE MEASUREMENT THAT MUST NOT BE MIRRORED.** Copied verbatim, the
+storefront's `max-w-[1200px]` put the card at left 118 while the marketplace's
+own content column is **1240 wide at left 98 with a 16px gutter** — 20px inside
+everything around it. The wrapper now uses the marketplace's values, so the
+card lands at **left 114, right 1322**: left edge exactly on `.mkt-fpanel`,
+right edge exactly on `#mkt-grid`. Both asserted as equalities, not eyeballed.
+
+**Dismissal uses `bm_storefront_xsell_dismissed`, NEVER the storefront's
+`bm_marketplace_xsell_dismissed`.** Both apps are served from the same origin,
+so a shared key would make dismissing one hide the other. Verified: clicking ×
+set `sf: "1"` and left `mk: null`, hid it immediately, and it stayed hidden
+across two category changes.
+
+**Verified** (mobile 375 and desktop 1440): `has_category: true` gives the
+specific headline and **"See N new items"** (or "Shop new" without a count);
+`has_category: false` gives the generic headline, the storefront home and
+**"Browse N new items"** (or "Click here"); unfiltered browse shows
+nothing; a listing detail page shows nothing even with a working response.
+Desktop is a single row (headline and CTA centres both at y=203, 73px tall);
+mobile stacks to 121px with the × in the corner. CTA is a `<button>` calling
+`window.location.assign` — the storefront is a separate app tree that a client
+route cannot reach.
+
+**How the design was verified without the RPC.** The response was stubbed **in
+the browser only**, by replacing `supabase.rpc` for that one function name in
+the page. No code was changed to fake it and nothing was written to the
+database. Everything above marked as rendering was rendered from a stub, so the
+first real thing to check once the RPC ships is that its actual shape matches
+`{ destination_url, headline, has_category }`.
+
+Tailwind utilities work in the marketplace tree — `src/index.css` is global and
+the content glob is `./src/**/*.{ts,tsx}` — so the mirrored markup needed no
+translation into `mkt-` classes.
+
+**Files:** `components/StorefrontCrossSellBanner.tsx` (new), `pages/BrowsePage.tsx`
+(import, derived slug, one mount line). No Supabase changes. No stylesheet
+changes: the card is self-contained inline styles exactly like its mirror.

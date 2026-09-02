@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { recordMarketplaceSearch } from "../searchDemand";
 import { readBrowseUrl, writeBrowseUrl, browseUrlKey } from "../browseUrl";
 import CategoryPicker from "../browse/CategoryPicker";
+import StorefrontCrossSellBanner from "../components/StorefrontCrossSellBanner";
 import { groupsByStock } from "../browse/categoryOrder";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 import BMLoadingAnimation from "@/components/BMLoadingAnimation";
@@ -321,6 +322,15 @@ export default function BrowsePage() {
   const remainingCount = remainderCats.length - revealedCats.length;
 
   const catName = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.name ?? "", [categories, filters.categoryId]);
+  /* The slug of the category actually being browsed, and "" whenever none is.
+     The marketplace has no category ROUTES — browse is one page and the
+     category is a filter — so this is what stands in for "we are on a category
+     page", and it is empty on unfiltered browse, on a GROUP filter, and while
+     the categories are still loading. */
+  const activeCategorySlug = useMemo(
+    () => (filters.categoryId ? categories.find((c) => c.id === filters.categoryId)?.slug ?? "" : ""),
+    [categories, filters.categoryId],
+  );
   const catIcon = useMemo(() => categories.find((c) => c.id === filters.categoryId)?.icon ?? null, [categories, filters.categoryId]);
   // The active group's own name, for the applied chip below — the same
   // "show what's active, let them clear it" treatment the category filter
@@ -594,6 +604,18 @@ export default function BrowsePage() {
           <button className="mkt-fchip clear" onClick={clearAll}>Clear all</button>
         </div>
       )}
+
+      {/* Buy it new instead. Mounted here, BELOW the filter bar and chips and
+          directly above the grid, rather than "immediately after the header":
+          .mkt-topbar is a solid #2D6A4F slab 195px tall and this card is built
+          from that same green, so up there it would vanish into it. Same place
+          in the reading order — after the controls, before the listing — with
+          the controls separating the two greens.
+
+          Renders nothing unless a single category is actually selected, which
+          is what keeps it off unfiltered browse and off every non-category
+          page. See StorefrontCrossSellBanner. */}
+      {activeCategorySlug && <StorefrontCrossSellBanner category={activeCategorySlug} />}
 
       <div className="mkt-browse">
         {/* Desktop persistent panel */}
