@@ -900,10 +900,11 @@ export default function ListingDetailPage() {
           until this section arrives. */}
       {/* The seam: the buy bar has just come to rest above this, so the
           purchase decision is over and everything below is about something
-          else. Renders nothing on the 213 of 281 listings whose category is
-          not pregnancy-adjacent, and is never mounted on a sold page, which
-          returns SoldListingPage far above. */}
-      <PregnancyQuizBanner listingId={listing.id} />
+          else. On every live listing now, but STILL never on a sold page —
+          this sits below the sold branch, which returns SoldListingPage far
+          above and never reaches here. That ordering is the only thing keeping
+          the advert off a page that deliberately has no call to action. */}
+      <PregnancyQuizBanner />
       <RelatedListings listingId={listing.id} />
       <SellYourItemsPrompt />
 

@@ -11696,3 +11696,44 @@ badge and the ask action all present at 1440. The last ask entry is not
 overlapped by the resting bar. **Buy now was never clicked**: Add to cart proved
 the bar is live (wrote the id to `bm-mkt-cart`, routed to the cart, cart then
 cleared). No conversion event was fired from a dev build.
+
+## 197. The quiz advert goes on every listing page (2026-09-02)
+
+§191 gated the advert to the 68 of 281 listings in a pregnancy-adjacent
+category. That gate is removed by request: it now shows on **every live listing
+page**.
+
+**The gate is gone from the frontend, not from the database.**
+`listing_shows_pregnancy_promo` and `marketplace_categories.shows_pregnancy_promo`
+are still deployed and now have **no caller**. `src/marketplace/pregnancyPromo.ts`
+was the only one and is deleted as dead code. Narrowing it again is a hook and
+one condition, not a migration — which is worth knowing if the advert turns out
+to be wallpaper on the 213 pages it was previously kept off.
+
+**SOLD PAGES NOW HAVE ONE LOCK, NOT TWO.** This is the part to be careful about.
+The RPC filtered its own query to `status = 'live'`, so a sold id returned null
+and the banner could not render even if something mounted it. With the gate
+gone, the **only** thing keeping the advert off a sold page is that a sold
+listing returns `SoldListingPage` from a branch far above this mount, so the
+component is never reached. **Do not move the mount above that branch.** §190
+stripped the sold page to the name, the video and alternatives with every call
+to action removed, and a quiz advert would be the only CTA left on it. The
+component's own comment says the same thing, because the guard is now
+positional and nothing about the code makes it obvious.
+
+`PregnancyQuizBanner` no longer takes a `listingId`: it had no other use.
+
+**Verified.** Present on Baby clothing and Baby shoes, the two largest
+previously-excluded categories (109 of 281 listings between them), sitting in the
+seam exactly as before — `.mkt-detail` ends at 1352, banner top 1352, related row
+1527 — with the correct headline, `Build my list`, and the
+`utm_campaign=listing_quiz` href intact. Absent on a sold page, which still
+carries no buy bar, no sell prompt and 0 quiz links. Buy now still present
+everywhere. Card geometry unchanged at both widths: `[16, 359]` h140 on mobile,
+`[118, 1318]` h73 at 1440 and still equal to `.mkt-related`. Buy now still
+visible on first paint at 1440 (top 766), so §196 is unaffected.
+
+Dismissal matters more now than it did at one page in four: a buyer who is not
+pregnant sees this on every listing until she dismisses it once, and
+`bm_quiz_promo_dismissed` then holds for the session. Confirmed it survives
+navigating between listings.

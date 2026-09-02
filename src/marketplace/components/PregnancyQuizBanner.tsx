@@ -1,7 +1,6 @@
 import CrossAppBanner, {
   bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
 } from "@/components/CrossAppBanner";
-import { useShowsPregnancyPromo } from "../pregnancyPromo";
 
 /**
  * An advert for the storefront's quiz, on marketplace listing pages.
@@ -17,14 +16,20 @@ import { useShowsPregnancyPromo } from "../pregnancyPromo";
  * line the buyer is deciding about this item, below it the page is already about
  * other things. Placement agreed with Claude Design.
  *
- * ONE PAGE IN FOUR. useShowsPregnancyPromo asks the server whether this
- * listing's category qualifies; see that file for why the list is not here.
- * When the answer is no — 213 of 281 live listings — this renders nothing.
+ * EVERY LIVE LISTING PAGE. It was previously gated to the 68 of 281 listings in
+ * a pregnancy-adjacent category, via listing_shows_pregnancy_promo; that gate
+ * was removed by request. The RPC and the marketplace_categories.shows_pregnancy_promo
+ * column are still deployed and now have no caller, so narrowing it again is a
+ * hook and one condition, not a migration.
  *
- * NEVER ON A SOLD PAGE. A sold listing renders SoldListingPage instead of this
- * page, so the banner is never mounted there. That page was stripped to the
- * name, the video and alternatives with every call to action removed, and a
- * quiz advert would be the only CTA left on it.
+ * NEVER ON A SOLD PAGE, AND THIS IS NOW THE ONLY LOCK. It used to have two: the
+ * RPC filtered its own query to status = 'live', so a sold id returned null on
+ * top of the structural guard. With the gate gone, the ONLY thing keeping this
+ * off a sold page is that a sold listing renders SoldListingPage, which never
+ * mounts this component. Do not move this mount above the sold branch in
+ * ListingDetailPage. That page was stripped to the name, the video and
+ * alternatives with every call to action removed (§190), and a quiz advert
+ * would be the only CTA left on it.
  *
  * THE CTA IS AN <a>, WHICH IS WHY CrossAppBanner TAKES A NODE. The two
  * cross-sell banners are <button>s calling window.location.assign, because
@@ -56,11 +61,10 @@ const DISMISS_KEY = "bm_quiz_promo_dismissed";
 // identical and lands in the same app.
 const QUIZ_HREF = "/quiz?utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz";
 
-export default function PregnancyQuizBanner({ listingId }: { listingId: string }) {
-  const show = useShowsPregnancyPromo(listingId);
+export default function PregnancyQuizBanner() {
   const [dismissed, dismiss] = useBannerDismiss(DISMISS_KEY);
 
-  if (!show || dismissed) return null;
+  if (dismissed) return null;
 
   return (
     <CrossAppBanner
