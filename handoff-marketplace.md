@@ -11876,3 +11876,94 @@ The probe used here flagged `/bundles` as not-found because the page contains
 the price **"₦404k"**, which matched its `404` regex — a false positive inside an
 audit whose whole purpose was separating working links from broken ones. See
 §185 case 5. A checking instrument gets no more trust than the thing it checks.
+
+## 199. Click tracking on the three banners, and why no row appears yet (2026-09-03)
+
+The utm tags can only attribute a visit that ARRIVED. Nothing counted the click
+itself, so there was no click-through rate and no way to compare the three
+banners. `recordPromoClick` in `src/lib/promoClick.ts` now fires
+`record_promo_click` on every banner click.
+
+**`from_context`, which is the whole point of the thing:**
+
+| Banner | `p_banner` | `from_context` |
+|---|---|---|
+| Quiz advert, listing page | `quiz` | the listing's **category slug** |
+| Buy it new, marketplace browse | `storefront_crosssell` | the marketplace category being browsed |
+| Buy it used, storefront | `marketplace_crosssell` | the storefront subcategory |
+
+The quiz banner takes a new `categorySlug` prop for this. **Not the listing id** —
+the question is which KINDS of page send people to the quiz, and a per-listing id
+would not group. An empty context is a real state (a listing with no category),
+and the admin view says "no category" rather than printing a dash that reads as
+missing data.
+
+**KEEPALIVE IS THE WHOLE TRICK, and it is why this does not go through
+supabase-js.** Every one of these clicks is immediately followed by a full-page
+navigation, and a normal fetch is cancelled when its document is torn down. Fire
+and forget would therefore have lost the very events it exists to count —
+silently and UNEVENLY, recording on fast connections and not on slow ones, which
+is worse than recording nothing because it still looks like data.
+`keepalive: true` makes the browser finish the request after the page is gone.
+Same guarantee `sendBeacon` gives, without losing the apikey header.
+
+Verified navigation is never blocked, on both shapes: with `window.fetch` stubbed
+to throw synchronously, the quiz `<a>` still reached `/quiz?...` and the
+cross-sell `<button>` still reached `/products/baby-bed-with-net-bm?...`. The
+button path was worth testing separately, since a throw there would have
+prevented the `window.location.assign` that follows it.
+
+### THE ROWS ARE BEING DROPPED, AND IT IS NOT THE CLIENT
+
+A real click produces **no row**, and every layer reports success:
+
+- the HTTP call returns **204 No Content**, a correct void-RPC response;
+- `record_promo_click` raises nothing, so its `exception when others` never fires;
+- the row simply does not exist.
+
+**Cause: `trg_drop_bot_analytics_events`.** A `BEFORE INSERT` trigger on
+`analytics_events` calls `is_bot_user_agent(NEW.user_agent)` and `RETURN NULL`s —
+silently discarding the row — when it says true. Its first branch is
+`WHEN COALESCE(p_ua,'') = '' THEN true`, so **a NULL user agent is classified as
+a bot**. `record_promo_click` never sets `user_agent`, so every promo click is
+dropped as a crawler.
+
+Corroborated rather than reasoned: **all 4,193 existing analytics rows across 11
+event types have a non-null user_agent, `null_ua = 0` everywhere.** Nothing with
+a NULL user agent has ever survived that trigger.
+
+**The fix is in the function, and is the owner's.** Every other analytics path in
+this codebase passes the agent from the client — `upsert_session` and the
+`trackEvent` path both send `p_user_agent: ua.user_agent` from
+`navigator.userAgent`. `record_promo_click` should match: add
+`p_user_agent text default null` and set `user_agent` in the insert. Defaulted,
+so the client as shipped keeps working and the parameter can be sent in a small
+follow-up. It also means promo clicks get REAL bot filtering rather than being
+100% filtered.
+
+(The alternative, reading `current_setting('request.headers', true)::json->>'user-agent'`
+inside the function, needs no signature change, but no function in this project
+does that today and it could not be verified from outside PostgREST.)
+
+**Until that lands, this records nothing.** The wiring is correct and the request
+reaches the server; the row is discarded three layers down. The admin view's
+empty state is therefore honest right now, not a bug.
+
+### The admin view
+
+`/admin/marketplace/promo-clicks`, "Banner clicks", under the same nav group as
+the search-demand views because it is the same kind of thing: something a buyer
+did, read to decide with. Reads `marketplace_promo_clicks` and re-sorts nothing,
+matching the search-demand page — the view already aggregates and orders, and a
+second opinion in the client would only drift. Verified rendering signed in as
+the read-only QA admin.
+
+### The instrument note, again
+
+The SQL tool **rolls back its writes**: `record_promo_click` and even a raw
+`INSERT ... RETURNING` both came back with zero rows and no error, while reads
+worked fine (4,191 rows, newest that morning). A `RETURNING` clause producing no
+row is impossible for a successful insert, and that impossibility is what
+identified the tool rather than the function. So the owner's inability to verify
+was the tool, and the function's own fault was real but separate — two failures
+stacked, each of which alone would have produced the same symptom.

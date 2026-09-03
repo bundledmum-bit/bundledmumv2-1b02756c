@@ -903,7 +903,7 @@ export default function ListingDetailPage() {
           else. On every live listing, and never on a sold one — the banner asks
           listing_can_show_promo, which is true only for a live listing, so that
           no longer depends on this mount sitting below the sold branch. */}
-      <PregnancyQuizBanner listingId={listing.id} />
+      <PregnancyQuizBanner listingId={listing.id} categorySlug={listing.category?.slug} />
       <RelatedListings listingId={listing.id} />
       <SellYourItemsPrompt />
 

@@ -1089,6 +1089,24 @@ export interface SearchDemandRow {
   distinct_people: number | null;
 }
 
+/** One row per banner and the page it was clicked from. The view already
+ * aggregates and orders, so nothing is re-sorted here — a second opinion in the
+ * client would only drift from the first. */
+export interface PromoClickRow {
+  banner: string;
+  from_context: string | null;
+  destination: string | null;
+  clicks: number;
+  people: number;
+  last_click: string | null;
+}
+
+export async function fetchPromoClicks(): Promise<PromoClickRow[]> {
+  const { data, error } = await adb.from("marketplace_promo_clicks").select("*");
+  if (error) throw error;
+  return (data ?? []) as PromoClickRow[];
+}
+
 export async function fetchSearchDemand(): Promise<SearchDemandRow[]> {
   // No client-side sort: the view already orders empty searches first, and
   // re-sorting here would just be a second opinion that could drift.

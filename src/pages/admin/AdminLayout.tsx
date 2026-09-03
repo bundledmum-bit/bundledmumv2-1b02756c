@@ -182,6 +182,8 @@ function AdminLayoutInner() {
       children: [
         { label: "What they searched for", to: "/admin/marketplace/search-demand", icon: SearchIcon },
         { label: "Search words", to: "/admin/marketplace/search-words", icon: Languages },
+        // Same family: something a buyer did, read to decide with.
+        { label: "Banner clicks", to: "/admin/marketplace/promo-clicks", icon: SearchIcon },
       ],
     },
     {

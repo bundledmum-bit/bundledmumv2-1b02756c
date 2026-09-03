@@ -2,6 +2,7 @@ import CrossAppBanner, {
   bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
 } from "@/components/CrossAppBanner";
 import { useCanShowPromo } from "../listingPromo";
+import { recordPromoClick } from "@/lib/promoClick";
 
 /**
  * An advert for the storefront's quiz, on marketplace listing pages.
@@ -61,7 +62,13 @@ const DISMISS_KEY = "bm_quiz_promo_dismissed";
 // identical and lands in the same app.
 const QUIZ_HREF = "/quiz?utm_source=marketplace&utm_medium=banner&utm_campaign=listing_quiz";
 
-export default function PregnancyQuizBanner({ listingId }: { listingId: string }) {
+export default function PregnancyQuizBanner({ listingId, categorySlug }: {
+  listingId: string;
+  /** The listing's CATEGORY, not its id: the tracking question is which kinds
+   * of page send people to the quiz, so a per-listing id would answer nothing
+   * and would not group. Empty when a listing has no category. */
+  categorySlug?: string | null;
+}) {
   const canShow = useCanShowPromo(listingId);
   const [dismissed, dismiss] = useBannerDismiss(DISMISS_KEY);
 
@@ -85,7 +92,16 @@ export default function PregnancyQuizBanner({ listingId }: { listingId: string }
         boxSizing: "border-box",
       }}
       cta={
-        <a href={QUIZ_HREF} className={BANNER_CTA_CLASS} style={bannerCtaStyle(PALETTE)}>
+        <a
+          href={QUIZ_HREF}
+          className={BANNER_CTA_CLASS}
+          style={bannerCtaStyle(PALETTE)}
+          /* Fired, never awaited. This stays an <a>, so the browser performs
+             the navigation itself and nothing here can delay or cancel it —
+             recordPromoClick uses keepalive so the request survives the
+             unload. */
+          onClick={() => recordPromoClick("quiz", categorySlug || "", QUIZ_HREF)}
+        >
           Build my list
           <span className={BANNER_ARROW_CLASS} aria-hidden>→</span>
         </a>

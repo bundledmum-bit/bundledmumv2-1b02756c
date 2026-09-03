@@ -3,6 +3,7 @@ import CrossAppBanner, {
   bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
 } from "@/components/CrossAppBanner";
 import { mdb } from "../data/mdb";
+import { recordPromoClick } from "@/lib/promoClick";
 
 /**
  * Cross-sell banner at the top of the marketplace listing grid that points a
@@ -128,6 +129,11 @@ export default function StorefrontCrossSellBanner({ category }: { category: stri
     // FULL-PAGE navigation into the separate storefront app tree. A client
     // route cannot reach it: the marketplace app is chosen from
     // window.location at mount, so the storefront tree is not even mounted.
+    // Fired, never awaited, and deliberately BEFORE the assign: keepalive
+    // means the request outlives the page, so ordering costs nothing and
+    // guarantees the click is recorded even on a slow connection.
+    // from_context is the marketplace category being browsed.
+    recordPromoClick("storefront_crosssell", category, target);
     window.location.assign(target);
   };
 

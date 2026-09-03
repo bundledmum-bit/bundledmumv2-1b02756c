@@ -3,6 +3,7 @@ import CrossAppBanner, {
   bannerCtaStyle, useBannerDismiss, BANNER_ARROW_CLASS, BANNER_CTA_CLASS, type BannerPalette,
 } from "@/components/CrossAppBanner";
 import { supabase } from "@/integrations/supabase/client";
+import { recordPromoClick } from "@/lib/promoClick";
 
 /**
  * Cross-sell banner shown at the TOP of a storefront category page (immediately
@@ -90,6 +91,10 @@ export default function MarketplaceCrossSellBanner({ subcategory }: { subcategor
     } catch {
       /* keep the raw destination_url */
     }
+    // Fired, never awaited, and deliberately BEFORE the assign: keepalive
+    // means the request outlives the page. from_context is the storefront
+    // subcategory being browsed.
+    recordPromoClick("marketplace_crosssell", subcategory, target);
     window.location.assign(target);
   };
 
