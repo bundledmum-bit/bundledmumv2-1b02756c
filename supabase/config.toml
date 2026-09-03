@@ -1,1 +1,253 @@
-project_id = "gjglqnnberwrkfltmatv"
+project_id = "rbtyprmkolqfylcbmgrk"
+
+# Per-function verify_jwt, recording the CURRENT live state: every function
+# in supabase/functions is deployed with verify_jwt = false because they are
+# invoked by DB triggers and pg_cron with a service-role key (and by the
+# storefront/marketplace with the anon key), NOT by end-user JWTs. Without
+# these blocks a bulk `supabase functions deploy` would default them to true
+# and 401 every one of those callers. Do not flip a value here without also
+# changing the function's auth model. The deploy workflow's preflight fails
+# if any function directory is missing its block.
+
+[functions.activate-subscription]
+verify_jwt = false
+
+[functions.admin-assist-signin]
+verify_jwt = false
+
+[functions.admin-brand-image-upload]
+verify_jwt = false
+
+[functions.admin-storage-upload]
+verify_jwt = false
+
+[functions.admin-upload-article-image]
+verify_jwt = false
+
+[functions.approve-pending-product]
+verify_jwt = false
+
+[functions.backfill-brand-descriptions]
+verify_jwt = false
+
+[functions.bundledmum-health-check]
+verify_jwt = false
+
+[functions.cancel-abandoned-marketplace-orders]
+verify_jwt = false
+
+[functions.check-resend-email-status]
+verify_jwt = false
+
+[functions.compress-old-sold-listings]
+verify_jwt = false
+
+[functions.convert-quote-to-order]
+verify_jwt = false
+
+[functions.create-marketplace-order]
+verify_jwt = false
+
+[functions.create-subscription]
+verify_jwt = false
+
+[functions.generate-financial-report]
+verify_jwt = false
+
+[functions.get-order-confirmation]
+verify_jwt = false
+
+[functions.gmc-product-feed]
+verify_jwt = false
+
+[functions.ingest-product-images]
+verify_jwt = false
+
+[functions.init-subscription]
+verify_jwt = false
+
+[functions.invite-admin-user]
+verify_jwt = false
+
+[functions.klump-create-payment-page]
+verify_jwt = false
+
+[functions.klump-reconcile]
+verify_jwt = false
+
+[functions.klump-resume-payment]
+verify_jwt = false
+
+[functions.klump-webhook]
+verify_jwt = false
+
+[functions.manage-push-subscription]
+verify_jwt = false
+
+[functions.marketplace-abandoned-admin-alerts]
+verify_jwt = false
+
+[functions.marketplace-abandoned-checkout-emails]
+verify_jwt = false
+
+[functions.marketplace-daily-emails]
+verify_jwt = false
+
+[functions.marketplace-idle-listing-emails]
+verify_jwt = false
+
+[functions.marketplace-initialize-payment]
+verify_jwt = false
+
+[functions.marketplace-meta-catalog-feed]
+verify_jwt = false
+
+[functions.marketplace-return-overdue-sweep]
+verify_jwt = false
+
+[functions.marketplace-review-requests]
+verify_jwt = false
+
+[functions.marketplace-seller-onboarding-sweep]
+verify_jwt = false
+
+[functions.marketplace-verify-payment]
+verify_jwt = false
+
+[functions.meta-catalog-feed]
+verify_jwt = false
+
+[functions.migrate-brand-images]
+verify_jwt = false
+
+[functions.notify-abandoned-checkout]
+verify_jwt = false
+
+[functions.notify-quiz-lead]
+verify_jwt = false
+
+[functions.og-prerender]
+verify_jwt = false
+
+[functions.place-order]
+verify_jwt = false
+
+[functions.preview-marketplace-email]
+verify_jwt = false
+
+[functions.process-image-improvements]
+verify_jwt = false
+
+[functions.process-payment]
+verify_jwt = false
+
+[functions.process-subscriptions]
+verify_jwt = false
+
+[functions.purge-orphaned-listing-photos]
+verify_jwt = false
+
+[functions.purge-sold-listing-images]
+verify_jwt = false
+
+[functions.push-subscriber-welcome]
+verify_jwt = false
+
+[functions.read-hospital-list]
+verify_jwt = false
+
+[functions.record-login-event]
+verify_jwt = false
+
+[functions.send-abandoned-cart]
+verify_jwt = false
+
+[functions.send-approval-notification]
+verify_jwt = false
+
+[functions.send-box-topup-reminders]
+verify_jwt = false
+
+[functions.send-daily-summary]
+verify_jwt = false
+
+[functions.send-hr-notification]
+verify_jwt = false
+
+[functions.send-internal-order-notification]
+verify_jwt = false
+
+[functions.send-marketplace-admin-alert]
+verify_jwt = false
+
+[functions.send-marketplace-category-alert]
+verify_jwt = false
+
+[functions.send-marketplace-email]
+verify_jwt = false
+
+[functions.send-marketplace-listing-email]
+verify_jwt = false
+
+[functions.send-marketplace-notification]
+verify_jwt = false
+
+[functions.send-marketplace-offer-email]
+verify_jwt = false
+
+[functions.send-marketplace-order-confirmation]
+verify_jwt = false
+
+[functions.send-marketplace-question-email]
+verify_jwt = false
+
+[functions.send-marketplace-seller-email]
+verify_jwt = false
+
+[functions.send-meta-conversion-event]
+verify_jwt = false
+
+[functions.send-new-order-notification]
+verify_jwt = false
+
+[functions.send-order-confirmation]
+verify_jwt = false
+
+[functions.send-push]
+verify_jwt = false
+
+[functions.send-quote-email]
+verify_jwt = false
+
+[functions.send-referral-email]
+verify_jwt = false
+
+[functions.send-reorder-reminders]
+verify_jwt = false
+
+[functions.send-seller-add-video-email]
+verify_jwt = false
+
+[functions.send-subscription-admin-reminders]
+verify_jwt = false
+
+[functions.send-subscription-intro]
+verify_jwt = false
+
+[functions.send-task-daily-summary]
+verify_jwt = false
+
+[functions.send-transactional-email]
+verify_jwt = false
+
+[functions.test-smtp]
+verify_jwt = false
+
+[functions.topup-box]
+verify_jwt = false
+
+[functions.track-push-event]
+verify_jwt = false
+
+[functions.verify-payment]
+verify_jwt = false
