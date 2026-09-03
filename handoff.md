@@ -1,6 +1,25 @@
 # Handoff
 
-## Edge-function deploys are AUTOMATIC on push to main (this turn)
+## prebuild no longer needs Bun — `bunx tsx` → `npx tsx` (this turn, Vercel prep)
+Vercel's build env has Node + npm but NOT Bun, so `"prebuild": "bunx tsx …"` would fail there.
+- **Change (package.json only):** `predev` and `prebuild` now run **`npx tsx scripts/generate-sitemap.ts`**
+  (was `bunx tsx`); added **`tsx` to devDependencies** (`^4.23.13`, + package-lock) so it installs
+  deterministically instead of being fetched ad hoc. Script logic untouched.
+- **The sitemap script has NO Bun-specific dependency** — only Node built-ins (`fs`, `path`), the global
+  `fetch` (Node ≥18), and `process.env`. The only Bun thing was the runner. So `npx tsx` runs it as-is.
+- **Byte-identical output confirmed:** ran the SAME script via `bunx tsx` vs `npx tsx` back-to-back →
+  identical sha256 (`6610d182…`, 4135 bytes, 27 entries). The runner cannot affect output.
+- **Build-time network/DB — IMPORTANT for CI/Vercel:** `generate-sitemap.ts` makes an outbound HTTPS
+  call to **Supabase REST** (`/rest/v1/articles?is_published=eq.true`) at build to append per-article
+  URLs, using `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` from `process.env` OR the committed
+  `.env`. It is **non-fatal** (missing creds / no egress / non-OK → warns, emits the 21 static entries
+  only), but it means (a) the build wants egress to `*.supabase.co`, and (b) the article portion is
+  non-deterministic (varies with what's published). On Vercel the committed `.env` supplies the creds,
+  so the call will fire.
+- **Verified:** `npm run build` succeeds end-to-end (prebuild via `npx tsx` → sitemap → `vite build` →
+  `dist/` with `index.html`); sitemap unchanged after the full build. No Bun lockfile change.
+
+## Edge-function deploys are AUTOMATIC on push to main (prior turn)
 The deploy workflow ([.github/workflows/deploy-edge-functions.yml](.github/workflows/deploy-edge-functions.yml))
 already auto-deployed on push to main for `supabase/functions/**` (plus manual `workflow_dispatch`);
 this turn added **`supabase/config.toml`** to the path filter so a change to per-function `verify_jwt`
