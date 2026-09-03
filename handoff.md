@@ -1,6 +1,29 @@
 # Handoff
 
-## LegacyShopRedirect dropped the query string — UTMs now carried through (this turn)
+## Edge-function deploys are AUTOMATIC on push to main (this turn)
+The deploy workflow ([.github/workflows/deploy-edge-functions.yml](.github/workflows/deploy-edge-functions.yml))
+already auto-deployed on push to main for `supabase/functions/**` (plus manual `workflow_dispatch`);
+this turn added **`supabase/config.toml`** to the path filter so a change to per-function `verify_jwt`
+(which drives deploy behaviour) is validated + deployed the same way.
+- **Trigger now:** `push` to `main` when a file under `supabase/functions/**` OR `supabase/config.toml`
+  changes, plus `workflow_dispatch`. A frontend-only push (or any push that touches neither path) does
+  NOT trigger a deploy.
+- **Unchanged (verified byte-for-byte apart from the added path):** the preflight guard (refuses to
+  deploy unless config.toml declares `verify_jwt` for every function dir — the safeguard against a bulk
+  deploy defaulting all 81 functions to `verify_jwt=true` and 401ing the 31 DB functions + 41 cron jobs
+  that call them), the `concurrency` group `deploy-edge-functions`, the deploy command
+  (`supabase functions deploy --project-ref rbtyprmkolqfylcbmgrk`), and the `SUPABASE_ACCESS_TOKEN` auth.
+- **What happens when an edge-function change is committed to main:** the workflow runs → installs the
+  CLI → preflight (config.toml must cover every function; currently all 81 declared `verify_jwt=false`,
+  so it passes) → `supabase functions deploy` deploys every function preserving its per-function
+  verify_jwt. So a backend push now ships itself, the way frontend pushes publish via Lovable.
+- **DEPLOY NOTE (the workflow FILE change):** the push credential is a PAT WITHOUT the `workflow`
+  scope, so changes under `.github/workflows/` cannot be pushed from here — GitHub rejects them. The
+  config.toml path addition is committed locally (`d8a6c2e`) but was NOT pushed; it must be applied via
+  the GitHub web editor (or a `workflow`-scoped credential). This handoff note and everything outside
+  `.github/workflows/` push normally.
+
+## LegacyShopRedirect dropped the query string — UTMs now carried through (prior turn)
 `LegacyShopRedirect` ([src/components/shop/LegacyShopRedirect.tsx](src/components/shop/LegacyShopRedirect.tsx))
 rebuilt the redirect target as the PATH alone (`<Navigate to={`/shop/${parent}/${cat.slug}`}>`),
 dropping everything after the `?`. So a tagged marketplace→storefront link like
