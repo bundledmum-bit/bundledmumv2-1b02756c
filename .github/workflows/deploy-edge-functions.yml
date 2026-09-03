@@ -1,0 +1,110 @@
+name: Deploy Supabase edge functions
+
+# Deploys the edge functions in supabase/functions to the BundledMum project.
+#
+# Triggers:
+#   - push to main, ONLY when something under supabase/functions/** changed
+#   - manual run from the Actions tab (workflow_dispatch)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+  workflow_dispatch:
+
+# One deploy at a time; a newer push cancels an in-flight run rather than
+# racing two deploys onto the same project.
+concurrency:
+  group: deploy-edge-functions
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: rbtyprmkolqfylcbmgrk
+  # The CLI reads this for auth; it is a repository secret, never hardcoded.
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ─────────────────────────────────────────────────────────────────────
+      # SAFETY PREFLIGHT — do NOT let a deploy silently re-enable JWT verification.
+      #
+      # `supabase functions deploy` applies each function's `verify_jwt` from
+      # supabase/config.toml. A function with NO `[functions.<name>] verify_jwt`
+      # entry defaults to verify_jwt = TRUE. Almost every function in this project
+      # is deployed with verify_jwt = FALSE on purpose — they are invoked by DB
+      # triggers and pg_cron with a service-role key (place-order, verify-payment,
+      # process-payment, send-referral-email, send-reorder-reminders,
+      # get-order-confirmation, convert-quote-to-order, the send-marketplace-* set,
+      # …). Deploying them with the default would 401 every one of those callers.
+      #
+      # So this step REFUSES to deploy unless config.toml declares an explicit
+      # verify_jwt for every function directory. It fails loudly instead of
+      # flipping behaviour. (Directories starting with "_", e.g. _shared, are
+      # shared code, not deployable functions, and are skipped.)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Preflight — require explicit verify_jwt in config.toml
+        run: |
+          set -euo pipefail
+          config="supabase/config.toml"
+          if [ ! -f "$config" ]; then
+            echo "::error::$config not found — cannot verify per-function verify_jwt settings."
+            exit 1
+          fi
+
+          # Function names that have a verify_jwt declared inside their
+          # [functions.<name>] section in config.toml.
+          declared="$(awk '
+            /^[[:space:]]*\[functions\./ {
+              name=$0
+              sub(/^[[:space:]]*\[functions\./, "", name)
+              sub(/\].*/, "", name)
+              gsub(/["'"'"'[:space:]]/, "", name)
+              cur=name; next
+            }
+            /^[[:space:]]*\[/ { cur="" }
+            cur != "" && /^[[:space:]]*verify_jwt[[:space:]]*=/ { print cur }
+          ' "$config" | sort -u)"
+
+          missing=()
+          for dir in supabase/functions/*/; do
+            [ -d "$dir" ] || continue
+            fn="$(basename "$dir")"
+            case "$fn" in _*) continue ;; esac        # skip _shared and similar
+            if ! printf '%s\n' "$declared" | grep -qxF "$fn"; then
+              missing+=("$fn")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::config.toml does not declare an explicit verify_jwt for the functions below."
+            echo "Refusing to deploy: the default would set verify_jwt = true and break the"
+            echo "service-role / DB-trigger / cron callers these functions rely on."
+            echo "Add a block per function to supabase/config.toml, e.g.:"
+            echo ""
+            echo "  [functions.place-order]"
+            echo "  verify_jwt = false"
+            echo ""
+            echo "Functions missing a verify_jwt declaration:"
+            printf '  - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+          echo "All function directories have an explicit verify_jwt in config.toml. Safe to deploy."
+
+      - name: Deploy edge functions
+        run: |
+          set -euo pipefail
+          # No --no-verify-jwt here on purpose: verify_jwt comes per-function from
+          # config.toml (guaranteed present by the preflight above), so each
+          # function keeps its intended setting instead of a blanket flag.
+          supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
