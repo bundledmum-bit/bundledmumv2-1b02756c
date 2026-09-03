@@ -1,6 +1,34 @@
 # Handoff
 
-## prebuild no longer needs Bun — `bunx tsx` → `npx tsx` (this turn, Vercel prep)
+## vercel.json — SPA catch-all rewrite (this turn, Vercel prep)
+New **[vercel.json](vercel.json)** at repo root so direct hits / shared / bookmarked deep links resolve
+on Vercel instead of 404ing:
+```
+{ "rewrites": [ { "source": "/(.*)", "destination": "/index.html" } ] }
+```
+- **No vercel.json existed before.** This is the one file created; vite.config.ts / routing untouched.
+- **Single catch-all is correct AND does not shadow static files.** On Vercel, `rewrites` are applied
+  ONLY AFTER the filesystem check — any real file in the build output (`dist/`, into which Vite copies
+  everything from `public/`) is served directly and never rewritten. This is Vercel's documented
+  behaviour and exactly why the official Vite SPA config is the bare catch-all. Verified every one of
+  these is present at `dist/` root, so they serve as real files (the PROPER exclusion mechanism on
+  Vercel — no regex negative-lookahead needed, which would be less robust: it would miss extensionless
+  files like the Zoho verification file and could wrongly catch a future dotted route):
+  crawlers `sitemap.xml`, `robots.txt`, `llms.txt`; PWA `manifest.webmanifest`,
+  `admin-manifest.webmanifest`, `marketplace-manifest.webmanifest`; service worker `sw.js` (registered
+  at `/sw.js`); icons/favicons `favicon.ico`, `apple-touch-icon.png`, `bm-pwa-*`, `bm-mkt-*`,
+  `admin-icon-*`; `placeholder.svg`, `audit-overlay.js`; OG/images `images/*` (incl. og-default.jpg);
+  Zoho domain verification `zohoverify/verifyforzoho.html`; and Vite's hashed `assets/*`. There are NO
+  same-origin `/api` paths (the app talks to Supabase on its own domain), so nothing else to exclude.
+- **Marketplace covered by the same rewrite (verified, not assumed):** the marketplace is not a
+  separate deployment — `App.tsx` serves the SAME `index.html`, then `isMarketplace()` reads
+  `window.location.pathname` (`=== "/marketplace"` or `startsWith("/marketplace/")`) and mounts
+  `MarketplaceApp` (BrowserRouter `basename="/marketplace"`). So a rewrite of any `/marketplace/…` path
+  to `/index.html` loads the shell, the client reads the original URL, and the marketplace tree mounts.
+  One rewrite covers `/products/:slug`, `/quiz`, `/list/:token`, `/quote/:token`, `/bundles/*`,
+  `/articles/*`, `/marketplace/**`, and every other client route.
+
+## prebuild no longer needs Bun — `bunx tsx` → `npx tsx` (prior turn, Vercel prep)
 Vercel's build env has Node + npm but NOT Bun, so `"prebuild": "bunx tsx …"` would fail there.
 - **Change (package.json only):** `predev` and `prebuild` now run **`npx tsx scripts/generate-sitemap.ts`**
   (was `bunx tsx`); added **`tsx` to devDependencies** (`^4.23.13`, + package-lock) so it installs
